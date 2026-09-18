@@ -1,10 +1,10 @@
-// Writes app/.dev.vars for local development from what the running stack
-// reports, unless one exists already. The keys are the local stack's fixed
-// demo values; the GitHub App entries stay for you to fill in.
+// Writes app/.dev.vars: the local overrides for the production values in
+// app/wrangler.jsonc. Reads the running stack for the things that vary by
+// machine, and leaves an existing file alone.
 //
 //   node scripts/dev-vars.mjs
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 
 const target = new URL("../app/.dev.vars", import.meta.url);
 if (existsSync(target)) {
@@ -14,15 +14,24 @@ if (existsSync(target)) {
 const status = JSON.parse(
   execFileSync("npx", ["--yes", "supabase", "status", "-o", "json"], { encoding: "utf8" }),
 );
-// The devcontainer and the Supabase containers are siblings, so "localhost"
-// differs: the CLI already honours SUPABASE_SERVICES_HOSTNAME in its URLs, and
-// the bucket gets the same treatment.
+// The devcontainer and the stack's containers are siblings, so "localhost"
+// differs: the CLI already honours SUPABASE_SERVICES_HOSTNAME in its URLs,
+// and the bucket gets the same treatment.
 const host = process.env.SUPABASE_SERVICES_HOSTNAME ?? "127.0.0.1";
-const example = readFileSync(new URL("../app/.dev.vars.example", import.meta.url), "utf8");
-const vars = example
-  .replace(/^SUPABASE_PUBLISHABLE_KEY=.*$/m, `SUPABASE_PUBLISHABLE_KEY=${status.PUBLISHABLE_KEY ?? status.ANON_KEY}`)
-  + `\n# Where this machine reaches the stack (host.docker.internal in a devcontainer).\n`
-  + `PUBLIC_SUPABASE_URL=${status.API_URL}\n`
-  + `S3_ENDPOINT=http://${host}:9000\n`;
+const vars = [
+  "# Written by `npm run dev:vars`. Local overrides for app/wrangler.jsonc,",
+  "# which holds production values. Delete this file to regenerate it.",
+  "",
+  `SUPABASE_PUBLISHABLE_KEY=${status.PUBLISHABLE_KEY ?? status.ANON_KEY}`,
+  `PUBLIC_SUPABASE_URL=${status.API_URL}`,
+  "",
+  "# RustFS, from dev/compose.yml.",
+  `S3_ENDPOINT=http://${host}:9000`,
+  "S3_PUBLIC_ENDPOINT=http://localhost:9000",
+  "S3_REGION=us-east-1",
+  "S3_ACCESS_KEY_ID=rustfsadmin",
+  "S3_SECRET_ACCESS_KEY=rustfsadmin",
+  "",
+].join("\n");
 writeFileSync(target, vars);
 console.log(`wrote app/.dev.vars for ${status.API_URL}`);

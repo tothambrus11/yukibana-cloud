@@ -1,11 +1,17 @@
-# Copy to .dev.vars (gitignored). Values the Worker reads as secrets in
-# production and the adapter reads from here in development.
+# Local development overrides for app/wrangler.jsonc, which holds production
+# values. A key here wins over the same key there; keys only there still
+# apply. `npm run dev:vars` writes the real file from the running stack.
+#
+# Copy to app/.dev.vars (gitignored) if you would rather fill it in by hand.
 
 # `npx supabase status` prints the local publishable (anon) key. It is a fixed
 # demo value, not a secret, but it is read the same way the production one is.
 SUPABASE_PUBLISHABLE_KEY=
+PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 
-# RustFS's local credentials (dev/compose.yml).
+# RustFS, from dev/compose.yml. It wants a real region name; R2 says "auto".
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_PUBLIC_ENDPOINT=http://localhost:9000
+S3_REGION=us-east-1
 S3_ACCESS_KEY_ID=rustfsadmin
 S3_SECRET_ACCESS_KEY=rustfsadmin
-

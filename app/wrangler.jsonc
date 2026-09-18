@@ -1,6 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "yukibana",
+
+  // This file holds PRODUCTION values, because that is what gets deployed and
+  // what must be reviewable in a diff. Local development overrides every one
+  // of them through app/.dev.vars (written by `npm run dev:vars`, gitignored):
+  // a key there wins over the same key here, and keys only here still apply.
+  // The database's local override is `localConnectionString` below.
+  "name": "yukibana-cloud",
   "main": ".svelte-kit/cloudflare/_worker.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -11,29 +17,35 @@
   // the CLI before they arrive, so a request here hashes and stores bytes
   // and asks the database, which fits the free plan's allowance.
 
-  // Postgres, pooled by Cloudflare. Fill `id` with `wrangler hyperdrive create
-  // yukibana --connection-string=<supabase direct connection string>`. In
-  // development the adapter connects to localConnectionString instead; the
-  // devcontainer overrides it through WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
-  // because "localhost" is a different machine in there.
+  // Postgres, pooled by Cloudflare. Create it once with
+  //   wrangler hyperdrive create yukibana --connection-string="<direct connection string>"
+  // using Supabase's DIRECT connection string (not a pooler: Hyperdrive is the
+  // pool), then paste the id it prints here.
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "00000000000000000000000000000000",
+      "id": "REPLACE_ME_HYPERDRIVE_ID",
+      // Local only. The devcontainer overrides it again through
+      // WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE, because
+      // "localhost" is a different machine in there.
       "localConnectionString": "postgres://yukibana_app:yukibana@127.0.0.1:54322/postgres"
     }
   ],
 
-  // Plain configuration. Secrets (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY,
-  // SUPABASE_PUBLISHABLE_KEY) are `wrangler secret put` in production and
-  // .dev.vars in development; see .dev.vars.example.
+  // Secrets are not here: S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and
+  // SUPABASE_PUBLISHABLE_KEY are `wrangler secret put` in production and
+  // .dev.vars in development. See app/.dev.vars.example.
   "vars": {
-    "PUBLIC_SUPABASE_URL": "http://127.0.0.1:54321",
-    "S3_ENDPOINT": "http://127.0.0.1:9000",
-    "S3_PUBLIC_ENDPOINT": "http://localhost:9000",
+    // https://<project ref>.supabase.co
+    "PUBLIC_SUPABASE_URL": "https://REPLACE_ME_PROJECT_REF.supabase.co",
+    // R2's S3 endpoint: https://<account id>.r2.cloudflarestorage.com
+    "S3_ENDPOINT": "https://REPLACE_ME_ACCOUNT_ID.r2.cloudflarestorage.com",
+    // Where a browser fetches a presigned URL. The same host on R2; a
+    // different one locally, where the bucket is a sibling container.
+    "S3_PUBLIC_ENDPOINT": "https://REPLACE_ME_ACCOUNT_ID.r2.cloudflarestorage.com",
     "S3_BUCKET": "yukibana",
-    // RustFS wants a real region name; R2 wants "auto". Production overrides this.
-    "S3_REGION": "us-east-1",
+    // R2 has one region and calls it "auto". RustFS locally wants a real name.
+    "S3_REGION": "auto",
     "SUBMISSION_MAX_BYTES": "33554432",
     // Two of these must fit one request under the platform's 100 MB body limit.
     "RELEASE_MAX_BYTES": "41943040"

@@ -16,7 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # The session pooler string: a direct connection is IPv6 and the runner
+      # is not. See .github/workflows/deploy.yml.
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -24,12 +26,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
       - name: Unapplied migrations
-        run: npx supabase migration list --linked
+        run: npx supabase migration list --db-url "$SUPABASE_DB_URL"
       - name: Diff production against the migrations
         run: |
-          npx supabase db diff --linked --schema public,app | tee drift.sql
+          npx supabase db diff --db-url "$SUPABASE_DB_URL" --schema public,app | tee drift.sql
           if [ -s drift.sql ]; then
             echo "::error::production differs from the migrations (see drift.sql above); write the change down as a migration or revert it"
             exit 1

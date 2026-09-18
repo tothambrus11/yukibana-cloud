@@ -110,17 +110,17 @@ repository.
 
 ## Deploying
 
-`main` deploys after CI passes (`.github/workflows/deploy.yml`): migrations,
-then `ops/bootstrap.sql` (role passwords and the first admin, from secrets),
-then `supabase config push`, then the Worker. The secrets it needs are listed
-at the top of that file. A nightly job (`drift.yml`) fails if production
-differs from the migrations, which is how "the dashboard is read-only" is
-enforced rather than hoped for.
+`docs/deploy.md` is the runbook: one Supabase project, one Cloudflare Worker,
+one R2 bucket, all within both free tiers. In short, a push to `main` is answered by two
+things: Cloudflare Workers Builds, which builds and deploys the Worker, and
+the Database workflow, which applies migrations, runs `ops/bootstrap.sql`
+(role passwords and the first admin, from secrets) and pushes the Supabase
+settings. A nightly job (`drift.yml`) fails if production differs from the
+migrations, which is how "the dashboard is read-only" is enforced rather
+than hoped for.
 
-One-time Cloudflare setup: `wrangler hyperdrive create yukibana
---connection-string=<the Supabase direct connection string>` and its id into
-`app/wrangler.jsonc`; an R2 bucket and an API token with read/write on it;
-`wrangler secret put` for each Worker secret named in `app/.dev.vars.example`.
+`node scripts/check-production-config.mjs` lists the values a new environment
+still has to fill in, and the deploy workflow runs it before anything else.
 
 ## Other environments
 

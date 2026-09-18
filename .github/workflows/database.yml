@@ -1,0 +1,133 @@
+# The database half of continuous delivery. Cloudflare Workers Builds owns
+# the other half: it is connected to this repository and deploys the Worker
+# itself on every push to main.
+#
+# So the two run side by side, and the ordering that keeps the site up is not
+# guaranteed by either. It is bought instead by the rule in CLAUDE.md that
+# migrations only ever add: an old Worker against a new schema is fine, which
+# is the direction this can go wrong in. What is not fine is new code reading
+# a table its migration has not created yet, so when a change needs both,
+# deploy it in two pushes: the migration first, the code that reads it after.
+#
+# One at a time: two pushes must not race each other into the database.
+#
+# `workflow_dispatch` runs the same thing by hand, which is what a first
+# environment needs: deploy, log in once with GitHub, deploy again so
+# ops/bootstrap.sql can promote the first admin.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN   a personal access token from the Supabase dashboard
+#   SUPABASE_PROJECT_REF    the project ref, the first label of its API URL
+#   SUPABASE_DB_URL         the SESSION POOLER connection string, percent-encoded.
+#                           Not the direct one: a direct connection resolves to
+#                           IPv6 only, and GitHub's runners have no IPv6, so
+#                           every database step here would fail to connect. The
+#                           pooler is IPv4 on every plan. (Hyperdrive is the
+#                           opposite: it takes the direct string.)
+#   SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID, _SECRET   the production OAuth App
+#   APP_DB_PASSWORD         a password you generate for the yukibana_app role
+#   FIRST_ADMIN_EMAIL       who app.bootstrap_admin promotes, once
+#
+# Worker secrets (SUPABASE_PUBLISHABLE_KEY, S3_ACCESS_KEY_ID,
+# S3_SECRET_ACCESS_KEY) are set once with `wrangler secret put` and are not
+# touched here. docs/deploy.md is the whole runbook.
+name: Database
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  database:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID }}
+      SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+            cli/package-lock.json
+      - run: npm run install:all
+
+      # Every secret named at once, so a missing one is one failed run rather
+      # than four. A repository with none of them set is one nobody has
+      # pointed at an environment yet: that is a notice and a clean stop, not
+      # a red mark on someone's first push.
+      - name: Credentials
+        id: credentials
+        env:
+          APP_DB_PASSWORD: ${{ secrets.APP_DB_PASSWORD }}
+          FIRST_ADMIN_EMAIL: ${{ secrets.FIRST_ADMIN_EMAIL }}
+        run: |
+          missing=
+          set=
+          names="SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_URL
+                 SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET
+                 APP_DB_PASSWORD FIRST_ADMIN_EMAIL"
+          for v in $names; do
+            if [ -n "${!v}" ]; then set="$set $v"; else missing="$missing $v"; fi
+          done
+          if [ -z "$set" ]; then
+            echo "::notice::no environment is configured yet; see docs/deploy.md. Nothing to do."
+            echo "configured=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error::not set as repository secrets, nothing was deployed:$missing"
+            exit 1
+          fi
+          echo "configured=yes" >> "$GITHUB_OUTPUT"
+
+      # A Worker deployed with a placeholder in it starts, serves pages, and
+      # fails every login with something that looks nothing like the cause.
+      - name: Production configuration is filled in
+        if: steps.credentials.outputs.configured == 'yes'
+        run: node scripts/check-production-config.mjs
+
+      # The schema before the code. Only migrations not already in the
+      # project's ledger run; `migration list` is the record of which.
+      - name: Migrations pending
+        if: steps.credentials.outputs.configured == 'yes'
+        run: npx supabase migration list --db-url "$SUPABASE_DB_URL"
+      - name: Apply migrations
+        if: steps.credentials.outputs.configured == 'yes'
+        run: npx supabase db push --db-url "$SUPABASE_DB_URL" --yes
+
+      # Role passwords and the first admin: the values a migration cannot
+      # carry. Idempotent, so it runs on every deploy.
+      - name: Per-environment bootstrap
+        if: steps.credentials.outputs.configured == 'yes'
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+            -v app_password="${{ secrets.APP_DB_PASSWORD }}" \
+            -v admin_email="${{ secrets.FIRST_ADMIN_EMAIL }}" \
+            -f ops/bootstrap.sql
+
+      # `config push` writes what config.toml declares and leaves the rest
+      # alone, but it declares plenty, so the diff goes in the log first:
+      # that is the record of what this deploy changed about the project.
+      - name: Supabase settings, before
+        if: steps.credentials.outputs.configured == 'yes'
+        run: npx supabase config diff --project-ref "$SUPABASE_PROJECT_REF" || true
+      - name: Push Supabase settings
+        if: steps.credentials.outputs.configured == 'yes'
+        run: npx supabase config push --project-ref "$SUPABASE_PROJECT_REF" --yes
+
