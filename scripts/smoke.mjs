@@ -21,7 +21,10 @@ const check = async (name, target, init = {}, ok = (res) => res.ok) => {
     if (!ok(res)) throw new Error(`HTTP ${res.status}`);
     console.log(`OK   ${name}`);
   } catch (e) {
-    console.error(`FAIL ${name}: ${e.message}`);
+    // The URL, always: "fetch failed" on its own says nothing about which
+    // host was unreachable, and the host is the thing that differs between
+    // a laptop, a devcontainer and a runner.
+    console.error(`FAIL ${name}: ${target}: ${e.message}`);
     failed = true;
   }
 };

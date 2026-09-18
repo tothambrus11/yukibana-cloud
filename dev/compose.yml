@@ -11,7 +11,11 @@ services:
     image: rustfs/rustfs:latest
     container_name: yukibana_rustfs
     ports:
-      - "127.0.0.1:9000:9000"
+      # On every interface, not just the host's loopback: a devcontainer is a
+      # sibling container and reaches this through the host gateway, which
+      # loopback-only publishing excludes. It is what the Supabase CLI does
+      # with its own ports, and why they are reachable from in there.
+      - "9000:9000"
     environment:
       RUSTFS_ACCESS_KEY: rustfsadmin
       RUSTFS_SECRET_KEY: rustfsadmin

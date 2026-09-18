@@ -112,6 +112,24 @@ begin
 end
 $$;
 
+-- The suite becomes the publisher to test what a token may do, and becoming a
+-- role needs SET on it, which the role that runs migrations does not have by
+-- creating it: since Postgres 16 a CREATEROLE role that creates another gets
+-- ADMIN but not SET, because `createrole_self_grant` defaults to empty. On a
+-- superuser (a plain local Postgres) this never shows, because a superuser may
+-- become anyone; on Supabase, where `postgres` is CREATEROLE and not a
+-- superuser, every `tests.as_publisher()` fails with "permission denied to set
+-- role". The Worker is unaffected: `yukibana_app` was granted the role
+-- explicitly, and an explicit grant carries SET.
+--
+-- Seeds never run against a deployed database, so this stays out of the
+-- migrations, where it would be a grant production has no use for.
+do $$
+begin
+  execute format('grant yukibana_publisher to %I with set true', current_user);
+end
+$$;
+
 -- Run the rest of the transaction as the publisher, the way a token request does.
 create or replace function tests.as_publisher()
 returns void
