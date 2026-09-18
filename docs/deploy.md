@@ -128,9 +128,24 @@ GitHub → Settings → Secrets and variables → Actions.
 
 No Cloudflare credentials: Workers Builds deploys the Worker with its own
 connection to this repository, and the Database workflow never touches it.
-Until the table above is filled in, that workflow stops with a notice rather
-than failing, so a fresh repository is not red for a reason nobody has got
-to yet.
+
+These go on the **Secrets** tab, as **repository** secrets. GitHub has four
+stores that look alike in the interface and are not the same thing, and the
+Database workflow can read exactly one of them:
+
+| Where | Readable here |
+| --- | --- |
+| Actions, Secrets tab, repository secrets | yes |
+| Actions, Variables tab | no, a different store |
+| An environment's secrets | no, unless a job names that environment |
+| Dependabot secrets | no, a different store |
+
+A secret that is set shows up as `***` in a run's environment listing; one
+that is blank there does not exist as far as the job is concerned. Until the
+production configuration in step 3 is filled in, the workflow stops with a
+notice rather than failing, because nobody has pointed the repository at an
+environment yet. Once it is filled in, a missing secret fails the run and
+names itself.
 
 `APP_DB_PASSWORD` is yours to invent: `ops/bootstrap.sql` sets it on the
 connection role every deploy, so it never appears in a migration.
