@@ -21,7 +21,10 @@ test('a policy refusal arrives as a 403, with the sentence the migration wrote',
     await asUser(sql, claimsOf(ALICE), (tx) => tx`select app.enrol((select edition_id from course_edition limit 1), 'x@example.com')`);
     throw new Error('expected a refusal');
   } catch (e) {
-    expect(statusOf(e)).toEqual({ status: 403, message: 'only an owner may enrol' });
+    // The SQLSTATE travels with the status: 42501 is what a policy and a
+    // wrong connection role both raise, and only the code tells a route
+    // which sentence it is answering.
+    expect(statusOf(e)).toEqual({ status: 403, message: 'only an owner may enrol', code: '42501' });
   }
 });
 
