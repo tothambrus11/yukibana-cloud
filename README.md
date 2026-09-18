@@ -134,5 +134,3 @@ which is why `devcontainer.json` mounts the workspace at its host path, and
 why this breaks inside a GitHub Actions `container:` job. CI runs the stack
 directly on a VM runner (`ci.yml`) and, separately, builds the devcontainer
 so a broken one fails a PR (`ci-devcontainer.yml`).
-
-
