@@ -1,0 +1,27 @@
+{
+  "name": "yukibana-cloud",
+  "private": true,
+  "type": "module",
+  "description": "The local stack and its checks. The app is under app/; the database under supabase/.",
+  "scripts": {
+    "install:all": "npm ci && npm --prefix app ci",
+    "check": "npm --prefix app run lint && npm --prefix app run typecheck && npm --prefix app test",
+    "dev": "npm --prefix app run dev",
+    "smoke": "node scripts/smoke.mjs",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "db:lint": "squawk --assume-in-transaction --exclude=require-concurrent-index-creation,prefer-robust-stmts supabase/migrations/*.sql",
+    "test:integration": "npm --prefix app run test:integration",
+    "storage:start": "docker compose -f dev/compose.yml up -d",
+    "storage:stop": "docker compose -f dev/compose.yml down",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:restart": "supabase stop && supabase start",
+    "local:admin": "node scripts/local-admin.mjs",
+    "dev:vars": "node scripts/dev-vars.mjs"
+  },
+  "devDependencies": {
+    "squawk-cli": "^2.30.0",
+    "supabase": "^2.117.0"
+  }
+}

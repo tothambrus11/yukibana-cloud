@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "yukibana",
+  "main": ".svelte-kit/cloudflare/_worker.js",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" },
+  "observability": { "enabled": true },
+
+  // Building a starter decompresses, filters and recompresses a repository
+  // in this Worker. The free plan's CPU allowance is too small for that; the
+  // paid plan allows this much per request, which a course repository never
+  // approaches.
+  "limits": { "cpu_ms": 60000 },
+
+  // Postgres, pooled by Cloudflare. Fill `id` with `wrangler hyperdrive create
+  // yukibana --connection-string=<supabase direct connection string>`. In
+  // development the adapter connects to localConnectionString instead; the
+  // devcontainer overrides it through WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE
+  // because "localhost" is a different machine in there.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://yukibana_app:yukibana@127.0.0.1:54322/postgres"
+    }
+  ],
+
+  // Plain configuration. Secrets (GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET,
+  // S3_SECRET_ACCESS_KEY, SUPABASE_PUBLISHABLE_KEY) are `wrangler secret put`
+  // in production and .dev.vars in development; see .dev.vars.example.
+  "vars": {
+    "PUBLIC_SUPABASE_URL": "http://127.0.0.1:54321",
+    "S3_ENDPOINT": "http://127.0.0.1:9000",
+    "S3_PUBLIC_ENDPOINT": "http://localhost:9000",
+    "S3_BUCKET": "yukibana",
+    "S3_REGION": "auto",
+    "GITHUB_APP_SLUG": "yukibana-dev",
+    "GITHUB_APP_ID": "0",
+    "SUBMISSION_MAX_BYTES": "33554432"
+  }
+}

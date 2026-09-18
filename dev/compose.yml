@@ -1,0 +1,41 @@
+# The bucket for local development and CI: RustFS, an Apache-2.0 S3 server
+# with the same ports and credential variables MinIO had. (MinIO's open-source
+# server was retired in 2026; its successor needs a per-machine licence file,
+# which is not something a local stack should ask for.) The app talks to it
+# exactly as it talks to R2 in production: over S3, through the one adapter in
+# app/src/lib/server/storage.ts.
+#
+#   docker compose -f dev/compose.yml up -d
+services:
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: yukibana_rustfs
+    ports:
+      - "127.0.0.1:9000:9000"
+    environment:
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/health || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Creates the bucket once the server answers. Any S3 client would do; curl
+  # can sign requests itself and needs nothing installed.
+  bucket:
+    image: curlimages/curl:latest
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        curl -sf -X PUT --aws-sigv4 aws:amz:us-east-1:s3 --user rustfsadmin:rustfsadmin
+        http://rustfs:9000/yukibana -o /dev/null -w 'bucket yukibana: HTTP %{http_code}\n'
+
+volumes:
+  rustfs-data:

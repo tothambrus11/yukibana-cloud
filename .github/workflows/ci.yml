@@ -1,0 +1,82 @@
+# Every check, on every push and pull request.
+#
+# `app` is the fast half: lint, typecheck, unit tests and a production build,
+# no services. `stack` proves the database and the app agree: the real
+# Supabase image and a real S3 server on the runner, every migration applied
+# from empty, the pgTAP suite, and the integration suite driving the server
+# modules through the app's own connection role. A migration that lints
+# badly, a policy that widens, a starter that ships a hidden test: each is a
+# red check here rather than a surprise in production.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+      - run: npm run install:all
+      - name: Lint, typecheck, unit tests
+        run: npm run check
+      - name: Build
+        working-directory: app
+        run: npm run build
+
+  stack:
+    # Must be a VM runner: a `container:` job breaks Supabase's bind mounts.
+    runs-on: ubuntu-latest
+    env:
+      # Auth needs a GitHub provider configured to start; nothing logs in here.
+      SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID: ci-placeholder
+      SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET: ci-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+      - run: npm run install:all
+
+      - name: Preflight
+        run: ./scripts/preflight.sh
+
+      # Lock-taking or otherwise dangerous DDL, before anything runs it.
+      - name: Lint migrations
+        run: npm run db:lint
+
+      - name: Start Supabase
+        run: npx supabase start
+      - name: Start the bucket
+        run: npm run storage:start
+
+      - name: Smoke test
+        run: npm run smoke
+
+      # Every migration from empty, then the seeds: what a fresh environment is.
+      - name: Rebuild the database from migrations
+        run: npm run db:reset
+
+      - name: Database tests (pgTAP)
+        run: npm run db:test
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Stop
+        if: always()
+        run: |
+          npx supabase stop || true
+          npm run storage:stop || true

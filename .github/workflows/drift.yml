@@ -1,0 +1,36 @@
+# Nightly: is production exactly what the migrations say? `db diff --linked`
+# compares the linked database with the migrations applied to a fresh one and
+# prints the difference. Anything printed means something was changed through
+# the dashboard or a shell, and this job fails until it is either reverted
+# or written down as a migration. The diff engine is a detector here, never
+# a generator: see CLAUDE.md.
+name: Drift
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+      - name: Unapplied migrations
+        run: npx supabase migration list --linked
+      - name: Diff production against the migrations
+        run: |
+          npx supabase db diff --linked --schema public,app | tee drift.sql
+          if [ -s drift.sql ]; then
+            echo "::error::production differs from the migrations (see drift.sql above); write the change down as a migration or revert it"
+            exit 1
+          fi

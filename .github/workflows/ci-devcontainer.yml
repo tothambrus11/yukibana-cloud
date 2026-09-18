@@ -1,0 +1,20 @@
+# Builds the devcontainer and runs the smoke test inside it, so a broken
+# devcontainer.json fails a PR rather than a teammate's morning.
+name: CI (devcontainer)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  devcontainer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build devcontainer and run the smoke test inside it
+        uses: devcontainers/ci@v0.3
+        with:
+          runCmd: |
+            ./scripts/preflight.sh
+            npm run smoke

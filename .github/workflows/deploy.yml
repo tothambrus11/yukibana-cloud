@@ -1,0 +1,86 @@
+# Continuous delivery: a push to main that passes CI is deployed, in the order
+# that keeps the site up: the database first (migrations only ever add), the
+# per-environment bootstrap, the Supabase settings, then the Worker that
+# reads them. One at a time: two pushes must not race each other into the
+# database.
+#
+# Secrets this needs, as repository secrets:
+#   SUPABASE_ACCESS_TOKEN   a personal access token for the CLI
+#   SUPABASE_PROJECT_REF    the project's ref
+#   SUPABASE_DB_PASSWORD    the project's database password (for db push)
+#   SUPABASE_DB_URL         the direct connection string (for ops/bootstrap.sql)
+#   SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID / _SECRET   the production GitHub OAuth App
+#   APP_DB_PASSWORD         the password ops/bootstrap.sql sets for yukibana_app
+#   FIRST_ADMIN_EMAIL       who app.bootstrap_admin promotes, once
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+# Worker secrets (GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET, S3_ACCESS_KEY_ID,
+# S3_SECRET_ACCESS_KEY, SUPABASE_PUBLISHABLE_KEY) are set once with
+# `wrangler secret put` and are not redeployed here.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID }}
+      SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+      - run: npm run install:all
+
+      - name: Credentials
+        run: |
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set as a repository secret; nothing was deployed."; exit 1; fi
+          done
+          for v in SUPABASE_PROJECT_REF SUPABASE_DB_URL APP_DB_PASSWORD FIRST_ADMIN_EMAIL; do
+            if [ -z "${{ secrets[v] }}" ]; then :; fi
+          done
+
+      - name: Link
+        run: npx supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      # The schema before the code. Only migrations not yet in the ledger run.
+      - name: Migrations pending
+        run: npx supabase migration list --linked
+      - name: Apply migrations
+        run: npx supabase db push --linked
+
+      - name: Per-environment bootstrap
+        run: |
+          psql "${{ secrets.SUPABASE_DB_URL }}" -v ON_ERROR_STOP=1 \
+            -v app_password="${{ secrets.APP_DB_PASSWORD }}" \
+            -v admin_email="${{ secrets.FIRST_ADMIN_EMAIL }}" \
+            -f ops/bootstrap.sql
+
+      - name: Push Supabase settings
+        run: npx supabase config push --linked --yes
+
+      - name: Build and deploy the Worker
+        working-directory: app
+        run: |
+          npm run build
+          npx wrangler deploy

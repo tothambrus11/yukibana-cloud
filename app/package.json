@@ -1,0 +1,43 @@
+{
+  "name": "yukibana-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "prepare": "svelte-kit sync",
+    "dev": "vite dev --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "svelte-kit sync && oxlint --type-aware --deny-warnings",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260918.1",
+    "@sveltejs/adapter-cloudflare": "^7.2.4",
+    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@types/node": "^22.20.2",
+    "oxlint": "^1.82.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
+    "typescript": "^6.0.3",
+    "vite": "npm:rolldown-vite@^7.3.1",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.134.0"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.116.0",
+    "aws4fetch": "^1.0.20",
+    "jose": "^6.2.12",
+    "postgres": "^3.4.7"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@^7.3.1"
+  }
+}

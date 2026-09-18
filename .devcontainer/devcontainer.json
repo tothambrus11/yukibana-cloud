@@ -1,0 +1,39 @@
+{
+  "name": "yukibana-cloud",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+
+  "features": {
+    // moby:false is required - the base image is Debian trixie, which has no
+    // 'moby-cli' package and the feature's default fails to install there.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false }
+  },
+
+  // Mount the workspace at the SAME absolute path it has on the host. Load-bearing:
+  // the Supabase CLI and docker compose run in here but drive the HOST daemon, so
+  // the bind mounts they request (supabase/functions -> edge runtime) are resolved
+  // against host paths. Change this and edge functions mount as an empty directory.
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+  "workspaceFolder": "${localWorkspaceFolder}",
+
+  // The CLI reaches the services on their published ports and defaults to
+  // 127.0.0.1, which in here is this container. Point it at the host gateway.
+  "runArgs": ["--add-host=host.docker.internal:host-gateway"],
+  "containerEnv": {
+    "SUPABASE_SERVICES_HOSTNAME": "host.docker.internal",
+    // The Worker's local database, seen from in here. On the host the value in
+    // wrangler.jsonc applies; this overrides it because localhost differs.
+    "WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE": "postgres://yukibana_app:yukibana@host.docker.internal:54322/postgres"
+  },
+
+  "remoteUser": "node",
+  "postCreateCommand": "npm run install:all",
+  "postStartCommand": ".devcontainer/setup.sh",
+
+  // No forwardPorts: the Supabase and RustFS ports are published by the host
+  // daemon, so they are already on the host's localhost. The SvelteKit dev
+  // server is the one thing that runs in here; VS Code forwards 5173 itself.
+
+  "customizations": {
+    "vscode": { "extensions": ["svelte.svelte-vscode", "denoland.vscode-deno"] }
+  }
+}
