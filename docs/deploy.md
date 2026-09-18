@@ -55,7 +55,7 @@ nightly if something is changed there.
 **Enable R2** (dashboard → R2). It asks for a payment method; the free tier
 is 10 GB of storage, 10 million reads a month and no egress charges.
 
-**Create the bucket**, named `yukibana`.
+**Create the bucket**, named `yukibana-cloud`, the same name local development and CI use.
 
 **Create an R2 API token** (R2 → Manage API tokens → Create), with Object
 Read & Write on that bucket. It prints an Access Key ID and a Secret Access
@@ -65,7 +65,7 @@ S3 API endpoint, `https://<account id>.r2.cloudflarestorage.com`.
 **Create the Hyperdrive config**, from a checkout:
 
 ```bash
-npx wrangler hyperdrive create yukibana --connection-string="<DIRECT connection string>"
+npx wrangler hyperdrive create yukibana-cloud --connection-string="<DIRECT connection string>"
 ```
 
 It prints an id. Hyperdrive is on the free plan, with 100,000 queries a day.
@@ -90,7 +90,6 @@ the deploy workflow runs it first and refuses to deploy while any remain.
 | Placeholder | Value |
 | --- | --- |
 | `REPLACE_ME_PROJECT_REF` | the Supabase project ref |
-| `REPLACE_ME_ACCOUNT_ID` | the Cloudflare account id, from the R2 S3 endpoint |
 | `REPLACE_ME_HYPERDRIVE_ID` | the id `hyperdrive create` printed |
 | `REPLACE_ME_WORKERS_SUBDOMAIN` | your workers.dev subdomain, so the app is at `https://yukibana-cloud.<subdomain>.workers.dev`, or the custom domain instead |
 

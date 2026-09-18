@@ -35,7 +35,7 @@ services:
     command:
       - >
         curl -sf -X PUT --aws-sigv4 aws:amz:us-east-1:s3 --user rustfsadmin:rustfsadmin
-        http://rustfs:9000/yukibana -o /dev/null -w 'bucket yukibana: HTTP %{http_code}\n'
+        http://rustfs:9000/yukibana-cloud -o /dev/null -w 'bucket yukibana-cloud: HTTP %{http_code}\n'
 
 volumes:
   rustfs-data:

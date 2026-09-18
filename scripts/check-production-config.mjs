@@ -8,8 +8,7 @@ import { readFileSync } from "node:fs";
 
 const WHERE = {
   REPLACE_ME_PROJECT_REF: "the Supabase project ref: the first label of the project's API URL, https://<ref>.supabase.co",
-  REPLACE_ME_ACCOUNT_ID: "the Cloudflare account id: R2 → Overview → the S3 API endpoint, https://<account id>.r2.cloudflarestorage.com",
-  REPLACE_ME_HYPERDRIVE_ID: "the Hyperdrive id printed by `wrangler hyperdrive create yukibana --connection-string=...`",
+  REPLACE_ME_HYPERDRIVE_ID: "the Hyperdrive id printed by `wrangler hyperdrive create yukibana-cloud --connection-string=...`",
   REPLACE_ME_WORKERS_SUBDOMAIN: "the workers.dev subdomain, or the custom domain the app is served on",
 };
 

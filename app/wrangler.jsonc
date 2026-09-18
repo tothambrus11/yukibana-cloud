@@ -18,7 +18,7 @@
   // and asks the database, which fits the free plan's allowance.
 
   // Postgres, pooled by Cloudflare. Create it once with
-  //   wrangler hyperdrive create yukibana --connection-string="<direct connection string>"
+  //   wrangler hyperdrive create yukibana-cloud --connection-string="<direct connection string>"
   // using Supabase's DIRECT connection string (not a pooler: Hyperdrive is the
   // pool), then paste the id it prints here.
   "hyperdrive": [
@@ -39,11 +39,11 @@
     // https://<project ref>.supabase.co
     "PUBLIC_SUPABASE_URL": "https://REPLACE_ME_PROJECT_REF.supabase.co",
     // R2's S3 endpoint: https://<account id>.r2.cloudflarestorage.com
-    "S3_ENDPOINT": "https://REPLACE_ME_ACCOUNT_ID.r2.cloudflarestorage.com",
+    "S3_ENDPOINT": "https://2ee7a3e4d6b972846f17c2a93a7c85a8.r2.cloudflarestorage.com",
     // Where a browser fetches a presigned URL. The same host on R2; a
     // different one locally, where the bucket is a sibling container.
-    "S3_PUBLIC_ENDPOINT": "https://REPLACE_ME_ACCOUNT_ID.r2.cloudflarestorage.com",
-    "S3_BUCKET": "yukibana",
+    "S3_PUBLIC_ENDPOINT": "https://2ee7a3e4d6b972846f17c2a93a7c85a8.r2.cloudflarestorage.com",
+    "S3_BUCKET": "yukibana-cloud",
     // R2 has one region and calls it "auto". RustFS locally wants a real name.
     "S3_REGION": "auto",
     "SUBMISSION_MAX_BYTES": "33554432",

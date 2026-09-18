@@ -31,6 +31,6 @@ await check("rest api", `${url}/rest/v1/`, auth);          // Kong -> PostgREST 
 await check("auth", `${url}/auth/v1/health`, auth);         // GoTrue
 await check("edge function", `${url}/functions/v1/health`, auth);
 // An unsigned request is refused, which is the bucket saying hello.
-await check("bucket", `${bucket}/yukibana`, { method: "HEAD" }, (res) => res.status === 403 || res.status === 200);
+await check("bucket", `${bucket}/yukibana-cloud`, { method: "HEAD" }, (res) => res.status === 403 || res.status === 200);
 
 process.exit(failed ? 1 : 0);

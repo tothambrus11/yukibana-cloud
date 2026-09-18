@@ -18,7 +18,7 @@ export const config: Config = {
   s3: {
     endpoint: env('S3_ENDPOINT', `http://${host}:9000`),
     publicEndpoint: env('S3_PUBLIC_ENDPOINT', `http://${host}:9000`),
-    bucket: env('S3_BUCKET', 'yukibana'),
+    bucket: env('S3_BUCKET', 'yukibana-cloud'),
     region: env('S3_REGION', 'us-east-1'),
     accessKeyId: env('S3_ACCESS_KEY_ID', 'rustfsadmin'),
     secretAccessKey: env('S3_SECRET_ACCESS_KEY', 'rustfsadmin'),
