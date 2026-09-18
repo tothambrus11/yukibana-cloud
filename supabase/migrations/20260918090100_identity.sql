@@ -104,7 +104,10 @@ $$;
 -- The first admin. Run by an operator against the database, never from the
 -- app: it is not executable by any API role. Promotes the account behind
 -- `addr` only while no admin exists, so running it twice, or on the wrong
--- address after the first, changes nothing.
+-- address after the first, changes nothing. An address that has not logged
+-- in yet is a notice and false, not an error: the deploy that creates an
+-- environment runs this before anyone could have logged in, and the next
+-- deploy promotes them.
 create or replace function app.bootstrap_admin(addr text)
 returns boolean
 language plpgsql
@@ -117,9 +120,10 @@ begin
   if exists (select 1 from public.app_user where role = 'admin') then
     return false;
   end if;
-  select u.id into target from auth.users u where lower(u.email) = lower(addr::text);
+  select u.id into target from auth.users u where lower(u.email) = lower(addr);
   if target is null then
-    raise exception 'no account with address %; log in once first', addr using errcode = 'P0002';
+    raise notice 'no account with address % yet; log in once, then run this again', addr;
+    return false;
   end if;
   update public.app_user set role = 'admin' where user_id = target;
   insert into public.audit_log (actor, action, subject)

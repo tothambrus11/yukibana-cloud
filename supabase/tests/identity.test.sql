@@ -1,6 +1,6 @@
 -- Who a person is, and who may say so.
 begin;
-select plan(16);
+select plan(17);
 
 -- The trigger on auth.users creates the profile with what GitHub said.
 select tests.create_user('ada@example.com', 'Ada Lovelace', 'ada');
@@ -9,7 +9,9 @@ select results_eq(
   $$ values ('Ada Lovelace', 'ada', 'user') $$,
   'a login creates a profile with the provider''s name and handle, as a plain user');
 
--- The first admin is made by an operator, once.
+-- The first admin is made by an operator, once. Before that person has
+-- logged in, the call is a no-op, so a deploy can run it before the app exists.
+select ok(not app.bootstrap_admin('nobody@example.com'), 'an address with no account yet changes nothing');
 select ok(app.bootstrap_admin('ada@example.com'), 'the first admin is bootstrapped from an address');
 select is((select role::text from public.app_user where user_id = tests.uid('ada@example.com')), 'admin');
 select tests.create_user('grace@example.com', 'Grace Hopper', 'grace');

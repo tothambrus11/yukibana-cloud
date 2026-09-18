@@ -6,7 +6,7 @@
 
 alter role yukibana_app password :'app_password';
 
--- Promotes the first admin, once; a no-op ever after. The address must have
--- logged in already, so on a brand-new environment this raises until it has:
--- log in, run the deploy again.
+-- Promotes the first admin, once; a no-op ever after, and a no-op with a
+-- notice while that address has not logged in yet. On a brand-new
+-- environment: deploy, log in with GitHub, deploy again (or run this file).
 select app.bootstrap_admin(:'admin_email');
