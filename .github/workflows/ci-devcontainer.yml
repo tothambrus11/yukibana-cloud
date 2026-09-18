@@ -11,7 +11,7 @@ jobs:
   devcontainer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build devcontainer and run the smoke test inside it
         uses: devcontainers/ci@v0.3
         with:
