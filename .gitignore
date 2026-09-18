@@ -5,7 +5,8 @@ supabase/.temp/
 supabase/.branches/
 
 # The Worker's local secrets and state
-app/.dev.vars
+.dev.vars
+.wrangler/
 app/.wrangler/
 app/.svelte-kit/
 app/build/

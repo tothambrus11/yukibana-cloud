@@ -36,7 +36,7 @@ a machine with Docker and Node 22:
 cp .env.example .env            # GitHub OAuth App for local login (optional to start)
 npm run install:all
 npx supabase start && npm run storage:start
-npm run dev:vars                # app/.dev.vars from what the stack reports
+npm run dev:vars                # .dev.vars from what the stack reports
 npm run dev                     # http://127.0.0.1:5173
 ```
 

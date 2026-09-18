@@ -19,10 +19,13 @@
     "supabase:restart": "supabase stop && supabase start",
     "local:admin": "node scripts/local-admin.mjs",
     "dev:vars": "node scripts/dev-vars.mjs",
-    "cli": "node cli/dist/index.js"
+    "cli": "node cli/dist/index.js",
+    "build": "npm --prefix app ci && npm --prefix app run build",
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "squawk-cli": "^2.30.0",
-    "supabase": "^2.117.0"
+    "supabase": "^2.117.0",
+    "wrangler": "^4.134.0"
   }
 }

@@ -1,8 +1,8 @@
-# Local development overrides for app/wrangler.jsonc, which holds production
+# Local development overrides for wrangler.jsonc, which holds production
 # values. A key here wins over the same key there; keys only there still
 # apply. `npm run dev:vars` writes the real file from the running stack.
 #
-# Copy to app/.dev.vars (gitignored) if you would rather fill it in by hand.
+# Copy to .dev.vars (gitignored) if you would rather fill it in by hand.
 
 # `npx supabase status` prints the local publishable (anon) key. It is a fixed
 # demo value, not a secret, but it is read the same way the production one is.

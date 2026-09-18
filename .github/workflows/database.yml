@@ -44,6 +44,11 @@ jobs:
   database:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    # Secrets set on a GitHub Environment are a store of their own, and a job
+    # reads them only if it names that environment. Naming it costs nothing
+    # when there is none: GitHub creates it on first use, and repository
+    # secrets keep working either way, so this is strictly more than before.
+    environment: default
     concurrency:
       group: deploy
       cancel-in-progress: false
@@ -98,7 +103,7 @@ jobs:
           done
           if [ -n "$missing" ]; then
             echo "::error::not set, so nothing was deployed:$missing"
-            echo "::error::they belong under Settings, Secrets and variables, Actions, on the Secrets tab as repository secrets. A repository *variable*, an *environment* secret, or a Dependabot secret is a different store and this job cannot read any of them."
+            echo "::error::they belong on the Secrets tab, under Settings, Secrets and variables, Actions: either as repository secrets or on the environment named above. The Variables tab is a different store and is not masked in logs, which SUPABASE_DB_URL must be, because it carries the database password."
             exit 1
           fi
 

@@ -12,8 +12,7 @@
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "lint": "svelte-kit sync && oxlint --type-aware --deny-warnings",
-    "deploy": "wrangler deploy"
+    "lint": "svelte-kit sync && oxlint --type-aware --deny-warnings"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260918.1",

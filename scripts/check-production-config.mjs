@@ -12,7 +12,7 @@ const WHERE = {
   REPLACE_ME_WORKERS_SUBDOMAIN: "the workers.dev subdomain, or the custom domain the app is served on",
 };
 
-const files = ["app/wrangler.jsonc", "supabase/config.toml"];
+const files = ["wrangler.jsonc", "supabase/config.toml"];
 const found = [];
 for (const file of files) {
   const lines = readFileSync(new URL(`../${file}`, import.meta.url), "utf8").split("\n");

@@ -8,7 +8,10 @@ import adapter from '@sveltejs/adapter-cloudflare';
 export default {
   kit: {
     adapter: adapter({
-      platformProxy: { configPath: 'wrangler.jsonc', persist: true },
+      // The Worker's configuration lives at the repository root, so that
+      // Cloudflare's build and a plain `wrangler deploy` both work from
+      // there without a directory setting. Development reads the same file.
+      platformProxy: { configPath: '../wrangler.jsonc', persist: true },
     }),
   },
 };

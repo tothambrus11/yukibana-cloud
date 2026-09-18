@@ -3,14 +3,19 @@
 
   // This file holds PRODUCTION values, because that is what gets deployed and
   // what must be reviewable in a diff. Local development overrides every one
-  // of them through app/.dev.vars (written by `npm run dev:vars`, gitignored):
+  // of them through .dev.vars beside it (written by `npm run dev:vars`, and
+  // gitignored):
   // a key there wins over the same key here, and keys only here still apply.
   // The database's local override is `localConnectionString` below.
+  // A key there wins over the same key here; keys only here still apply.
   "name": "yukibana-cloud",
-  "main": ".svelte-kit/cloudflare/_worker.js",
+  // Paths are from the repository root, where this file lives so that a
+  // plain `wrangler deploy` works from a fresh clone and Cloudflare's build
+  // needs no directory configured by hand.
+  "main": "app/.svelte-kit/cloudflare/_worker.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
-  "assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" },
+  "assets": { "binding": "ASSETS", "directory": "app/.svelte-kit/cloudflare" },
   "observability": { "enabled": true },
 
   // No CPU limit override: the Worker is a registry. Archives are built by
@@ -34,7 +39,7 @@
 
   // Secrets are not here: S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY and
   // SUPABASE_PUBLISHABLE_KEY are `wrangler secret put` in production and
-  // .dev.vars in development. See app/.dev.vars.example.
+  // .dev.vars in development. See .dev.vars.example.
   "vars": {
     // https://<project ref>.supabase.co
     "PUBLIC_SUPABASE_URL": "https://zfklzzixyseiyhszkojf.supabase.co",

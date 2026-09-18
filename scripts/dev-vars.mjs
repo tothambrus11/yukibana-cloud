@@ -1,14 +1,15 @@
-// Writes app/.dev.vars: the local overrides for the production values in
-// app/wrangler.jsonc. Reads the running stack for the things that vary by
+// Writes .dev.vars: the local overrides for the production values in
+// wrangler.jsonc, beside it at the repository root, which is where wrangler
+// looks for it. Reads the running stack for the things that vary by
 // machine, and leaves an existing file alone.
 //
 //   node scripts/dev-vars.mjs
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
 
-const target = new URL("../app/.dev.vars", import.meta.url);
+const target = new URL("../.dev.vars", import.meta.url);
 if (existsSync(target)) {
-  console.log("app/.dev.vars exists; leaving it alone");
+  console.log(".dev.vars exists; leaving it alone");
   process.exit(0);
 }
 const status = JSON.parse(
@@ -19,7 +20,7 @@ const status = JSON.parse(
 // and the bucket gets the same treatment.
 const host = process.env.SUPABASE_SERVICES_HOSTNAME ?? "127.0.0.1";
 const vars = [
-  "# Written by `npm run dev:vars`. Local overrides for app/wrangler.jsonc,",
+  "# Written by `npm run dev:vars`. Local overrides for wrangler.jsonc,",
   "# which holds production values. Delete this file to regenerate it.",
   "",
   `SUPABASE_PUBLISHABLE_KEY=${status.PUBLISHABLE_KEY ?? status.ANON_KEY}`,
@@ -34,4 +35,4 @@ const vars = [
   "",
 ].join("\n");
 writeFileSync(target, vars);
-console.log(`wrote app/.dev.vars for ${status.API_URL}`);
+console.log(`wrote .dev.vars for ${status.API_URL}`);

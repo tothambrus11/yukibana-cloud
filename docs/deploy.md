@@ -73,11 +73,12 @@ It prints an id. Hyperdrive is on the free plan, with 100,000 queries a day.
 **Point Workers Builds at this repository**, if it is not already: the
 Worker → Settings → Builds. Because the app is one package of several, set
 
-| Field | Value |
-| --- | --- |
-| Root directory | `app` |
-| Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
+Cloudflare's defaults are what this repository is arranged for, so leave the
+root directory empty: `wrangler.jsonc` sits at the root, `npm run build`
+there builds the app, and `npx wrangler deploy` deploys it. An earlier
+layout kept the Worker's configuration under `app/`, and Cloudflare's build
+failed with "could not detect a directory containing static files", which is
+what wrangler says when it is run somewhere with no configuration to find.
 
 Note the account id from the dashboard sidebar: it is the first label of the
 R2 S3 endpoint, and one of the four values below.
@@ -93,15 +94,15 @@ the deploy workflow runs it first and refuses to deploy while any remain.
 | `REPLACE_ME_HYPERDRIVE_ID` | the id `hyperdrive create` printed |
 | `REPLACE_ME_WORKERS_SUBDOMAIN` | your workers.dev subdomain, so the app is at `https://yukibana-cloud.<subdomain>.workers.dev`, or the custom domain instead |
 
-They are in `app/wrangler.jsonc` (production values, because that is what is
-deployed and what a diff should show) and `supabase/config.toml` (under
+They are in `wrangler.jsonc` at the repository root (production values,
+because that is what is deployed and what a diff should show) and `supabase/config.toml` (under
 `[remotes.production]`, which is what `config push` applies to the project;
 everything above that block stays local). Commit the result.
 
 ## 4. Worker secrets
 
 Three, set once. The Worker already exists, so this works before the first
-deploy. From `app/`, after `npx wrangler login`:
+deploy. From the repository root, after `npx wrangler login`:
 
 ```bash
 npx wrangler secret put SUPABASE_PUBLISHABLE_KEY
@@ -136,9 +137,13 @@ Database workflow can read exactly one of them:
 | Where | Readable here |
 | --- | --- |
 | Actions, Secrets tab, repository secrets | yes |
-| Actions, Variables tab | no, a different store |
-| An environment's secrets | no, unless a job names that environment |
+| Actions, Secrets tab, on the environment named `default` | yes, the workflow declares it |
+| Actions, Variables tab | no, a different store, and not masked in logs |
 | Dependabot secrets | no, a different store |
+
+The workflow names an environment called `default`, so either place works.
+Put them on the Secrets tab in whichever you use: a variable is printed in
+plain text in run logs, and `SUPABASE_DB_URL` carries the database password.
 
 A secret that is set shows up as `***` in a run's environment listing; one
 that is blank there does not exist as far as the job is concerned. Until the
