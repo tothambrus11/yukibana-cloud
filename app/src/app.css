@@ -1,0 +1,312 @@
+/* The whole look of the app, in one file.
+ *
+ * It styles elements rather than classes, so a page is plain HTML: a table
+ * is a table, a form is a form, and a new page is styled the moment it is
+ * written. That is the point — the pages hold what is on them, and nothing
+ * about how it looks. The handful of classes below exist because no element
+ * means "this is fine" or "this is a draft".
+ *
+ * Both schemes come from one set of values with `light-dark()`, so there is
+ * one place a colour is decided and no second block to keep in step.
+ */
+
+@layer base, layout, controls, bits;
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+
+    /* Surfaces, from the page backwards to the thing in front of you. */
+    --bg: light-dark(#f4f5f7, #0c0d11);
+    --surface: light-dark(#ffffff, #15171d);
+    --sunken: light-dark(#f4f5f7, #1b1e26);
+    --line: light-dark(#e4e6ea, #262a33);
+
+    /* Ink. `--ink-soft` is for what a reader may skip, and stays above 4.5:1. */
+    --ink: light-dark(#14161a, #e8eaf0);
+    --ink-soft: light-dark(#5a6170, #9ba3b2);
+
+    --accent: light-dark(#3048c8, #8ea6ff);
+    --accent-bg: light-dark(#eef1fe, #1a2040);
+    --ok: light-dark(#136c3c, #58d79a);
+    --ok-bg: light-dark(#e7f5ed, #0f2d20);
+    --bad: light-dark(#a3221b, #ff9b91);
+    --bad-bg: light-dark(#fdecea, #351714);
+
+    --radius: 14px;
+    --radius-sm: 9px;
+    --pad: clamp(1rem, 0.6rem + 1.6vw, 1.75rem);
+    --shadow: 0 1px 2px light-dark(rgb(16 18 24 / 6%), rgb(0 0 0 / 40%)),
+              0 10px 26px -18px light-dark(rgb(16 18 24 / 45%), rgb(0 0 0 / 80%));
+
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Numbers sit in columns all over this app: sizes, dates, hashes. */
+    font-variant-numeric: tabular-nums;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 1rem;
+    line-height: 1.55;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* A type scale that holds on a phone without a media query. */
+  h1 { font-size: clamp(1.45rem, 1.2rem + 1.1vw, 1.9rem); line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 0.35rem; }
+  h2 { font-size: 1.05rem; letter-spacing: -0.01em; margin: 0 0 0.9rem; }
+  h1 + p, h2 + p:first-of-type { margin-top: 0; }
+  p { margin: 0 0 0.9rem; }
+  :is(h1, h2, p, table, form, ul):last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+  a:hover { text-decoration-thickness: 2px; }
+
+  code, pre {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+    font-size: 0.875em;
+  }
+  code { background: var(--sunken); border-radius: 5px; padding: 0.1em 0.35em; }
+  pre {
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+    overflow-x: auto;
+    /* A token is one long unbroken string and must be selectable whole. */
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0 0 0.9rem;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* One ring, on everything, only for keyboards. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    :where(a, button, select, input, tr) { transition: background-color 120ms, border-color 120ms, color 120ms; }
+  }
+}
+
+@layer layout {
+  /* The bar stays while a roster scrolls, and the blur keeps it legible
+   * over whatever is underneath without a solid block of colour. */
+  header.bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem clamp(1rem, 4vw, 2rem);
+    border-bottom: 1px solid var(--line);
+    background: light-dark(rgb(255 255 255 / 82%), rgb(21 23 29 / 82%));
+    backdrop-filter: blur(12px) saturate(140%);
+  }
+  header.bar nav { display: flex; gap: 0.5rem 1rem; align-items: center; flex-wrap: wrap; }
+
+  .brand {
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .brand::before {
+    /* The mark. Yukibana is a snow flower, but petals at 1rem read as a
+     * blob, so it is a star — the same path as the favicon in app.html. */
+    content: "";
+    inline-size: 1.15rem;
+    aspect-ratio: 1;
+    background: var(--accent);
+    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  }
+
+  main {
+    max-width: 68rem;
+    margin-inline: auto;
+    padding: clamp(1.25rem, 3vw, 2.25rem) clamp(1rem, 4vw, 2rem) 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  /* Every block of a page is a card. A page adds one tag and gets the
+   * spacing, the rule under the heading and the rounding for nothing. */
+  section {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: var(--pad);
+    box-shadow: var(--shadow);
+  }
+  section > h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding-bottom: 0.7rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  /* The page's own title is not a card: it introduces them. */
+  .head { padding-inline: 0.25rem; }
+  .head p { color: var(--ink-soft); }
+
+  .back {
+    display: inline-block;
+    margin-bottom: 0.25rem;
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: 0.9rem;
+  }
+  .back:hover { color: var(--accent); }
+
+  /* A table is wider than a phone more often than not; let it scroll on its
+   * own rather than the page sideways. */
+  .scroll { overflow-x: auto; margin-inline: calc(var(--pad) * -1); padding-inline: var(--pad); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 0.94rem; }
+  th, td { text-align: left; padding: 0.55rem 0.7rem; vertical-align: baseline; }
+  th {
+    font-size: 0.76rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td { border-bottom: 1px solid color-mix(in oklab, var(--line) 60%, transparent); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--sunken); }
+  :is(th, td):first-child { padding-inline-start: 0; }
+  :is(th, td):last-child { padding-inline-end: 0; }
+  /* A cell holding a control is an action on its row, and sits at the end of
+   * it. Asking what the cell contains beats guessing from its position: the
+   * last column is a button on one table and a role on the next. */
+  td:has(> form, > button) { text-align: end; }
+}
+
+@layer controls {
+  input, select, button, textarea { font: inherit; color: inherit; }
+
+  form.stack { display: grid; gap: 0.85rem; max-width: 30rem; }
+  form.stack label { display: grid; gap: 0.3rem; font-size: 0.9rem; font-weight: 550; }
+  form.stack button { justify-self: start; }
+  form.inline { display: inline; }
+
+  :is(input, select):not([type="file"], [type="submit"]) {
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    font-weight: 400;
+    width: 100%;
+  }
+  :is(input, select):hover:not(:disabled) { border-color: color-mix(in oklab, var(--accent) 45%, var(--line)); }
+  /* A control in a table row is as wide as what it holds; the full width of
+   * a form field would be the full width of the column. */
+  /* Wide enough to read its own value: squeezed into a narrow column on a
+   * phone, a select shrank to nothing but its arrow, and the roster stopped
+   * saying what anybody's role was. */
+  td :is(input, select) { width: auto; min-width: 9ch; padding-block: 0.25rem; font-size: 0.85rem; }
+  input::placeholder { color: var(--ink-soft); }
+
+  /* The file input is the one control browsers will not style; give it a
+   * dropped-on area instead of fighting its button. */
+  input[type="file"] {
+    width: 100%;
+    padding: 0.7rem;
+    border: 1px dashed color-mix(in oklab, var(--accent) 35%, var(--line));
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
+    font-size: 0.9rem;
+  }
+
+  button {
+    padding: 0.5rem 0.95rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: var(--accent);
+    color: light-dark(#fff, #0c0d11);
+    font-weight: 600;
+    font-size: 0.92rem;
+    cursor: pointer;
+  }
+  button:hover { background: color-mix(in oklab, var(--accent) 88%, black); }
+  button:active { transform: translateY(1px); }
+
+  /* Inside a table a button is an action on one row, not the point of the
+   * page, so it recedes until it is wanted. */
+  td button, button.quiet {
+    background: transparent;
+    color: var(--ink-soft);
+    border-color: var(--line);
+    padding: 0.25rem 0.6rem;
+    font-size: 0.85rem;
+  }
+  button.quiet:hover { background: var(--sunken); color: var(--ink); }
+  /* Every button in a row of this app takes something away — Remove, Revoke —
+   * so the row's own buttons say so on hover. A gentler one elsewhere would
+   * want a class of its own rather than a change here. */
+  td button:hover { background: var(--bad-bg); color: var(--bad); border-color: currentcolor; }
+}
+
+@layer bits {
+  .muted { color: var(--ink-soft); }
+  .error, .ok {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid;
+    font-size: 0.94rem;
+  }
+  .error { color: var(--bad); background: var(--bad-bg); border-color: color-mix(in oklab, var(--bad) 30%, transparent); }
+  .ok { color: var(--ok); background: var(--ok-bg); border-color: color-mix(in oklab, var(--ok) 30%, transparent); }
+  .error::before { content: "⚠"; }
+  .ok::before { content: "✓"; }
+
+  /* A role, a state, a kind: a word that is a value rather than prose. */
+  .chip {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .chip.good { background: var(--ok-bg); border-color: color-mix(in oklab, var(--ok) 25%, transparent); color: var(--ok); }
+  .chip.live { background: var(--accent-bg); border-color: color-mix(in oklab, var(--accent) 25%, transparent); color: var(--accent); }
+
+  /* What a section says when it has nothing in it. Said once, here, so no
+   * page invents its own way of being empty. */
+  .empty {
+    margin: 0;
+    padding: 1.4rem;
+    border: 1px dashed var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--sunken);
+    color: var(--ink-soft);
+    text-align: center;
+    font-size: 0.94rem;
+  }
+
+  .note { font-size: 0.88rem; color: var(--ink-soft); }
+  .row { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+}

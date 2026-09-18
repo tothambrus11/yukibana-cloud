@@ -4,9 +4,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Yukibana</title>
+    <meta name="description" content="Course projects and the work students submit for them." />
+    <!-- Both schemes are real, so say so before any CSS loads and the browser
+         paints the right background instead of a white flash. -->
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#3048c8" />
+    <!-- The mark, inline: one fewer request, and it cannot 404. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath fill='%233048c8' d='M50 0 61 35 98 35 68 57 79 91 50 70 21 91 32 57 2 35 39 35Z'/%3E%3C/svg%3E"
+    />
     %sveltekit.head%
   </head>
-  <body>
-    <div>%sveltekit.body%</div>
+  <body data-sveltekit-preload-data="hover">
+    %sveltekit.body%
   </body>
 </html>
