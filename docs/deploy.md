@@ -173,6 +173,13 @@ once, and a teacher creates courses, editions and projects.
 
 ## Afterwards
 
+The migrations in this repository have been applied to the production
+project as of 2026-09-18, so the ledger there records them. From that point
+a migration that has run is frozen: every change is a new file, including a
+change to something only ever deployed once. CLAUDE.md says the same thing;
+this is the date it started being true.
+
+
 Everything else is in the app. A teacher creates a course, an edition,
 enrols by address, and creates a project. Publishing a release is
 `docs/yukibana-json.md`: `yukibana build` and an upload, or a token and the

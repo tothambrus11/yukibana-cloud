@@ -101,6 +101,15 @@ jobs:
                    APP_DB_PASSWORD FIRST_ADMIN_EMAIL; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
+          # Shape, not just presence. The access token is the last thing this
+          # job uses, so a wrong one failed only after the migrations had
+          # already run: the schema went out and the project's settings did
+          # not. Checking it here costs nothing and keeps the two together.
+          case "${SUPABASE_ACCESS_TOKEN:-}" in
+            ''|sbp_*) ;;
+            *) echo "::error::SUPABASE_ACCESS_TOKEN is not a Supabase personal access token: they begin with sbp_ and come from https://supabase.com/dashboard/account/tokens. A project API key, the JWT secret and the database password are all different things."
+               exit 1 ;;
+          esac
           if [ -n "$missing" ]; then
             echo "::error::not set, so nothing was deployed:$missing"
             echo "::error::they belong on the Secrets tab, under Settings, Secrets and variables, Actions: either as repository secrets or on the environment named above. The Variables tab is a different store and is not masked in logs, which SUPABASE_DB_URL must be, because it carries the database password."
