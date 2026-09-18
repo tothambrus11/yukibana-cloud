@@ -130,6 +130,7 @@ begin
 end
 $$;
 
+
 -- Run the rest of the transaction as the publisher, the way a token request does.
 create or replace function tests.as_publisher()
 returns void

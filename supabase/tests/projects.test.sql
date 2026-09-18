@@ -68,23 +68,46 @@ select is((select count(*) from public.project_release), 3::bigint, 'staff read 
 select is(app.current_starter(tests.project('proj-draft')), 'starters/draft-1', 'staff can fetch a draft''s starter to check it');
 
 -- Tokens: made by an owner, usable by the publisher role until revoked.
+--
+-- The publisher acts here and the assertions come afterwards, as a role that
+-- can make them. That is not ceremony: `yukibana_publisher` has usage on
+-- nothing but `app`, and a schema a role cannot use is one whose contents it
+-- cannot even name, pgTAP's own `is` and `throws_ok` included. Asserting
+-- while wearing it would mean granting it something production never gives
+-- it, and this role having nothing is the whole claim under test.
 select throws_ok($$ select app.create_project_token(tests.project('proj-open'), 'ci') $$, '42501', null, 'an assistant cannot make a token');
 select tests.authenticate(tests.uid('teacher@example.com'));
 create temporary table t as select app.create_project_token(tests.project('proj-open'), 'ci') as secret;
+create temporary table did (what text primary key, value text);
 grant select on t to yukibana_publisher;
+grant select, insert on did to yukibana_publisher;
+
 select tests.as_publisher();
-select is(
-  app.project_for_token(extensions.digest((select secret from t), 'sha256')),
-  tests.project('proj-open'),
+insert into did values ('named', app.project_for_token(sha256(convert_to((select secret from t), 'UTF8')))::text);
+insert into did values ('published', app.publish_release_with_token(
+  sha256(convert_to((select secret from t), 'UTF8')), 'ci build', 'def',
+  'starters/open-3', 1, decode(repeat('aa', 32), 'hex'),
+  'teacher/open-3', 1, decode(repeat('bb', 32), 'hex'))::text);
+do $$
+begin
+  perform 1 from public.project_release;
+  insert into did values ('reads', 'allowed');
+exception when insufficient_privilege then
+  insert into did values ('reads', 'denied');
+end
+$$;
+select tests.clear_auth();
+select is((select value from did where what = 'named'), tests.project('proj-open')::text,
   'the publisher turns the token''s hash into its project');
-select lives_ok(
-  $$ select app.publish_release_with_token(extensions.digest((select secret from t), 'sha256'), 'ci build', 'def', 'starters/open-3', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-3', 1, decode(repeat('bb', 32), 'hex')) $$,
-  'and publishes with it');
-select throws_ok($$ select 1 from public.project_release $$, '42501', null, 'but reads nothing');
+select isnt((select value from did where what = 'published'), null, 'and publishes with it');
+select is((select value from did where what = 'reads'), 'denied', 'but reads nothing');
+
 select tests.authenticate(tests.uid('teacher@example.com'));
 select app.revoke_project_token((select token_id from public.project_token where label = 'ci'));
 select tests.as_publisher();
-select is(app.project_for_token(extensions.digest((select secret from t), 'sha256')), null, 'a revoked token names nothing');
+insert into did values ('after_revoke', coalesce(app.project_for_token(sha256(convert_to((select secret from t), 'UTF8')))::text, 'nothing'));
+select tests.clear_auth();
+select is((select value from did where what = 'after_revoke'), 'nothing', 'a revoked token names nothing');
 
 select * from finish();
 rollback;

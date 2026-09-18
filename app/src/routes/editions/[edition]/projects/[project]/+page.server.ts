@@ -81,7 +81,7 @@ export const load: PageServerLoad = async (event) => {
             select r.release_id, r.label, r.commit_sha, r.starter_size, r.teacher_size, r.uploaded_at,
                    coalesce(u.github_login, u.full_name) as uploader, r.token_id is not null as via_token
             from project_release r left join app_user u on u.user_id = r.uploaded_by
-            where r.project_id = ${project} order by r.uploaded_at desc, r.release_id desc limit 20`
+            where r.project_id = ${project} order by r.seq desc limit 20`
         : [];
       const tokens = owner
         ? await tx<TokenRow[]>`

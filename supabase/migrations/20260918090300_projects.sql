@@ -13,9 +13,6 @@
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
 
--- For hashing upload tokens. Supabase ships it; the schema is theirs.
-create extension if not exists pgcrypto with schema extensions;
-
 create table public.project (
   project_id   uuid primary key default app.uuidv7(),
   edition_id   uuid not null references public.course_edition (edition_id) on delete cascade,
@@ -43,6 +40,12 @@ create table public.project (
 -- the history says what was live when.
 create table public.project_release (
   release_id     uuid primary key default app.uuidv7(),
+  -- What "newest" means, and the only thing that decides it. Two releases
+  -- published in one transaction share `uploaded_at`, because now() is fixed
+  -- for the transaction; and app.uuidv7() fills everything after the
+  -- millisecond with random bits, so ids do not order inside one either.
+  -- Neither can break the tie. A sequence never ties and never goes back.
+  seq            bigint generated always as identity,
   project_id     uuid not null references public.project (project_id) on delete cascade,
   -- Whatever the uploader said: a version, a commit, "fixed the typo".
   label          text not null default '',
@@ -60,7 +63,7 @@ create table public.project_release (
   token_id       uuid,
   uploaded_at    timestamptz not null default now()
 );
-create index project_release_latest on public.project_release (project_id, uploaded_at desc);
+create index project_release_latest on public.project_release (project_id, seq desc);
 
 -- A secret that lets a CI job publish releases to one project and do nothing
 -- else. Only its hash is kept; the secret is shown once when made. A leak
@@ -109,8 +112,7 @@ as $$
   join public.project_release r on r.project_id = p.project_id
   where p.project_id = project
     and (app.is_staff(p.edition_id) or app.project_open(p.edition_id, p.available_after))
-  -- Two uploads in one transaction share `uploaded_at`; the id breaks the tie.
-  order by r.uploaded_at desc, r.release_id desc
+  order by r.seq desc
   limit 1
 $$;
 
@@ -210,7 +212,9 @@ begin
   -- 256 bits from two v4 uuids; the prefix lets a leak scanner recognise it.
   secret := 'yk_' || replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
   insert into public.project_token (project_id, token_hash, label, created_by)
-  values (project, extensions.digest(secret, 'sha256'), label, (select auth.uid()));
+  -- sha256() is built into Postgres; the extensions schema is not on every
+  -- role's search path and not every role may use it.
+  values (project, sha256(convert_to(secret, 'UTF8')), label, (select auth.uid()));
   perform app.audit('create_project_token', jsonb_build_object('project_id', project, 'label', label));
   return secret;
 end
