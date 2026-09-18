@@ -7,15 +7,21 @@ import { text } from '$lib/server/form';
 
 /** A release: multipart with `starter` and `teacher` (both .tar.gz), an
  *  optional `label` and `commit`. Authenticated by a project token as a
- *  bearer (what the CLI and the Action send) or by an owner's session. */
+ *  bearer, and only that.
+ *
+ *  A session is deliberately not accepted here. It used to be, and it was a
+ *  cross-site request forgery waiting to happen: this takes a multipart
+ *  body, which is a thing any page on any site can make a browser POST, and
+ *  cookies would have ridden along with it. A page on evil.com could have
+ *  published a release to a project its visitor owns. Nothing is lost by
+ *  refusing: the project page uploads through its own form action, which
+ *  SvelteKit protects because it is same-origin, and the CLI has a token. */
 export const POST: RequestHandler = async (event) => {
   const project = uuidOf<ProjectId>(event.params.project);
   if (project === null) error(404, 'No such project.');
   const bearer = event.request.headers.get('authorization')?.match(/^Bearer\s+(yk_[0-9a-f]{64})$/i)?.[1];
-  const by: Publisher | null = bearer !== undefined
-    ? { kind: 'token', secret: bearer }
-    : event.locals.claims !== null ? { kind: 'user', claims: event.locals.claims } : null;
-  if (by === null) error(401, 'Send a project token as a bearer, or log in.');
+  if (bearer === undefined) error(401, 'Send a project token as a bearer. Make one on the project page.');
+  const by: Publisher = { kind: 'token', secret: bearer };
 
   const form = await event.request.formData().catch(() => null);
   if (form === null) error(400, 'Send the two archives as multipart form data.');

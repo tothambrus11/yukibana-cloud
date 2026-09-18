@@ -25,9 +25,18 @@ export async function publish(input: PublishInput, fetchFn: typeof fetch = fetch
   form.set('teacher', new Blob([buffer(input.teacher)], { type: 'application/gzip' }), 'teacher.tar.gz');
   form.set('label', input.label);
   if (input.commit !== null) form.set('commit', input.commit);
-  const res = await fetchFn(`${input.url.replace(/\/+$/, '')}/api/projects/${encodeURIComponent(input.projectId)}/releases`, {
+  // The registry is a SvelteKit app, and SvelteKit refuses a cross-origin
+  // POST whose content type is one a browser form can produce —
+  // multipart/form-data among them — with "cross-site POST form submissions
+  // are forbidden", before any handler runs. It compares this header against
+  // its own origin, so a request without one is refused too. A command line
+  // tool is not a browser and says where it is posting; the endpoint it posts
+  // to takes a bearer token and no cookie, so there is no ambient credential
+  // for a forged form to ride on anyway.
+  const base = new URL(input.url);
+  const res = await fetchFn(`${base.origin}/api/projects/${encodeURIComponent(input.projectId)}/releases`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${input.token}` },
+    headers: { authorization: `Bearer ${input.token}`, origin: base.origin },
     body: form,
   });
   const text = await res.text();
