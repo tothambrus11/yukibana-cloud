@@ -4,9 +4,15 @@
   "description": "Build a course project's starter and teacher archives, and publish them to Yukibana Cloud.",
   "license": "MIT",
   "type": "module",
-  "bin": { "yukibana": "dist/index.js" },
-  "files": ["dist"],
-  "engines": { "node": ">=22" },
+  "bin": {
+    "yukibana": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",

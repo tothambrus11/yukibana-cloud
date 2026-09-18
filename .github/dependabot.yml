@@ -1,0 +1,45 @@
+# Dependabot proposes the updates; CI decides whether they are safe. The
+# cooldowns are the point of this file rather than a detail of it: the
+# versions that carry a supply-chain compromise are the ones published
+# minutes ago, and every hour a release sits in public is another hour for
+# someone to notice. So nothing is proposed until it has aged.
+#
+# The same wait is asked of anyone installing by hand, in .npmrc
+# (`min-release-age`), because a compromised package does as much damage on
+# a laptop as in CI. That setting filters resolution only: `npm ci` still
+# installs exactly what the lockfile pins, so a fresh Dependabot PR is not
+# blocked by its own cooldown.
+version: 2
+updates:
+  # Actions are the most dangerous thing here: they run with the repository's
+  # secrets, so a compromised one reads them. Hence the longer wait.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci"
+
+  # One entry, three manifests: the root (the stack's own tooling), the app
+  # and the CLI.
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /app
+      - /cli
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "deps"
+    ignore:
+      # @types/node describes a particular Node release, and CI, the
+      # devcontainer and workerd all run 22. Taking a major here would let
+      # the compiler accept APIs that are not there at runtime, which is the
+      # one kind of type error this setup exists to prevent. It moves when
+      # the runtime moves.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
