@@ -13,7 +13,7 @@ create schema if not exists tests;
 -- A test switches role mid-transaction and keeps calling these.
 -- Tests use example.com addresses; the local fixtures use yukibana.local, so
 -- a test's derived ids never collide with a seeded account.
-grant usage on schema tests to anon, authenticated, yukibana_builder;
+grant usage on schema tests to anon, authenticated, yukibana_publisher;
 
 -- The account id that `tests.create_user(addr)` gives that address.
 create or replace function tests.uid(addr text)
@@ -112,13 +112,13 @@ begin
 end
 $$;
 
--- Run the rest of the transaction as the builder, the way build.ts does.
-create or replace function tests.as_builder()
+-- Run the rest of the transaction as the publisher, the way a token request does.
+create or replace function tests.as_publisher()
 returns void
 language plpgsql
 as $$
 begin
   perform set_config('request.jwt.claims', '', true);
-  perform set_config('role', 'yukibana_builder', true);
+  perform set_config('role', 'yukibana_publisher', true);
 end
 $$;

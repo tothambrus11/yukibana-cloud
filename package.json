@@ -2,10 +2,10 @@
   "name": "yukibana-cloud",
   "private": true,
   "type": "module",
-  "description": "The local stack and its checks. The app is under app/; the database under supabase/.",
+  "description": "The local stack and its checks. The app is under app/, the CLI under cli/, the database under supabase/.",
   "scripts": {
-    "install:all": "npm ci && npm --prefix app ci",
-    "check": "npm --prefix app run lint && npm --prefix app run typecheck && npm --prefix app test",
+    "install:all": "npm ci && npm --prefix app ci && npm --prefix cli ci",
+    "check": "npm --prefix app run lint && npm --prefix app run typecheck && npm --prefix app test && npm --prefix cli run lint && npm --prefix cli run typecheck && npm --prefix cli test",
     "dev": "npm --prefix app run dev",
     "smoke": "node scripts/smoke.mjs",
     "db:reset": "supabase db reset",
@@ -18,7 +18,8 @@
     "supabase:stop": "supabase stop",
     "supabase:restart": "supabase stop && supabase start",
     "local:admin": "node scripts/local-admin.mjs",
-    "dev:vars": "node scripts/dev-vars.mjs"
+    "dev:vars": "node scripts/dev-vars.mjs",
+    "cli": "node cli/dist/index.js"
   },
   "devDependencies": {
     "squawk-cli": "^2.30.0",

@@ -2,7 +2,7 @@
  *
  *  The Worker connects as `yukibana_app`, a role that can read nothing and
  *  bypass nothing (supabase/migrations/…_connection_roles.sql). Every query
- *  runs inside `asUser` or `asBuilder`, which open a transaction and become
+ *  runs inside `asUser` or `asPublisher`, which open a transaction and become
  *  the caller for its length, exactly as PostgREST would. So every policy in
  *  the migrations applies to every query here, and a query written outside
  *  these two functions fails with "permission denied" rather than answering
@@ -34,12 +34,13 @@ export async function asUser<T>(sql: Sql, claims: Claims, run: (tx: Tx) => Promi
   return result;
 }
 
-/** Runs `run` in one transaction as the builder: the role that writes build
- *  rows and reads repositories, and nothing about people. */
-export async function asBuilder<T>(sql: Sql, run: (tx: Tx) => Promise<T>): Promise<T> {
+/** Runs `run` in one transaction as the publisher: the role a request with
+ *  a project token gets, which can turn that token into a release and read
+ *  nothing at all. */
+export async function asPublisher<T>(sql: Sql, run: (tx: Tx) => Promise<T>): Promise<T> {
   let result!: T;
   await sql.begin(async (tx) => {
-    await tx`select set_config('role', 'yukibana_builder', true),
+    await tx`select set_config('role', 'yukibana_publisher', true),
                     set_config('request.jwt.claims', '', true)`;
     result = await run(tx);
   });

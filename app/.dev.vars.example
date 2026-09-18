@@ -5,15 +5,7 @@
 # demo value, not a secret, but it is read the same way the production one is.
 SUPABASE_PUBLISHABLE_KEY=
 
-# MinIO's default root credentials (dev/compose.yml).
-S3_ACCESS_KEY_ID=minioadmin
-S3_SECRET_ACCESS_KEY=minioadmin
+# RustFS's local credentials (dev/compose.yml).
+S3_ACCESS_KEY_ID=rustfsadmin
+S3_SECRET_ACCESS_KEY=rustfsadmin
 
-# A GitHub App of your own for development: https://github.com/settings/apps/new
-# Webhook URL: a tunnel to http://127.0.0.1:5173/api/github/webhook
-# Setup URL:   http://127.0.0.1:5173/github/setup   (redirect on update: yes)
-# Permissions: Contents read, Metadata read. Events: push.
-GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-...
------END RSA PRIVATE KEY-----"
-GITHUB_WEBHOOK_SECRET=

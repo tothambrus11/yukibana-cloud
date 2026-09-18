@@ -226,10 +226,10 @@ begin
   from public.enrollment e
   where e.edition_id = from_edition and e.role in ('assistant', 'owner');
 
-  insert into public.project (edition_id, slug, title, kind, github_installation_id,
-                              github_repo_id, github_repo_full_name, github_ref, created_by)
-  select eid, slug, title, kind, github_installation_id,
-         github_repo_id, github_repo_full_name, github_ref, (select auth.uid())
+  -- Projects come along without their releases: this year's starter is a
+  -- new upload, and last year's teacher archive stays with last year.
+  insert into public.project (edition_id, slug, title, kind, created_by)
+  select eid, slug, title, kind, (select auth.uid())
   from public.project
   where edition_id = from_edition;
 

@@ -1,6 +1,6 @@
--- What a student can see of a project, and when.
+-- What a student can see of a project, and when; releases and tokens.
 begin;
-select plan(13);
+select plan(18);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -47,35 +47,44 @@ select results_eq(
 select tests.authenticate(tests.uid('ta@example.com'));
 select is((select count(*) from public.project), 3::bigint, 'staff see all three');
 
--- Builds: the builder writes them, staff read them, students only get the key.
-select tests.as_builder();
-insert into public.project_build (project_id, status, starter_key, finished_at)
-values (tests.project('proj-open'), 'succeeded', 'starters/open/aaa.tar.gz', now() - interval '2 hours');
-insert into public.project_build (project_id, status, starter_key, log, started_at, finished_at)
-values (tests.project('proj-open'), 'succeeded', 'starters/open/bbb.tar.gz', 'removed tests/hidden/secret.rs',
-        now() + interval '1 second', now() + interval '2 seconds');
-insert into public.project_build (project_id, status, log, started_at, finished_at)
-values (tests.project('proj-open'), 'failed', 'yukibana.json: unknown kind', now() + interval '3 seconds', now() + interval '4 seconds');
-insert into public.project_build (project_id, status, starter_key, finished_at)
-values (tests.project('proj-draft'), 'succeeded', 'starters/draft/ccc.tar.gz', now());
-
-select tests.authenticate(tests.uid('student@example.com'));
-select is_empty($$ select 1 from public.project_build $$, 'a student reads no build rows, and so no logs');
-select is(app.current_starter(tests.project('proj-open')), 'starters/open/bbb.tar.gz', 'a student gets the latest successful starter');
-select is(app.current_starter(tests.project('proj-draft')), null, 'and nothing for a draft, even though a build exists');
-select tests.authenticate(tests.uid('ta@example.com'));
-select is((select count(*) from public.project_build), 4::bigint, 'staff read every build');
-select is(app.current_starter(tests.project('proj-draft')), 'starters/draft/ccc.tar.gz', 'staff can fetch a draft''s starter to check it');
-
--- An owner asks for a rebuild by queueing; a student cannot.
+-- Releases: an owner publishes manually; staff read them; students only get
+-- the newest starter key, and only of a project they may see.
+select throws_ok(
+  $$ select app.publish_release(tests.project('proj-open'), 'v1', null, 'starters/a', 1, decode(repeat('aa', 32), 'hex'), 'teacher/a', 1, decode(repeat('bb', 32), 'hex')) $$,
+  '42501', null, 'an assistant cannot publish');
 select tests.authenticate(tests.uid('teacher@example.com'));
 select lives_ok(
-  $$ insert into public.project_build (project_id, status) values (tests.project('proj-open'), 'queued') $$,
-  'an owner queues a rebuild');
+  $$ select app.publish_release(tests.project('proj-open'), 'v1', null, 'starters/open-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-1', 1, decode(repeat('bb', 32), 'hex')) $$,
+  'an owner publishes');
+select app.publish_release(tests.project('proj-open'), 'v2', 'abc', 'starters/open-2', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-2', 1, decode(repeat('bb', 32), 'hex'));
+select app.publish_release(tests.project('proj-draft'), 'v1', null, 'starters/draft-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/draft-1', 1, decode(repeat('bb', 32), 'hex'));
+
 select tests.authenticate(tests.uid('student@example.com'));
-select throws_ok(
-  $$ insert into public.project_build (project_id, status) values (tests.project('proj-open'), 'queued') $$,
-  '42501', null, 'a student cannot');
+select is_empty($$ select 1 from public.project_release $$, 'a student reads no release rows, and so no teacher archive keys');
+select is(app.current_starter(tests.project('proj-open')), 'starters/open-2', 'a student gets the newest starter');
+select is(app.current_starter(tests.project('proj-draft')), null, 'and nothing for a draft, even though a release exists');
+select tests.authenticate(tests.uid('ta@example.com'));
+select is((select count(*) from public.project_release), 3::bigint, 'staff read every release');
+select is(app.current_starter(tests.project('proj-draft')), 'starters/draft-1', 'staff can fetch a draft''s starter to check it');
+
+-- Tokens: made by an owner, usable by the publisher role until revoked.
+select throws_ok($$ select app.create_project_token(tests.project('proj-open'), 'ci') $$, '42501', null, 'an assistant cannot make a token');
+select tests.authenticate(tests.uid('teacher@example.com'));
+create temporary table t as select app.create_project_token(tests.project('proj-open'), 'ci') as secret;
+grant select on t to yukibana_publisher;
+select tests.as_publisher();
+select is(
+  app.project_for_token(extensions.digest((select secret from t), 'sha256')),
+  tests.project('proj-open'),
+  'the publisher turns the token''s hash into its project');
+select lives_ok(
+  $$ select app.publish_release_with_token(extensions.digest((select secret from t), 'sha256'), 'ci build', 'def', 'starters/open-3', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-3', 1, decode(repeat('bb', 32), 'hex')) $$,
+  'and publishes with it');
+select throws_ok($$ select 1 from public.project_release $$, '42501', null, 'but reads nothing');
+select tests.authenticate(tests.uid('teacher@example.com'));
+select app.revoke_project_token((select token_id from public.project_token where label = 'ci'));
+select tests.as_publisher();
+select is(app.project_for_token(extensions.digest((select secret from t), 'sha256')), null, 'a revoked token names nothing');
 
 select * from finish();
 rollback;

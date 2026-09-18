@@ -20,20 +20,20 @@ besides the files themselves.
 | `hidden` | no | Globs, relative to the root, of what students must never receive. Removed from the starter and from the starter's copy of this file. A pattern naming a directory hides everything under it. `*` stays inside a path segment, `**` crosses segments, `?` is one character. No negation. |
 | `submission.maxBytes` | no | The largest `.tar.zst` accepted for this project. Default 32 MiB; the service has its own cap above which this cannot go. |
 
-## What the starter is
+## What a release is
 
-On every push to the project's branch (and on "Rebuild now"), the builder
-fetches the repository at that commit and produces two archives:
+`yukibana build` (or the GitHub Action, or `publish`) reads the checkout and
+produces two archives, each unpacking into one folder (`--folder`, by
+default the directory's name; make it the project's slug):
 
-* **the snapshot**: the repository as fetched, hidden tests and all, kept for
-  grading and never served to students;
-* **the starter**: the snapshot unwrapped into a folder named after the
-  project's slug, minus `.git/`, `.github/`, the build system's output, and
-  everything `hidden` matches, plus a copy of `yukibana.json` with `hidden`
-  removed and `projectId` added, so an IDE extension knows where a submission
-  goes.
+* **the teacher archive**: the project as it is, hidden tests and this file
+  included, minus `.git/` and the build system's output. Staff download it
+  from the release list; students never can;
+* **the starter**: the same minus `.github/` and everything `hidden`
+  matches, plus a copy of `yukibana.json` with `hidden` removed and
+  `projectId` added, so an IDE extension knows where a submission goes.
 
-The build fails, with the reason in the project's build log, when:
+The build fails, with every reason on the terminal and a non-zero exit, when:
 
 * there is no `yukibana.json`, or it does not parse, or a field is wrong;
 * `hidden` names paths and none of them matches anything (a typo would
@@ -44,8 +44,11 @@ The build fails, with the reason in the project's build log, when:
   build. Rewriting manifests is the per-kind extension this rule will grow
   into;
 * a symlink points outside the repository (it could carry a hidden file out
-  under another name);
-* the repository's tarball is over 64 MiB.
+  under another name).
+
+The registry stores what it is given and checks only that each archive is
+gzip and under its size cap; what is in them is the CLI's job, and a wrong
+release is followed by a right one.
 
 ## What a submission is
 

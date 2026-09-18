@@ -1,19 +1,22 @@
 # Yukibana Cloud
 
 Course projects and the work students submit for them, for a computer science
-programme. A teacher connects a GitHub repository; every push builds a starter
-archive with the hidden tests removed; students download it after the
-project's date and submit their solution as a `.tar.zst`; staff read the
-submissions. `docs/design.md` says why it is shaped the way it is,
+programme. The cloud is a registry. A teacher publishes a release, two
+archives built from the course repository by the CLI (on their machine, or
+in the repository's own CI through the GitHub Action): the starter with the
+hidden tests removed, and the whole project for staff. Students download the
+starter after the project's date and submit their solution as a `.tar.zst`;
+staff read the submissions. `docs/design.md` says why it is shaped the way it is,
 `docs/yukibana-json.md` is the contract a course repository follows, and
 `CLAUDE.md` is how the code is written.
 
 | | |
 | --- | --- |
 | Postgres and Auth | Supabase. The schema is `supabase/migrations/`, applied by the deploy workflow and by nothing else. |
-| The app | SvelteKit in `app/`, one Cloudflare Worker, Postgres through Hyperdrive as a role that can bypass no policy. |
+| The app | SvelteKit in `app/`, one Cloudflare Worker on the free plan, Postgres through Hyperdrive as a role that can bypass no policy. |
+| The CLI | `cli/`: `yukibana check`, `build`, `publish`. `action/` wraps it as a GitHub Action. |
 | Files | Cloudflare R2 over S3 in production, RustFS over S3 locally. The database holds keys. |
-| Login | GitHub, through Supabase Auth. |
+| Login | GitHub, through Supabase Auth. Publishing from CI uses a per-project token instead. |
 
 ## Start
 
@@ -72,25 +75,38 @@ way.
 | Bucket (S3) | http://localhost:9000 | http://host.docker.internal:9000 |
 | The app | http://localhost:5173 | http://127.0.0.1:5173 |
 
-## GitHub
+## Publishing a project
 
-Two GitHub objects, per environment:
+A course repository carries a `yukibana.json` (`docs/yukibana-json.md`).
+From a checkout:
 
-* **An OAuth App** for login (Settings → Developer settings → OAuth Apps).
-  Callback URL: `<API URL>/auth/v1/callback`. Its id and secret go in `.env`
-  locally and in the deploy secrets in production.
-* **A GitHub App** for reading course repositories (Settings → Developer
-  settings → GitHub Apps). Permissions: Contents read, Metadata read.
-  Subscribe to the `push` event. Webhook URL: `<app URL>/api/github/webhook`
-  with a secret. Setup URL: `<app URL>/github/setup`, "redirect on update"
-  on. Its id, slug, private key and webhook secret are the Worker's
-  `GITHUB_*` values (`app/.dev.vars.example`). Locally, a tunnel to port 5173
-  gives the webhook somewhere to go; without one, "Rebuild now" on a project
-  page builds on demand.
+```bash
+npm run cli -- check .                    # what would be hidden; exit 1 on a problem
+npm run cli -- build . --out .yukibana    # starter.tar.gz and teacher.tar.gz
+npm run cli -- publish . --project <id> --url <registry> --token <token>
+```
 
-A teacher connects a repository from the project page: GitHub asks them to
-install the App on it, sends them back, and they pick it. The repository must
-carry a `yukibana.json` (`docs/yukibana-json.md`).
+`npm run build --prefix cli` first; `npm install -g ./cli` gives you a
+`yukibana` command instead of `npm run cli --`. The project id and a
+publishing token come from the project page (owners only). Or upload the two
+files from `build` on that page by hand.
+
+In the repository's own CI, the Action does the same on every push:
+
+```yaml
+- uses: actions/checkout@v4
+- uses: tothambrus11/yukibana-cloud/action@main
+  with:
+    url: https://yukibana.example.org
+    project: ${{ vars.YUKIBANA_PROJECT }}
+    token: ${{ secrets.YUKIBANA_TOKEN }}
+```
+
+Login is a GitHub **OAuth App** (Settings → Developer settings → OAuth
+Apps), one per environment, with callback URL `<API URL>/auth/v1/callback`.
+Its id and secret go in `.env` locally and in the deploy secrets in
+production. No GitHub App and no webhooks: the registry never reads a
+repository.
 
 ## Deploying
 

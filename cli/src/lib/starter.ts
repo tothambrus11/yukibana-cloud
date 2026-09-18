@@ -5,9 +5,9 @@
  *  the part worth testing in a table.
  */
 
-import { matcher } from './glob';
-import type { Entry } from './tar';
-import { excludes, manifestProblems, parseConfig, starterConfig, type Config } from './yukibana';
+import { matcher } from './glob.js';
+import type { Entry } from './tar.js';
+import { excludes, manifestProblems, parseConfig, starterConfig, type Config } from './yukibana.js';
 
 export interface Plan {
   /** What goes in the starter, under `folder/`, a directory entry first. */
@@ -95,4 +95,19 @@ function escapes(path: string, target: string): boolean {
     }
   }
   return false;
+}
+
+/** The teacher archive: the whole project as it is, hidden tests and the
+ *  original `yukibana.json` included, minus the history and the build
+ *  system's output. Staff download it to see exactly what a release was
+ *  built from; students never can. */
+export function planTeacher(snapshot: readonly Entry[], folder: string, config: Config): Entry[] {
+  const drop = matcher(['.git', ...excludes({ ...config, hidden: [] }).filter((p) => p !== 'yukibana.json' && p !== '.github')]);
+  const mtime = Math.max(0, ...snapshot.map((e) => e.mtime));
+  const entries: Entry[] = [{ path: folder, type: 'dir', mode: 0o755, mtime, data: new Uint8Array(0) }];
+  for (const e of snapshot) {
+    if (drop(e.path)) continue;
+    entries.push({ ...e, path: `${folder}/${e.path}` });
+  }
+  return entries;
 }

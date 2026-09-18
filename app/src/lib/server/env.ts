@@ -18,22 +18,16 @@ export interface S3Config {
   readonly secretAccessKey: string;
 }
 
-export interface GitHubConfig {
-  readonly appId: string;
-  readonly appSlug: string;
-  /** PEM, as GitHub hands it out (PKCS#1) or converted (PKCS#8). */
-  readonly privateKey: string;
-  readonly webhookSecret: string;
-}
-
 export interface Config {
   readonly databaseUrl: string;
   readonly supabaseUrl: string;
   readonly supabasePublishableKey: string;
   readonly s3: S3Config;
-  readonly github: GitHubConfig;
   /** The largest submission body the API accepts, whatever the project says. */
   readonly submissionMaxBytes: number;
+  /** The largest archive a release may carry, each. Two of them must fit in
+   *  one request under the platform's body limit. */
+  readonly releaseMaxBytes: number;
 }
 
 function text(env: Record<string, unknown>, name: string): string {
@@ -57,12 +51,7 @@ export function configOf(env: Env): Config {
       accessKeyId: text(env, 'S3_ACCESS_KEY_ID'),
       secretAccessKey: text(env, 'S3_SECRET_ACCESS_KEY'),
     },
-    github: {
-      appId: text(env, 'GITHUB_APP_ID'),
-      appSlug: text(env, 'GITHUB_APP_SLUG'),
-      privateKey: text(env, 'GITHUB_APP_PRIVATE_KEY'),
-      webhookSecret: text(env, 'GITHUB_WEBHOOK_SECRET'),
-    },
     submissionMaxBytes: Number.parseInt(text(env, 'SUBMISSION_MAX_BYTES'), 10),
+    releaseMaxBytes: Number.parseInt(text(env, 'RELEASE_MAX_BYTES'), 10),
   };
 }

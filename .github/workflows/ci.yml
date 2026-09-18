@@ -25,12 +25,18 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             app/package-lock.json
+            cli/package-lock.json
       - run: npm run install:all
       - name: Lint, typecheck, unit tests
         run: npm run check
-      - name: Build
+      - name: Build the app
         working-directory: app
         run: npm run build
+      - name: Build the CLI and check the fixture with it
+        run: |
+          npm run build --prefix cli
+          mkdir -p /tmp/fixture && tar -xzf cli/tests/fixtures/repo.tar.gz -C /tmp/fixture --strip-components=1
+          node cli/dist/index.js check /tmp/fixture --folder calc
 
   stack:
     # Must be a VM runner: a `container:` job breaks Supabase's bind mounts.
@@ -48,6 +54,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             app/package-lock.json
+            cli/package-lock.json
       - run: npm run install:all
 
       - name: Preflight

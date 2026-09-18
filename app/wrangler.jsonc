@@ -7,11 +7,9 @@
   "assets": { "binding": "ASSETS", "directory": ".svelte-kit/cloudflare" },
   "observability": { "enabled": true },
 
-  // Building a starter decompresses, filters and recompresses a repository
-  // in this Worker. The free plan's CPU allowance is too small for that; the
-  // paid plan allows this much per request, which a course repository never
-  // approaches.
-  "limits": { "cpu_ms": 60000 },
+  // No CPU limit override: the Worker is a registry. Archives are built by
+  // the CLI before they arrive, so a request here hashes and stores bytes
+  // and asks the database, which fits the free plan's allowance.
 
   // Postgres, pooled by Cloudflare. Fill `id` with `wrangler hyperdrive create
   // yukibana --connection-string=<supabase direct connection string>`. In
@@ -26,17 +24,18 @@
     }
   ],
 
-  // Plain configuration. Secrets (GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET,
-  // S3_SECRET_ACCESS_KEY, SUPABASE_PUBLISHABLE_KEY) are `wrangler secret put`
-  // in production and .dev.vars in development; see .dev.vars.example.
+  // Plain configuration. Secrets (S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY,
+  // SUPABASE_PUBLISHABLE_KEY) are `wrangler secret put` in production and
+  // .dev.vars in development; see .dev.vars.example.
   "vars": {
     "PUBLIC_SUPABASE_URL": "http://127.0.0.1:54321",
     "S3_ENDPOINT": "http://127.0.0.1:9000",
     "S3_PUBLIC_ENDPOINT": "http://localhost:9000",
     "S3_BUCKET": "yukibana",
-    "S3_REGION": "auto",
-    "GITHUB_APP_SLUG": "yukibana-dev",
-    "GITHUB_APP_ID": "0",
-    "SUBMISSION_MAX_BYTES": "33554432"
+    // RustFS wants a real region name; R2 wants "auto". Production overrides this.
+    "S3_REGION": "us-east-1",
+    "SUBMISSION_MAX_BYTES": "33554432",
+    // Two of these must fit one request under the platform's 100 MB body limit.
+    "RELEASE_MAX_BYTES": "41943040"
   }
 }

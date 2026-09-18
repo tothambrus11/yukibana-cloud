@@ -1,7 +1,7 @@
 -- The roles the Worker connects as.
 --
 -- `yukibana_app` owns nothing, inherits nothing and can bypass nothing. All it
--- can do is become `anon`, `authenticated` or `yukibana_builder` for the
+-- can do is become `anon`, `authenticated` or `yukibana_publisher` for the
 -- length of a transaction, which is what app/src/lib/server/db.ts does for
 -- every request. A query that forgets to set a role fails with "permission
 -- denied" instead of answering as `postgres`; that is the whole point of the
@@ -19,8 +19,8 @@ set local statement_timeout = '5min';
 
 do $$
 begin
-  if not exists (select 1 from pg_roles where rolname = 'yukibana_builder') then
-    create role yukibana_builder nologin nobypassrls noinherit;
+  if not exists (select 1 from pg_roles where rolname = 'yukibana_publisher') then
+    create role yukibana_publisher nologin nobypassrls noinherit;
   end if;
   if not exists (select 1 from pg_roles where rolname = 'yukibana_app') then
     create role yukibana_app login nobypassrls noinherit;
@@ -28,26 +28,15 @@ begin
 end
 $$;
 
-grant anon, authenticated, yukibana_builder to yukibana_app;
+grant anon, authenticated, yukibana_publisher to yukibana_app;
 
--- The builder: reads what it needs to fetch a repository, writes build rows,
--- and remembers deliveries. Nothing about people, nothing about submissions.
-grant usage on schema public, app to yukibana_builder;
-grant select on public.project, public.github_installation to yukibana_builder;
-grant update (github_repo_full_name) on public.project to yukibana_builder;
-grant select, insert, update on public.project_build to yukibana_builder;
-grant select, insert on public.github_delivery to yukibana_builder;
-grant update (removed_at) on public.github_installation to yukibana_builder;
-
--- Its policies: everything it has a grant for, since it only ever runs the
--- code in app/src/lib/server/build.ts, never a person's request.
-create policy builder_project        on public.project             for select to yukibana_builder using (true);
-create policy builder_project_update on public.project             for update to yukibana_builder using (true) with check (true);
-create policy builder_installation   on public.github_installation for all    to yukibana_builder using (true) with check (true);
-create policy builder_build          on public.project_build       for all    to yukibana_builder using (true) with check (true);
-create policy builder_delivery       on public.github_delivery     for all    to yukibana_builder using (true) with check (true);
+-- The publisher: what a request carrying a project token may do, which is
+-- exactly two functions. No table grants at all: it cannot read a project,
+-- a person or a submission, only turn a valid token hash into a release.
+grant usage on schema app to yukibana_publisher;
+grant execute on function app.project_for_token(bytea) to yukibana_publisher;
+grant execute on function app.publish_release_with_token(bytea, text, text, text, bigint, bytea, text, bigint, bytea)
+  to yukibana_publisher;
 
 -- `anon` can reach nothing: every route that touches the database requires a
--- session, and the grant list above never names it. Usage on the schemas is
--- kept so a forgotten grant shows as "permission denied for table", which
--- names the table, rather than "for schema", which does not.
+-- session or a token, and the grant list above never names it.

@@ -1,0 +1,62 @@
+# Publish this repository to Yukibana Cloud as a release: the starter
+# students download and the teacher archive, built here by the CLI from the
+# checked-out tree. Use it from a course repository:
+#
+#   - uses: actions/checkout@v4
+#   - uses: tothambrus11/yukibana-cloud/action@main
+#     with:
+#       url: https://yukibana.example.org
+#       project: ${{ vars.YUKIBANA_PROJECT }}
+#       token: ${{ secrets.YUKIBANA_TOKEN }}
+#
+# The token is made on the project page and publishes to that project only.
+name: Publish to Yukibana
+description: Build the starter and teacher archives with the Yukibana CLI and upload them as a release.
+
+inputs:
+  url:
+    description: The registry, like https://yukibana.example.org
+    required: true
+  project:
+    description: The project id, from the project page
+    required: true
+  token:
+    description: A publishing token for that project
+    required: true
+  directory:
+    description: The project directory, when it is not the repository root
+    default: '.'
+  folder:
+    description: What the archives unpack into; defaults to the repository name
+    default: ''
+  label:
+    description: A label for the release; defaults to the short commit
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    # The CLI is built from this action's own checkout, so a course
+    # repository needs nothing published to npm.
+    - name: Build the CLI
+      shell: bash
+      run: |
+        npm ci --prefix "${{ github.action_path }}/../cli"
+        npm run build --prefix "${{ github.action_path }}/../cli"
+
+    - name: Publish
+      shell: bash
+      env:
+        YUKIBANA_URL: ${{ inputs.url }}
+        YUKIBANA_PROJECT: ${{ inputs.project }}
+        YUKIBANA_TOKEN: ${{ inputs.token }}
+      run: |
+        folder="${{ inputs.folder }}"
+        if [ -z "$folder" ]; then folder="${GITHUB_REPOSITORY##*/}"; folder="$(echo "$folder" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-\n' '-')"; fi
+        label="${{ inputs.label }}"
+        if [ -z "$label" ]; then label="${GITHUB_SHA::12}"; fi
+        node "${{ github.action_path }}/../cli/dist/index.js" publish "${{ inputs.directory }}" --folder "$folder" --label "$label"

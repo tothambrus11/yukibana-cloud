@@ -19,7 +19,7 @@
  *  of this file, from that copy too.
  */
 
-import { matcher } from './glob';
+import { matcher } from './glob.js';
 
 export const KINDS = ['rust-cargo', 'scala-sbt'] as const;
 export type Kind = (typeof KINDS)[number];

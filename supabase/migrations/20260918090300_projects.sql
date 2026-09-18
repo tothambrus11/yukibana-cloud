@@ -1,5 +1,11 @@
--- Projects: an assignment in one edition, built from a GitHub repository into
--- a starter archive students download.
+-- Projects: an assignment in one edition, published as releases.
+--
+-- The cloud is a registry. It never reads a repository or transforms one:
+-- the starter students download and the teacher archive (the whole project,
+-- hidden tests included) are built beforehand, by the CLI in a teacher's
+-- own CI or on their machine, and uploaded as two artifacts. Keeping the
+-- transformation out of here is what keeps the Worker within a free plan's
+-- CPU allowance, and keeps a teacher's repository their own business.
 
 -- Supabase runs each migration in one transaction; these bound how long it
 -- may wait for a lock or run, so a deploy that would block the site fails
@@ -7,18 +13,8 @@
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
 
--- A GitHub App installation someone connected. The installation is what the
--- builder mints tokens for; it is scoped by GitHub to the repositories the
--- installer chose, never wider.
-create table public.github_installation (
-  installation_id bigint primary key,
-  account_login   text not null,        -- the org or user it was installed on
-  installed_by    uuid not null references public.app_user (user_id) on delete restrict,
-  created_at      timestamptz not null default now(),
-  -- Set when GitHub says the app was uninstalled. The row stays so a project
-  -- can say why its builds stopped rather than failing on a missing key.
-  removed_at      timestamptz
-);
+-- For hashing upload tokens. Supabase ships it; the schema is theirs.
+create extension if not exists pgcrypto with schema extensions;
 
 create table public.project (
   project_id   uuid primary key default app.uuidv7(),
@@ -34,12 +30,6 @@ create table public.project (
   -- is a later column, not a later interpretation of this one.
   deadline     timestamptz,
   check (deadline is null or available_after is null or deadline > available_after),
-
-  github_installation_id bigint references public.github_installation (installation_id) on delete set null,
-  github_repo_id         bigint,       -- numeric: survives a rename
-  github_repo_full_name  text,         -- 'org/repo' at the time it was chosen, refreshed by webhooks
-  github_ref             text not null default 'main',
-
   created_by   uuid not null references public.app_user (user_id) on delete restrict,
   created_at   timestamptz not null default now(),
   unique (edition_id, slug),
@@ -47,39 +37,50 @@ create table public.project (
   -- ever name a project of the edition it claims.
   unique (edition_id, project_id)
 );
-create index project_by_repo on public.project (github_repo_id) where github_repo_id is not null;
 
--- One row per attempt to build a starter. The latest succeeded row is what
--- students download. `log` is for staff: it may name the hidden paths it
--- removed, which is exactly why students read through `app.current_starter`
--- instead of this table.
-create table public.project_build (
-  build_id     uuid primary key default app.uuidv7(),
-  project_id   uuid not null references public.project (project_id) on delete cascade,
-  commit_sha   text,
-  status       app.build_status not null default 'queued',
-  log          text not null default '',
-  starter_key  text,                    -- the archive students get
-  snapshot_key text,                    -- the whole repository at that commit, hidden tests included
-  started_at   timestamptz not null default now(),
-  finished_at  timestamptz
+-- One row per upload of the pair. The newest is what students download.
+-- Rows are never changed: a wrong release is followed by a right one, and
+-- the history says what was live when.
+create table public.project_release (
+  release_id     uuid primary key default app.uuidv7(),
+  project_id     uuid not null references public.project (project_id) on delete cascade,
+  -- Whatever the uploader said: a version, a commit, "fixed the typo".
+  label          text not null default '',
+  commit_sha     text,
+  starter_key    text not null unique,
+  starter_size   bigint not null check (starter_size > 0),
+  starter_sha256 bytea not null check (octet_length(starter_sha256) = 32),
+  -- The whole project, hidden tests included. Staff only, ever.
+  teacher_key    text not null unique,
+  teacher_size   bigint not null check (teacher_size > 0),
+  teacher_sha256 bytea not null check (octet_length(teacher_sha256) = 32),
+  -- The person, or the person whose token, uploaded it.
+  uploaded_by    uuid not null references public.app_user (user_id) on delete restrict,
+  -- Null for a manual upload; the token otherwise.
+  token_id       uuid,
+  uploaded_at    timestamptz not null default now()
 );
-create index project_build_latest on public.project_build (project_id, started_at desc);
+create index project_release_latest on public.project_release (project_id, uploaded_at desc);
 
--- GitHub retries deliveries it thinks failed. Each carries a unique id; the
--- webhook route inserts it here first and a duplicate is answered 200 and
--- ignored, so a retry never builds twice.
-create table public.github_delivery (
-  delivery_id  uuid primary key,
-  received_at  timestamptz not null default now()
+-- A secret that lets a CI job publish releases to one project and do nothing
+-- else. Only its hash is kept; the secret is shown once when made. A leak
+-- costs one project's release history, which staff can see and follow with
+-- a new release, and the token is revoked from the project page.
+create table public.project_token (
+  token_id    uuid primary key default app.uuidv7(),
+  project_id  uuid not null references public.project (project_id) on delete cascade,
+  token_hash  bytea not null unique check (octet_length(token_hash) = 32),
+  label       text not null default '',
+  created_by  uuid not null references public.app_user (user_id) on delete restrict,
+  created_at  timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at  timestamptz
 );
 
-alter table public.github_installation enable row level security;
-alter table public.project              enable row level security;
-alter table public.project_build        enable row level security;
-alter table public.github_delivery      enable row level security;
-revoke all on public.github_installation, public.project, public.project_build, public.github_delivery
-  from public, anon, authenticated;
+alter table public.project         enable row level security;
+alter table public.project_release enable row level security;
+alter table public.project_token   enable row level security;
+revoke all on public.project, public.project_release, public.project_token from public, anon, authenticated;
 
 -- Whether the caller, as a student, may see a project now.
 create or replace function app.project_open(edition uuid, available_after timestamptz)
@@ -93,8 +94,9 @@ as $$
      and available_after <= now()
 $$;
 
--- The key of the starter a student may download right now, or null. The only
--- path from a student to `project_build`, and it reads nothing but the key.
+-- The key of the starter a student may download right now, or null: the
+-- newest release of a project they may see. The only path from a student to
+-- `project_release`, and it reads nothing but the key.
 create or replace function app.current_starter(project uuid)
 returns text
 language sql
@@ -102,14 +104,13 @@ stable
 security definer
 set search_path = ''
 as $$
-  select b.starter_key
+  select r.starter_key
   from public.project p
-  join public.project_build b on b.project_id = p.project_id
+  join public.project_release r on r.project_id = p.project_id
   where p.project_id = project
-    and b.status = 'succeeded'
-    and b.starter_key is not null
     and (app.is_staff(p.edition_id) or app.project_open(p.edition_id, p.available_after))
-  order by b.started_at desc
+  -- Two uploads in one transaction share `uploaded_at`; the id breaks the tie.
+  order by r.uploaded_at desc, r.release_id desc
   limit 1
 $$;
 
@@ -146,30 +147,140 @@ revoke execute on function app.stamp_project() from public, anon, authenticated;
 create trigger project_stamp before insert on public.project
   for each row execute function app.stamp_project();
 
--- Builds: staff read them; the builder writes them (see roles migration).
-create policy project_build_read on public.project_build for select to authenticated using (
-  exists (select 1 from public.project p where p.project_id = project_build.project_id and app.is_staff(p.edition_id))
+-- Releases: staff read them. Writes go through the two functions below.
+create policy release_read on public.project_release for select to authenticated using (
+  exists (select 1 from public.project p where p.project_id = project_release.project_id and app.is_staff(p.edition_id))
 );
 
--- An owner asks for a rebuild by queueing a row; the Worker picks it up.
-create policy project_build_queue on public.project_build for insert to authenticated with check (
-  status = 'queued'
-  and exists (select 1 from public.project p where p.project_id = project_build.project_id and app.role_in(p.edition_id) = 'owner')
+-- Tokens: owners see their project's tokens (never the hash: it is not in
+-- the grant). Creation and revocation are functions.
+create policy token_read on public.project_token for select to authenticated using (
+  exists (select 1 from public.project p where p.project_id = project_token.project_id and app.role_in(p.edition_id) = 'owner')
 );
 
--- Installations: whoever installed it, and admins.
-create policy installation_read on public.github_installation for select to authenticated using (
-  installed_by = (select auth.uid()) or app.is_admin()
-);
-create policy installation_insert on public.github_installation for insert to authenticated with check (
-  installed_by = (select auth.uid())
-);
-
-grant select on public.project, public.project_build, public.github_installation to authenticated;
+grant select on public.project, public.project_release to authenticated;
+grant select (token_id, project_id, label, created_by, created_at, last_used_at, revoked_at) on public.project_token to authenticated;
 grant insert, delete on public.project to authenticated;
 -- The columns an owner may change. `edition_id`, `project_id`, `created_by`
 -- and `created_at` are not among them.
-grant update (title, kind, available_after, deadline, github_installation_id,
-              github_repo_id, github_repo_full_name, github_ref) on public.project to authenticated;
-grant insert (project_id, status) on public.project_build to authenticated;
-grant insert on public.github_installation to authenticated;
+grant update (title, kind, available_after, deadline) on public.project to authenticated;
+
+-- Owner action, from the project page: a manual upload of the two archives
+-- the Worker has already stored. Returns the release id.
+create or replace function app.publish_release(
+  project uuid, label text, commit_sha text,
+  starter_key text, starter_size bigint, starter_sha256 bytea,
+  teacher_key text, teacher_size bigint, teacher_sha256 bytea
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  rid uuid;
+begin
+  if not exists (select 1 from public.project p where p.project_id = project and app.role_in(p.edition_id) = 'owner') then
+    raise exception 'only an owner may publish a release' using errcode = '42501';
+  end if;
+  insert into public.project_release (project_id, label, commit_sha, starter_key, starter_size, starter_sha256,
+                                      teacher_key, teacher_size, teacher_sha256, uploaded_by)
+  values (project, label, commit_sha, starter_key, starter_size, starter_sha256,
+          teacher_key, teacher_size, teacher_sha256, (select auth.uid()))
+  returning release_id into rid;
+  perform app.audit('publish_release', jsonb_build_object('project_id', project, 'release_id', rid, 'label', label));
+  return rid;
+end
+$$;
+
+-- Owner action: a new token for CI. Returns the secret, once. The database
+-- keeps the hash; the Worker hashes what it receives and looks that up.
+create or replace function app.create_project_token(project uuid, label text)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  secret text;
+begin
+  if not exists (select 1 from public.project p where p.project_id = project and app.role_in(p.edition_id) = 'owner') then
+    raise exception 'only an owner may create a token' using errcode = '42501';
+  end if;
+  -- 256 bits from two v4 uuids; the prefix lets a leak scanner recognise it.
+  secret := 'yk_' || replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+  insert into public.project_token (project_id, token_hash, label, created_by)
+  values (project, extensions.digest(secret, 'sha256'), label, (select auth.uid()));
+  perform app.audit('create_project_token', jsonb_build_object('project_id', project, 'label', label));
+  return secret;
+end
+$$;
+
+create or replace function app.revoke_project_token(token uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.project_token t set revoked_at = coalesce(t.revoked_at, now())
+  where t.token_id = token
+    and exists (select 1 from public.project p where p.project_id = t.project_id and app.role_in(p.edition_id) = 'owner');
+  if not found then
+    raise exception 'no such token, or not an owner' using errcode = '42501';
+  end if;
+  perform app.audit('revoke_project_token', jsonb_build_object('token_id', token));
+end
+$$;
+
+-- The project a token hash names, or null when it is unknown or revoked.
+-- What the upload route asks before accepting bytes. Runs as the publisher
+-- role (see the connection roles migration); nobody logged in can call it.
+create or replace function app.project_for_token(token_hash bytea)
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select project_id from public.project_token
+  where project_token.token_hash = project_for_token.token_hash and revoked_at is null
+$$;
+
+-- The publisher's write: a release on behalf of whoever made the token. The
+-- hash is checked again here, so a route cannot publish with a bad token by
+-- skipping the question above.
+create or replace function app.publish_release_with_token(
+  token_hash bytea, label text, commit_sha text,
+  starter_key text, starter_size bigint, starter_sha256 bytea,
+  teacher_key text, teacher_size bigint, teacher_sha256 bytea
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  t   public.project_token%rowtype;
+  rid uuid;
+begin
+  select * into t from public.project_token pt
+  where pt.token_hash = publish_release_with_token.token_hash and pt.revoked_at is null;
+  if t.token_id is null then
+    raise exception 'unknown or revoked token' using errcode = '42501';
+  end if;
+  insert into public.project_release (project_id, label, commit_sha, starter_key, starter_size, starter_sha256,
+                                      teacher_key, teacher_size, teacher_sha256, uploaded_by, token_id)
+  values (t.project_id, label, commit_sha, starter_key, starter_size, starter_sha256,
+          teacher_key, teacher_size, teacher_sha256, t.created_by, t.token_id)
+  returning release_id into rid;
+  update public.project_token set last_used_at = now() where token_id = t.token_id;
+  insert into public.audit_log (actor, action, subject)
+  values (t.created_by, 'publish_release', jsonb_build_object('project_id', t.project_id, 'release_id', rid, 'label', label, 'token_id', t.token_id));
+  return rid;
+end
+$$;
+
+revoke execute on function app.project_for_token(bytea) from public, anon, authenticated;
+revoke execute on function app.publish_release_with_token(bytea, text, text, text, bigint, bytea, text, bigint, bytea)
+  from public, anon, authenticated;

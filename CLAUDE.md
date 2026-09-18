@@ -1,10 +1,13 @@
 # Working on Yukibana Cloud
 
 Courses hold editions, editions hold projects, students submit to projects.
-The database decides who may do what; the Worker asks it, as the person
-asking; the pages show what came back. `README.md` says how to run it and
-`docs/design.md` says why the model is what it is. This file is how the code
-is written.
+The cloud is a registry: it holds identities, enrolment, released archives
+and submissions, and transforms nothing. The database decides who may do
+what; the Worker asks it, as the person asking; the pages show what came
+back. The CLI (`cli/`) is where a course repository becomes the two archives
+a release is made of, on a teacher's machine or in their CI. `README.md`
+says how to run it and `docs/design.md` says why the model is what it is.
+This file is how the code is written.
 
 ## The one rule about the database
 
@@ -42,10 +45,10 @@ function in a migration, and nowhere else: the Worker never re-decides it.
 
 * **The Worker connects as `yukibana_app`**, a role that owns nothing,
   inherits nothing and cannot bypass RLS. Every query runs inside
-  `asUser(sql, claims, …)` or `asBuilder(sql, …)` in `app/src/lib/server/db.ts`,
+  `asUser(sql, claims, …)` or `asPublisher(sql, …)` in `app/src/lib/server/db.ts`,
   which become `authenticated` (with the verified JWT's claims) or
-  `yukibana_builder` for the length of one transaction. A query outside them
-  fails with "permission denied". That is the point.
+  `yukibana_publisher` for the length of one transaction. A query outside
+  them fails with "permission denied". That is the point.
 * **`security definer` functions are the writes.** `app.enrol`,
   `app.create_edition`, `app.set_platform_role` and the rest check the caller
   themselves, write, and leave an `audit_log` row in the same transaction.
@@ -62,9 +65,12 @@ function in a migration, and nowhere else: the Worker never re-decides it.
   With an empty search path the extension's `=` is not visible and citext
   compares as case-sensitive text without a word of warning. Addresses and
   logins are lowercased on write and compared lowercased.
-* **The builder role never touches people.** `yukibana_builder` reads
-  projects and installations and writes builds; a grant on `app_user` or
-  `submission` for it is a bug.
+* **A project token is a hash and two functions.** The secret is shown once
+  and never stored; the Worker hashes what it receives. `yukibana_publisher`
+  can call `app.project_for_token` and `app.publish_release_with_token` and
+  has no table grant at all: a request with a token can publish to the one
+  project the token names and read nothing. A table grant for that role is
+  a bug.
 
 Every policy has a pgTAP test in `supabase/tests/`, and the tests are written
 as negatives: the student who cannot read a classmate's submission, the
@@ -86,20 +92,21 @@ Cloudflare Worker with `adapter-cloudflare`.
   the database returned. A `ProjectId` where an `EditionId` was expected is a
   compile error, not an empty page.
 * **Untyped input is trusted in one place, named so it can be grepped.**
-  `configOf` reads `platform.env`; `text(form, name)` reads a form; `parseEvent`
-  reads a webhook; `parseConfig` reads `yukibana.json`. Each checks and names
-  what is wrong. `any` does not appear; `unknown` at a boundary, narrowed at
+  `configOf` reads `platform.env`; `text(form, name)` reads a form; the
+  CLI's `parseConfig` reads `yukibana.json`. Each checks and names what is
+  wrong. `any` does not appear; `unknown` at a boundary, narrowed at
   once, does.
-* **What decides something is pure and in `src/lib`.** The tar reader, the
-  glob matcher, the starter plan, the webhook parser: functions of bytes and
-  strings, tested as tables in `tests/`. `src/lib/server` does I/O around
-  them; `src/routes` shows what came back and holds no rules.
+* **What decides something is pure and in a `lib`.** In the CLI, the tar
+  reader, the glob matcher and the release plans are functions of bytes and
+  strings, tested as tables; the commands do the I/O. In the app,
+  `src/lib/server` does I/O around the database and the bucket, and
+  `src/routes` shows what came back and holds no rules.
 * **The bucket is an interface.** `Bucket` in `storage.ts` has one
   implementation, S3, which is R2 in production and RustFS locally. The
   database holds keys, never URLs.
 * **Nothing fails silently.** `report(where, what)` from the module that
-  found out; a build that fails writes why into its row; a submission whose
-  row is refused deletes its object and says so.
+  found out; a release or submission whose row is refused deletes its
+  objects and says so; the CLI exits non-zero with every problem named.
 
 ## Contract documentation
 
@@ -111,16 +118,17 @@ so; the bugs are the documentation people read.
 
 ## Everything is tested, and tested for real
 
-* `app/tests/` is the unit suite, no services, run by `npm test` in `app/`.
+* `app/tests/` and `cli/tests/` are the unit suites, no services.
 * `app/tests/integration/` drives the real server modules against the local
-  stack: Postgres through `yukibana_app`, the bucket over S3, and the builder
-  end to end against a fake GitHub that serves a fixture tarball. It runs
-  with `npm run test:integration` and in CI.
+  stack: Postgres through `yukibana_app`, the bucket over S3, releases by
+  token and by owner, submissions. It runs with `npm run test:integration`
+  and in CI.
 * `supabase/tests/` is pgTAP. `supabase/seeds/10_test_helpers.sql` gives it
   `tests.create_user`, `tests.authenticate` and lookups that see through RLS.
-* The fixture repository `app/tests/fixtures/repo.tar.gz` is a real pax
+* The fixture repository `cli/tests/fixtures/repo.tar.gz` is a real pax
   tarball with a wrapper directory, a global header, a long path and a hidden
-  test, because that is what GitHub sends.
+  test, because that is what `git archive` and GitHub produce. CI also
+  unpacks it and runs `yukibana check` over it.
 * A test's name is a sentence about the product, not about the function.
 
 ## Before you push

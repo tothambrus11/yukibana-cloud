@@ -23,13 +23,8 @@ export const config: Config = {
     accessKeyId: env('S3_ACCESS_KEY_ID', 'rustfsadmin'),
     secretAccessKey: env('S3_SECRET_ACCESS_KEY', 'rustfsadmin'),
   },
-  github: {
-    appId: '1',
-    appSlug: 'yukibana-test',
-    privateKey: '',
-    webhookSecret: 'test-secret',
-  },
   submissionMaxBytes: 1024 * 1024,
+  releaseMaxBytes: 1024 * 1024,
 };
 
 /** The id `tests.create_user(addr)` gave this address in the seed. */

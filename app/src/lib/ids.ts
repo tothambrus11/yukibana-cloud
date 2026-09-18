@@ -14,7 +14,8 @@ export type UserId = string & { readonly [TABLE]: 'app_user' };
 export type CourseId = string & { readonly [TABLE]: 'course' };
 export type EditionId = string & { readonly [TABLE]: 'course_edition' };
 export type ProjectId = string & { readonly [TABLE]: 'project' };
-export type BuildId = string & { readonly [TABLE]: 'project_build' };
+export type ReleaseId = string & { readonly [TABLE]: 'project_release' };
+export type TokenId = string & { readonly [TABLE]: 'project_token' };
 export type SubmissionId = string & { readonly [TABLE]: 'submission' };
 
 /** Where bytes live in the bucket. Never a URL: see the submission table. */
@@ -40,12 +41,13 @@ export const trustKey = (value: string): ObjectKey => value as ObjectKey;
 export const submissionKey = (submission: SubmissionId): ObjectKey =>
   `submissions/${submission}.tar.zst` as ObjectKey;
 
-/** A key for a project's starter at one commit. */
-export const starterKey = (project: ProjectId, sha: string): ObjectKey =>
-  `starters/${project}/${sha}.tar.gz` as ObjectKey;
+/** A key for a release's starter: what students download. `object` is a
+ *  fresh random id, not the release id: the object is stored before the row
+ *  exists, and the row remembers the key. */
+export const starterKey = (project: ProjectId, object: string): ObjectKey =>
+  `starters/${project}/${object}.tar.gz` as ObjectKey;
 
-/** A key for the whole repository at one commit, hidden tests included.
- *  Never served to a student; kept so a later grading run has exactly what
- *  the starter was built from. */
-export const snapshotKey = (project: ProjectId, sha: string): ObjectKey =>
-  `snapshots/${project}/${sha}.tar.gz` as ObjectKey;
+/** A key for a release's teacher archive: the whole project, hidden tests
+ *  included. Never served to a student. */
+export const teacherKey = (project: ProjectId, object: string): ObjectKey =>
+  `teacher/${project}/${object}.tar.gz` as ObjectKey;

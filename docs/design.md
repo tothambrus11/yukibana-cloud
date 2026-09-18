@@ -6,8 +6,9 @@ deliberately left out of the first version.
 ## Scope
 
 Courses, their editions, the projects in an edition, and the submissions to
-a project. Staff enrol students by address, connect a GitHub repository to a
-project, and read what students submit. Students see the editions they are
+a project. Staff enrol students by address, publish releases of a project
+(two archives built beforehand by the CLI), and read what students submit.
+The cloud is a registry: it transforms nothing. Students see the editions they are
 in, download a project's starter after its date, and submit versions of
 their solution.
 
@@ -18,7 +19,13 @@ grading integrations would later have to fight:
   edition is simply there at first login;
 * self-service joining;
 * grading, feedback, plagiarism checks, team submissions, a late window;
-* running anything a student submitted.
+* running anything a student submitted;
+* reading repositories. An earlier draft had a GitHub App and built starters
+  in the Worker on every push. It cost a paid Cloudflare plan for the CPU
+  time, a webhook surface, and a copy of every teacher's repository in the
+  bucket. Moving the transformation into a CLI that runs where the
+  repository already is (a laptop, the repository's own CI) removed all
+  three, and lets a teacher without CI upload the two files by hand.
 
 ## Constraints
 
@@ -93,33 +100,31 @@ here runs with `set search_path = ''`, and there citext's `=` is invisible:
 Postgres falls back to text equality without a word, and a role change for
 `Early@Example.com` found no row. Lowercase on write, compare lowercase.
 
-## The GitHub side
+## Releases and the CLI
 
-A GitHub App, installed by the teacher on the repositories they choose. The
-Worker mints a JWT with the App's key, trades it for an installation token,
-and reads the repository with that. No personal token is stored.
+A release is two archives: the **starter** students download and the
+**teacher archive**, the whole project with the hidden tests, for staff.
+Both are made by `yukibana build` from a checkout, by the same pure
+functions (`cli/src/lib`): a tar reader and writer, a glob matcher, and a
+plan per archive, tested against a fixture that is a real pax tarball. The
+registry stores what it is given, checks that each is gzip and under a cap,
+records sizes and SHA-256s, and serves the newest starter to students whose
+project is open. Staff see the whole history and can fetch either archive of
+any release; a wrong release is followed by a right one.
 
-Every push to the project's branch is a delivery to the webhook, checked by
-signature over the raw bytes and deduplicated by delivery id. The build runs
-after the response (Workers' `waitUntil`) and never throws: it ends as a
-`project_build` row that says `succeeded` with two objects, or `failed` with
-a reason a teacher can act on. Students never read that table (its log may
-name the hidden paths); `app.current_starter` hands them the key and nothing
-else.
+Three ways to publish, all the same request:
 
-Two objects per build: the **snapshot** (the repository as fetched, hidden
-tests included, for grading later, and reproducible even if the repository
-is force-pushed or the App uninstalled) and the **starter** (unwrapped into
-a folder named after the slug, minus history, CI, build output and whatever
-`yukibana.json` hides, plus a copy of that file without the hidden list and
-with the project id).
+* `yukibana publish` from a teacher's machine;
+* the GitHub Action in the course repository's CI, on every push;
+* the project page, uploading the two files from `yukibana build` by hand.
 
-The transformation is a pure function of the archive (`app/src/lib/starter.ts`),
-tested against a fixture that is a real pax tarball. For now it is path
-filtering; the rule that hidden tests must be auto-discovered exists because
-deleting a file a manifest names leaves a starter that does not build, and
-rewriting `Cargo.toml` or `build.sbt` is the per-kind step the code will grow
-when a course needs it.
+CI cannot log in with GitHub SSO, so it uses a **project token**: made by an
+owner on the project page, shown once, stored only as a SHA-256. The Worker
+hashes what it receives and runs the request as `yukibana_publisher`, a role
+whose entire power is two functions: turn a hash into a project id, and
+record a release for it. A leaked token can publish releases to one project,
+which its staff can see and follow with a new one, and can be revoked from
+the page.
 
 ## Where the bytes live
 
@@ -155,6 +160,11 @@ integration suite, squawk over migrations, the deploy and drift workflows.
 * **Late submissions.** Refused today. A `late_until` column and a flag on
   the row is the likely shape.
 * **Validating starters.** The obvious next check is that a starter builds:
-  `cargo check` after the hidden tests are gone. That needs a sandbox with a
-  toolchain, which a Worker is not: GitHub Actions in this repository via
-  `repository_dispatch`, or a container service. Same sandbox as autograding.
+  `cargo check` after the hidden tests are gone. Now that the build happens
+  in the course repository's own CI, that is a step in the same job, with
+  the toolchain the repository already has. The registry does not need to
+  know.
+* **A student CLI.** `yukibana submit` packing the folder as `.tar.zst` and
+  posting it is small; what it needs is a way for a student to authenticate
+  from a terminal (a device-code login against Supabase Auth). That is the
+  IDE extension's first step too.

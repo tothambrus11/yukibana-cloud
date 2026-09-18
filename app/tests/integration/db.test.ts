@@ -1,5 +1,5 @@
 import { test, expect, afterAll } from 'vitest';
-import { asBuilder, asUser, connect, statusOf } from '../../src/lib/server/db.js';
+import { asPublisher, asUser, connect, statusOf } from '../../src/lib/server/db.js';
 import { ALICE, BOB, TEACHER, claimsOf, config } from './env.js';
 
 const sql = connect(config.databaseUrl);
@@ -25,11 +25,12 @@ test('a policy refusal arrives as a 403, with the sentence the migration wrote',
   }
 });
 
-test('the builder sees projects and their repository, and nothing about people', async () => {
-  const projects = await asBuilder(sql, (tx) => tx<{ slug: string }[]>`select slug from project`);
-  expect(projects.map((p) => p.slug)).toEqual(['warmup']);
-  await expect(asBuilder(sql, (tx) => tx`select * from app_user`)).rejects.toMatchObject({ code: '42501' });
-  await expect(asBuilder(sql, (tx) => tx`select * from submission`)).rejects.toMatchObject({ code: '42501' });
+test('the publisher can turn a token into a project and read nothing at all', async () => {
+  const [unknown] = await asPublisher(sql, (tx) => tx<{ project: string | null }[]>`select app.project_for_token(decode(repeat('00', 32), 'hex')) as project`);
+  expect(unknown?.project).toBeNull();
+  await expect(asPublisher(sql, (tx) => tx`select * from project`)).rejects.toMatchObject({ code: '42501' });
+  await expect(asPublisher(sql, (tx) => tx`select * from app_user`)).rejects.toMatchObject({ code: '42501' });
+  await expect(asPublisher(sql, (tx) => tx`select * from submission`)).rejects.toMatchObject({ code: '42501' });
 });
 
 test('a submission inserted as a student is theirs, and a classmate cannot see it', async () => {

@@ -14,7 +14,7 @@
   <p class="muted">{data.staff ? 'No projects yet.' : 'Nothing is available yet.'}</p>
 {:else}
   <table>
-    <thead><tr><th>Project</th><th>Available after</th><th>Deadline</th><th>{data.staff ? 'Repository' : 'Your submissions'}</th></tr></thead>
+    <thead><tr><th>Project</th><th>Available after</th><th>Deadline</th><th>{data.staff ? 'Releases' : 'Your submissions'}</th></tr></thead>
     <tbody>
       {#each data.projects as p (p.project_id)}
         <tr>
@@ -22,7 +22,7 @@
             {#if !p.ready}<span class="muted"> · no starter yet</span>{/if}</td>
           <td>{when(p.available_after)}{#if data.staff && p.available_after === null}<span class="muted"> (draft)</span>{/if}</td>
           <td>{when(p.deadline)}</td>
-          <td>{#if data.staff}{p.github_repo_full_name ?? '—'}{:else}{p.my_submissions}{/if}</td>
+          <td>{#if data.staff}{p.releases}{:else}{p.my_submissions}{/if}</td>
         </tr>
       {/each}
     </tbody>

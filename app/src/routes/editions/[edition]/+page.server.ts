@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { uuidOf, type EditionId } from '$lib/ids';
-import { KINDS, type Kind } from '$lib/yukibana';
+import { KINDS, type Kind } from '$lib/kinds';
 import { asUser, statusOf } from '$lib/server/db';
 import { text } from '$lib/server/form';
 import { requireClaims, withContext } from '$lib/server/context';
@@ -13,7 +13,7 @@ interface ProjectRow {
   kind: string;
   available_after: Date | null;
   deadline: Date | null;
-  github_repo_full_name: string | null;
+  releases: number;
   ready: boolean;
   my_submissions: number;
 }
@@ -47,7 +47,8 @@ export const load: PageServerLoad = async (event) => {
       if (head === undefined) error(404, 'No such edition.');
       const staff = head.role === 'owner' || head.role === 'assistant';
       const projects = await tx<ProjectRow[]>`
-        select p.project_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.github_repo_full_name,
+        select p.project_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline,
+               (select count(*) from project_release r where r.project_id = p.project_id)::int as releases,
                app.current_starter(p.project_id) is not null as ready,
                (select count(*) from submission s where s.project_id = p.project_id and s.author_id = ${claims.sub})::int as my_submissions
         from project p where p.edition_id = ${edition}
