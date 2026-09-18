@@ -45,8 +45,10 @@ runs:
     - name: Build the CLI
       shell: bash
       run: |
-        npm ci --prefix "${{ github.action_path }}/../cli"
-        npm run build --prefix "${{ github.action_path }}/../cli"
+        # Flags before the command. `npm run build --prefix x` is ambiguous:
+        # npm may hand the flag to the script instead of reading it itself.
+        npm --prefix "${{ github.action_path }}/../cli" ci
+        npm --prefix "${{ github.action_path }}/../cli" run build
 
     - name: Publish
       shell: bash
