@@ -169,8 +169,8 @@ backend = "postgres"
 # local stack; this is what production differs by. Replace the ref with the
 # project's own, which is the first label of its API URL.
 [remotes.production]
-project_id = "REPLACE_ME_PROJECT_REF"
+project_id = "zfklzzixyseiyhszkojf"
 
 [remotes.production.auth]
-site_url = "https://yukibana-cloud.REPLACE_ME_WORKERS_SUBDOMAIN.workers.dev"
-additional_redirect_urls = ["https://yukibana-cloud.REPLACE_ME_WORKERS_SUBDOMAIN.workers.dev/auth/callback"]
+site_url = "https://cloud.yukibana.dev"
+additional_redirect_urls = ["https://cloud.yukibana.dev/auth/callback"]
