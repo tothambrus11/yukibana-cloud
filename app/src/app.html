@@ -17,6 +17,9 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
-    %sveltekit.body%
+    <!-- SvelteKit asks for a wrapper: an extension that injects a node
+         straight into <body> breaks hydration otherwise. Nothing in app.css
+         reaches through it — the header and main are styled by name. -->
+    <div>%sveltekit.body%</div>
   </body>
 </html>
