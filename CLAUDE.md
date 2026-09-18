@@ -48,7 +48,12 @@ function in a migration, and nowhere else: the Worker never re-decides it.
   `asUser(sql, claims, …)` or `asPublisher(sql, …)` in `app/src/lib/server/db.ts`,
   which become `authenticated` (with the verified JWT's claims) or
   `yukibana_publisher` for the length of one transaction. A query outside
-  them fails with "permission denied". That is the point.
+  them fails with "permission denied". That is the point. Which role the
+  Worker connects as is decided by the Hyperdrive connection string and
+  nothing in this repository, so becoming a role is the one statement that
+  says what went wrong when it fails: connected as `postgres` — the string
+  Supabase's dashboard offers — the policies do not apply at all, because a
+  table's owner is exempt from its own unless they are forced.
 * **`security definer` functions are the writes.** `app.enrol`,
   `app.create_edition`, `app.set_platform_role` and the rest check the caller
   themselves, write, and leave an `audit_log` row in the same transaction.

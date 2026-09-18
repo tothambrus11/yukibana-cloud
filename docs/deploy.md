@@ -34,8 +34,10 @@ Both connection strings, and which goes where, matter:
 * the **session pooler** string is what GitHub Actions uses. A direct
   connection resolves to IPv6 only, and GitHub's runners have no IPv6, so
   every database step would fail to connect. The pooler is IPv4 on every plan;
-* the **direct** string is what Hyperdrive uses. Hyperdrive is the pool, so
-  pooling it twice is what you are avoiding.
+* the **direct** string is the shape Hyperdrive uses, but **not as it is
+  given to you**. Both strings the dashboard hands out connect as `postgres`,
+  and the Worker must connect as `yukibana_app`: see step 2. Hyperdrive is
+  the pool, so pooling it twice is what you are avoiding.
 
 Percent-encode the password inside the pooler string if it contains anything
 outside `A-Za-z0-9._~-`. The Supabase CLI rejects a string that is not encoded.
@@ -62,13 +64,31 @@ Read & Write on that bucket. It prints an Access Key ID and a Secret Access
 Key: those are the S3 credentials the Worker uses. The same page shows the
 S3 API endpoint, `https://<account id>.r2.cloudflarestorage.com`.
 
-**Create the Hyperdrive config**, from a checkout:
+**Create the Hyperdrive config**, from a checkout. Note the user and the
+password: `yukibana_app`, with the value you will put in `APP_DB_PASSWORD`
+(step 5). The host and port are the direct connection's; the rest of that
+string is not.
 
 ```bash
-npx wrangler hyperdrive create yukibana-cloud --connection-string="<DIRECT connection string>"
+npx wrangler hyperdrive create yukibana-cloud \
+  --connection-string="postgresql://yukibana_app:<APP_DB_PASSWORD>@db.<ref>.supabase.co:5432/postgres"
 ```
 
 It prints an id. Hyperdrive is on the free plan, with 100,000 queries a day.
+
+**Not `postgres`.** The string the dashboard offers connects as `postgres`,
+and pasting it here is the one mistake that does not announce itself. That
+role owns the tables, and a table's owner is not subject to its own policies
+unless they are forced, which these migrations deliberately do not do — so
+the whole authorisation model would be off, silently. It is also not a member
+of `yukibana_publisher`, so publishing a release would fail while every page
+kept working. This happened; `app/src/lib/server/db.ts` now answers such a
+connection with a sentence naming it, which is how you would find out.
+
+The password reaches the database from `APP_DB_PASSWORD` through
+`ops/bootstrap.sql` on every deploy, so the two must be the same value. To
+change it later, change the secret, deploy, then
+`npx wrangler hyperdrive update <id> --connection-string=...`.
 
 **Point Workers Builds at this repository**, if it is not already: the
 Worker → Settings → Builds. Because the app is one package of several, set
@@ -207,6 +227,14 @@ verify it, not a paid plan.
 step 3 are not filled in, or `hyperdrive create` has not been run. The build
 failing is the intended outcome: a Worker deployed with a placeholder id
 starts and then fails every request that touches the database.
+
+**Publishing a release answers 500, but every page works.** The Worker is
+connected as a role that is not a member of `yukibana_publisher` — almost
+always `postgres`, from pasting the dashboard's connection string into
+Hyperdrive. The response says so since the day it was found; the fix is
+`npx wrangler hyperdrive update <id> --connection-string=...` with
+`yukibana_app` and `APP_DB_PASSWORD`, and no redeploy, since Hyperdrive is
+read per request.
 
 **Nightly Drift failed.** Something changed the database outside a migration.
 The job prints the difference; either revert it in the dashboard or write it

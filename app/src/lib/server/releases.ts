@@ -5,12 +5,12 @@
  *  a refused row deletes both objects again.
  */
 
-import { error } from '@sveltejs/kit';
+import { error, isHttpError } from '@sveltejs/kit';
 import type { Claims } from '$lib/claims';
 import { isGzip, sha256 } from '$lib/bytes';
 import { starterKey, teacherKey, trustId, trustKey, type ProjectId, type ReleaseId } from '$lib/ids';
 import { report } from '$lib/report';
-import { asPublisher, asUser, statusOf } from './db';
+import { asPublisher, asUser, Misconfigured, statusOf } from './db';
 import type { Context } from './context';
 
 export interface Archive {
@@ -44,19 +44,27 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
   }
   if (commit !== null && !/^[0-9a-f]{7,64}$/i.test(commit)) error(400, 'A commit is a hex sha.');
 
+  // Both of these ask the database who the caller is, and both used to do it
+  // outside the mapping below: a token that could not be looked up at all
+  // reached the CLI as a bare 500 with nothing in it, which is how a Worker
+  // connected as the wrong role looked for a day.
   const hash = by.kind === 'token' ? await tokenHash(by.secret) : null;
-  if (hash !== null) {
-    const named = await asPublisher(ctx.sql, async (tx) => {
-      const [row] = await tx<{ project: string | null }[]>`select app.project_for_token(${hash as Uint8Array<ArrayBuffer>}) as project`;
-      return row?.project ?? null;
-    });
-    if (named !== project) error(403, 'This token does not publish to this project.');
-  } else if (by.kind === 'user') {
-    const owner = await asUser(ctx.sql, by.claims, async (tx) => {
-      const rows = await tx`select 1 from project where project_id = ${project} and app.role_in(edition_id) = 'owner'`;
-      return rows.length === 1;
-    });
-    if (!owner) error(403, 'Only an owner may publish a release.');
+  try {
+    if (hash !== null) {
+      const named = await asPublisher(ctx.sql, async (tx) => {
+        const [row] = await tx<{ project: string | null }[]>`select app.project_for_token(${hash as Uint8Array<ArrayBuffer>}) as project`;
+        return row?.project ?? null;
+      });
+      if (named !== project) error(403, 'This token does not publish to this project.');
+    } else if (by.kind === 'user') {
+      const owner = await asUser(ctx.sql, by.claims, async (tx) => {
+        const rows = await tx`select 1 from project where project_id = ${project} and app.role_in(edition_id) = 'owner'`;
+        return rows.length === 1;
+      });
+      if (!owner) error(403, 'Only an owner may publish a release.');
+    }
+  } catch (e) {
+    refuse(e);
   }
 
   const object = crypto.randomUUID();
@@ -90,10 +98,26 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
         report('releases', `orphaned ${key}: ${inner instanceof Error ? inner.message : String(inner)}`);
       }
     }
-    const { status, message } = statusOf(e);
-    if (status === 500) report('releases', message);
-    error(status === 500 ? 500 : 403, status === 500 ? 'The release could not be recorded.' : message);
+    refuse(e);
   }
+}
+
+/** Answers a failed database call, always by throwing.
+ *
+ *  A SvelteKit error is already the answer and passes through. A connection
+ *  that cannot become its role says so in full, because only an operator can
+ *  fix it and a generic sentence sends them looking in the wrong place.
+ *  Anything else the database refused says what the migration wrote, which
+ *  those messages exist to be. An unexpected failure is written down and
+ *  answered with its SQLSTATE and nothing more: the message may quote the
+ *  query, and the code is enough to say where to look. */
+function refuse(e: unknown): never {
+  if (isHttpError(e)) throw e;
+  if (e instanceof Misconfigured) error(500, e.message);
+  const { status, message, code } = statusOf(e);
+  if (status !== 500) error(status, message);
+  report('releases', message);
+  error(500, `The release could not be recorded${code === '' ? '' : ` (SQLSTATE ${code})`}; the Worker log says why.`);
 }
 
 /** A URL for the caller to download one archive of `release`, if they are
