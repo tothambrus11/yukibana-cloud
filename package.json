@@ -26,6 +26,6 @@
   "devDependencies": {
     "squawk-cli": "^2.30.0",
     "supabase": "^2.117.0",
-    "wrangler": "^4.134.0"
+    "wrangler": "^4.136.1"
   }
 }
