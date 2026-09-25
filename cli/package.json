@@ -21,7 +21,7 @@
     "lint": "oxlint --type-aware --deny-warnings"
   },
   "devDependencies": {
-    "@types/node": "^22.20.2",
+    "@types/node": "^22.20.4",
     "oxlint": "^1.85.0",
     "oxlint-tsgolint": "^7.0.2001",
     "typescript": "^7.0.2",
