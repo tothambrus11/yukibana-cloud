@@ -24,7 +24,7 @@
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "squawk-cli": "^2.30.0",
+    "squawk-cli": "^2.66.0",
     "supabase": "^2.117.0",
     "wrangler": "^4.143.0"
   }
