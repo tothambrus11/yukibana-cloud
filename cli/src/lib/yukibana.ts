@@ -220,9 +220,12 @@ function studentFields(raw: Readonly<Record<string, unknown>>): Record<string, u
 
 /** The copy of the file a starter carries: the same file minus `hidden`
  *  plus the project id, so the IDE and `yukibana submit` know where a
- *  submission goes. */
+ *  submission goes. An empty `projectId` (a build that was not told the
+ *  project) leaves the field out: it once wrote `""`, which the parser
+ *  rightly refuses, and a student could not submit from that folder at all. */
 export function starterConfig(config: Config, projectId: string): string {
-  return JSON.stringify({ ...studentFields(config.raw), projectId }, null, 2) + '\n';
+  const fields = studentFields(config.raw);
+  return JSON.stringify(projectId === '' ? fields : { ...fields, projectId }, null, 2) + '\n';
 }
 
 /** Whether a student's copy of the file says what the starter's copy said,
