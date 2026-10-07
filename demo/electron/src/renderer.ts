@@ -29,6 +29,17 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<{ clas
 /** The children worth adding: a `cond && el(…)` that was false is skipped. */
 const kids = (...children: Child[]): (Node | string)[] => children.filter((c): c is Node | string => c !== null && c !== undefined && c !== false);
 
+/** The snow-flower mark, at `size` CSS pixels. Decorative: the name is
+ *  always beside it. */
+function logo(size: number): HTMLImageElement {
+  const img = document.createElement('img');
+  img.src = 'logo.png';
+  img.alt = '';
+  img.width = size;
+  img.height = size;
+  return img;
+}
+
 const root = document.getElementById('app') ?? document.body;
 const state: {
   projects: Project[];
@@ -67,6 +78,7 @@ function renderLogin(registry: string, error?: string): void {
     },
   }, 'Log in with GitHub');
   root.replaceChildren(el('main', { class: 'login' },
+    logo(96),
     el('h1', {}, 'Yukibana'),
     el('p', {}, 'Your browser opens to sign in with GitHub, then comes back here.'),
     el('label', {}, 'Registry', input),
@@ -89,7 +101,7 @@ async function loadExercises(): Promise<void> {
 function renderMain(name: string, persistent: boolean): void {
   const cards = exerciseCards(state.projects, Date.now());
   const header = el('header', {},
-    el('strong', {}, 'Yukibana'),
+    el('strong', { class: 'brand' }, logo(24), 'Yukibana'),
     el('span', { class: 'muted' }, `Logged in as ${name}${persistent ? '' : ' (until you quit: no keychain to keep the session in)'}`),
     el('button', { class: 'quiet', onclick: () => void api.logout().then(() => boot()) }, 'Log out'),
   );

@@ -39,3 +39,4 @@ pre { margin: 0; padding: .6rem; background: var(--bg); border: 1px solid var(--
 .login { max-width: 420px; margin: 15vh auto; display: flex; flex-direction: column; gap: .75rem; }
 .login label { display: flex; flex-direction: column; gap: .25rem; }
 .login input { font: inherit; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+.brand { display: inline-flex; align-items: center; gap: .5rem; }

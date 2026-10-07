@@ -150,6 +150,9 @@ async function main(): Promise<void> {
     width: 1100,
     height: 720,
     title: 'Yukibana',
+    // Windows and Linux take the window's icon from here; macOS from the
+    // app bundle, which a packaged build would carry.
+    icon: join(here, '..', 'static', 'logo.png'),
     webPreferences: {
       preload: join(here, 'preload.cjs'),
       contextIsolation: true,
