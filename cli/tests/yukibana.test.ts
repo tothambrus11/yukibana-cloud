@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { DEFAULT_MAX_BYTES, excludes, manifestProblems, parseConfig, starterConfig } from '../src/lib/yukibana.js';
+import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, excludes, manifestProblems, parseConfig, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
 
 const ok = (text: string) => {
   const p = parseConfig(text);
@@ -26,14 +26,58 @@ test('every rejection names the field the teacher has to fix', () => {
   assert.match(bad('{"version":2,"kind":"rust-cargo"}'), /"version"/);
   assert.match(bad('{"version":1,"kind":"python"}'), /"kind" must be one of rust-cargo, scala-sbt/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","hidden":"tests"}'), /"hidden" must be a list/);
-  assert.match(bad('{"version":1,"kind":"rust-cargo","hidden":["../x"]}'), /relative to the repository root/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","hidden":["../x"]}'), /relative to the project root/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"maxBytes":-1}}'), /"submission.maxBytes"/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","readOnly":"README.md"}'), /"readOnly" must be a list/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","features":{"ai":"no"}}'), /"features"/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","layout":{"widgets":{"files":1}}}'), /"layout.widgets"/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","openFiles":[1]}'), /"openFiles"/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"exclude":["/abs"]}}'), /"submission.exclude" paths are relative/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"filename":"a/b.tar.zst"}}'), /"submission.filename"/);
+});
+
+test('the IDE settings from the example file are a valid project, with the defaults filled in', () => {
+  const p = parseConfig(JSON.stringify({
+    version: 1, kind: 'scala-sbt',
+    features: { codeSuggestions: true, squiggles: true, ai: false },
+    layout: { widgets: { files: false, search: false }, containers: { 'metals-explorer': false } },
+    openFiles: ['README.md', 'hello_world.scala'],
+    submission: { exclude: ['.metals', '.scala-build'] },
+    readOnly: ['tests/*', 'README.md', 'yukibana.json'],
+  }));
+  assert.ok(p.ok);
+  assert.deepEqual(p.warnings, []);
+  assert.deepEqual(p.config.readOnly, ['tests/*', 'README.md', 'yukibana.json']);
+  assert.equal(p.config.submission.include, null);
+  assert.equal(p.config.submission.filename, DEFAULT_FILENAME);
+  assert.equal(p.config.projectId, null);
+});
+
+test('an unknown field passes with a warning, so a misspelt "hiden" does not ship the tests in silence', () => {
+  const p = parseConfig('{"version":1,"kind":"rust-cargo","hiden":["tests/hidden"]}');
+  assert.ok(p.ok);
+  assert.equal(p.config.hidden.length, 0);
+  assert.match(p.warnings[0] ?? '', /unknown field "hiden"/);
+});
+
+test('an assembly protects the config itself, the read-only paths and the hidden ones', () => {
+  const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
+  assert.deepEqual(protectedPaths(c), ['yukibana.json', 'tests/*', 'tests/hidden']);
+});
+
+test('a student copy that says what the starter said is unchanged, whatever its formatting', () => {
+  const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
+  const copy = starterConfig(c, 'p-1');
+  assert.ok(sameStudentConfig(c, copy));
+  assert.ok(sameStudentConfig(c, '{"readOnly":["tests/*"],"kind":"rust-cargo","version":1}'), 'key order and the project id do not matter');
+  assert.ok(!sameStudentConfig(c, copy.replace('"tests/*"', '"nothing"')), 'an emptied read-only list is a change');
+  assert.ok(!sameStudentConfig(c, 'not json'));
 });
 
 test('what is always dropped comes first, then the kind, then the teacher', () => {
   const c = ok('{"version":1,"kind":"scala-sbt","hidden":["src/test/scala/hidden"]}');
   const x = excludes(c);
-  assert.deepEqual(x.slice(0, 3), ['.git', '.github', 'yukibana.json']);
+  assert.deepEqual(x.slice(0, 4), ['.git', '.github', '.theia', 'yukibana.json']);
   assert.ok(x.includes('project/target'));
   assert.equal(x.at(-1), 'src/test/scala/hidden');
 });
@@ -64,4 +108,14 @@ test('a workspace member that is hidden is a problem too', () => {
   const problems = manifestProblems(c, (p) => (p === 'Cargo.toml' ? cargo : undefined));
   assert.equal(problems.length, 1);
   assert.match(problems[0] ?? '', /workspace member "grader"/);
+});
+
+test('the schema the IDE validates against and the parser here know the same fields', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const schema = JSON.parse(await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8')) as { properties: Record<string, unknown>; required: string[] };
+  const every = Object.fromEntries(Object.keys(schema.properties).map((k) => [k, k === 'version' ? 1 : k === 'kind' ? 'rust-cargo' : k === 'projectId' ? 'p' : k === 'openFiles' || k === 'readOnly' || k === 'hidden' ? [] : {}]));
+  const p = parseConfig(JSON.stringify(every));
+  assert.ok(p.ok, p.ok ? '' : p.error);
+  assert.deepEqual(p.warnings, [], 'every field the schema has, the parser knows');
+  assert.deepEqual(schema.required, ['version', 'kind']);
 });

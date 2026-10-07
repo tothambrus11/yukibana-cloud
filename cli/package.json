@@ -1,9 +1,18 @@
 {
   "name": "@yukibana/cli",
   "version": "0.1.0",
-  "description": "Build a course project's starter and teacher archives, and publish them to Yukibana Cloud.",
+  "description": "Build, publish, submit, download and assemble Yukibana course projects: a command line tool, and the library the IDE extension uses.",
   "license": "MIT",
   "type": "module",
+  "main": "dist/library.js",
+  "types": "dist/library.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/library.d.ts",
+      "default": "./dist/library.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "yukibana": "dist/index.js"
   },
@@ -11,7 +20,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.15"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

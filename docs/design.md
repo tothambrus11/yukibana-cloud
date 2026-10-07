@@ -126,6 +126,32 @@ record a release for it. A leaked token can publish releases to one project,
 which its staff can see and follow with a new one, and can be revoked from
 the page.
 
+## The student's side and the teacher's
+
+A course repository's `yukibana.json` is also what our Theia fork reads:
+which widgets show, which files open, which are read-only. `readOnly` and
+`hidden` are the two lists that matter to grading. A student receives the
+starter (no hidden files); what they send back is the folder minus `.git`,
+`.theia`, build output and what the file excludes. Packing is one library
+function in `cli/`, called by `yukibana submit` and by the IDE extension
+alike, so the two cannot disagree about which files a submission holds.
+
+A teacher grades an **assembly**: the submission with `yukibana.json`, every
+read-only path and every hidden path deleted and taken from the newest
+release's teacher archive. The newest, not the one live at submission time,
+so a test fixed after the fact applies to everyone. What a student changed
+under a protected path is undone and reported, never silently: a changed
+read-only test is exactly what a teacher wants to see. The assembly is the
+CLI's job, on the teacher's machine, because the registry transforms
+nothing.
+
+Submissions still go through the Worker rather than to the bucket by a
+presigned upload: at 32 MiB a request is well under the platform's limit,
+and the server computing the size and SHA-256 itself is worth more than the
+bytes saved. A direct upload needs a reservation, an upload and a
+confirmation that cannot check the hash without reading the object back,
+and something to sweep up what was reserved and never confirmed.
+
 ## Where the bytes live
 
 The one storage adapter speaks S3: R2 in production (zero egress, a free
@@ -164,7 +190,8 @@ integration suite, squawk over migrations, the deploy and drift workflows.
   in the course repository's own CI, that is a step in the same job, with
   the toolchain the repository already has. The registry does not need to
   know.
-* **A student CLI.** `yukibana submit` packing the folder as `.tar.zst` and
-  posting it is small; what it needs is a way for a student to authenticate
-  from a terminal (a device-code login against Supabase Auth). That is the
-  IDE extension's first step too.
+* **A headless login.** `yukibana login` is OAuth with PKCE through the
+  system browser, back to a loopback listener (2026-10). A machine no
+  browser can reach (SSH, a container) has only `YUKIBANA_ACCESS_TOKEN`;
+  Supabase Auth has no device-code grant, and its OAuth server could be the
+  way to one.

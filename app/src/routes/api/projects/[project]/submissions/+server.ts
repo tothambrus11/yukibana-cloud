@@ -1,8 +1,23 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { uuidOf, type ProjectId } from '$lib/ids';
-import { requireClaims, withContext } from '$lib/server/context';
+import { uuidOf, type ProjectId, type UserId } from '$lib/ids';
+import { submissions } from '$lib/server/catalogue';
+import { answering, requireClaims, withContext } from '$lib/server/context';
 import { acceptSubmission } from '$lib/server/submissions';
+
+/** Submissions to the project, newest first: everyone's for staff, the
+ *  caller's own for a student. `?latest=true` keeps each author's newest,
+ *  the one that counts; `?author=<user id>` keeps one author's. */
+export const GET: RequestHandler = async (event) => {
+  const claims = requireClaims(event);
+  const project = uuidOf<ProjectId>(event.params.project);
+  if (project === null) error(404, 'No such project.');
+  const givenAuthor = event.url.searchParams.get('author');
+  const author = givenAuthor === null ? null : uuidOf<UserId>(givenAuthor);
+  if (givenAuthor !== null && author === null) error(400, '`author` is a user id.');
+  const latest = event.url.searchParams.get('latest') === 'true';
+  return json(await withContext(event, (ctx) => answering('api/submissions', () => submissions(ctx, claims, project, { latest, author }))));
+};
 
 /** A submission: the archive as the request body, `Content-Type:
  *  application/zstd`, with the session as a bearer token or a cookie. This

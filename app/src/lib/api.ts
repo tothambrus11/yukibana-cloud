@@ -1,0 +1,101 @@
+/** What the JSON API answers. The CLI and the IDE extension read these
+ *  shapes (`cli/src/lib/wire.ts` decodes them, field for field), so a
+ *  change here is a change to a published contract: add a field, never
+ *  rename or retype one. Times are ISO 8601 strings in UTC; ids are uuids;
+ *  a null means what the field says it means.
+ */
+
+export type EditionRole = 'student' | 'assistant' | 'owner';
+
+export interface MeJson {
+  readonly userId: string;
+  /** The address in the verified token. */
+  readonly email: string | null;
+  readonly fullName: string | null;
+  readonly githubLogin: string | null;
+  /** `user`, `teacher` or `admin`. */
+  readonly platformRole: string;
+}
+
+export interface EditionJson {
+  readonly editionId: string;
+  readonly courseCode: string;
+  readonly courseTitle: string;
+  readonly label: string;
+  readonly archived: boolean;
+  /** The caller's role in it. */
+  readonly role: EditionRole;
+}
+
+export interface ProjectJson {
+  readonly projectId: string;
+  readonly editionId: string;
+  readonly courseCode: string;
+  readonly editionLabel: string;
+  readonly slug: string;
+  readonly title: string;
+  readonly kind: string;
+  /** Null: a draft, which only staff see. */
+  readonly availableAfter: string | null;
+  /** Null: no deadline. */
+  readonly deadline: string | null;
+  readonly role: EditionRole;
+  /** Whether a starter has been released and the caller may download it. */
+  readonly starterReady: boolean;
+  /** Whether the caller may submit right now: only ever true for a student
+   *  of a published project before its deadline. */
+  readonly canSubmit: boolean;
+  /** How many submissions the caller has made to it, and the newest's time. */
+  readonly mySubmissions: number;
+  readonly myLastSubmittedAt: string | null;
+}
+
+export interface SubmissionJson {
+  readonly submissionId: string;
+  readonly projectId: string;
+  readonly submittedAt: string;
+  /** Bytes, as stored. */
+  readonly byteSize: number;
+  /** Hex SHA-256 of the archive, as the server computed it on arrival. */
+  readonly sha256: string;
+  readonly author: {
+    readonly userId: string;
+    readonly fullName: string | null;
+    readonly githubLogin: string | null;
+    /** The address they are enrolled with, when the caller may see it
+     *  (themselves, or staff); null otherwise, or after unenrolment. */
+    readonly email: string | null;
+  };
+  /** Whether this is the author's newest submission to the project. */
+  readonly latest: boolean;
+}
+
+export interface ReleaseJson {
+  readonly releaseId: string;
+  readonly label: string;
+  readonly commit: string | null;
+  readonly starterSize: number;
+  readonly teacherSize: number;
+  readonly uploadedAt: string;
+  /** Login or name of whoever uploaded it (or whose token did). */
+  readonly uploadedBy: string | null;
+  readonly viaToken: boolean;
+}
+
+export interface MemberJson {
+  readonly email: string;
+  readonly role: EditionRole;
+  /** `manual`, or the roster feed that owns the row. */
+  readonly source: string;
+  /** Null until the address has logged in. */
+  readonly userId: string | null;
+  readonly fullName: string | null;
+  readonly githubLogin: string | null;
+}
+
+/** What a terminal or an IDE needs to log in: the Auth server and its
+ *  publishable key. Neither is secret; both are in every page already. */
+export interface AuthConfigJson {
+  readonly supabaseUrl: string;
+  readonly publishableKey: string;
+}
