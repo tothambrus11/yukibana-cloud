@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import Tabs from '$lib/Tabs.svelte';
-  import { kb, local, when } from '$lib/format';
-  import { actionIn, tabOf, type Tab } from '$lib/tabs';
+  import Tabs from '#lib/Tabs.svelte';
+  import { kb, local, when } from '#lib/format.ts';
+  import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { ActionData, PageData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const p = $derived(data.project);
