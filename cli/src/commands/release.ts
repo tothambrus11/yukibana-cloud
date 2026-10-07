@@ -24,6 +24,9 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
   if (!result.ok) return;
   const { built } = result;
   for (const w of built.warnings) console.error(`warning: ${w}`);
+  if (command === 'build' && projectId === '') {
+    console.error('warning: no --project, so the starter does not say where submissions go; students will have to name the project when they submit');
+  }
   console.log(`${built.config.kind}: ${built.starterEntries} entries in the starter; ${built.hidden.length === 0 ? 'nothing hidden' : `hidden: ${built.hidden.join(', ')}`}`);
   console.log(`starter ${built.starter.byteLength} bytes sha256 ${sha256Hex(built.starter).slice(0, 12)}; teacher ${built.teacher.byteLength} bytes`);
   if (command === 'check') return;

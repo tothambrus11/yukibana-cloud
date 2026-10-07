@@ -119,3 +119,12 @@ test('the schema the IDE validates against and the parser here know the same fie
   assert.deepEqual(p.warnings, [], 'every field the schema has, the parser knows');
   assert.deepEqual(schema.required, ['version', 'kind']);
 });
+
+test('a starter built without a project leaves the id out, and its copy still parses so a student can submit', () => {
+  const c = ok('{"version":1,"kind":"rust-cargo","hidden":["tests/hidden"]}');
+  const copy = starterConfig(c, '');
+  assert.equal('projectId' in (JSON.parse(copy) as Record<string, unknown>), false);
+  const back = parseConfig(copy);
+  assert.ok(back.ok, back.ok ? '' : back.error);
+  assert.equal(back.config.projectId, null);
+});

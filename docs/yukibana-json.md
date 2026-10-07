@@ -33,7 +33,7 @@ CLI, for what a student must never receive and what a submission holds.
 | `submission.exclude` | no | Globs never submitted. |
 | `submission.filename` | no | What a packed submission is called on disk. Default `submission.tar.zst`. The bytes are always a zstandard-compressed tar, whatever the name. |
 | `submission.maxBytes` | no | The largest submission this project expects. Default 32 MiB; the registry has its own cap above which this cannot go. |
-| `projectId` | no | Written by the build into the starter's copy: where a submission from that folder goes. A course repository leaves it out. |
+| `projectId` | no | Written by `publish` (or `build --project`) into the starter's copy, so `yukibana submit` and the IDE know where a submission from that folder goes without the student choosing. A course repository leaves it out; a starter built without a project has none, and its students name the project when they submit. The registry does not trust it: a submission is accepted only where the student's enrolment allows. |
 
 Globs are relative to the project root. `*` stays inside a path segment, `**`
 crosses segments, `?` is one character, and a pattern that names a directory
