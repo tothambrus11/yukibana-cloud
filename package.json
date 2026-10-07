@@ -25,7 +25,7 @@
   },
   "devDependencies": {
     "squawk-cli": "^2.66.0",
-    "supabase": "^2.118.0",
+    "supabase": "^2.119.0",
     "wrangler": "^4.147.0"
   }
 }
