@@ -44,13 +44,14 @@ test('a student\'s card counts their submissions; staff see their role instead',
   assert.equal(staff?.mine, 'you are owner');
 });
 
-test('the newest submission is the one that counts, and late ones say so', () => {
+test('the latest version is marked as such, and late ones say so', () => {
   const sub = (id: string, latest: boolean, late: boolean): Submission => ({
     submissionId: id, projectId: 'p', submittedAt: iso(-H), byteSize: 2048, sha256: 'ab', latest, late,
     author: { userId: 'u', fullName: null, githubLogin: 'ada', email: null },
   });
-  const rows = submissionRows([sub('b', true, true), sub('a', false, false)]);
-  assert.deepEqual(rows.map((r) => r.tags), ['counts · late', '']);
+  const rows = submissionRows([sub('c', true, true), sub('b', false, true), sub('a', false, false)]);
+  assert.deepEqual(rows.map((r) => r.status), ['Latest version, submitted late', 'Submitted late', '']);
+  assert.deepEqual(rows.map((r) => r.late), [true, true, false]);
   assert.equal(rows[0]?.size, '2.0 KiB');
   assert.equal(rows[0]?.author, 'ada');
 });
