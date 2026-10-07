@@ -26,6 +26,7 @@ jobs:
             package-lock.json
             app/package-lock.json
             cli/package-lock.json
+            demo/electron/package-lock.json
       - run: npm run install:all
       - name: Lint, typecheck, unit tests
         run: npm run check
@@ -55,6 +56,7 @@ jobs:
             package-lock.json
             app/package-lock.json
             cli/package-lock.json
+            demo/electron/package-lock.json
       - run: npm run install:all
 
       - name: Preflight
