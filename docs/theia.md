@@ -8,6 +8,18 @@ or later does: a Theia backend, an Electron main process, a VS Code
 extension host. `demo/electron` is a complete, small client built on it;
 read it next to this page.
 
+## What the library is, and is not
+
+The library is headless. It owns the protocol (login, refresh, the API), the
+data (the registry's answers, decoded and checked), the disk (reading a
+folder into a bundle, unpacking a starter safely) and the network, and
+nothing a person sees. Opening a browser, the page the browser shows after a
+login, every list, button and sentence on a screen: those belong to the host.
+Where a person must see something, the library takes a callback (`open`,
+`callbackPage`) or returns data for the host to render (`bundle.files`,
+`bundle.problems`, `RegistryError.status`). The CLI's choices are in
+`cli/src/commands/`, the demo's in `demo/electron/src/`; neither is exported.
+
 ## The split
 
 ```
@@ -32,8 +44,12 @@ it comes back:
 ```ts
 import { startLogin, loginWithLoopback } from '@yukibana/cli';
 
-// Desktop (Electron Theia): the system browser, back to 127.0.0.1 on a free port.
-const session = await loginWithLoopback(registry, { open: (url) => openExternal(url) });
+// Desktop (Electron Theia): back to a listener on 127.0.0.1 on a free port.
+// The host opens the address and writes the page the browser lands on.
+const session = await loginWithLoopback(registry, {
+  open: (url) => openExternal(url),
+  callbackPage: (outcome) => outcome.ok ? signedInPage() : failedPage(escapeHtml(outcome.reason)),
+});
 
 // Browser Theia, served from elsewhere: back to a route the Theia server owns.
 const pending = await startLogin(registry, 'https://ide.example.org/yukibana/callback');
@@ -101,8 +117,8 @@ the deadline as it is now, so an extension granted later applies to work
 already handed in. A student still reads their own submissions after a
 project closes.
 
-The wording in `demo/electron/src/view.ts` (due in 3 days, late, accepted
-until …) is a tested starting point.
+How to word any of this is the host's. The demo's choices, with tests, are
+in `demo/electron/src/view.ts`; they are an example, not part of the library.
 
 ## The workspace
 
@@ -142,9 +158,9 @@ the preview. Packing is the same function `yukibana submit` uses, which is
 the point: the IDE and the terminal cannot disagree about what a submission
 holds, and the assembly on the teacher's side sees the same files.
 
-`demo/electron/src/view.ts`'s `sendable` decides whether to offer the send
-button: no problems, a project in the folder, and that project open to the
-student now.
+Whether to offer the send button is the host's decision from that data: the
+demo offers it when there are no problems, the folder names a project, and
+that project is open to the student now (`sendable` in its `view.ts`).
 
 ## Errors
 
