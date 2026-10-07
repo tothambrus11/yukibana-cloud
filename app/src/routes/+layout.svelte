@@ -5,7 +5,7 @@
 </script>
 
 <header class="bar">
-  <a href="/" class="brand">Yukibana</a>
+  <a href="/" class="brand"><img src="/logo-64.png" alt="" width="28" height="28" />Yukibana</a>
   <nav>
     {#if data.user}
       <span class="muted">{data.user.email ?? 'signed in'}</span>

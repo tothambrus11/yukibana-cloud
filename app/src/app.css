@@ -123,15 +123,9 @@
     align-items: center;
     gap: 0.5rem;
   }
-  .brand::before {
-    /* The mark. Yukibana is a snow flower, but petals at 1rem read as a
-     * blob, so it is a star — the same path as the favicon in app.html. */
-    content: "";
-    inline-size: 1.15rem;
-    aspect-ratio: 1;
-    background: var(--accent);
-    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-  }
+  /* The mark: the snow flower, drawn at twice its size for sharp screens.
+   * Decorative beside the name, so its alt text is empty. */
+  .brand img { inline-size: 1.75rem; block-size: 1.75rem; }
 
   main {
     max-width: 68rem;
@@ -163,14 +157,61 @@
   .head { padding-inline: 0.25rem; }
   .head p { color: var(--ink-soft); }
 
-  .back {
-    display: inline-block;
-    margin-bottom: 0.25rem;
-    color: var(--ink-soft);
-    text-decoration: none;
+  /* Where the page sits: Courses / CS-101 2026 autumn / Warm-up. Every
+   * level but the last is a link; the separators are drawn, not typed, so a
+   * screen reader reads the names and not the slashes. */
+  nav.crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.35rem;
     font-size: 0.9rem;
+    color: var(--ink-soft);
   }
-  .back:hover { color: var(--accent); }
+  nav.crumbs > * + *::before { content: "/"; margin-inline-end: 0.35rem; color: color-mix(in oklab, var(--ink-soft) 50%, transparent); }
+  nav.crumbs a { color: inherit; text-decoration: none; }
+  nav.crumbs a:hover { color: var(--accent); }
+
+  /* A page's sections. Links, not buttons: each tab is an address (see
+   * $lib/tabs.ts), so it opens in a new tab, survives a reload and needs no
+   * script. On a phone the row scrolls rather than wrapping into a pile. */
+  nav.tabs {
+    display: flex;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  nav.tabs a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 0.9rem;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    color: var(--ink-soft);
+    font-weight: 560;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  nav.tabs a:hover { color: var(--ink); }
+  nav.tabs a[aria-current="page"] { color: var(--accent); border-bottom-color: var(--accent); }
+  nav.tabs .count {
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: var(--sunken);
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  nav.tabs a[aria-current="page"] .count { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
+
+  /* A few figures side by side, at the top of an overview. */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+  .stats > div { background: var(--sunken); border-radius: var(--radius-sm); padding: 0.7rem 0.9rem; }
+  .stats strong { display: block; font-size: 1.3rem; letter-spacing: -0.01em; }
+  .stats span { font-size: 0.82rem; color: var(--ink-soft); }
 
   /* A table is wider than a phone more often than not; let it scroll on its
    * own rather than the page sideways. */
@@ -293,6 +334,7 @@
   }
   .chip.good { background: var(--ok-bg); border-color: color-mix(in oklab, var(--ok) 25%, transparent); color: var(--ok); }
   .chip.live { background: var(--accent-bg); border-color: color-mix(in oklab, var(--accent) 25%, transparent); color: var(--accent); }
+  .chip.late { background: var(--bad-bg); border-color: color-mix(in oklab, var(--bad) 25%, transparent); color: var(--bad); }
 
   /* What a section says when it has nothing in it. Said once, here, so no
    * page invents its own way of being empty. */

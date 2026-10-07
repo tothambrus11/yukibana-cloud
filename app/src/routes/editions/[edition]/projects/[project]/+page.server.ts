@@ -10,6 +10,8 @@ import { publishRelease } from '$lib/server/releases';
 interface ProjectRow {
   project_id: string;
   edition_id: string;
+  course_code: string;
+  edition_label: string;
   slug: string;
   title: string;
   kind: string;
@@ -64,11 +66,13 @@ export const load: PageServerLoad = async (event) => {
   return withContext(event, (ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [p] = await tx<ProjectRow[]>`
-        select p.project_id, p.edition_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
+        select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                app.role_in(p.edition_id)::text as role,
                app.current_starter(p.project_id) is not null as ready,
                app.can_submit(p.project_id) as can_submit
         from project p
+        join course_edition e on e.edition_id = p.edition_id
+        join course c on c.course_id = e.course_id
         where p.project_id = ${project} and p.edition_id = ${edition}`;
       if (p === undefined) error(404, 'No such project.');
       const staff = p.role === 'owner' || p.role === 'assistant';
