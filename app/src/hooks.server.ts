@@ -1,23 +1,18 @@
-import type { Handle, HandleServerError } from '@sveltejs/kit';
+import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import { error } from '@sveltejs/kit';
-import { configOf } from '$lib/server/env';
-import { Misconfigured } from '$lib/server/db';
-import { claimsFor, supabaseFor } from '$lib/server/session';
-import { report } from '$lib/report';
+import { workerConfig } from '#lib/server/worker.ts';
+import { Misconfigured } from '#lib/server/db.ts';
+import { claimsFor, supabaseFor } from '#lib/server/session.ts';
+import { report } from '#lib/report.ts';
 
 /** Every request: read the configuration, find out who is asking, and hand
  *  both to the route. The database client is created by the route that
- *  needs it (see $lib/server/context), so a page that only renders never
+ *  needs it (see #lib/server/context), so a page that only renders never
  *  opens a connection. */
 export const handle: Handle = async ({ event, resolve }) => {
-  const env = event.platform?.env;
-  if (env === undefined) {
-    report('hooks', 'no platform env: is the adapter configured?');
-    error(500, 'The server is not configured.');
-  }
   let config;
   try {
-    config = configOf(env);
+    config = workerConfig();
   } catch (e) {
     report('hooks', e instanceof Error ? e.message : String(e));
     error(500, 'The server is not configured.');
@@ -37,7 +32,14 @@ export const handle: Handle = async ({ event, resolve }) => {
  *  and the ones an operator alone can fix say what they are. The rest stay
  *  generic on purpose: an unexpected message may quote a query.
  */
-export const handleError: HandleServerError = ({ error: thrown }) => {
+export const handleError: HandleServerError = (caught) => {
+  // Since SvelteKit 3 this hook runs for every error, not only unexpected
+  // ones: an `error(403, …)` a route meant arrives here as `kind: 'app'`,
+  // and whatever is returned replaces its body. Those, and SvelteKit's own
+  // (`framework`: a 404 for an unknown route) and `validation`, already say
+  // what they should; returning nothing keeps them.
+  if (caught.kind !== 'unknown') return;
+  const thrown = caught.error;
   if (thrown instanceof Misconfigured) {
     report('unexpected', thrown.message);
     return { message: thrown.message };

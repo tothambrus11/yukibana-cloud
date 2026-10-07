@@ -86,7 +86,7 @@ every push, after rebuilding the database from empty.
 
 ## Everything is TypeScript, and the types say what the code means
 
-`app/` is SvelteKit on the oxc/rolldown toolchain (rolldown-vite, oxlint
+`app/` is SvelteKit 3 on the oxc/rolldown toolchain (Vite 8, oxlint
 type-aware, Vitest, svelte-check, TypeScript 6 `strict` with
 `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes`), deployed as one
 Cloudflare Worker with `adapter-cloudflare`.
@@ -97,7 +97,8 @@ Cloudflare Worker with `adapter-cloudflare`.
   the database returned. A `ProjectId` where an `EditionId` was expected is a
   compile error, not an empty page.
 * **Untyped input is trusted in one place, named so it can be grepped.**
-  `configOf` reads `platform.env`; `text(form, name)` reads a form; the
+  `configOf` reads the Worker's env (from `cloudflare:workers`, in
+  `server/worker.ts`); `text(form, name)` reads a form; the
   CLI's `parseConfig` reads `yukibana.json`. Each checks and names what is
   wrong. `any` does not appear; `unknown` at a boundary, narrowed at
   once, does.

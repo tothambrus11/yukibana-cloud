@@ -8,9 +8,9 @@
  */
 
 import { error } from '@sveltejs/kit';
-import type { EditionJson, EditionRole, MeJson, MemberJson, ProjectJson, ReleaseJson, SubmissionJson } from '$lib/api';
-import type { Claims } from '$lib/claims';
-import type { EditionId, ProjectId, UserId } from '$lib/ids';
+import type { EditionJson, EditionRole, MeJson, MemberJson, ProjectJson, ReleaseJson, SubmissionJson } from '#lib/api.ts';
+import type { Claims } from '#lib/claims.ts';
+import type { EditionId, ProjectId, UserId } from '#lib/ids.ts';
 import { asUser, type Tx } from './db';
 import type { Context } from './context';
 

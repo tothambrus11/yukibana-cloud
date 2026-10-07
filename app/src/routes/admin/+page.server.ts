@@ -1,13 +1,13 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { asUser, statusOf } from '$lib/server/db';
-import { text } from '$lib/server/form';
-import { requireClaims, withContext } from '$lib/server/context';
+import { asUser, statusOf } from '#lib/server/db.ts';
+import { text } from '#lib/server/form.ts';
+import { requireClaims, withContext } from '#lib/server/context.ts';
 
 /** Platform roles. The one thing an admin does here is make teachers. */
 export const load: PageServerLoad = async (event) => {
   const claims = requireClaims(event);
-  return withContext(event, (ctx) =>
+  return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [me] = await tx<{ admin: boolean }[]>`select app.is_admin() as admin`;
       if (me?.admin !== true) error(403, 'Admins only.');
@@ -28,7 +28,7 @@ export const actions: Actions = {
     const role = text(form, 'role');
     if (!['user', 'teacher', 'admin'].includes(role)) return fail(400, { error: 'Unknown role.' });
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.set_platform_role_by_email(${email}, ${role}::app.platform_role)`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.set_platform_role_by_email(${email}, ${role}::app.platform_role)`));
     } catch (e) {
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }

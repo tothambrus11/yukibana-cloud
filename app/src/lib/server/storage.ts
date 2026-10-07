@@ -8,7 +8,7 @@
  */
 
 import { AwsClient } from 'aws4fetch';
-import type { ObjectKey } from '$lib/ids';
+import type { ObjectKey } from '#lib/ids.ts';
 import type { S3Config } from './env';
 
 export interface Bucket {

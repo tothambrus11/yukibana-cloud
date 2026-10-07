@@ -1,6 +1,6 @@
 /** The Worker's configuration, read once per request and checked.
  *
- *  `platform.env` is whatever wrangler.jsonc, `wrangler secret` and .dev.vars
+ *  The Worker's env is whatever wrangler.jsonc, `wrangler secret` and .dev.vars
  *  put there, untyped. This is the one place that looks at it. A value that
  *  is missing fails here with its name, so "GITHUB_WEBHOOK_SECRET is not set"
  *  is the error, not a signature that never verifies.
@@ -37,7 +37,7 @@ function text(env: Record<string, unknown>, name: string): string {
 }
 
 /** The configuration in `env`, or an error naming the first missing value. */
-export function configOf(env: Env): Config {
+export function configOf(env: Cloudflare.Env): Config {
   const databaseUrl = env.HYPERDRIVE?.connectionString ?? text(env, 'DATABASE_URL');
   return {
     databaseUrl,

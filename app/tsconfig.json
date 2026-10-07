@@ -1,8 +1,8 @@
 {
-  /* SvelteKit writes the half that knows where things are; this is the half
-     we choose: how strict, and what the compiler may assume. Same settings as
-     learness, for the same reasons. */
-  "extends": "./.svelte-kit/tsconfig.json",
+  /* SvelteKit provides the half that knows where things are ($app/tsconfig,
+     since SvelteKit 3); this is the half we choose: how strict, and what the
+     compiler may assume. Same settings as learness, for the same reasons. */
+  "extends": "$app/tsconfig",
   "compilerOptions": {
     "strict": true,
     "noUncheckedIndexedAccess": true,
@@ -18,12 +18,9 @@
     "allowJs": false,
     "checkJs": false,
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "types": ["$app/types", "vite/client"]
   },
   "include": [
-    ".svelte-kit/ambient.d.ts",
-    ".svelte-kit/non-ambient.d.ts",
-    ".svelte-kit/types/**/$types.d.ts",
     "src/**/*.ts",
     "src/**/*.svelte",
     "tests/**/*.ts",

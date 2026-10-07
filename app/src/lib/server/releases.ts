@@ -6,10 +6,10 @@
  */
 
 import { error, isHttpError } from '@sveltejs/kit';
-import type { Claims } from '$lib/claims';
-import { isGzip, sha256 } from '$lib/bytes';
-import { starterKey, teacherKey, trustId, trustKey, type ProjectId, type ReleaseId } from '$lib/ids';
-import { report } from '$lib/report';
+import type { Claims } from '#lib/claims.ts';
+import { isGzip, sha256 } from '#lib/bytes.ts';
+import { starterKey, teacherKey, trustId, trustKey, type ProjectId, type ReleaseId } from '#lib/ids.ts';
+import { report } from '#lib/report.ts';
 import { asPublisher, asUser, Misconfigured, statusOf } from './db';
 import type { Context } from './context';
 

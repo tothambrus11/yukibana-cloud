@@ -11,7 +11,7 @@
 import { createServerClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
-import { claimsOf, type Claims } from '$lib/claims';
+import { claimsOf, type Claims } from '#lib/claims.ts';
 
 /** The client's data API is never used (queries go through db.ts), so its
  *  schema is empty. Saying so keeps the type honest: an `any` schema would

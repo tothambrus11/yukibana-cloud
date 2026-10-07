@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { report } from '$lib/report';
+import { report } from '#lib/report.ts';
 
 export const GET: RequestHandler = async ({ url, locals }) => {
   const code = url.searchParams.get('code');
