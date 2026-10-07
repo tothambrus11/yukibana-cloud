@@ -89,3 +89,32 @@ test('staff see the whole roster with names, linked or not', async () => {
   expect(roster.map((m) => m.email)).toEqual(expect.arrayContaining([TEACHER, ALICE, BOB]));
   expect(roster.find((m) => m.email === ALICE)).toMatchObject({ role: 'student', githubLogin: 'alice' });
 });
+
+test('after the deadline a student still submits, and it reads as late; once the window closes the project is gone but their work is not', async () => {
+  const slug = `late-${Date.now()}`;
+  const [e] = await editions(ctx, claimsOf(TEACHER));
+  const edition = e?.editionId ?? '';
+  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+    insert into project (edition_id, slug, title, kind, available_after, deadline, closes_at)
+    values (${edition}, ${slug}, 'Late work', 'rust-cargo', now() - interval '3 hours', now() - interval '2 hours', now() + interval '1 day')
+    returning project_id`);
+  const id = trustId<ProjectId>(made?.project_id ?? '');
+
+  const open = await project(ctx, claimsOf(ALICE), id);
+  expect(open).toMatchObject({ canSubmit: true, late: true });
+  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(9));
+  const [mine] = await submissions(ctx, claimsOf(ALICE), id, { latest: true, author: null });
+  expect(mine).toMatchObject({ submissionId: sent.submissionId, late: true });
+
+  await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() + interval '1 hour' where project_id = ${id}`);
+  const [extended] = await submissions(ctx, claimsOf(TEACHER), id, { latest: true, author: uid(ALICE) });
+  expect(extended?.late).toBe(false);
+
+  await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
+  expect((await projects(ctx, claimsOf(ALICE), null)).some((p) => p.projectId === id)).toBe(false);
+  expect(await status(project(ctx, claimsOf(ALICE), id))).toBe(404);
+  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10)))).toBe(403);
+  const [still] = await submissions(ctx, claimsOf(ALICE), id, { latest: false, author: null });
+  expect(still).toMatchObject({ submissionId: sent.submissionId, late: true });
+  expect(await status(submissions(ctx, claimsOf(BOB), id, { latest: false, author: null }))).toBe(404);
+});

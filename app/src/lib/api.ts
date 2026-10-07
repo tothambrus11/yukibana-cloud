@@ -37,13 +37,19 @@ export interface ProjectJson {
   readonly kind: string;
   /** Null: a draft, which only staff see. */
   readonly availableAfter: string | null;
-  /** Null: no deadline. */
+  /** When work is due. Null: no deadline. Submissions after it are still
+   *  accepted until `closesAt`, and read as late. */
   readonly deadline: string | null;
+  /** When the window closes: after it a student no longer sees the project
+   *  and cannot submit. Null: it never closes. */
+  readonly closesAt: string | null;
+  /** Whether the deadline has passed: a submission now would be late. */
+  readonly late: boolean;
   readonly role: EditionRole;
   /** Whether a starter has been released and the caller may download it. */
   readonly starterReady: boolean;
-  /** Whether the caller may submit right now: only ever true for a student
-   *  of a published project before its deadline. */
+  /** Whether the caller may submit right now: only ever true for a student,
+   *  between `availableAfter` and `closesAt`, before the deadline or after. */
   readonly canSubmit: boolean;
   /** How many submissions the caller has made to it, and the newest's time. */
   readonly mySubmissions: number;
@@ -68,6 +74,9 @@ export interface SubmissionJson {
   };
   /** Whether this is the author's newest submission to the project. */
   readonly latest: boolean;
+  /** Whether it arrived after the project's deadline, as the deadline is
+   *  now: an extension granted later makes it on time again. */
+  readonly late: boolean;
 }
 
 export interface ReleaseJson {

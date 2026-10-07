@@ -59,7 +59,8 @@ export async function submit(inv: Invocation): Promise<void> {
   const p = await client.project(id);
   preview(bundle);
   if (bundle.problems.length > 0) fail('not submitted: fix the problems above');
-  if (!p.canSubmit) fail(`not submitted: ${p.title} is not accepting submissions from you now${p.deadline === null ? '' : ` (deadline ${new Date(p.deadline).toLocaleString()})`}`);
+  if (!p.canSubmit) fail(`not submitted: ${p.title} is not accepting submissions from you now`);
+  if (p.late) console.log(`note: the deadline was ${new Date(p.deadline ?? '').toLocaleString()}; a submission now is recorded as late.`);
   if (inv.options.yes !== true) {
     if (!process.stdin.isTTY) fail('not submitted: pass --yes to submit without being asked');
     const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -68,7 +69,8 @@ export async function submit(inv: Invocation): Promise<void> {
     if (!/^y(es)?$/i.test(answer.trim())) fail('not submitted');
   }
   const accepted = await client.submit(bundle, id);
-  console.log(`submitted ${accepted.submissionId}: ${bytes(accepted.byteSize)}, sha256 ${accepted.sha256.slice(0, 12)}. Your newest submission before the deadline is the one that counts.`);
+  console.log(`submitted ${accepted.submissionId}: ${bytes(accepted.byteSize)}, sha256 ${accepted.sha256.slice(0, 12)}. Your newest submission is the one that counts.`);
+  if (p.late) console.log('The deadline had passed, so this submission is recorded as late.');
 }
 
 /** Writes bytes, making the folder. */

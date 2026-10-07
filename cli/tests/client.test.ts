@@ -17,7 +17,7 @@ function recording(answer: (req: Request) => Response | Promise<Response>) {
 }
 
 const submission = {
-  submissionId: 's-1', projectId: 'p-1', submittedAt: '2026-10-07T10:00:00.000Z', byteSize: 10, sha256: 'ab', latest: true,
+  submissionId: 's-1', projectId: 'p-1', submittedAt: '2026-10-07T10:00:00.000Z', byteSize: 10, sha256: 'ab', latest: true, late: false,
   author: { userId: 'u-1', fullName: 'Ada', githubLogin: 'ada', email: 'ada@uni.example' },
 };
 

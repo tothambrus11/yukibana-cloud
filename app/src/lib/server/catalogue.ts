@@ -57,6 +57,8 @@ interface ProjectRow {
   kind: string;
   available_after: Date | null;
   deadline: Date | null;
+  closes_at: Date | null;
+  late: boolean;
   role: EditionRole;
   starter_ready: boolean;
   can_submit: boolean;
@@ -67,7 +69,8 @@ interface ProjectRow {
 async function projectRows(tx: Tx, claims: Claims, edition: EditionId | null, only: ProjectId | null): Promise<ProjectJson[]> {
   const rows = await tx<ProjectRow[]>`
     select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind,
-           p.available_after, p.deadline, app.role_in(p.edition_id)::text as role,
+           p.available_after, p.deadline, p.closes_at, coalesce(now() > p.deadline, false) as late,
+           app.role_in(p.edition_id)::text as role,
            app.current_starter(p.project_id) is not null as starter_ready,
            app.can_submit(p.project_id) as can_submit,
            (select count(*)::int from submission s where s.project_id = p.project_id and s.author_id = ${claims.sub}) as my_submissions,
@@ -80,7 +83,7 @@ async function projectRows(tx: Tx, claims: Claims, edition: EditionId | null, on
     order by e.archived_at nulls first, p.deadline nulls last, c.code, p.title`;
   return rows.map((r) => ({
     projectId: r.project_id, editionId: r.edition_id, courseCode: r.course_code, editionLabel: r.edition_label,
-    slug: r.slug, title: r.title, kind: r.kind, availableAfter: iso(r.available_after), deadline: iso(r.deadline), role: r.role,
+    slug: r.slug, title: r.title, kind: r.kind, availableAfter: iso(r.available_after), deadline: iso(r.deadline), closesAt: iso(r.closes_at), late: r.late, role: r.role,
     starterReady: r.starter_ready, canSubmit: r.can_submit, mySubmissions: r.my_submissions, myLastSubmittedAt: iso(r.my_last),
   }));
 }
@@ -103,18 +106,24 @@ export interface SubmissionFilter {
 }
 
 /** Submissions to `id`, newest first. "Newest" is `submitted_at`, which the
- *  database stamps; the id breaks a tie only so the answer is stable. */
+ *  database stamps; the id breaks a tie only so the answer is stable. "Late"
+ *  is that time against the project's deadline as it is now. The project
+ *  comes from `app.deadline_of`, because a student whose window has closed
+ *  no longer sees the project but still reads their own submissions to it. */
 export async function submissions(ctx: Context, claims: Claims, id: ProjectId, filter: SubmissionFilter): Promise<SubmissionJson[]> {
   return asUser(ctx.sql, claims, async (tx) => {
-    const seen = await tx`select 1 from project where project_id = ${id}`;
+    const seen = await tx`
+      select 1 where exists (select 1 from project where project_id = ${id})
+                  or exists (select 1 from submission where project_id = ${id})`;
     if (seen.length === 0) error(404, 'No such project.');
     const rows = await tx<{
       submission_id: string; project_id: string; submitted_at: Date; byte_size: string; sha256: string;
-      author_id: string; full_name: string | null; github_login: string | null; email: string | null; latest: boolean;
+      author_id: string; full_name: string | null; github_login: string | null; email: string | null; latest: boolean; late: boolean;
     }[]>`
       select * from (
         select s.submission_id, s.project_id, s.submitted_at, s.byte_size::text as byte_size, encode(s.sha256, 'hex') as sha256,
                s.author_id, u.full_name, u.github_login, en.email,
+               coalesce(s.submitted_at > app.deadline_of(s.project_id), false) as late,
                row_number() over (partition by s.author_id order by s.submitted_at desc, s.submission_id desc) = 1 as latest
         from submission s
         left join app_user u on u.user_id = s.author_id
@@ -126,7 +135,7 @@ export async function submissions(ctx: Context, claims: Claims, id: ProjectId, f
       order by x.submitted_at desc, x.submission_id desc`;
     return rows.map((r) => ({
       submissionId: r.submission_id, projectId: r.project_id, submittedAt: r.submitted_at.toISOString(),
-      byteSize: Number(r.byte_size), sha256: r.sha256, latest: r.latest,
+      byteSize: Number(r.byte_size), sha256: r.sha256, latest: r.latest, late: r.late,
       author: { userId: r.author_id, fullName: r.full_name, githubLogin: r.github_login, email: r.email },
     }));
   });

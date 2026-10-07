@@ -1,6 +1,6 @@
 -- What a student can see of a project, and when; releases and tokens.
 begin;
-select plan(18);
+select plan(21);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -38,14 +38,25 @@ select throws_ok(
   $$ update public.project set edition_id = tests.edition('T-PROJ', '2026') where slug = 'proj-open' $$,
   '42501', null, 'an owner cannot move a project to another edition');
 
--- Students see published projects whose date has passed, and nothing else.
+insert into public.project (edition_id, slug, title, kind, available_after, deadline, closes_at)
+values (tests.edition('T-PROJ', '2026'), 'proj-ended', 'Ended', 'rust-cargo', now() - interval '3 days', now() - interval '2 days', now() - interval '1 day');
+select throws_ok(
+  $$ insert into public.project (edition_id, slug, title, kind, available_after, deadline, closes_at)
+     values (tests.edition('T-PROJ', '2026'), 'proj-bad2', 'Bad', 'rust-cargo', now(), now() + interval '2 days', now() + interval '1 day') $$,
+  '23514', null, 'a window that closes before the deadline is refused');
+select throws_ok(
+  $$ insert into public.project (edition_id, slug, title, kind, available_after, closes_at)
+     values (tests.edition('T-PROJ', '2026'), 'proj-bad3', 'Bad', 'rust-cargo', now(), now() - interval '1 day') $$,
+  '23514', null, 'a window that closes before it opens is refused');
+
+-- Students see the projects whose window is open now, and nothing else.
 select tests.authenticate(tests.uid('student@example.com'));
 select results_eq(
   $$ select slug from public.project order by 1 $$,
   $$ values ('proj-open') $$,
-  'a student sees the open project, not the draft, not next week''s');
+  'a student sees the open project, not the draft, not next week''s, not the one that has closed');
 select tests.authenticate(tests.uid('ta@example.com'));
-select is((select count(*) from public.project), 3::bigint, 'staff see all three');
+select is((select count(*) from public.project), 4::bigint, 'staff see all four, closed or not');
 
 -- Releases: an owner publishes manually; staff read them; students only get
 -- the newest starter key, and only of a project they may see.
@@ -58,13 +69,15 @@ select lives_ok(
   'an owner publishes');
 select app.publish_release(tests.project('proj-open'), 'v2', 'abc', 'starters/open-2', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-2', 1, decode(repeat('bb', 32), 'hex'));
 select app.publish_release(tests.project('proj-draft'), 'v1', null, 'starters/draft-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/draft-1', 1, decode(repeat('bb', 32), 'hex'));
+select app.publish_release(tests.project('proj-ended'), 'v1', null, 'starters/ended-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/ended-1', 1, decode(repeat('bb', 32), 'hex'));
 
 select tests.authenticate(tests.uid('student@example.com'));
 select is_empty($$ select 1 from public.project_release $$, 'a student reads no release rows, and so no teacher archive keys');
 select is(app.current_starter(tests.project('proj-open')), 'starters/open-2', 'a student gets the newest starter');
 select is(app.current_starter(tests.project('proj-draft')), null, 'and nothing for a draft, even though a release exists');
+select is(app.current_starter(tests.project('proj-ended')), null, 'nor for a project whose window has closed');
 select tests.authenticate(tests.uid('ta@example.com'));
-select is((select count(*) from public.project_release), 3::bigint, 'staff read every release');
+select is((select count(*) from public.project_release), 4::bigint, 'staff read every release');
 select is(app.current_starter(tests.project('proj-draft')), 'starters/draft-1', 'staff can fetch a draft''s starter to check it');
 
 -- Tokens: made by an owner, usable by the publisher role until revoked.

@@ -15,6 +15,7 @@ interface ProjectRow {
   kind: string;
   available_after: Date | null;
   deadline: Date | null;
+  closes_at: Date | null;
   role: string | null;
   ready: boolean;
   can_submit: boolean;
@@ -28,6 +29,7 @@ interface SubmissionRow {
   author_id: string;
   full_name: string | null;
   github_login: string | null;
+  late: boolean;
 }
 
 interface ReleaseRow {
@@ -62,7 +64,7 @@ export const load: PageServerLoad = async (event) => {
   return withContext(event, (ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [p] = await tx<ProjectRow[]>`
-        select p.project_id, p.edition_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline,
+        select p.project_id, p.edition_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                app.role_in(p.edition_id)::text as role,
                app.current_starter(p.project_id) is not null as ready,
                app.can_submit(p.project_id) as can_submit
@@ -72,7 +74,8 @@ export const load: PageServerLoad = async (event) => {
       const staff = p.role === 'owner' || p.role === 'assistant';
       const owner = p.role === 'owner';
       const submissions = await tx<SubmissionRow[]>`
-        select s.submission_id, s.submitted_at, s.byte_size, encode(s.sha256, 'hex') as sha256, s.author_id, u.full_name, u.github_login
+        select s.submission_id, s.submitted_at, s.byte_size, encode(s.sha256, 'hex') as sha256, s.author_id, u.full_name, u.github_login,
+               coalesce(s.submitted_at > ${p.deadline}::timestamptz, false) as late
         from submission s left join app_user u on u.user_id = s.author_id
         where s.project_id = ${project}
         order by s.submitted_at desc`;
@@ -151,10 +154,11 @@ export const actions: Actions = {
     if (title === '') return fail(400, { error: 'A project needs a title.' });
     const availableAfter = dateOf(text(form, 'available_after'));
     const deadline = dateOf(text(form, 'deadline'));
+    const closesAt = dateOf(text(form, 'closes_at'));
     try {
       await withContext(event, (ctx) =>
         asUser(ctx.sql, claims, (tx) => tx`
-          update project set title = ${title}, available_after = ${availableAfter}, deadline = ${deadline}
+          update project set title = ${title}, available_after = ${availableAfter}, deadline = ${deadline}, closes_at = ${closesAt}
           where project_id = ${project}`),
       );
     } catch (e) {
