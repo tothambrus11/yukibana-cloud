@@ -81,7 +81,10 @@ so both send the same files. It is sent as the body of
 application/zstd` and a `Content-Length`, authenticated by an
 `Authorization: Bearer <access token>` header (or the session cookie). The
 response is `201` with the submission id, size and SHA-256. Every submission
-before the deadline is kept; the newest is the one that counts.
+is kept and the newest is the one that counts. Submissions are accepted
+while the project's window is open (from `available_after` until
+`closes_at`, both set on the project page); one that arrives after the
+deadline is accepted and listed as late.
 
 ## What an assembly is
 

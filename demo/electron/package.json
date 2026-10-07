@@ -1,0 +1,29 @@
+{
+  "name": "yukibana-demo-electron",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A student's desktop client for Yukibana Cloud: log in, see open exercises, preview and send a submission. A worked example of embedding @yukibana/cli.",
+  "type": "module",
+  "main": "dist/main.js",
+  "engines": {
+    "node": ">=22.15"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "npm run build && electron .",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware --deny-warnings"
+  },
+  "dependencies": {
+    "@yukibana/cli": "file:../../cli"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "electron": "^44.6.0",
+    "oxlint": "^1.85.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

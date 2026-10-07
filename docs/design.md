@@ -18,7 +18,8 @@ grading integrations would later have to fight:
 * invitation emails, tokens, accept/decline: enrolment is silent, the
   edition is simply there at first login;
 * self-service joining;
-* grading, feedback, plagiarism checks, team submissions, a late window;
+* grading, feedback, plagiarism checks, team submissions, per-student
+  extensions;
 * running anything a student submitted;
 * reading repositories. An earlier draft had a GitHub App and built starters
   in the Worker on every push. It cost a paid Cloudflare plan for the CPU
@@ -79,10 +80,18 @@ profile to keep bulk reads from harvesting them. Supabase already holds the
 verified address in `auth.users`, which no API role can read, and staff see
 the addresses they enrolled in `enrollment`. The split protected nothing.
 
-**Draft until dated.** `project.available_after` null means students cannot
-see the project. Only a set date publishes it. `deadline` null means none;
-past it, submissions are refused. A late window is a future column, not a
-reinterpretation.
+**Draft until dated, gone when closed.** A project has a window:
+`available_after` opens it (null: a draft nobody but staff sees),
+`closes_at` ends it (null: never), and a student sees the project, its
+starter and its submit button only inside it. `deadline` is the due date
+within the window, not a wall: work after it is accepted and is late
+(2026-10; until then the deadline refused it, and a minute-late student had
+nowhere to put their work). Lateness is not stored. `submitted_at` is
+stamped by the server, and late is `submitted_at > deadline`, asked when it
+is read, so an extension applies to work already handed in, and a
+submission row is still never rewritten. A student keeps reading their own
+submissions after the window closes; `app.deadline_of` tells them the
+deadline of a project they submitted to and no longer see.
 
 **Submissions.** The body goes through the Worker as one request, not a
 presigned upload: the server computes the size and SHA-256 itself, stores
@@ -183,8 +192,9 @@ integration suite, squawk over migrations, the deploy and drift workflows.
   deletes from `auth.users` would erase graded work; the schema restricts
   instead, and bucket lifecycle rules must agree with whatever the database
   does. Decide with the institution.
-* **Late submissions.** Refused today. A `late_until` column and a flag on
-  the row is the likely shape.
+* **Per-student extensions.** A deadline is per project. An extension for
+  one student is likely a row (project, student, deadline) that
+  `app.deadline_of` and the lateness query consult first.
 * **Validating starters.** The obvious next check is that a starter builds:
   `cargo check` after the hidden tests are gone. Now that the build happens
   in the course repository's own CI, that is a step in the same job, with

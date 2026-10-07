@@ -36,7 +36,7 @@ request as you, and the database's policies decide.
 | `starter <id> [--out dir]` | download and unpack the starter |
 | `pack [dir]` | list what `submit` would send, and write the archive |
 | `submit [dir] [--yes]` | list what would be sent, ask, send. The project is the one in `./yukibana.json` |
-| `submissions [<id>] [--latest] [--student who]` | newest first; staff see everyone's |
+| `submissions [<id>] [--latest] [--student who]` | newest first; staff see everyone's; late ones marked |
 | `download [<id>] [--out dir]` | each student's newest submission, unpacked into `dir/<student name>/` |
 | `  --all-versions`, `--submission id` | every version (or the named ones) into `dir/<student name>/<time>/` |
 | `  --student who` | some students: a name, GitHub login, address or user id |
@@ -55,6 +55,9 @@ login added. Every download is checked against the SHA-256 the registry
 recorded on arrival.
 
 ## The library, for the IDE extension
+
+`docs/theia.md` is the full guide to embedding it, and `demo/electron` a
+working desktop client built on it.
 
 ```ts
 import {
@@ -93,6 +96,16 @@ API: `me`, `editions`, `members`, `enrol`, `unenrol`, `projects`, `project`,
 `downloadSubmission`, `downloadStarter`, `downloadRelease`. A refusal is a
 `RegistryError` with the HTTP status and the registry's sentence;
 `NotLoggedIn` means log in again.
+
+## Windows and late work
+
+A student sees an exercise while its window is open: from its "available
+after" date until its "closes" date (none: never), set on the project page.
+The deadline sits inside the window and is not a wall: `projects` shows
+`late` past it, `submit` still sends and says the submission is recorded as
+late, and `submissions` and `download` mark late work (`yukibana-download.json`
+has a `late` field per submission). Late means submitted after the deadline
+as it is now, so extending a deadline makes earlier late work on time.
 
 ## The HTTP API
 

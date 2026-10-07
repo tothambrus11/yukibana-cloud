@@ -22,13 +22,14 @@ updates:
     commit-message:
       prefix: "ci"
 
-  # One entry, three manifests: the root (the stack's own tooling), the app
-  # and the CLI.
+  # One entry, four manifests: the root (the stack's own tooling), the app,
+  # the CLI and the desktop demo.
   - package-ecosystem: npm
     directories:
       - /
       - /app
       - /cli
+      - /demo/electron
     schedule:
       interval: weekly
     cooldown:
