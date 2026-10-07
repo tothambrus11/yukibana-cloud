@@ -10,8 +10,8 @@
  */
 
 import postgres, { type Sql, type TransactionSql } from 'postgres';
-import { claimsJson, type Claims } from '$lib/claims';
-import { report } from '$lib/report';
+import { claimsJson, type Claims } from '#lib/claims.ts';
+import { report } from '#lib/report.ts';
 
 export type { Sql };
 export type Tx = TransactionSql;

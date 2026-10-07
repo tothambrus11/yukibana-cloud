@@ -173,7 +173,7 @@
   nav.crumbs a:hover { color: var(--accent); }
 
   /* A page's sections. Links, not buttons: each tab is an address (see
-   * $lib/tabs.ts), so it opens in a new tab, survives a reload and needs no
+   * #lib/tabs.ts), so it opens in a new tab, survives a reload and needs no
    * script. On a phone the row scrolls rather than wrapping into a pile. */
   nav.tabs {
     display: flex;

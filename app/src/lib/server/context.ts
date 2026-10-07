@@ -8,10 +8,11 @@
  */
 
 import { error, isHttpError, redirect, type RequestEvent } from '@sveltejs/kit';
-import type { Claims } from '$lib/claims';
-import { configOf, type Config } from './env';
+import type { Claims } from '#lib/claims.ts';
+import type { Config } from './env';
+import { afterResponse, workerConfig } from './worker.ts';
 import { connect, Misconfigured, statusOf, type Sql } from './db';
-import { report } from '$lib/report';
+import { report } from '#lib/report.ts';
 import { s3Bucket, type Bucket } from './storage';
 
 export interface Context {
@@ -20,18 +21,14 @@ export interface Context {
   readonly bucket: Bucket;
 }
 
-export async function withContext<T>(event: RequestEvent, run: (ctx: Context) => Promise<T>): Promise<T> {
-  const env = event.platform?.env;
-  if (env === undefined) error(500, 'The server is not configured.');
-  const config = configOf(env);
+export async function withContext<T>(run: (ctx: Context) => Promise<T>): Promise<T> {
+  const config = workerConfig();
   const sql = connect(config.databaseUrl);
   const bucket = s3Bucket(config.s3);
   try {
     return await run({ config, sql, bucket });
   } finally {
-    const closing = sql.end({ timeout: 5 });
-    if (event.platform?.ctx !== undefined) event.platform.ctx.waitUntil(closing);
-    else await closing;
+    afterResponse(sql.end({ timeout: 5 }));
   }
 }
 
@@ -75,4 +72,13 @@ export async function answering<T>(where: string, run: () => Promise<T>): Promis
     report(where, message);
     error(500, `The request failed on the server${code === '' ? '' : ` (SQLSTATE ${code})`}; the Worker log says why.`);
   }
+}
+
+/** Sends the caller to `url`, a presigned URL on the bucket, and nowhere
+ *  else. SvelteKit 3 refuses a redirect to another origin unless it is
+ *  named; naming the bucket's public origin, not allowing every external
+ *  URL, means a bug that built the wrong URL is a 500, not an open
+ *  redirect. */
+export function toBucket(ctx: Context, url: URL): never {
+  redirect(302, url.toString(), { external: [new URL(ctx.config.s3.publicEndpoint).origin] });
 }

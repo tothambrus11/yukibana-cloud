@@ -1,11 +1,11 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { uuidOf, type EditionId, type ProjectId, type TokenId } from '$lib/ids';
-import { asUser, statusOf } from '$lib/server/db';
-import { text } from '$lib/server/form';
-import { requireClaims, withContext } from '$lib/server/context';
-import { acceptSubmission } from '$lib/server/submissions';
-import { publishRelease } from '$lib/server/releases';
+import { uuidOf, type EditionId, type ProjectId, type TokenId } from '#lib/ids.ts';
+import { asUser, statusOf } from '#lib/server/db.ts';
+import { text } from '#lib/server/form.ts';
+import { requireClaims, withContext } from '#lib/server/context.ts';
+import { acceptSubmission } from '#lib/server/submissions.ts';
+import { publishRelease } from '#lib/server/releases.ts';
 
 interface ProjectRow {
   project_id: string;
@@ -63,7 +63,7 @@ function ids(params: { edition: string; project: string }): { edition: EditionId
 export const load: PageServerLoad = async (event) => {
   const claims = requireClaims(event);
   const { edition, project } = ids(event.params);
-  return withContext(event, (ctx) =>
+  return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [p] = await tx<ProjectRow[]>`
         select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
@@ -125,7 +125,7 @@ export const actions: Actions = {
     if (!(file instanceof File)) return fail(400, { error: 'Choose a .tar.zst file.' });
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
-      const accepted = await withContext(event, (ctx) => acceptSubmission(ctx, claims, project, bytes));
+      const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes));
       return { submitted: accepted };
     } catch (e) {
       return httpFailing(e);
@@ -143,7 +143,7 @@ export const actions: Actions = {
     const starterBytes = new Uint8Array(await starter.arrayBuffer());
     const teacherBytes = new Uint8Array(await teacher.arrayBuffer());
     try {
-      const published = await withContext(event, (ctx) =>
+      const published = await withContext((ctx) =>
         publishRelease(ctx, { kind: 'user', claims }, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null));
       return { published };
     } catch (e) {
@@ -160,7 +160,7 @@ export const actions: Actions = {
     const deadline = dateOf(text(form, 'deadline'));
     const closesAt = dateOf(text(form, 'closes_at'));
     try {
-      await withContext(event, (ctx) =>
+      await withContext((ctx) =>
         asUser(ctx.sql, claims, (tx) => tx`
           update project set title = ${title}, available_after = ${availableAfter}, deadline = ${deadline}, closes_at = ${closesAt}
           where project_id = ${project}`),
@@ -176,7 +176,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const label = text(form, 'label') || 'ci';
     try {
-      const secret = await withContext(event, (ctx) =>
+      const secret = await withContext((ctx) =>
         asUser(ctx.sql, claims, async (tx) => {
           const [row] = await tx<{ secret: string }[]>`select app.create_project_token(${project}, ${label}) as secret`;
           if (row === undefined) throw new Error('no token returned');
@@ -195,7 +195,7 @@ export const actions: Actions = {
     const token = uuidOf<TokenId>(text(form, 'token_id'));
     if (token === null) return fail(400, { error: 'No such token.' });
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.revoke_project_token(${token})`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.revoke_project_token(${token})`));
     } catch (e) {
       return failing(e);
     }

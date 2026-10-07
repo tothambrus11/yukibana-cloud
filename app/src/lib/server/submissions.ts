@@ -4,10 +4,10 @@
  */
 
 import { error } from '@sveltejs/kit';
-import type { Claims } from '$lib/claims';
-import { isZstd, sha256 } from '$lib/bytes';
-import { submissionKey, trustId, trustKey, type ProjectId, type SubmissionId } from '$lib/ids';
-import { report } from '$lib/report';
+import type { Claims } from '#lib/claims.ts';
+import { isZstd, sha256 } from '#lib/bytes.ts';
+import { submissionKey, trustId, trustKey, type ProjectId, type SubmissionId } from '#lib/ids.ts';
+import { report } from '#lib/report.ts';
 import { asUser, statusOf } from './db';
 import type { Context } from './context';
 

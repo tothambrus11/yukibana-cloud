@@ -1,8 +1,8 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { asUser, statusOf } from '$lib/server/db';
-import { text } from '$lib/server/form';
-import { requireClaims, withContext } from '$lib/server/context';
+import { asUser, statusOf } from '#lib/server/db.ts';
+import { text } from '#lib/server/form.ts';
+import { requireClaims, withContext } from '#lib/server/context.ts';
 
 interface EditionRow {
   edition_id: string;
@@ -19,7 +19,7 @@ interface EditionRow {
 export const load: PageServerLoad = async (event) => {
   if (event.locals.claims === null) return { user: null, editions: [], courses: [], platformRole: null };
   const claims = event.locals.claims;
-  return withContext(event, (ctx) =>
+  return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const editions = await tx<EditionRow[]>`
         select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role
@@ -43,7 +43,7 @@ export const actions: Actions = {
     const title = text(form, 'title');
     if (code === '' || title === '') return fail(400, { error: 'A course needs a code and a title.' });
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_course(${code}, ${title})`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_course(${code}, ${title})`));
     } catch (e) {
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }
@@ -56,7 +56,7 @@ export const actions: Actions = {
     const label = text(form, 'label');
     if (label === '') return fail(400, { error: 'An edition needs a label, like "2026 autumn".' });
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_edition(${course}, ${label})`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_edition(${course}, ${label})`));
     } catch (e) {
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }

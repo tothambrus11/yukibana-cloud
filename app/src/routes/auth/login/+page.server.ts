@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import { report } from '$lib/report';
+import { report } from '#lib/report.ts';
+import { workerConfig } from '#lib/server/worker.ts';
 
 /** GitHub is the only way in. The provider redirects back to /auth/callback
  *  with a code, which becomes a session there. `next` survives the round
@@ -16,6 +17,8 @@ export const actions: Actions = {
     if (error !== null || data.url === null) {
       return fail(502, { error: report('login', error?.message ?? 'GitHub gave no URL to send you to') });
     }
-    redirect(303, data.url);
+    // To the Auth server, and only to it: SvelteKit 3 refuses a redirect
+    // to another origin unless it is named.
+    redirect(303, data.url, { external: [new URL(workerConfig().supabaseUrl).origin] });
   },
 };

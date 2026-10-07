@@ -1,10 +1,10 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { uuidOf, type EditionId } from '$lib/ids';
-import { KINDS, type Kind } from '$lib/kinds';
-import { asUser, statusOf } from '$lib/server/db';
-import { text } from '$lib/server/form';
-import { requireClaims, withContext } from '$lib/server/context';
+import { uuidOf, type EditionId } from '#lib/ids.ts';
+import { KINDS, type Kind } from '#lib/kinds.ts';
+import { asUser, statusOf } from '#lib/server/db.ts';
+import { text } from '#lib/server/form.ts';
+import { requireClaims, withContext } from '#lib/server/context.ts';
 
 interface ProjectRow {
   project_id: string;
@@ -39,7 +39,7 @@ const editionOf = (param: string): EditionId => {
 export const load: PageServerLoad = async (event) => {
   const claims = requireClaims(event);
   const edition = editionOf(event.params.edition);
-  return withContext(event, (ctx) =>
+  return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [head] = await tx<{ edition_id: string; label: string; archived_at: Date | null; code: string; title: string; role: string | null }[]>`
         select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role
@@ -78,7 +78,7 @@ export const actions: Actions = {
     if (!email.includes('@')) return fail(400, { error: 'Enrol by email address.' });
     if (!['student', 'assistant', 'owner'].includes(role)) return fail(400, { error: 'Unknown role.' });
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.enrol(${edition}, ${email}, ${role}::app.edition_role)`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.enrol(${edition}, ${email}, ${role}::app.edition_role)`));
     } catch (e) {
       return failing(e);
     }
@@ -92,7 +92,7 @@ export const actions: Actions = {
     const role = text(form, 'role');
     if (!['student', 'assistant', 'owner'].includes(role)) return fail(400, { error: 'Unknown role.' });
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.set_edition_role(${edition}, ${email}, ${role}::app.edition_role)`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.set_edition_role(${edition}, ${email}, ${role}::app.edition_role)`));
     } catch (e) {
       return failing(e);
     }
@@ -104,7 +104,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const email = text(form, 'email');
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.unenrol(${edition}, ${email})`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.unenrol(${edition}, ${email})`));
     } catch (e) {
       return failing(e);
     }
@@ -122,7 +122,7 @@ export const actions: Actions = {
     if (!(KINDS as readonly string[]).includes(kind)) return fail(400, { error: 'Unknown project kind.' });
     let id: string;
     try {
-      id = await withContext(event, (ctx) =>
+      id = await withContext((ctx) =>
         asUser(ctx.sql, claims, async (tx) => {
           const [row] = await tx<{ project_id: string }[]>`
             insert into project (edition_id, slug, title, kind) values (${edition}, ${slug}, ${title}, ${kind as Kind}::app.project_kind)
@@ -144,7 +144,7 @@ export const actions: Actions = {
     if (label === '') return fail(400, { error: 'The new edition needs a label.' });
     let id: string;
     try {
-      id = await withContext(event, (ctx) =>
+      id = await withContext((ctx) =>
         asUser(ctx.sql, claims, async (tx) => {
           const [row] = await tx<{ id: string }[]>`select app.duplicate_edition(${edition}, ${label}) as id`;
           if (row === undefined) throw new Error('duplicate returned nothing');
@@ -162,7 +162,7 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const archived = form.get('archived') === 'true';
     try {
-      await withContext(event, (ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.archive_edition(${edition}, ${archived})`));
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.archive_edition(${edition}, ${archived})`));
     } catch (e) {
       return failing(e);
     }

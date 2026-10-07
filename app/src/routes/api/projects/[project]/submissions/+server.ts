@@ -1,9 +1,9 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { uuidOf, type ProjectId, type UserId } from '$lib/ids';
-import { submissions } from '$lib/server/catalogue';
-import { answering, requireClaims, withContext } from '$lib/server/context';
-import { acceptSubmission } from '$lib/server/submissions';
+import { uuidOf, type ProjectId, type UserId } from '#lib/ids.ts';
+import { submissions } from '#lib/server/catalogue.ts';
+import { answering, requireClaims, withContext } from '#lib/server/context.ts';
+import { acceptSubmission } from '#lib/server/submissions.ts';
 
 /** Submissions to the project, newest first: everyone's for staff, the
  *  caller's own for a student. `?latest=true` keeps each author's newest,
@@ -16,7 +16,7 @@ export const GET: RequestHandler = async (event) => {
   const author = givenAuthor === null ? null : uuidOf<UserId>(givenAuthor);
   if (givenAuthor !== null && author === null) error(400, '`author` is a user id.');
   const latest = event.url.searchParams.get('latest') === 'true';
-  return json(await withContext(event, (ctx) => answering('api/submissions', () => submissions(ctx, claims, project, { latest, author }))));
+  return json(await withContext((ctx) => answering('api/submissions', () => submissions(ctx, claims, project, { latest, author }))));
 };
 
 /** A submission: the archive as the request body, `Content-Type:
@@ -29,7 +29,7 @@ export const POST: RequestHandler = async (event) => {
   if (project === null) error(404, 'No such project.');
   const declared = Number(event.request.headers.get('content-length') ?? '');
   if (!Number.isFinite(declared)) error(411, 'Send a Content-Length.');
-  const accepted = await withContext(event, async (ctx) => {
+  const accepted = await withContext(async (ctx) => {
     if (declared > ctx.config.submissionMaxBytes) error(413, `The submission is larger than ${ctx.config.submissionMaxBytes} bytes.`);
     const body = new Uint8Array(await event.request.arrayBuffer());
     return acceptSubmission(ctx, claims, project, body);
