@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cloud.yukibana.dev/schema/yukibana.cfg.json",
+  "title": "yukibana.cfg",
+  "description": "A project's configuration: what the student's IDE shows, which files the student may not change, what the student never receives, and what a submission contains. Lives at the project root. docs/yukibana-cfg.md is the prose.",
+  "default": {},
+  "type": "object",
+  "properties": {
+    "features": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "codeSuggestions": { "default": true, "type": "boolean" },
+        "squiggles": { "default": true, "type": "boolean" },
+        "ai": { "default": true, "type": "boolean" }
+      }
+    },
+    "layout": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "widgets": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "files": { "default": true, "type": "boolean" },
+            "search": { "default": true, "type": "boolean" },
+            "vcs": { "default": true, "type": "boolean" },
+            "debug": { "default": true, "type": "boolean" },
+            "testing": { "default": true, "type": "boolean" },
+            "outline": { "default": true, "type": "boolean" },
+            "aiChat": { "default": true, "type": "boolean" }
+          }
+        },
+        "containers": {
+          "default": {},
+          "type": "object",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": { "type": "boolean" }
+        },
+        "views": {
+          "default": {},
+          "type": "object",
+          "propertyNames": { "type": "string" },
+          "additionalProperties": { "type": "boolean" }
+        }
+      }
+    },
+    "openFiles": {
+      "default": [],
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "readOnly": {
+      "description": "Globs of files the student receives but may not change. When a teacher assembles a submission, whatever the student sent under these paths is replaced by the teacher's version.",
+      "default": [],
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "hidden": {
+      "description": "Globs of files the student never receives: removed from the starter, and from the starter's copy of this file. When a teacher assembles a submission they are put back from the teacher's version, like readOnly. A pattern naming a directory covers everything under it; * stays within a path segment, ** crosses segments, ? is one character.",
+      "default": [],
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "projectId": {
+      "description": "Written by `yukibana build` into the starter's copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "submission": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "include": {
+          "description": "When present, only paths matching these globs are submitted.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "exclude": {
+          "description": "Globs never submitted: build output, editor state.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "filename": {
+          "description": "What a packed submission is called on disk. The registry accepts a zstandard-compressed tar, whatever the name says.",
+          "default": "submission.tar.zst",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
