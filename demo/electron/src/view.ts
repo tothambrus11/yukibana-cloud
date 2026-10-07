@@ -87,9 +87,18 @@ export interface SubmissionRow {
   readonly submissionId: string;
   readonly when: string;
   readonly size: string;
-  /** "counts", "late", "counts · late", or "" for an older version. */
-  readonly tags: string;
+  /** "Latest version", "Submitted late", "Latest version, submitted late",
+   *  or "" for an earlier version that was on time. */
+  readonly status: string;
+  /** Whether it arrived after the deadline, for the colour. */
+  readonly late: boolean;
   readonly author: string;
+}
+
+function statusOf(latest: boolean, late: boolean): string {
+  if (latest && late) return 'Latest version, submitted late';
+  if (latest) return 'Latest version';
+  return late ? 'Submitted late' : '';
 }
 
 export function bytes(n: number): string {
@@ -98,14 +107,15 @@ export function bytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MiB`;
 }
 
-/** The submission list, newest first as the registry sends it. The newest
- *  of each author is the one that counts. */
+/** The submission list, newest first as the registry sends it. The latest
+ *  version of each author is the one that is assessed. */
 export function submissionRows(subs: readonly Submission[], locale?: string): SubmissionRow[] {
   return subs.map((s) => ({
     submissionId: s.submissionId,
     when: shortDate(s.submittedAt, locale),
     size: bytes(s.byteSize),
-    tags: [s.latest ? 'counts' : '', s.late ? 'late' : ''].filter(Boolean).join(' · '),
+    status: statusOf(s.latest, s.late),
+    late: s.late,
     author: s.author.fullName ?? s.author.githubLogin ?? s.author.email ?? s.author.userId,
   }));
 }

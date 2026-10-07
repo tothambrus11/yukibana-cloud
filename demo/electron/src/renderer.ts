@@ -164,10 +164,10 @@ async function renderDetail(into: HTMLElement): Promise<void> {
     subs.replaceChildren(rows.length === 0
       ? el('p', { class: 'muted' }, 'Nothing submitted yet.')
       : el('table', {},
-        el('thead', {}, el('tr', {}, ...(p.role === 'student' ? [] : [el('th', {}, 'Student')]), el('th', {}, 'Submitted'), el('th', {}, 'Size'), el('th', {}, ''))),
+        el('thead', {}, el('tr', {}, ...(p.role === 'student' ? [] : [el('th', {}, 'Student')]), el('th', {}, 'Submitted'), el('th', {}, 'Size'), el('th', {}, 'Status'))),
         el('tbody', {}, ...rows.map((r) => el('tr', {},
           ...(p.role === 'student' ? [] : [el('td', {}, r.author)]),
-          el('td', {}, r.when), el('td', {}, r.size), el('td', { class: r.tags.includes('late') ? 'late' : '' }, r.tags)))),
+          el('td', {}, r.when), el('td', {}, r.size), el('td', { class: r.late ? 'late' : '' }, r.status)))),
       ));
   } catch (e) {
     subs.replaceChildren(el('p', { class: 'error' }, errorText(e)));
@@ -203,7 +203,7 @@ function previewPane(b: BundlePreview, p: Project, rerender: () => void): HTMLEl
         onclick: () => void api.submit(b.bundleId, p.projectId).then(async (accepted) => {
           state.preview = null;
           state.shown = null;
-          say('ok', `Submitted (${bytes(accepted.byteSize)}). Your newest submission is the one that counts.`);
+          say('ok', `Submission received (${bytes(accepted.byteSize)}). Your latest version is the one that will be assessed.`);
           await loadExercises();
           rerender();
         }, (e: unknown) => { say('error', errorText(e)); rerender(); }),
