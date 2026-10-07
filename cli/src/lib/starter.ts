@@ -7,12 +7,12 @@
 
 import { matcher } from './glob.js';
 import type { Entry } from './tar.js';
-import { BUILD_OUTPUT, CONFIG_FILE, excludes, manifestProblems, parseConfig, starterConfig, type Config } from './yukibana.js';
+import { CONFIG_FILE, IDE_STATE, buildOutput, excludes, manifestProblems, parseConfig, starterConfig, type Config } from './yukibana.js';
 
 export interface Plan {
   /** What goes in the starter, under `folder/`, a directory entry first. */
   readonly entries: readonly Entry[];
-  /** Paths dropped because `yukibana.cfg` hid them (not the always-dropped
+  /** Paths dropped because `yukibana.json` hid them (not the always-dropped
    *  ones: those are noise in a log). For the staff log. */
   readonly hidden: readonly string[];
   /** The parsed contract, when it parsed. */
@@ -36,7 +36,7 @@ export function unwrap(entries: readonly Entry[]): Entry[] {
 
 /** The starter for a snapshot whose paths are already relative to the
  *  repository root. `folder` is the directory the archive unpacks into and
- *  `projectId` is written into the starter's copy of yukibana.cfg. */
+ *  `projectId` is written into the starter's copy of yukibana.json. */
 export function planStarter(snapshot: readonly Entry[], folder: string, projectId: string): Plan {
   const byPath = new Map(snapshot.map((e) => [e.path, e] as const));
   const configEntry = byPath.get(CONFIG_FILE);
@@ -102,12 +102,12 @@ export function escapes(path: string, target: string): boolean {
 }
 
 /** The teacher archive: the whole project as it is, hidden tests and the
- *  original `yukibana.cfg` included, minus the history and the build
- *  output. Staff download it to see exactly what a release was built from,
+ *  original `yukibana.json` included, minus the history, the IDE's state
+ *  and the build output. Staff download it to see exactly what a release was built from,
  *  and an assembly takes the read-only and hidden files from it; students
  *  never can. */
-export function planTeacher(snapshot: readonly Entry[], folder: string): Entry[] {
-  const drop = matcher(['.git', ...BUILD_OUTPUT]);
+export function planTeacher(snapshot: readonly Entry[], folder: string, config: Config): Entry[] {
+  const drop = matcher(['.git', IDE_STATE, ...buildOutput(config.kind)]);
   const mtime = Math.max(0, ...snapshot.map((e) => e.mtime));
   const entries: Entry[] = [{ path: folder, type: 'dir', mode: 0o755, mtime, data: new Uint8Array(0) }];
   for (const e of snapshot) {

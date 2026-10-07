@@ -1,87 +1,108 @@
 #!/usr/bin/env node
-/** yukibana: build a course project's release archives, and publish them.
+/** yukibana: the registry from a terminal, as whoever is logged in.
  *
- *   yukibana check   [dir]                      build in memory, report problems, write nothing
- *   yukibana build   [dir] --out <dir>          write starter.tar.gz and teacher.tar.gz
- *   yukibana publish [dir] --project <id>       build and upload as a release
- *
- * Options: --folder <name> (what the archives unpack into; default: the
- * directory's name), --label <text>, --url (or YUKIBANA_URL), --token (or
- * YUKIBANA_TOKEN), --project (or YUKIBANA_PROJECT).
+ *  Every command is a thin layer over the library (`library.ts`), which the
+ *  IDE extension uses too. `usage()` below is the list.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { build, commitOf } from './build.js';
-import { publish } from './publish.js';
-import { sha256Hex } from './lib/bytes.js';
+import { login, logoutCommand, whoami } from './commands/account.js';
+import { editions, members, project, projects, releases, roster, submissions } from './commands/browse.js';
+import { assembleCommand, download } from './commands/collect.js';
+import { Failure, defaultStore, type Invocation } from './commands/common.js';
+import { release } from './commands/release.js';
+import { pack, starter, submit } from './commands/work.js';
 
-const { values, positionals } = parseArgs({
-  allowPositionals: true,
-  options: {
-    out: { type: 'string' },
-    folder: { type: 'string' },
-    label: { type: 'string', default: '' },
-    url: { type: 'string' },
-    token: { type: 'string' },
-    project: { type: 'string' },
-    help: { type: 'boolean', short: 'h', default: false },
-  },
-});
+const USAGE = `usage: yukibana <command> [arguments] [options]
 
-const command = positionals[0];
-const dir = resolve(positionals[1] ?? '.');
-const folder = values.folder ?? basename(dir);
+  account
+    login [--url <registry>]           log in through the browser
+    logout
+    whoami
 
-function usage(code: number): never {
-  console.error(`usage: yukibana check|build|publish [dir] [--folder name] [--label text]
-       build   --out <dir>
-       publish --project <id> --url <registry> --token <token>   (or YUKIBANA_PROJECT, YUKIBANA_URL, YUKIBANA_TOKEN)`);
-  process.exit(code);
-}
+  reading (what you see is what your role lets you see)
+    editions
+    members <edition>
+    projects [--edition <id>] [--open]  your projects; --open: the ones taking submissions
+    project [<project>]
+    releases [<project>]
+    submissions [<project>] [--latest] [--student <who>]...
 
-function fail(lines: readonly string[]): never {
-  for (const line of lines) console.error(`error: ${line}`);
-  process.exit(1);
-}
+  students
+    starter <project> [--out <dir>]     download and unpack the starter
+    pack [<dir>] [--out <file>]         write what submit would send, and list it
+    submit [<dir>] [--yes]              list what would be sent, ask, send
+
+  teachers
+    check [<dir>]                       build in memory and report problems
+    build [<dir>] [--out <dir>]         write starter.tar.gz and teacher.tar.gz
+    publish [<dir>] --project <id> [--token <token>] [--label <text>]
+    download [<project>] [--out <dir>] [--student <who>]... [--all-versions]
+             [--submission <id>]... [--assemble] [--archive] [--force]
+    assemble <submission> --teacher <archive|dir> --out <dir>
+    enrol <edition> <email>... [--role student|assistant|owner]
+    unenrol <edition> <email>...
+
+  options for every command: --url (or YUKIBANA_URL), --json for lists.
+  <project> defaults to --project, YUKIBANA_PROJECT, or the projectId in
+  ./yukibana.json. <who> is a name, GitHub login, address or user id.
+  YUKIBANA_ACCESS_TOKEN stands in for a login; YUKIBANA_TOKEN is a project
+  token for publish.`;
+
+const COMMANDS: Record<string, (inv: Invocation) => Promise<void>> = {
+  login, logout: logoutCommand, whoami,
+  editions, members, projects, project, releases, submissions,
+  starter, pack, submit,
+  check: (inv) => release('check', inv),
+  build: (inv) => release('build', inv),
+  publish: (inv) => release('publish', inv),
+  download, assemble: assembleCommand,
+  enrol: (inv) => roster('enrol', inv),
+  unenrol: (inv) => roster('unenrol', inv),
+};
 
 async function main(): Promise<void> {
-  if (values.help || command === undefined) usage(command === undefined ? 2 : 0);
-  if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(folder)) fail([`--folder must be lowercase letters, digits and dashes; "${folder}" is not (it names the directory students unpack)`]);
-
-  const projectId = values.project ?? process.env['YUKIBANA_PROJECT'] ?? '';
-  if (command === 'publish' && projectId === '') fail(['--project (or YUKIBANA_PROJECT) is required to publish']);
-
-  const result = await build(dir, folder, projectId);
-  if (!result.ok) fail(result.problems);
-  const { built } = result;
-  console.log(`${built.config.kind}: ${built.starterEntries} entries in the starter; ${built.hidden.length === 0 ? 'nothing hidden' : `hidden: ${built.hidden.join(', ')}`}`);
-  console.log(`starter ${built.starter.byteLength} bytes sha256 ${sha256Hex(built.starter).slice(0, 12)}; teacher ${built.teacher.byteLength} bytes`);
-
-  if (command === 'check') return;
-
-  if (command === 'build') {
-    const out = resolve(values.out ?? join(dir, '.yukibana'));
-    await mkdir(out, { recursive: true });
-    await writeFile(join(out, 'starter.tar.gz'), built.starter);
-    await writeFile(join(out, 'teacher.tar.gz'), built.teacher);
-    console.log(`wrote ${join(out, 'starter.tar.gz')} and ${join(out, 'teacher.tar.gz')}`);
+  const { values, positionals } = parseArgs({
+    allowPositionals: true,
+    options: {
+      out: { type: 'string' },
+      folder: { type: 'string' },
+      label: { type: 'string' },
+      url: { type: 'string' },
+      token: { type: 'string' },
+      project: { type: 'string' },
+      edition: { type: 'string' },
+      student: { type: 'string', multiple: true },
+      submission: { type: 'string', multiple: true },
+      release: { type: 'string' },
+      role: { type: 'string' },
+      teacher: { type: 'string' },
+      'all-versions': { type: 'boolean' },
+      latest: { type: 'boolean' },
+      assemble: { type: 'boolean' },
+      archive: { type: 'boolean' },
+      force: { type: 'boolean' },
+      json: { type: 'boolean' },
+      open: { type: 'boolean' },
+      yes: { type: 'boolean', short: 'y' },
+      help: { type: 'boolean', short: 'h' },
+    },
+  });
+  const [command, ...args] = positionals;
+  if (values.help === true) {
+    console.log(USAGE);
     return;
   }
-
-  if (command === 'publish') {
-    const url = values.url ?? process.env['YUKIBANA_URL'] ?? '';
-    const token = values.token ?? process.env['YUKIBANA_TOKEN'] ?? '';
-    if (url === '') fail(['--url (or YUKIBANA_URL) is required to publish']);
-    if (token === '') fail(['--token (or YUKIBANA_TOKEN) is required to publish']);
-    const commit = await commitOf(dir);
-    const published = await publish({ url, token, projectId, starter: built.starter, teacher: built.teacher, label: values.label ?? '', commit });
-    console.log(`published release ${published.releaseId}${commit === null ? '' : ` at ${commit.slice(0, 12)}`}`);
-    return;
+  const run = command === undefined ? undefined : COMMANDS[command];
+  if (run === undefined) {
+    console.error(command === undefined ? USAGE : `unknown command "${command}"\n\n${USAGE}`);
+    process.exit(2);
   }
-
-  usage(2);
+  await run({ options: values, args, env: process.env, store: defaultStore(process.env) });
 }
 
-main().catch((e: unknown) => fail([e instanceof Error ? e.message : String(e)]));
+main().catch((e: unknown) => {
+  const lines = e instanceof Failure ? e.lines : [e instanceof Error ? e.message : String(e)];
+  for (const line of lines) console.error(`error: ${line}`);
+  process.exit(1);
+});

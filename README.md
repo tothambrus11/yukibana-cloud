@@ -7,16 +7,17 @@ in the repository's own CI through the GitHub Action): the starter with the
 hidden tests removed, and the whole project for staff. Students download the
 starter after the project's date and submit their solution as a `.tar.zst`;
 staff read the submissions. `docs/design.md` says why it is shaped the way it is,
-`docs/yukibana-json.md` is the contract a course repository follows, and
+`docs/yukibana-json.md` is the contract a course repository follows,
+`docs/cli.md` is the CLI and the library the IDE extension uses, and
 `CLAUDE.md` is how the code is written.
 
 | | |
 | --- | --- |
 | Postgres and Auth | Supabase. The schema is `supabase/migrations/`, applied by the deploy workflow and by nothing else. |
 | The app | SvelteKit in `app/`, one Cloudflare Worker on the free plan, Postgres through Hyperdrive as a role that can bypass no policy. |
-| The CLI | `cli/`: `yukibana check`, `build`, `publish`. `action/` wraps it as a GitHub Action. |
+| The CLI | `cli/`: a teacher's `check`, `build`, `publish`, `download`, `assemble`; a student's `login`, `projects`, `starter`, `submit`. Also the library the Theia extension imports. `action/` wraps it as a GitHub Action. |
 | Files | Cloudflare R2 over S3 in production, RustFS over S3 locally. The database holds keys. |
-| Login | GitHub, through Supabase Auth. Publishing from CI uses a per-project token instead. |
+| Login | GitHub, through Supabase Auth, in the browser or from the CLI (`yukibana login`). Publishing from CI uses a per-project token instead. |
 
 ## Start
 
@@ -87,7 +88,8 @@ npm run cli -- publish . --project <id> --url <registry> --token <token>
 ```
 
 `npm run build --prefix cli` first; `npm install -g ./cli` gives you a
-`yukibana` command instead of `npm run cli --`. The project id and a
+`yukibana` command instead of `npm run cli --`. After `yukibana login`,
+`publish` works without a token for a project you own. The project id and a
 publishing token come from the project page (owners only). Or upload the two
 files from `build` on that page by hand.
 
@@ -101,6 +103,17 @@ In the repository's own CI, the Action does the same on every push:
     project: ${{ vars.YUKIBANA_PROJECT }}
     token: ${{ secrets.YUKIBANA_TOKEN }}
 ```
+
+## Collecting submissions
+
+```bash
+yukibana login --url <registry>
+yukibana submissions <project> --latest
+yukibana download <project> --out grading --assemble   # one folder per student
+```
+
+`docs/cli.md` has every command, and the library the IDE extension uses to
+let a student preview and send a submission.
 
 Login is a GitHub **OAuth App** (Settings → Developer settings → OAuth
 Apps), one per environment, with callback URL `<API URL>/auth/v1/callback`.

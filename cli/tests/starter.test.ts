@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { planStarter, unwrap } from '../src/lib/starter.js';
+import { planStarter, planTeacher, unwrap } from '../src/lib/starter.js';
 import { readTar, type Entry } from '../src/lib/tar.js';
 import { gunzip } from '../src/lib/gzip.js';
 
@@ -65,4 +65,18 @@ test('a symlink pointing out of the tree is refused; one inside is kept', () => 
   assert.equal(plan.problems.length, 2);
   assert.ok(plan.entries.some((e) => e.path === 'x/docs/readme'));
   assert.ok(!plan.entries.some((e) => e.path === 'x/escape'));
+});
+
+test('the IDE\'s own state is in neither archive: everything it needs is declared in yukibana.json', () => {
+  const tree = [
+    file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["README.md"]}'), file('build.sbt', ''),
+    dir('.theia'), file('.theia/settings.json', '{}'), dir('.metals'), file('.metals/x', ''),
+  ];
+  const plan = planStarter(tree, 'x', 'p');
+  assert.deepEqual(plan.problems, []);
+  assert.ok(!plan.entries.some((e) => e.path.includes('.theia') || e.path.includes('.metals')));
+  assert.ok(plan.config);
+  const teacher = planTeacher(tree, 'x', plan.config);
+  assert.ok(!teacher.some((e) => e.path.includes('.theia') || e.path.includes('.metals')));
+  assert.ok(teacher.some((e) => e.path === 'x/yukibana.json'));
 });

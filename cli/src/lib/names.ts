@@ -29,15 +29,20 @@ const RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
  *  device name, not empty, and at most 80 bytes of UTF-8. Letters of every
  *  script are kept: "Zoë Ångström" stays that. */
 export function safeSegment(text: string): string {
-  let s = text.normalize('NFC')
-    .replace(/[\u0000-\u001f\u007f-\u009f<>:"/\\|?*]/g, '_')
-    .replace(/\s+/g, ' ')
+  // Whitespace first, so a tab or a line break becomes a space, not a `_`.
+  let s = Array.from(text.normalize('NFC').replace(/\s+/g, ' '), (ch) => (unsafe(ch) ? '_' : ch)).join('')
     .trim()
     .replace(/^\.+/, (dots) => '_'.repeat(dots.length))
     .replace(/[. ]+$/, '');
   if (s === '') s = '_';
   if (RESERVED.test(s)) s = `_${s}`;
   return truncate(s, MAX_BYTES);
+}
+
+/** A control character, or one of the characters some filesystem refuses. */
+function unsafe(ch: string): boolean {
+  const c = ch.codePointAt(0) ?? 0;
+  return c < 0x20 || (c >= 0x7f && c <= 0x9f) || '<>:"/\\|?*'.includes(ch);
 }
 
 function truncate(s: string, maxBytes: number): string {

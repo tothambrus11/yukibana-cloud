@@ -14,7 +14,7 @@ export interface Built {
   /** gzipped tar of the whole project, unpacking into `folder/`. */
   readonly teacher: Uint8Array;
   readonly config: Config;
-  /** Paths the starter dropped because `yukibana.cfg` hid them. */
+  /** Paths the starter dropped because `yukibana.json` hid them. */
   readonly hidden: readonly string[];
   /** What the build noticed and did not fail for, in sentences. */
   readonly warnings: readonly string[];
@@ -25,14 +25,14 @@ export interface Built {
 export type BuildResult = { ok: true; built: Built } | { ok: false; problems: readonly string[] };
 
 /** Builds `dir`. `folder` is what the archives unpack into; `projectId` goes
- *  into the starter's copy of yukibana.cfg, or is left empty when the build
+ *  into the starter's copy of yukibana.json, or is left empty when the build
  *  is only a check. Problems are sentences for the terminal. */
 export async function build(dir: string, folder: string, projectId: string): Promise<BuildResult> {
   const tree = await readTree(dir);
   const plan = planStarter(tree, folder, projectId);
   if (plan.problems.length > 0 || plan.config === null) return { ok: false, problems: plan.problems };
   const starter = await gzip(writeTar(plan.entries));
-  const teacher = await gzip(writeTar(planTeacher(tree, folder)));
+  const teacher = await gzip(writeTar(planTeacher(tree, folder, plan.config)));
   return { ok: true, built: { starter, teacher, config: plan.config, hidden: plan.hidden, warnings: plan.warnings, starterEntries: plan.entries.length - 1 } };
 }
 

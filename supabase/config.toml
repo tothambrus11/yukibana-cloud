@@ -66,7 +66,11 @@ enabled = false
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:5173"
-additional_redirect_urls = ["http://127.0.0.1:5173/auth/callback", "http://localhost:5173/auth/callback"]
+# The CLI and a desktop IDE log in through the system browser and come back
+# to a listener on the loopback, on whatever port was free
+# (cli/src/loopback.ts). `*` matches the port. An IDE served from elsewhere
+# that comes back to its own address needs that address here too.
+additional_redirect_urls = ["http://127.0.0.1:5173/auth/callback", "http://localhost:5173/auth/callback", "http://127.0.0.1:*/callback"]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
@@ -173,4 +177,4 @@ project_id = "zfklzzixyseiyhszkojf"
 
 [remotes.production.auth]
 site_url = "https://cloud.yukibana.dev"
-additional_redirect_urls = ["https://cloud.yukibana.dev/auth/callback"]
+additional_redirect_urls = ["https://cloud.yukibana.dev/auth/callback", "http://127.0.0.1:*/callback"]
