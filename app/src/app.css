@@ -123,15 +123,9 @@
     align-items: center;
     gap: 0.5rem;
   }
-  .brand::before {
-    /* The mark. Yukibana is a snow flower, but petals at 1rem read as a
-     * blob, so it is a star — the same path as the favicon in app.html. */
-    content: "";
-    inline-size: 1.15rem;
-    aspect-ratio: 1;
-    background: var(--accent);
-    clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-  }
+  /* The mark: the snow flower, drawn at twice its size for sharp screens.
+   * Decorative beside the name, so its alt text is empty. */
+  .brand img { inline-size: 1.75rem; block-size: 1.75rem; }
 
   main {
     max-width: 68rem;
