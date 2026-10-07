@@ -1,102 +1,129 @@
 <script lang="ts">
+  import { page } from '$app/state';
+  import Tabs from '$lib/Tabs.svelte';
+  import { kb, local, when } from '$lib/format';
+  import { actionIn, tabOf, type Tab } from '$lib/tabs';
   import type { ActionData, PageData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
-  const when = (d: Date | null): string => (d === null ? '—' : new Date(d).toLocaleString());
-  // datetime-local wants local time without a zone; the browser's zone is the teacher's.
-  const local = (d: Date | null): string => {
-    if (d === null) return '';
-    const t = new Date(d);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}T${pad(t.getHours())}:${pad(t.getMinutes())}`;
-  };
-  const kb = (n: number): string => `${Math.max(1, Math.round(n / 1024))} KB`;
   const p = $derived(data.project);
+  const tabs = $derived<Tab[]>(data.staff
+    ? [
+        { id: 'overview', label: 'Overview' },
+        { id: 'submissions', label: 'Submissions', count: data.submissions.length },
+        { id: 'releases', label: 'Releases', count: data.releases.length },
+        ...(data.owner ? [{ id: 'tokens', label: 'Tokens' }, { id: 'settings', label: 'Settings' }] : []),
+      ]
+    : [
+        { id: 'overview', label: 'Overview' },
+        { id: 'submissions', label: 'My submissions', count: data.submissions.length },
+      ]);
+  const tab = $derived(tabOf(page.url, tabs));
+  const pastDeadline = $derived(p.deadline !== null && new Date(p.deadline).getTime() <= Date.now());
+  const students = $derived(new Set(data.submissions.map((s) => s.author_id)).size);
+  const late = $derived(data.submissions.filter((s) => s.late).length);
 </script>
 
 <div class="head">
-  <a href="/editions/{p.edition_id}" class="back">← Edition</a>
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Courses</a>
+    <a href="/editions/{p.edition_id}">{p.course_code} {p.edition_label}</a>
+    <span>{p.title}</span>
+  </nav>
   <h1>{p.title}</h1>
   <p class="row">
-    <span class="muted">{p.slug}</span>
     <span class="chip">{p.kind}</span>
-    <span>Available after {when(p.available_after)}</span>
-    <span>Deadline {when(p.deadline)}</span>
-    <span>Closes {p.closes_at === null ? 'never' : when(p.closes_at)}</span>
+    {#if data.staff && p.available_after === null}<span class="chip">draft</span>{/if}
+    {#if pastDeadline}<span class="chip late">past the deadline</span>{/if}
   </p>
 </div>
 
+<Tabs {tabs} current={tab} />
 {#if form?.error}<p class="error">{form.error}</p>{/if}
-{#if form?.submitted}
-  <p class="ok">Submitted: {form.submitted.byteSize} bytes, sha256 {form.submitted.sha256.slice(0, 16)}…</p>
-{/if}
-{#if form?.published}<p class="ok">Published release {form.published.releaseId}.</p>{/if}
 
-{#if form?.token}
-  <section>
-    <h2>Your new token</h2>
-    <p class="ok">Token "{form.token.label}" created. Copy it now; it is not shown again.</p>
-    <pre>{form.token.secret}</pre>
-  </section>
-{/if}
-
-<section>
-  <h2>Starter</h2>
-  {#if p.ready}
-    <p><a href="/api/projects/{p.project_id}/starter">Download {p.slug}.tar.gz</a></p>
-  {:else}
-    <p class="empty">No release has been published yet.</p>
+{#if tab === 'overview'}
+  {#if form?.submitted}
+    <p class="ok">Submission received: {kb(form.submitted.byteSize)}, SHA-256 {form.submitted.sha256.slice(0, 16)}…</p>
   {/if}
-</section>
-
-{#if !data.staff}
   <section>
-    <h2>Submit your solution</h2>
-    {#if p.can_submit}
-      <form method="POST" action="?/submit" enctype="multipart/form-data" class="stack">
-        <label>Your solution as .tar.zst
-          <input type="file" name="archive" accept=".zst,application/zstd" required />
-        </label>
-        <button>Submit</button>
-      </form>
-      <p class="note">
-        You can submit as many times as you like; every version is kept and the newest counts.
-        {#if p.deadline !== null && p.deadline < new Date()}The deadline has passed: a submission now is recorded as late.{/if}
-      </p>
+    <h2>Dates</h2>
+    <div class="stats">
+      <div><strong>{when(p.available_after)}</strong><span>Opens</span></div>
+      <div><strong>{when(p.deadline)}</strong><span>Deadline</span></div>
+      <div><strong>{p.closes_at === null ? 'Never' : when(p.closes_at)}</strong><span>Closes</span></div>
+    </div>
+    <p class="note">
+      Submissions after the deadline are accepted until the project closes, and are marked late.
+    </p>
+  </section>
+
+  {#if data.staff}
+    <section>
+      <h2>At a glance</h2>
+      <div class="stats">
+        <div><strong>{data.submissions.length}</strong><span>Submissions</span></div>
+        <div><strong>{students}</strong><span>Students who submitted</span></div>
+        <div><strong>{late}</strong><span>Late submissions</span></div>
+        <div><strong>{data.releases.length}</strong><span>Releases</span></div>
+      </div>
+    </section>
+  {/if}
+
+  <section>
+    <h2>Starter</h2>
+    {#if p.ready}
+      <p><a href="/api/projects/{p.project_id}/starter">Download {p.slug}.tar.gz</a></p>
     {:else}
-      <p class="empty">This project is not accepting submissions from you now.</p>
+      <p class="empty">No release has been published yet.</p>
     {/if}
   </section>
-{/if}
 
-<section>
-  <h2>{data.staff ? 'Submissions' : 'Your submissions'}</h2>
-  {#if data.submissions.length === 0}
-    <p class="empty">None yet.</p>
-  {:else}
-    <div class="scroll">
-      <table>
-        <thead>
-          <tr>{#if data.staff}<th>Student</th>{/if}<th>Submitted</th><th>Size</th><th>SHA-256</th><th></th></tr>
-        </thead>
-        <tbody>
-          {#each data.submissions as s (s.submission_id)}
-            <tr>
-              {#if data.staff}
-                <td>{s.full_name ?? ''} {#if s.github_login}<span class="muted">@{s.github_login}</span>{/if}</td>
-              {/if}
-              <td>{when(s.submitted_at)}{#if s.late} <span class="chip">late</span>{/if}</td>
-              <td>{kb(s.byte_size)}</td>
-              <td><code>{s.sha256.slice(0, 12)}</code></td>
-              <td><a href="/api/submissions/{s.submission_id}">Download</a></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+  {#if !data.staff}
+    <section>
+      <h2>Submit your solution</h2>
+      {#if p.can_submit}
+        {#if pastDeadline}<p class="error">The deadline has passed: a submission now is recorded as late.</p>{/if}
+        <form method="POST" action={actionIn('overview', 'submit')} enctype="multipart/form-data" class="stack">
+          <label>Your solution as .tar.zst
+            <input type="file" name="archive" accept=".zst,application/zstd" required />
+          </label>
+          <button>Submit</button>
+        </form>
+        <p class="note">You can submit as many times as you like. Every version is kept; the latest version is the one assessed.</p>
+      {:else}
+        <p class="empty">This project is not accepting submissions from you now.</p>
+      {/if}
+    </section>
   {/if}
-</section>
-
-{#if data.staff}
+{:else if tab === 'submissions'}
+  <section>
+    <h2>{data.staff ? 'Submissions' : 'My submissions'}</h2>
+    {#if data.submissions.length === 0}
+      <p class="empty">None yet.</p>
+    {:else}
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>{#if data.staff}<th>Student</th>{/if}<th>Submitted</th><th>Size</th><th>SHA-256</th><th></th></tr>
+          </thead>
+          <tbody>
+            {#each data.submissions as s (s.submission_id)}
+              <tr>
+                {#if data.staff}
+                  <td>{s.full_name ?? ''} {#if s.github_login}<span class="muted">@{s.github_login}</span>{/if}</td>
+                {/if}
+                <td>{when(s.submitted_at)}{#if s.late} <span class="chip late">late</span>{/if}</td>
+                <td>{kb(s.byte_size)}</td>
+                <td><code>{s.sha256.slice(0, 12)}</code></td>
+                <td><a href="/api/submissions/{s.submission_id}">Download</a></td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </section>
+{:else if tab === 'releases'}
+  {#if form?.published}<p class="ok">Published release {form.published.releaseId}.</p>{/if}
   <section>
     <h2>Releases</h2>
     {#if data.releases.length === 0}
@@ -113,10 +140,10 @@
           <tbody>
             {#each data.releases as r, i (r.release_id)}
               <tr>
-                <td>{when(r.uploaded_at)}{#if i === 0}<span class="chip live">live</span>{/if}</td>
+                <td>{when(r.uploaded_at)}{#if i === 0} <span class="chip live">live</span>{/if}</td>
                 <td>{r.label}</td>
                 <td><code>{r.commit_sha?.slice(0, 12) ?? '—'}</code></td>
-                <td>{r.uploader ?? ''}{#if r.via_token}<span class="chip">token</span>{/if}</td>
+                <td>{r.uploader ?? ''}{#if r.via_token} <span class="chip">token</span>{/if}</td>
                 <td><a href="/api/releases/{r.release_id}/starter">{kb(r.starter_size)}</a></td>
                 <td><a href="/api/releases/{r.release_id}/teacher">{kb(r.teacher_size)}</a></td>
               </tr>
@@ -126,29 +153,36 @@
       </div>
     {/if}
   </section>
-{/if}
 
-{#if data.owner}
-  <section>
-    <h2>Publish a release</h2>
-    <p>
-      From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
-      and <code>teacher.tar.gz</code>; upload them here. Or let CI do it with a token, which is what
-      <code>yukibana publish</code> and the GitHub Action use.
-    </p>
-    <form method="POST" action="?/publish" enctype="multipart/form-data" class="stack">
-      <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
-      <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
-      <label>Label <input name="label" placeholder="v3, or what changed" /></label>
-      <label>Commit <input name="commit" placeholder="optional sha" /></label>
-      <button>Publish</button>
-    </form>
-  </section>
-
+  {#if data.owner}
+    <section>
+      <h2>Publish a release</h2>
+      <p>
+        From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
+        and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token from
+        the Tokens tab.
+      </p>
+      <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
+        <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
+        <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
+        <label>Label <input name="label" placeholder="v3, or what changed" /></label>
+        <label>Commit <input name="commit" placeholder="optional sha" /></label>
+        <button>Publish</button>
+      </form>
+    </section>
+  {/if}
+{:else if tab === 'tokens'}
+  {#if form?.token}
+    <section>
+      <h2>Your new token</h2>
+      <p class="ok">Token "{form.token.label}" created. Copy it now; it is not shown again.</p>
+      <pre>{form.token.secret}</pre>
+    </section>
+  {/if}
   <section>
     <h2>Publishing tokens</h2>
     <p>A token publishes releases to this project and nothing else. Put it in your repository's secrets:</p>
-    <pre>YUKIBANA_TOKEN   (the secret below)
+    <pre>YUKIBANA_TOKEN   (the secret)
 YUKIBANA_PROJECT {p.project_id}
 YUKIBANA_URL     {data.origin}</pre>
     {#if data.tokens.length > 0}
@@ -160,12 +194,10 @@ YUKIBANA_URL     {data.origin}</pre>
               <tr>
                 <td>{t.label}</td>
                 <td>{when(t.created_at)}</td>
-                <td>
-                  {#if t.revoked_at}<span class="chip">revoked</span>{:else}{when(t.last_used_at)}{/if}
-                </td>
+                <td>{#if t.revoked_at}<span class="chip">revoked</span>{:else}{when(t.last_used_at)}{/if}</td>
                 <td>
                   {#if !t.revoked_at}
-                    <form method="POST" action="?/revokeToken" class="inline">
+                    <form method="POST" action={actionIn('tokens', 'revokeToken')} class="inline">
                       <input type="hidden" name="token_id" value={t.token_id} />
                       <button>Revoke</button>
                     </form>
@@ -177,25 +209,29 @@ YUKIBANA_URL     {data.origin}</pre>
         </table>
       </div>
     {/if}
-    <form method="POST" action="?/createToken" class="stack">
+  </section>
+  <section>
+    <h2>New token</h2>
+    <form method="POST" action={actionIn('tokens', 'createToken')} class="stack">
       <label>Label <input name="label" placeholder="github actions" /></label>
       <button>Create token</button>
     </form>
   </section>
-
+{:else if tab === 'settings'}
+  {#if form?.ok}<p class="ok">Saved.</p>{/if}
   <section>
     <h2>Settings</h2>
-    <form method="POST" action="?/update" class="stack">
+    <form method="POST" action={actionIn('settings', 'update')} class="stack">
       <label>Title <input name="title" value={p.title} required /></label>
-      <label>Available after <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
+      <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
       <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
       <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
       <button>Save</button>
     </form>
     <p class="note">
-      No "available after" date means students cannot see the project at all. Between the deadline and
-      "closes", submissions are accepted and marked late; after "closes" students no longer see the project.
-      No "closes" date means late work is accepted for as long as the edition runs.
+      Without an opening date students cannot see the project at all. Between the deadline and the
+      closing date, submissions are accepted and marked late; after closing, students no longer see
+      the project. Without a closing date, late work is accepted indefinitely.
     </p>
   </section>
 {/if}

@@ -13,6 +13,7 @@ interface ProjectRow {
   kind: string;
   available_after: Date | null;
   deadline: Date | null;
+  closes_at: Date | null;
   releases: number;
   ready: boolean;
   my_submissions: number;
@@ -47,7 +48,7 @@ export const load: PageServerLoad = async (event) => {
       if (head === undefined) error(404, 'No such edition.');
       const staff = head.role === 'owner' || head.role === 'assistant';
       const projects = await tx<ProjectRow[]>`
-        select p.project_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline,
+        select p.project_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                (select count(*) from project_release r where r.project_id = p.project_id)::int as releases,
                app.current_starter(p.project_id) is not null as ready,
                (select count(*) from submission s where s.project_id = p.project_id and s.author_id = ${claims.sub})::int as my_submissions
