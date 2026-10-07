@@ -20,6 +20,8 @@ interface Downloaded {
   readonly folder: string;
   readonly submissionId: string;
   readonly submittedAt: string;
+  /** After the deadline, as the deadline was when this was downloaded. */
+  readonly late: boolean;
   readonly sha256: string;
   readonly author: Submission['author'];
   readonly tampering: Tampering | null;
@@ -97,8 +99,8 @@ export async function download(inv: Invocation): Promise<void> {
         }
         for (const r of await writeEntries(target, entries)) console.error(`warning: ${folder}: not unpacked: ${r}`);
       }
-      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, sha256: s.sha256, author: s.author, tampering });
-      console.log(`${folder}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering)}` : ''}`);
+      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, tampering });
+      console.log(`${folder}${s.late ? '  (late)' : ''}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering)}` : ''}`);
     } catch (e) {
       problems.push(`${folder}: ${e instanceof Error ? e.message : String(e)}`);
     }

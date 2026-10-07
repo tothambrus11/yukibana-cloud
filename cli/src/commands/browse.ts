@@ -49,24 +49,27 @@ export async function roster(command: 'enrol' | 'unenrol', inv: Invocation): Pro
   if (problems.length > 0) fail(...problems);
 }
 
-/** Where a project stands for the person asking, in a word. */
+/** Where a project stands for the person asking, in a word: `draft`,
+ *  `scheduled`, `open`, `late` (past the deadline, still accepting) or
+ *  `closed`. */
 export function stateOf(p: Project, now = Date.now()): string {
   if (p.availableAfter === null) return 'draft';
   if (Date.parse(p.availableAfter) > now) return 'scheduled';
-  if (p.role !== 'student') return p.deadline !== null && Date.parse(p.deadline) <= now ? 'closed' : 'open';
-  if (p.canSubmit) return 'open';
-  return 'closed';
+  if (p.closesAt !== null && Date.parse(p.closesAt) <= now) return 'closed';
+  if (p.role === 'student' && !p.canSubmit) return 'closed';
+  return p.late ? 'late' : 'open';
 }
 
 export async function projects(inv: Invocation): Promise<void> {
   let rows = await (await clientFor(inv)).projects(inv.options.edition);
-  if (inv.options.open === true) rows = rows.filter((p) => stateOf(p) === 'open');
+  if (inv.options.open === true) rows = rows.filter((p) => stateOf(p) === 'open' || stateOf(p) === 'late');
   print(inv, rows, {
     project: (p) => p.projectId,
     course: (p) => `${p.courseCode} ${p.editionLabel}`,
     title: (p) => p.title,
     state: (p) => stateOf(p),
     deadline: (p) => when(p.deadline),
+    closes: (p) => when(p.closesAt),
     starter: (p) => (p.starterReady ? 'yes' : 'no'),
     mine: (p) => (p.role === 'student' ? `${p.mySubmissions}${p.myLastSubmittedAt === null ? '' : `, last ${when(p.myLastSubmittedAt)}`}` : p.role),
   });
@@ -80,7 +83,7 @@ export async function project(inv: Invocation): Promise<void> {
     return;
   }
   console.log(`${p.title} (${p.slug}, ${p.kind}) in ${p.courseCode} ${p.editionLabel}`);
-  console.log(`you are ${p.role}; ${stateOf(p)}; available after ${when(p.availableAfter)}; deadline ${when(p.deadline)}`);
+  console.log(`you are ${p.role}; ${stateOf(p)}; available after ${when(p.availableAfter)}; deadline ${when(p.deadline)}; closes ${p.closesAt === null ? 'never' : when(p.closesAt)}`);
   console.log(`starter: ${p.starterReady ? 'available' : 'not released yet'}`);
   if (p.role === 'student') console.log(`your submissions: ${p.mySubmissions}${p.myLastSubmittedAt === null ? '' : `, last at ${when(p.myLastSubmittedAt)}`}${p.canSubmit ? '; you may submit now' : ''}`);
 }
@@ -129,6 +132,6 @@ export async function submissions(inv: Invocation): Promise<void> {
     student: (s) => s.author.fullName ?? s.author.githubLogin ?? s.author.email ?? s.author.userId,
     github: (s) => s.author.githubLogin ?? '',
     size: (s) => bytes(s.byteSize),
-    latest: (s) => (s.latest ? 'latest' : ''),
+    latest: (s) => [s.latest ? 'latest' : '', s.late ? 'late' : ''].filter(Boolean).join(', '),
   });
 }

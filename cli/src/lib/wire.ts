@@ -39,8 +39,14 @@ export interface Project {
   readonly kind: string;
   /** Null: a draft, which only staff see. */
   readonly availableAfter: string | null;
-  /** Null: no deadline. */
+  /** When work is due. Null: no deadline. Later submissions are accepted
+   *  until `closesAt`, and read as late. */
   readonly deadline: string | null;
+  /** When the window closes and the project disappears for students. Null:
+   *  never. */
+  readonly closesAt: string | null;
+  /** Whether the deadline has passed: a submission now would be late. */
+  readonly late: boolean;
   readonly role: EditionRole;
   /** Whether a starter has been released and the caller may download it. */
   readonly starterReady: boolean;
@@ -70,6 +76,8 @@ export interface Submission {
   /** Whether this is the author's newest submission to the project: the
    *  one that counts. */
   readonly latest: boolean;
+  /** Whether it arrived after the deadline, as the deadline is now. */
+  readonly late: boolean;
 }
 
 export interface Release {
@@ -164,7 +172,8 @@ export function decodeProject(v: unknown, w = 'project'): Project {
   return {
     projectId: str(o, 'projectId', w), editionId: str(o, 'editionId', w), courseCode: str(o, 'courseCode', w), editionLabel: str(o, 'editionLabel', w),
     slug: str(o, 'slug', w), title: str(o, 'title', w), kind: str(o, 'kind', w),
-    availableAfter: strOrNull(o, 'availableAfter', w), deadline: strOrNull(o, 'deadline', w), role: role(o, 'role', w),
+    availableAfter: strOrNull(o, 'availableAfter', w), deadline: strOrNull(o, 'deadline', w), closesAt: strOrNull(o, 'closesAt', w),
+    late: bool(o, 'late', w), role: role(o, 'role', w),
     starterReady: bool(o, 'starterReady', w), canSubmit: bool(o, 'canSubmit', w),
     mySubmissions: num(o, 'mySubmissions', w), myLastSubmittedAt: strOrNull(o, 'myLastSubmittedAt', w),
   };
@@ -176,7 +185,7 @@ export function decodeSubmission(v: unknown, w = 'submission'): Submission {
   const aw = `${w}.author`;
   return {
     submissionId: str(o, 'submissionId', w), projectId: str(o, 'projectId', w), submittedAt: str(o, 'submittedAt', w),
-    byteSize: num(o, 'byteSize', w), sha256: str(o, 'sha256', w), latest: bool(o, 'latest', w),
+    byteSize: num(o, 'byteSize', w), sha256: str(o, 'sha256', w), latest: bool(o, 'latest', w), late: bool(o, 'late', w),
     author: { userId: str(a, 'userId', aw), fullName: strOrNull(a, 'fullName', aw), githubLogin: strOrNull(a, 'githubLogin', aw), email: strOrNull(a, 'email', aw) },
   };
 }

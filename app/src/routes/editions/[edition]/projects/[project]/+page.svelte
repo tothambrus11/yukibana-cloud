@@ -21,6 +21,7 @@
     <span class="chip">{p.kind}</span>
     <span>Available after {when(p.available_after)}</span>
     <span>Deadline {when(p.deadline)}</span>
+    <span>Closes {p.closes_at === null ? 'never' : when(p.closes_at)}</span>
   </p>
 </div>
 
@@ -57,7 +58,10 @@
         </label>
         <button>Submit</button>
       </form>
-      <p class="note">You can submit as many times as you like before the deadline; every version is kept.</p>
+      <p class="note">
+        You can submit as many times as you like; every version is kept and the newest counts.
+        {#if p.deadline !== null && p.deadline < new Date()}The deadline has passed: a submission now is recorded as late.{/if}
+      </p>
     {:else}
       <p class="empty">This project is not accepting submissions from you now.</p>
     {/if}
@@ -80,7 +84,7 @@
               {#if data.staff}
                 <td>{s.full_name ?? ''} {#if s.github_login}<span class="muted">@{s.github_login}</span>{/if}</td>
               {/if}
-              <td>{when(s.submitted_at)}</td>
+              <td>{when(s.submitted_at)}{#if s.late} <span class="chip">late</span>{/if}</td>
               <td>{kb(s.byte_size)}</td>
               <td><code>{s.sha256.slice(0, 12)}</code></td>
               <td><a href="/api/submissions/{s.submission_id}">Download</a></td>
@@ -185,8 +189,13 @@ YUKIBANA_URL     {data.origin}</pre>
       <label>Title <input name="title" value={p.title} required /></label>
       <label>Available after <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
       <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
+      <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
       <button>Save</button>
     </form>
-    <p class="note">No "available after" date means students cannot see the project at all.</p>
+    <p class="note">
+      No "available after" date means students cannot see the project at all. Between the deadline and
+      "closes", submissions are accepted and marked late; after "closes" students no longer see the project.
+      No "closes" date means late work is accepted for as long as the edition runs.
+    </p>
   </section>
 {/if}
