@@ -64,8 +64,9 @@ import {
   createSubmissionBundle, YukibanaClient, startLogin, loginWithLoopback, tokenProvider, type SessionStore,
 } from '@yukibana/cli';
 
-// Log in: either through the system browser (desktop Theia)…
-const session = await loginWithLoopback(registry);
+// Log in: either back to a listener on 127.0.0.1 (desktop Theia), with the
+// host opening the address and writing the page the browser lands on…
+const session = await loginWithLoopback(registry, { open: openExternal, callbackPage });
 // …or with a redirect of the IDE's own (browser Theia), added to the
 // Auth server's allow list:
 const pending = await startLogin(registry, 'https://ide.example/yukibana/callback');

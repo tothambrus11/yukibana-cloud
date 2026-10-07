@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { BrowserWindow, app, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import {
   YukibanaClient, createSubmissionBundle, loginWithLoopback, logout, readArchive, tokenProvider, writeEntries,
-  type SubmissionBundle,
+  type CallbackOutcome, type SubmissionBundle,
 } from '@yukibana/cli';
 import type { Bridge, BundlePreview, FilePreview, Status } from './bridge.js';
 import { safeStore } from './safe-store.js';
@@ -62,6 +62,17 @@ async function pickFolder(event: IpcMainInvokeEvent, title: string, create: bool
   return chosen.canceled ? null : (chosen.filePaths[0] ?? null);
 }
 
+const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/** What the browser shows when the login comes back: the library serves it
+ *  and the app writes it. */
+function callbackPage(outcome: CallbackOutcome): string {
+  const [title, text] = outcome.ok
+    ? ['Signed in to Yukibana', 'You may close this tab and return to the application.']
+    : ['Sign-in was not completed', escapeHtml(outcome.reason)];
+  return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:system-ui;max-width:32rem;margin:4rem auto"><h1>${title}</h1><p>${text}</p></body>`;
+}
+
 /** Text worth showing in a preview: valid UTF-8, no NUL bytes, under 256 KiB. */
 function textOf(bytes: Uint8Array): string | null {
   if (bytes.length > 256 * 1024 || bytes.includes(0)) return null;
@@ -76,7 +87,7 @@ function textOf(bytes: Uint8Array): string | null {
 const handlers: { [K in keyof Bridge]: (event: IpcMainInvokeEvent, ...args: Parameters<Bridge[K]>) => ReturnType<Bridge[K]> } = {
   status: async () => status(),
   async login(_event, url) {
-    const session = await loginWithLoopback(url, { open: (u) => shell.openExternal(u.toString()) });
+    const session = await loginWithLoopback(url, { open: (u) => shell.openExternal(u.toString()), callbackPage });
     await store.save(session);
     return status();
   },
