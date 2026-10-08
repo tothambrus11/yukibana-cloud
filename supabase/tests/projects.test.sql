@@ -27,7 +27,7 @@ select lives_ok(
   'an assistant creates a project');
 update public.project set title = 'Renamed by the assistant' where slug = 'proj-ta';
 select is((select title from public.project where slug = 'proj-ta'), 'Renamed by the assistant', 'and edits it');
--- Deleting takes every submission with it: that stays the owners'. RLS
+-- Deleting takes the releases with it: that stays the owners'. RLS
 -- hides the row from the delete rather than raising, so the row survives.
 delete from public.project where slug = 'proj-ta';
 select is((select count(*) from public.project where slug = 'proj-ta'), 1::bigint, 'but an assistant cannot delete a project');

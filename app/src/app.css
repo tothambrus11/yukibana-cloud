@@ -369,7 +369,20 @@
   a.button:hover { background: color-mix(in oklab, var(--accent) 88%, black); }
   a.button.quiet { background: transparent; color: var(--ink-soft); border-color: var(--line); }
   a.button.quiet:hover { background: var(--sunken); color: var(--ink); }
-  td.actions { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
+  /* A flex container inside the cell, never the cell itself: a cell that is
+   * display: flex stops being a table cell, and its row borders no longer
+   * line up with the rest of the row. */
+  .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
+
+  /* A student's projects on a phone: one card per project rather than a
+   * table four columns wide, so the buttons are never off the edge. */
+  @media (max-width: 40rem) {
+    table.tasks thead { display: none; }
+    table.tasks, table.tasks tbody, table.tasks tr, table.tasks td { display: block; }
+    table.tasks tr { padding-block: 0.75rem; border-bottom: 1px solid var(--line); }
+    table.tasks td { border: 0; padding: 0.15rem 0; }
+    table.tasks .actions { justify-content: flex-start; padding-top: 0.4rem; }
+  }
 
   /* Reordering projects: a grip to hold, a faded row while it travels, and
    * a line where it will land. */

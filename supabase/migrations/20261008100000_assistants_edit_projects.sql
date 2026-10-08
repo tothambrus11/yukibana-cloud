@@ -7,10 +7,10 @@
 -- changes the assignment itself: create it, edit it, publish a release of
 -- it, move it in the list.
 --
--- What stays the owners': deleting a project (it takes every student's
--- submissions with it), publishing tokens (a long-lived credential, made
--- once by whoever sets up the course's CI), and everything about the
--- edition and its roster.
+-- What stays the owners': deleting a project (its releases and tokens go
+-- with it; one with submissions cannot be deleted at all), publishing
+-- tokens (a long-lived credential, made once by whoever sets up the
+-- course's CI), and everything about the edition and its roster.
 
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';

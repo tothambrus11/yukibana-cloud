@@ -61,9 +61,9 @@ teachers. `enrollment.role` is the role in one edition (`student`,
 `assistant`, `owner`). Owners and assistants are both staff and both
 look after the projects: create, edit, reorder, publish releases. Owners
 alone run the edition (roster, roles, duplicate, archive), delete a
-project, which takes its submissions with it, and make publishing tokens.
-An admin is not implicitly staff of anything: to see
-an edition they enrol in it, and it shows in the roster. The first admin is
+project (and its releases with it), and make publishing tokens. An admin
+is not implicitly staff of anything: to see an edition they enrol in it,
+and it shows in the roster. The first admin is
 `app.bootstrap_admin`, run by an operator.
 
 **One `enrollment` table, not invitation plus membership.** A row with

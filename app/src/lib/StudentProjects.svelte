@@ -20,7 +20,7 @@
   <p class="empty">{empty}</p>
 {:else}
   <div class="scroll">
-    <table class="projects">
+    <table class="projects tasks">
       <thead>
         <tr><th>Project</th><th>Deadline</th><th>Status</th><th>Work on it</th></tr>
       </thead>
@@ -40,10 +40,12 @@
               <span class="chip {chip[p]}">{PROGRESS_LABEL[p]}</span>
               {#if r.last_submitted_at !== null}<div class="muted small">last {when(r.last_submitted_at)}{r.submissions > 1 ? ` · ${r.submissions} versions` : ''}</div>{/if}
             </td>
-            <td class="actions">
-              <a class="button" href={ideUrl(r.project_id)}>Open in IDE</a>
-              {#if r.starter_ready}<a class="button quiet" href="/api/projects/{r.project_id}/starter">Download</a>{/if}
-              {#if r.can_submit}<a class="button quiet" href="{page(r)}#submit">Submit</a>{/if}
+            <td>
+              <div class="actions">
+                <a class="button" href={ideUrl(r.project_id)}>Open in IDE</a>
+                {#if r.starter_ready}<a class="button quiet" href="/api/projects/{r.project_id}/starter">Download</a>{/if}
+                {#if r.can_submit}<a class="button quiet" href="{page(r)}#submit">Submit</a>{/if}
+              </div>
             </td>
           </tr>
         {/each}
