@@ -1,6 +1,6 @@
 -- What a student can see of a project, and when; releases and tokens.
 begin;
-select plan(21);
+select plan(27);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -13,12 +13,31 @@ select app.create_edition((select course_id from public.course where code = 'T-P
 select app.enrol(tests.edition('T-PROJ', '2026'), 'ta@example.com', 'assistant');
 select app.enrol(tests.edition('T-PROJ', '2026'), 'student@example.com');
 
--- Only an owner creates a project, and it is stamped with them.
-select tests.authenticate(tests.uid('ta@example.com'));
+-- Staff create projects, and each is stamped with whoever made it. A
+-- student does not. The pages ask app.may_edit_projects whether to draw
+-- the controls, so it has to say no exactly where the policies do.
+select tests.authenticate(tests.uid('student@example.com'));
+select ok(not app.may_edit_projects(tests.edition('T-PROJ', '2026')), 'a student is not offered the editing controls');
 select throws_ok(
   $$ insert into public.project (edition_id, slug, title, kind)
      values (tests.edition('T-PROJ', '2026'), 'nope', 'Nope', 'rust-cargo') $$,
-  '42501', null, 'an assistant cannot create a project');
+  '42501', null, 'a student cannot create a project');
+select tests.authenticate(tests.uid('ta@example.com'));
+select ok(app.may_edit_projects(tests.edition('T-PROJ', '2026')), 'an assistant is');
+select tests.create_user('outsider@example.com', 'Outsider', 'outsider');
+select tests.authenticate(tests.uid('outsider@example.com'));
+select ok(not app.may_edit_projects(tests.edition('T-PROJ', '2026')), 'and somebody outside the edition is not');
+select tests.authenticate(tests.uid('ta@example.com'));
+select lives_ok(
+  $$ insert into public.project (edition_id, slug, title, kind)
+     values (tests.edition('T-PROJ', '2026'), 'proj-ta', 'By the assistant', 'rust-cargo') $$,
+  'an assistant creates a project');
+update public.project set title = 'Renamed by the assistant' where slug = 'proj-ta';
+select is((select title from public.project where slug = 'proj-ta'), 'Renamed by the assistant', 'and edits it');
+-- Deleting takes the releases with it: that stays the owners'. RLS
+-- hides the row from the delete rather than raising, so the row survives.
+delete from public.project where slug = 'proj-ta';
+select is((select count(*) from public.project where slug = 'proj-ta'), 1::bigint, 'but an assistant cannot delete a project');
 select tests.authenticate(tests.uid('teacher@example.com'));
 insert into public.project (edition_id, slug, title, kind, created_by)
 values (tests.edition('T-PROJ', '2026'), 'proj-draft', 'Draft', 'scala-sbt', tests.uid('ta@example.com'));
@@ -56,17 +75,18 @@ select results_eq(
   $$ values ('proj-open') $$,
   'a student sees the open project, not the draft, not next week''s, not the one that has closed');
 select tests.authenticate(tests.uid('ta@example.com'));
-select is((select count(*) from public.project), 4::bigint, 'staff see all four, closed or not');
+select is((select count(*) from public.project), 5::bigint, 'staff see all five, closed or not');
 
--- Releases: an owner publishes manually; staff read them; students only get
--- the newest starter key, and only of a project they may see.
-select throws_ok(
-  $$ select app.publish_release(tests.project('proj-open'), 'v1', null, 'starters/a', 1, decode(repeat('aa', 32), 'hex'), 'teacher/a', 1, decode(repeat('bb', 32), 'hex')) $$,
-  '42501', null, 'an assistant cannot publish');
-select tests.authenticate(tests.uid('teacher@example.com'));
+-- Releases: staff publish manually and read them; students only get the
+-- newest starter key, and only of a project they may see.
 select lives_ok(
   $$ select app.publish_release(tests.project('proj-open'), 'v1', null, 'starters/open-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-1', 1, decode(repeat('bb', 32), 'hex')) $$,
-  'an owner publishes');
+  'an assistant publishes');
+select tests.authenticate(tests.uid('student@example.com'));
+select throws_ok(
+  $$ select app.publish_release(tests.project('proj-open'), 'v1', null, 'starters/a', 1, decode(repeat('aa', 32), 'hex'), 'teacher/a', 1, decode(repeat('bb', 32), 'hex')) $$,
+  '42501', null, 'a student cannot publish');
+select tests.authenticate(tests.uid('teacher@example.com'));
 select app.publish_release(tests.project('proj-open'), 'v2', 'abc', 'starters/open-2', 1, decode(repeat('aa', 32), 'hex'), 'teacher/open-2', 1, decode(repeat('bb', 32), 'hex'));
 select app.publish_release(tests.project('proj-draft'), 'v1', null, 'starters/draft-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/draft-1', 1, decode(repeat('bb', 32), 'hex'));
 select app.publish_release(tests.project('proj-ended'), 'v1', null, 'starters/ended-1', 1, decode(repeat('aa', 32), 'hex'), 'teacher/ended-1', 1, decode(repeat('bb', 32), 'hex'));

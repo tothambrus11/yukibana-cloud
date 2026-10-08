@@ -7,14 +7,15 @@
 -- deployed environment ops/bootstrap.sql sets it from a secret.
 alter role yukibana_app password 'yukibana';
 
--- A teacher, two students, a course with one edition and one published
--- project. The addresses are not real; enrol your own GitHub address to see
--- the edition as a student.
+-- A teacher, an assistant, two students, a course with one edition and one
+-- published project. The addresses are not real; enrol your own GitHub
+-- address to see the edition as a student.
 do $$
 declare
   teacher uuid := tests.create_user('teacher@yukibana.local', 'Ada Teacher', 'ada');
   alice   uuid := tests.create_user('alice@yukibana.local', 'Alice Student', 'alice');
   bob     uuid := tests.create_user('bob@yukibana.local', 'Bob Student', 'bob');
+  ta      uuid := tests.create_user('ta@yukibana.local', 'Tom Assistant', 'tom');
   cid uuid;
   eid uuid;
 begin
@@ -25,6 +26,7 @@ begin
   eid := app.create_edition(cid, '2026 autumn');
   perform app.enrol(eid, 'alice@yukibana.local');
   perform app.enrol(eid, 'bob@yukibana.local');
+  perform app.enrol(eid, 'ta@yukibana.local', 'assistant');
   insert into public.project (edition_id, slug, title, kind, available_after, deadline)
   values (eid, 'warmup', 'Warm-up: a Rust calculator', 'rust-cargo', now() - interval '1 day', now() + interval '30 days');
   perform tests.clear_auth();

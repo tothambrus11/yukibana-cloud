@@ -1,5 +1,5 @@
 /** Publishing a release and handing out its archives. The same function
- *  serves the CLI (a project token) and the project page (an owner's
+ *  serves the CLI (a project token) and the project page (a staff member's
  *  session), so both make the same decisions in the same order: check the
  *  archives, store both, then record the row under the caller's policies;
  *  a refused row deletes both objects again.
@@ -57,11 +57,11 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
       });
       if (named !== project) error(403, 'This token does not publish to this project.');
     } else if (by.kind === 'user') {
-      const owner = await asUser(ctx.sql, by.claims, async (tx) => {
-        const rows = await tx`select 1 from project where project_id = ${project} and app.role_in(edition_id) = 'owner'`;
+      const allowed = await asUser(ctx.sql, by.claims, async (tx) => {
+        const rows = await tx`select 1 from project where project_id = ${project} and app.may_edit_projects(edition_id)`;
         return rows.length === 1;
       });
-      if (!owner) error(403, 'Only an owner may publish a release.');
+      if (!allowed) error(403, 'Only staff may publish a release.');
     }
   } catch (e) {
     refuse(e);

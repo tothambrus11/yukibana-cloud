@@ -2,6 +2,8 @@
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
   import { kb, local, when } from '#lib/format.ts';
+  import { ideUrl } from '#lib/ide.ts';
+  import { hold, live, refresh } from '#lib/live.svelte.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { ActionData, PageData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -11,7 +13,8 @@
         { id: 'overview', label: 'Overview' },
         { id: 'submissions', label: 'Submissions', count: data.submissions.length },
         { id: 'releases', label: 'Releases', count: data.releases.length },
-        ...(data.owner ? [{ id: 'tokens', label: 'Tokens' }, { id: 'settings', label: 'Settings' }] : []),
+        ...(data.owner ? [{ id: 'tokens', label: 'Tokens' }] : []),
+        ...(data.project.can_edit ? [{ id: 'settings', label: 'Settings' }] : []),
       ]
     : [
         { id: 'overview', label: 'Overview' },
@@ -21,6 +24,23 @@
   const pastDeadline = $derived(p.deadline !== null && new Date(p.deadline).getTime() <= Date.now());
   const students = $derived(new Set(data.submissions.map((s) => s.author_id)).size);
   const late = $derived(data.submissions.filter((s) => s.late).length);
+
+  // The settings form follows the project live until somebody types in it.
+  // From then on changes from others are held back, so the form is never
+  // rewritten under the cursor, and the page says that it is out of date;
+  // saving replaces their change, discarding loads it.
+  let editing = $state(false);
+  // Tabs are links within one page, so the page survives switching tabs but
+  // the form does not: edits left behind on another tab are gone, and must
+  // not go on holding the page back.
+  $effect(() => {
+    if (tab !== 'settings') editing = false;
+  });
+  $effect(() => (editing ? hold() : undefined));
+  function discard(): void {
+    editing = false;
+    refresh();
+  }
 </script>
 
 <div class="head">
@@ -38,7 +58,6 @@
 </div>
 
 <Tabs {tabs} current={tab} />
-{#if form?.error}<p class="error">{form.error}</p>{/if}
 
 {#if tab === 'overview'}
   {#if form?.submitted}
@@ -69,16 +88,20 @@
   {/if}
 
   <section>
-    <h2>Starter</h2>
+    <h2>{data.staff ? 'Starter' : 'Work on it'}</h2>
     {#if p.ready}
-      <p><a href="/api/projects/{p.project_id}/starter">Download {p.slug}.tar.gz</a></p>
+      <p class="row">
+        <a class="button" href={ideUrl(p.project_id)}>Open in Yukibana IDE</a>
+        <a class="button quiet" href="/api/projects/{p.project_id}/starter">Download {p.slug}.tar.gz</a>
+      </p>
+      {#if !data.staff}<p class="note">The IDE opens the project, downloading it if needed. Without the IDE, download the starter and work in that folder.</p>{/if}
     {:else}
       <p class="empty">No release has been published yet.</p>
     {/if}
   </section>
 
   {#if !data.staff}
-    <section>
+    <section id="submit">
       <h2>Submit your solution</h2>
       {#if p.can_submit}
         {#if pastDeadline}<p class="error">The deadline has passed: a submission now is recorded as late.</p>{/if}
@@ -88,7 +111,10 @@
           </label>
           <button>Submit</button>
         </form>
-        <p class="note">You can submit as many times as you like. Every version is kept; the latest version is the one assessed.</p>
+        <p class="note">
+          You can submit as many times as you like. Every version is kept; the latest version is the one assessed.
+          The IDE's submit button sends the right archive for you; to make one by hand, run <code>yukibana pack</code> in the project folder.
+        </p>
       {:else}
         <p class="empty">This project is not accepting submissions from you now.</p>
       {/if}
@@ -154,13 +180,13 @@
     {/if}
   </section>
 
-  {#if data.owner}
+  {#if p.can_edit}
     <section>
       <h2>Publish a release</h2>
       <p>
         From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
-        and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token from
-        the Tokens tab.
+        and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token an
+        owner makes in the Tokens tab.
       </p>
       <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
         <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
@@ -221,13 +247,21 @@ YUKIBANA_URL     {data.origin}</pre>
   {#if form?.ok}<p class="ok">Saved.</p>{/if}
   <section>
     <h2>Settings</h2>
-    <form method="POST" action={actionIn('settings', 'update')} class="stack">
-      <label>Title <input name="title" value={p.title} required /></label>
-      <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
-      <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
-      <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
-      <button>Save</button>
-    </form>
+    {#if editing && live.stale}
+      <p class="error" role="alert">
+        Somebody else changed this project while you were editing. Saving replaces their change.
+        <button type="button" class="quiet" onclick={discard}>Discard my edits and show theirs</button>
+      </p>
+    {/if}
+    {#key p}
+      <form method="POST" action={actionIn('settings', 'update')} class="stack" oninput={() => (editing = true)}>
+        <label>Title <input name="title" value={p.title} required /></label>
+        <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
+        <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
+        <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
+        <button>Save</button>
+      </form>
+    {/key}
     <p class="note">
       Without an opening date students cannot see the project at all. Between the deadline and the
       closing date, submissions are accepted and marked late; after closing, students no longer see

@@ -2,8 +2,8 @@
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
-  import type { ActionData, PageData } from './$types';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  import type { PageData } from './$types';
+  let { data }: { data: PageData } = $props();
   const tabs = $derived<Tab[]>([
     { id: 'roles', label: 'Roles', count: data.staff.length },
     { id: 'audit', label: 'Audit log' },
@@ -18,7 +18,6 @@
 </div>
 
 <Tabs {tabs} current={tab} />
-{#if form?.error}<p class="error">{form.error}</p>{/if}
 
 {#if tab === 'roles'}
   <section>

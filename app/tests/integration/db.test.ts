@@ -13,7 +13,7 @@ test('as the seeded student, the seeded project is visible and the teacher is a 
   const rows = await asUser(sql, claimsOf(ALICE), (tx) => tx<{ slug: string; kind: string }[]>`select slug, kind::text as kind from project`);
   expect(rows).toEqual([{ slug: 'warmup', kind: 'rust-cargo' }]);
   const people = await asUser(sql, claimsOf(ALICE), (tx) => tx<{ github_login: string }[]>`select github_login from app_user order by 1`);
-  expect(people.map((p) => p.github_login)).toEqual(['ada', 'alice', 'bob']);
+  expect(people.map((p) => p.github_login)).toEqual(['ada', 'alice', 'bob', 'tom']);
 });
 
 test('a policy refusal arrives as a 403, with the sentence the migration wrote', async () => {

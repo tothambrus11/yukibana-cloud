@@ -43,7 +43,7 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
   // A project token from CI, or the person logged in, who must own the project.
   const url = await registryUrl(inv);
   const token = inv.options.token ?? inv.env['YUKIBANA_TOKEN'] ?? (await accessTokenFor(inv)().catch(() => ''));
-  if (token === '') fail('--token (or YUKIBANA_TOKEN) is required to publish, unless you are logged in as an owner');
+  if (token === '') fail('--token (or YUKIBANA_TOKEN) is required to publish, unless you are logged in as staff of the project');
   const commit = await commitOf(dir);
   const published = await publish({ url, token, projectId, starter: built.starter, teacher: built.teacher, label: inv.options.label ?? '', commit });
   console.log(`published release ${published.releaseId}${commit === null ? '' : ` at ${commit.slice(0, 12)}`}`);

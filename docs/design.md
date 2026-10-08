@@ -58,8 +58,15 @@ every teacher every other teacher's hidden-test configuration.
 **Two role dimensions.** `app_user.role` is the platform role (`user`,
 `teacher`, `admin`): a teacher creates courses and editions, an admin makes
 teachers. `enrollment.role` is the role in one edition (`student`,
-`assistant`, `owner`). An admin is not implicitly staff of anything: to see
-an edition they enrol in it, and it shows in the roster. The first admin is
+`assistant`, `owner`). Owners and assistants are both staff and both
+look after the projects: create, edit, reorder, publish releases. Owners
+alone run the edition (roster, roles, duplicate, archive), delete a
+project (and its releases with it), and make publishing tokens. The
+editing rule has one name, `app.may_edit_projects`: the policies ask it, and
+so do the pages before drawing a control, so nobody sees a reorder handle or
+a form that would only be refused. An admin
+is not implicitly staff of anything: to see an edition they enrol in it,
+and it shows in the roster. The first admin is
 `app.bootstrap_admin`, run by an operator.
 
 **One `enrollment` table, not invitation plus membership.** A row with
@@ -92,6 +99,45 @@ is read, so an extension applies to work already handed in, and a
 submission row is still never rewritten. A student keeps reading their own
 submissions after the window closes; `app.deadline_of` tells them the
 deadline of a project they submitted to and no longer see.
+
+**Order is a number between two numbers.** Staff arrange an edition's
+projects by dragging them, and each drop is saved at once through
+`app.move_project(project, after, before)`. `project.position` is a
+`numeric`: a moved project takes the midpoint of its new neighbours', so a
+move writes one row and the rest of the edition is never renumbered. The
+midpoint is `(a + b) * 0.5`, which is exact; `/ 2` would round to a scale
+and two positions would eventually tie. New projects go to the end, and a
+duplicated edition keeps the order. Positions are only compared, never
+shown.
+
+**What a student sees.** The home page's To do tab lists, across every
+edition they are a student in, what is still to hand in (soonest deadline
+first, overdue at the top) and what is handed in, late or not. Each
+edition's project list shows the same, in the order staff set. Every row
+links to the project, opens it in the IDE (`yukibana://project/open?id=<project
+id>`), downloads the starter, and goes to the upload form; the IDE's submit
+button and the form end in the same submission. "Overdue" is past the
+deadline and still open, "missed" is closed with nothing handed in; neither
+is stored, both are worked out from the dates when the page is drawn.
+
+**Live pages carry news, not data.** Open pages update without a reload:
+a trigger on `project`, `project_release`, `enrollment` and `submission`
+broadcasts "this edition changed" on a private Supabase Realtime topic, and
+a page that hears it reruns its loads through the Worker. The payload is a
+table name and nothing else, so Realtime never holds a second copy of the
+read rules; `app.may_listen`, behind the policy on `realtime.messages`,
+only decides whom a change wakes. An edition's topic reaches everyone
+enrolled, its `:staff` topic reaches staff, and `user:<id>` reaches one
+person (their own submissions, say from the IDE, and their enrolments). A
+change to a project students cannot see (a draft, one not yet open, one
+closed) goes to staff only, by the same `app.window_open` the read
+policies use. The policy lives in Supabase's `realtime` schema, which the
+nightly drift diff leaves out, so `ops/realtime-policies.sql` checks it
+exactly, in CI and against production. A page holds the news back while it would
+lose something to a reload: during a drag, while its own moves are being
+saved, while a settings form has unsaved edits (which then says the
+project changed underneath it). What changes by the clock alone, a
+project opening at its date, sends nothing; it shows at the next load.
 
 **Submissions.** The body goes through the Worker as one request, not a
 presigned upload: the server computes the size and SHA-256 itself, stores

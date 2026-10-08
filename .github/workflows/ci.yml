@@ -81,6 +81,12 @@ jobs:
       - name: Database tests (pgTAP)
         run: npm run db:test
 
+      # The same check the nightly drift job runs against production: kept
+      # here so its expected policy changes in the same pull request as the
+      # migration that changes the policy.
+      - name: Realtime policies are exactly ours
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q -f ops/realtime-policies.sql
+
       - name: Integration tests
         run: npm run test:integration
 

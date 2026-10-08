@@ -119,7 +119,7 @@ export class YukibanaClient {
     return this.#json('POST', `/api/projects/${seg(project)}/submissions`, decodeAccepted, { bytes: archive, contentType: 'application/zstd' });
   }
 
-  /** Publishes a release as the person (owners only). CI uses a project
+  /** Publishes a release as the person (owners and assistants). CI uses a project
    *  token instead; see `publish`. */
   async publishRelease(project: string, starter: Uint8Array, teacher: Uint8Array, label = '', commit: string | null = null): Promise<Published> {
     return publish({ url: this.origin, token: await this.#token(), projectId: project, starter, teacher, label, commit }, this.#fetch);

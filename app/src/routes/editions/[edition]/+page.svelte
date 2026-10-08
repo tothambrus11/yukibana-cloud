@@ -1,18 +1,17 @@
 <script lang="ts">
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
-  import { when } from '#lib/format.ts';
+  import StaffProjects from '#lib/StaffProjects.svelte';
+  import StudentProjects from '#lib/StudentProjects.svelte';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
-  import type { ActionData, PageData } from './$types';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  import type { PageData } from './$types';
+  let { data }: { data: PageData } = $props();
   const tabs = $derived<Tab[]>([
     { id: 'projects', label: 'Projects', count: data.projects.length },
     ...(data.staff ? [{ id: 'roster', label: 'Roster', count: data.roster.length }] : []),
     ...(data.owner ? [{ id: 'settings', label: 'Settings' }] : []),
   ]);
   const tab = $derived(tabOf(page.url, tabs));
-  const now = Date.now();
-  const past = (d: Date | null): boolean => d !== null && new Date(d).getTime() <= now;
 </script>
 
 <div class="head">
@@ -25,48 +24,26 @@
 </div>
 
 <Tabs {tabs} current={tab} />
-{#if form?.error}<p class="error">{form.error}</p>{/if}
 
 {#if tab === 'projects'}
-  <section>
-    <h2>Projects</h2>
-    {#if data.projects.length === 0}
-      <p class="empty">{data.staff ? 'No projects yet.' : 'Nothing is open to you right now.'}</p>
-    {:else}
-      <div class="scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Project</th><th>Opens</th><th>Deadline</th><th>Closes</th>
-              <th>{data.staff ? 'Releases' : 'Your submissions'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each data.projects as p (p.project_id)}
-              <tr>
-                <td>
-                  <a href="/editions/{data.edition.edition_id}/projects/{p.project_id}">{p.title}</a>
-                  <span class="chip">{p.kind}</span>
-                  {#if data.staff && p.available_after === null}<span class="chip">draft</span>{/if}
-                  {#if !p.ready}<span class="chip">no starter yet</span>{/if}
-                </td>
-                <td>{when(p.available_after)}</td>
-                <td>{when(p.deadline)}{#if past(p.deadline) && !past(p.closes_at)} <span class="chip late">late window</span>{/if}</td>
-                <td>{p.closes_at === null ? 'never' : when(p.closes_at)}</td>
-                <td>{#if data.staff}{p.releases}{:else}{p.my_submissions}{/if}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  </section>
+  {#if !data.staff}
+    <section>
+      <h2>Projects</h2>
+      <StudentProjects rows={data.mine} empty="Nothing is open to you right now." />
+    </section>
+  {:else}
+    <section>
+      <h2>Projects</h2>
+      <StaffProjects rows={data.projects} editionId={data.edition.edition_id} reorder={data.canEdit} />
+    </section>
+  {/if}
 
-  {#if data.owner}
+  {#if data.canEdit}
     <section>
       <h2>New project</h2>
       <form method="POST" action={actionIn('projects', 'createProject')} class="stack">
-        <label>Slug <input name="slug" pattern="[a-z0-9][a-z0-9-]*" placeholder="warmup" required /></label>
+        <!-- The dash is escaped: browsers compile `pattern` with the v flag, where a bare one is an error and the check is silently dropped. -->
+        <label>Slug <input name="slug" pattern="[a-z0-9][a-z0-9\-]*" placeholder="warmup" required /></label>
         <label>Title <input name="title" required /></label>
         <label>Kind
           <select name="kind">{#each data.kinds as k (k)}<option value={k}>{k}</option>{/each}</select>

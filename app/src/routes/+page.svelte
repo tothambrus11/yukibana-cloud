@@ -1,13 +1,27 @@
 <script lang="ts">
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
+  import StudentProjects from '#lib/StudentProjects.svelte';
+  import { byUrgency, outstanding, progressOf } from '#lib/progress.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
-  import type { ActionData, PageData } from './$types';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  import type { PageData } from './$types';
+  let { data }: { data: PageData } = $props();
   const staff = $derived(data.platformRole === 'teacher' || data.platformRole === 'admin');
   const active = $derived(data.editions.filter((e) => e.archived_at === null));
   const archived = $derived(data.editions.filter((e) => e.archived_at !== null));
+  // A student's work across every edition: what is still to hand in, most
+  // urgent first, and what is already in.
+  const now = $derived.by(() => {
+    void data.tasks;
+    return new Date();
+  });
+  const isStudent = $derived(data.editions.some((e) => e.role === 'student'));
+  const todo = $derived(data.tasks
+    .filter((t) => outstanding(progressOf(t, now)))
+    .toSorted(byUrgency));
+  const done = $derived(data.tasks.filter((t) => t.last_submitted_at !== null));
   const tabs = $derived<Tab[]>([
+    ...(isStudent ? [{ id: 'todo', label: 'To do', count: todo.length }] : []),
     { id: 'active', label: 'Active', count: active.length },
     ...(archived.length > 0 ? [{ id: 'archived', label: 'Archived', count: archived.length }] : []),
     ...(staff ? [{ id: 'create', label: 'Create' }] : []),
@@ -36,9 +50,20 @@
   </section>
 {:else}
   <Tabs {tabs} current={tab} />
-  {#if form?.error}<p class="error">{form.error}</p>{/if}
 
-  {#if tab === 'create'}
+  {#if tab === 'todo'}
+    <section>
+      <h2>Still to hand in</h2>
+      <StudentProjects rows={todo} showCourse empty="Nothing outstanding. Projects appear here once they open." />
+    </section>
+    {#if done.length > 0}
+      <section>
+        <h2>Handed in</h2>
+        <StudentProjects rows={done} showCourse empty="" />
+        <p class="note">You can keep submitting while a project is open; the latest version is the one assessed.</p>
+      </section>
+    {/if}
+  {:else if tab === 'create'}
     {#if data.courses.length > 0}
       <section>
         <h2>New edition</h2>

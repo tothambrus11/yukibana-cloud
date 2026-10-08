@@ -319,6 +319,32 @@
   .error::before { content: "⚠"; }
   .ok::before { content: "✓"; }
 
+  /* Toasts: failures, one line each, bottom right, above everything. */
+  .toasts {
+    position: fixed;
+    inset-inline-end: 1rem;
+    inset-block-end: 1rem;
+    z-index: 10;
+    display: grid;
+    gap: 0.5rem;
+    max-width: min(28rem, calc(100vw - 2rem));
+  }
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.6rem 0.7rem 0.9rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+    background: var(--surface);
+    color: var(--bad);
+    box-shadow: var(--shadow);
+    font-size: 0.94rem;
+  }
+  .toast::before { content: "⚠"; }
+  .toast span { flex: 1; }
+  .toast button { padding: 0.1rem 0.5rem; }
+
   /* A role, a state, a kind: a word that is a value rather than prose. */
   .chip {
     display: inline-block;
@@ -350,5 +376,55 @@
   }
 
   .note { font-size: 0.88rem; color: var(--ink-soft); }
+  .small { font-size: 0.82rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* A link that does what a button does: open the IDE, download, submit. */
+  a.button {
+    display: inline-block;
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    background: var(--accent);
+    color: light-dark(#fff, #0c0d11);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  a.button:hover { background: color-mix(in oklab, var(--accent) 88%, black); }
+  a.button.quiet { background: transparent; color: var(--ink-soft); border-color: var(--line); }
+  a.button.quiet:hover { background: var(--sunken); color: var(--ink); }
+  /* A flex container inside the cell, never the cell itself: a cell that is
+   * display: flex stops being a table cell, and its row borders no longer
+   * line up with the rest of the row. */
+  .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
+
+  /* A student's projects on a phone: one card per project rather than a
+   * table four columns wide, so the buttons are never off the edge. */
+  @media (max-width: 40rem) {
+    table.tasks thead { display: none; }
+    table.tasks, table.tasks tbody, table.tasks tr, table.tasks td { display: block; }
+    table.tasks tr { padding-block: 0.75rem; border-bottom: 1px solid var(--line); }
+    table.tasks td { border: 0; padding: 0.15rem 0; }
+    table.tasks .actions { justify-content: flex-start; padding-top: 0.4rem; }
+  }
+
+  /* Reordering projects: a grip to hold, a faded row while it travels, and
+   * a line where it will land. */
+  table.projects td.grip { width: 2rem; padding-inline-end: 0; }
+  button.handle {
+    background: transparent;
+    color: var(--ink-soft);
+    border: 1px solid transparent;
+    padding: 0.1rem 0.35rem;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: grab;
+  }
+  button.handle:hover, button.handle:focus-visible { background: var(--sunken); color: var(--ink); border-color: var(--line); }
+  tr[draggable="true"] { cursor: grab; }
+  tr.dragging td { opacity: 0.45; }
+  tr.over td { box-shadow: inset 0 2px 0 var(--accent); }
   .row { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
 }
