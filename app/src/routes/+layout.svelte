@@ -1,7 +1,13 @@
 <script lang="ts">
   import '../app.css';
+  import { listen } from '#lib/live.svelte.ts';
   import type { LayoutData } from './$types';
   let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
+  // Every page is live: the layout listens to what the person's enrolments
+  // let them hear, and follows them as those change.
+  $effect(() => {
+    void listen(data.live);
+  });
 </script>
 
 <header class="bar">

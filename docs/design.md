@@ -117,6 +117,22 @@ button and the form end in the same submission. "Overdue" is past the
 deadline and still open, "missed" is closed with nothing handed in; neither
 is stored, both are worked out from the dates when the page is drawn.
 
+**Live pages carry news, not data.** Open pages update without a reload:
+a trigger on `project`, `project_release`, `enrollment` and `submission`
+broadcasts "this edition changed" on a private Supabase Realtime topic, and
+a page that hears it reruns its loads through the Worker. The payload is a
+table name and nothing else, so Realtime never holds a second copy of the
+read rules; `app.may_listen`, behind the policy on `realtime.messages`,
+only decides whom a change wakes. An edition's topic reaches everyone
+enrolled, its `:staff` topic reaches staff, and `user:<id>` reaches one
+person (their own submissions, say from the IDE, and their enrolments). A
+change to a project students cannot see yet goes to staff only, so a draft
+being worked on wakes no student. A page holds the news back while it would
+lose something to a reload: during a drag, while its own moves are being
+saved, while a settings form has unsaved edits (which then says the
+project changed underneath it). What changes by the clock alone, a
+project opening at its date, sends nothing; it shows at the next load.
+
 **Submissions.** The body goes through the Worker as one request, not a
 presigned upload: the server computes the size and SHA-256 itself, stores
 the object, then inserts the row inside the student's policies. A refused

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { deserialize } from '$app/forms';
+  import { beforeNavigate } from '$app/navigation';
   import { tick } from 'svelte';
+  import { hold } from '#lib/live.svelte.ts';
   import Tabs from '#lib/Tabs.svelte';
   import StudentProjects from '#lib/StudentProjects.svelte';
   import { move } from '#lib/order.ts';
@@ -23,12 +25,16 @@
   // saved at once through the `move` action: the list changes on screen
   // first, and goes back with the reason if the server refuses. Moves are
   // sent one after another, in the order they were made, because each is
-  // placed between neighbours as the server has them.
+  // placed between neighbours as the server has them. Saving is silent;
+  // only a failure says something, and leaving while a move is still on
+  // its way asks first. Changes others make arrive live, but not in the
+  // middle of a drag or while our own moves are unsaved: the list would
+  // jump under the pointer, or briefly show the server's older order.
   const byId = $derived(new Map(data.projects.map((p) => [p.project_id, p] as const)));
   let order = $derived(data.projects.map((p) => p.project_id));
   let dragging = $state<number | null>(null);
   let over = $state<number | null>(null);
-  let saveNote = $state('');
+  let saving = $state(0);
   let saveError = $state('');
   let queue: Promise<void> = Promise.resolve();
 
@@ -39,7 +45,7 @@
     const id = moved.items[to] ?? '';
     order = moved.items;
     saveError = '';
-    saveNote = 'Saving the new order…';
+    saving += 1;
     queue = queue.then(async () => {
       const body = new FormData();
       body.set('project', id);
@@ -52,14 +58,25 @@
           const why = result.type === 'failure' && typeof result.data?.['error'] === 'string' ? result.data['error'] : 'the server refused it';
           throw new Error(why);
         }
-        saveNote = 'Order saved.';
       } catch (e) {
         order = previous;
-        saveNote = '';
-        saveError = `The order was not saved: ${e instanceof Error ? e.message : String(e)}`;
+        saveError = `The new order was not saved, and the list is back as it was: ${e instanceof Error ? e.message : String(e)}`;
+      } finally {
+        saving -= 1;
       }
     });
   }
+
+  $effect(() => (saving > 0 || dragging !== null ? hold() : undefined));
+
+  // Closing the tab or following a link before the last move is saved would
+  // lose it without a word. A tab being closed gets the browser's own
+  // question; a link inside the site gets ours.
+  beforeNavigate((nav) => {
+    if (saving === 0) return;
+    if (nav.type === 'leave') nav.cancel();
+    else if (!confirm('The new order is still being saved. Leave anyway?')) nav.cancel();
+  });
 
   async function keyMove(e: KeyboardEvent, i: number): Promise<void> {
     const to = e.key === 'ArrowUp' ? i - 1 : e.key === 'ArrowDown' ? i + 1 : null;
@@ -97,6 +114,7 @@
       <p class="empty">No projects yet.</p>
     {:else}
       {#if data.staff}<p class="note">Drag a project to change the order students see. Changes are saved as you drop.</p>{/if}
+      {#if saveError}<p class="error" role="alert">{saveError}</p>{/if}
       <div class="scroll">
         <table class="projects">
           <thead>
@@ -139,8 +157,6 @@
           </tbody>
         </table>
       </div>
-      <p class="note" aria-live="polite">{saveNote}</p>
-      {#if saveError}<p class="error" role="alert">{saveError}</p>{/if}
     {/if}
   </section>
   {/if}

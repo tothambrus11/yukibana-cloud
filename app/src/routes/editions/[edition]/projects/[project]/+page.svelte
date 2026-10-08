@@ -3,6 +3,7 @@
   import Tabs from '#lib/Tabs.svelte';
   import { kb, local, when } from '#lib/format.ts';
   import { ideUrl } from '#lib/ide.ts';
+  import { hold, live, refresh } from '#lib/live.svelte.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { ActionData, PageData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -23,6 +24,17 @@
   const pastDeadline = $derived(p.deadline !== null && new Date(p.deadline).getTime() <= Date.now());
   const students = $derived(new Set(data.submissions.map((s) => s.author_id)).size);
   const late = $derived(data.submissions.filter((s) => s.late).length);
+
+  // The settings form follows the project live until somebody types in it.
+  // From then on changes from others are held back, so the form is never
+  // rewritten under the cursor, and the page says that it is out of date;
+  // saving replaces their change, discarding loads it.
+  let editing = $state(false);
+  $effect(() => (editing ? hold() : undefined));
+  function discard(): void {
+    editing = false;
+    refresh();
+  }
 </script>
 
 <div class="head">
@@ -228,13 +240,21 @@ YUKIBANA_URL     {data.origin}</pre>
   {#if form?.ok}<p class="ok">Saved.</p>{/if}
   <section>
     <h2>Settings</h2>
-    <form method="POST" action={actionIn('settings', 'update')} class="stack">
-      <label>Title <input name="title" value={p.title} required /></label>
-      <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
-      <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
-      <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
-      <button>Save</button>
-    </form>
+    {#if editing && live.stale}
+      <p class="error" role="alert">
+        Somebody else changed this project while you were editing. Saving replaces their change.
+        <button type="button" class="quiet" onclick={discard}>Discard my edits and show theirs</button>
+      </p>
+    {/if}
+    {#key p}
+      <form method="POST" action={actionIn('settings', 'update')} class="stack" oninput={() => (editing = true)}>
+        <label>Title <input name="title" value={p.title} required /></label>
+        <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
+        <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
+        <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
+        <button>Save</button>
+      </form>
+    {/key}
     <p class="note">
       Without an opening date students cannot see the project at all. Between the deadline and the
       closing date, submissions are accepted and marked late; after closing, students no longer see
