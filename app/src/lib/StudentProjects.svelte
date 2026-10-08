@@ -1,8 +1,7 @@
 <script lang="ts">
   import { when } from './format';
   import { ideUrl } from './ide';
-  import { dueIn, PROGRESS_LABEL, progressOf, type Progress } from './progress';
-  import type { StudentProjectRow } from './server/student';
+  import { dueIn, PROGRESS_LABEL, progressOf, type Progress, type StudentProjectRow } from './progress';
 
   /** A student's projects as a table: where they stand with each, when it is
    *  due, and the three ways to get on with it (the IDE, the starter, the
@@ -10,8 +9,6 @@
   let { rows, showCourse = false, empty }: { rows: readonly StudentProjectRow[]; showCourse?: boolean; empty: string } = $props();
 
   const now = new Date();
-  const progress = (r: StudentProjectRow): Progress =>
-    progressOf({ deadline: r.deadline, closesAt: r.closes_at, lastSubmittedAt: r.last_submitted_at, canSubmit: r.can_submit }, now);
   const chip: Record<Progress, string> = { submitted: 'good', late: 'late', todo: '', overdue: 'late', missed: '' };
   const page = (r: StudentProjectRow): string => `/editions/${r.edition_id}/projects/${r.project_id}`;
 </script>
@@ -26,7 +23,7 @@
       </thead>
       <tbody>
         {#each rows as r (r.project_id)}
-          {@const p = progress(r)}
+          {@const p = progressOf(r, now)}
           <tr>
             <td>
               <a href={page(r)}>{r.title}</a>

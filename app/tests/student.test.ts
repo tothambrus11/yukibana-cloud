@@ -11,15 +11,15 @@ test('the IDE link names the project in the form the IDE registers', () => {
 });
 
 test('a project is submitted when the student handed something in, and late when the newest came after the deadline', () => {
-  expect(progressOf({ deadline: h(10), closesAt: null, lastSubmittedAt: h(-1), canSubmit: true }, now)).toBe('submitted');
-  expect(progressOf({ deadline: h(-5), closesAt: null, lastSubmittedAt: h(-1), canSubmit: true }, now)).toBe('late');
-  expect(progressOf({ deadline: null, closesAt: null, lastSubmittedAt: h(-1), canSubmit: false }, now)).toBe('submitted');
+  expect(progressOf({ deadline: h(10), closes_at: null, last_submitted_at: h(-1), can_submit: true }, now)).toBe('submitted');
+  expect(progressOf({ deadline: h(-5), closes_at: null, last_submitted_at: h(-1), can_submit: true }, now)).toBe('late');
+  expect(progressOf({ deadline: null, closes_at: null, last_submitted_at: h(-1), can_submit: false }, now)).toBe('submitted');
 });
 
 test('without a submission it is to do, overdue past the deadline while it still takes work, and missed once it does not', () => {
-  expect(progressOf({ deadline: h(10), closesAt: null, lastSubmittedAt: null, canSubmit: true }, now)).toBe('todo');
-  expect(progressOf({ deadline: h(-1), closesAt: h(24), lastSubmittedAt: null, canSubmit: true }, now)).toBe('overdue');
-  expect(progressOf({ deadline: h(-48), closesAt: h(-1), lastSubmittedAt: null, canSubmit: false }, now)).toBe('missed');
+  expect(progressOf({ deadline: h(10), closes_at: null, last_submitted_at: null, can_submit: true }, now)).toBe('todo');
+  expect(progressOf({ deadline: h(-1), closes_at: h(24), last_submitted_at: null, can_submit: true }, now)).toBe('overdue');
+  expect(progressOf({ deadline: h(-48), closes_at: h(-1), last_submitted_at: null, can_submit: false }, now)).toBe('missed');
   expect(outstanding('todo') && outstanding('overdue') && !outstanding('submitted') && !outstanding('missed')).toBe(true);
 });
 

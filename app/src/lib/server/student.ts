@@ -7,30 +7,14 @@
  */
 
 import type { Claims } from '#lib/claims.ts';
+import type { StudentProjectRow } from '#lib/progress.ts';
 import type { EditionId } from '#lib/ids.ts';
 import type { Tx } from './db.ts';
 
-export interface StudentProjectRow {
-  project_id: string;
-  edition_id: string;
-  course_code: string;
-  course_title: string;
-  edition_label: string;
-  slug: string;
-  title: string;
-  kind: string;
-  deadline: Date | null;
-  closes_at: Date | null;
-  /** The database's answer to "may this student submit now". */
-  can_submit: boolean;
-  starter_ready: boolean;
-  submissions: number;
-  /** The student's newest submission, or null. */
-  last_submitted_at: Date | null;
-}
-
 /** The caller's projects as a student, in their editions' own order: course,
  *  edition, then the order the teacher arranged. `edition` narrows to one. */
+export type { StudentProjectRow };
+
 export async function studentProjects(tx: Tx, claims: Claims, edition: EditionId | null): Promise<StudentProjectRow[]> {
   return tx<StudentProjectRow[]>`
     select p.project_id, p.edition_id, c.code as course_code, c.title as course_title, e.label as edition_label,

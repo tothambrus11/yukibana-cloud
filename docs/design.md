@@ -61,7 +61,10 @@ teachers. `enrollment.role` is the role in one edition (`student`,
 `assistant`, `owner`). Owners and assistants are both staff and both
 look after the projects: create, edit, reorder, publish releases. Owners
 alone run the edition (roster, roles, duplicate, archive), delete a
-project (and its releases with it), and make publishing tokens. An admin
+project (and its releases with it), and make publishing tokens. The
+editing rule has one name, `app.may_edit_projects`: the policies ask it, and
+so do the pages before drawing a control, so nobody sees a reorder handle or
+a form that would only be refused. An admin
 is not implicitly staff of anything: to see an edition they enrol in it,
 and it shows in the roster. The first admin is
 `app.bootstrap_admin`, run by an operator.

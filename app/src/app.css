@@ -319,6 +319,32 @@
   .error::before { content: "⚠"; }
   .ok::before { content: "✓"; }
 
+  /* Toasts: failures, one line each, bottom right, above everything. */
+  .toasts {
+    position: fixed;
+    inset-inline-end: 1rem;
+    inset-block-end: 1rem;
+    z-index: 10;
+    display: grid;
+    gap: 0.5rem;
+    max-width: min(28rem, calc(100vw - 2rem));
+  }
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem 0.6rem 0.7rem 0.9rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in oklab, var(--bad) 35%, transparent);
+    background: var(--surface);
+    color: var(--bad);
+    box-shadow: var(--shadow);
+    font-size: 0.94rem;
+  }
+  .toast::before { content: "⚠"; }
+  .toast span { flex: 1; }
+  .toast button { padding: 0.1rem 0.5rem; }
+
   /* A role, a state, a kind: a word that is a value rather than prose. */
   .chip {
     display: inline-block;

@@ -1,6 +1,6 @@
 -- What a student can see of a project, and when; releases and tokens.
 begin;
-select plan(24);
+select plan(27);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -14,12 +14,19 @@ select app.enrol(tests.edition('T-PROJ', '2026'), 'ta@example.com', 'assistant')
 select app.enrol(tests.edition('T-PROJ', '2026'), 'student@example.com');
 
 -- Staff create projects, and each is stamped with whoever made it. A
--- student does not.
+-- student does not. The pages ask app.may_edit_projects whether to draw
+-- the controls, so it has to say no exactly where the policies do.
 select tests.authenticate(tests.uid('student@example.com'));
+select ok(not app.may_edit_projects(tests.edition('T-PROJ', '2026')), 'a student is not offered the editing controls');
 select throws_ok(
   $$ insert into public.project (edition_id, slug, title, kind)
      values (tests.edition('T-PROJ', '2026'), 'nope', 'Nope', 'rust-cargo') $$,
   '42501', null, 'a student cannot create a project');
+select tests.authenticate(tests.uid('ta@example.com'));
+select ok(app.may_edit_projects(tests.edition('T-PROJ', '2026')), 'an assistant is');
+select tests.create_user('outsider@example.com', 'Outsider', 'outsider');
+select tests.authenticate(tests.uid('outsider@example.com'));
+select ok(not app.may_edit_projects(tests.edition('T-PROJ', '2026')), 'and somebody outside the edition is not');
 select tests.authenticate(tests.uid('ta@example.com'));
 select lives_ok(
   $$ insert into public.project (edition_id, slug, title, kind)

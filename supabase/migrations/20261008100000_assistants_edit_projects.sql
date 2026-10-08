@@ -15,15 +15,28 @@
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
 
+-- The rule, named once. The policies and functions below ask it, and so do
+-- the pages, to decide whether to show the controls at all: a control that
+-- would only be refused is not drawn, and the page does not keep its own
+-- copy of who may do what.
+create or replace function app.may_edit_projects(edition uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select app.is_staff(edition)
+$$;
+
 drop policy project_insert on public.project;
 create policy project_insert on public.project for insert to authenticated with check (
-  app.is_staff(edition_id)
+  app.may_edit_projects(edition_id)
 );
 
 drop policy project_update on public.project;
 create policy project_update on public.project for update to authenticated
-  using (app.is_staff(edition_id))
-  with check (app.is_staff(edition_id));
+  using (app.may_edit_projects(edition_id))
+  with check (app.may_edit_projects(edition_id));
 
 -- A manual upload of the two archives the Worker has already stored, by
 -- staff of the project's edition. Returns the release id.
@@ -40,7 +53,7 @@ as $$
 declare
   rid uuid;
 begin
-  if not exists (select 1 from public.project p where p.project_id = project and app.is_staff(p.edition_id)) then
+  if not exists (select 1 from public.project p where p.project_id = project and app.may_edit_projects(p.edition_id)) then
     raise exception 'only staff may publish a release' using errcode = '42501';
   end if;
   insert into public.project_release (project_id, label, commit_sha, starter_key, starter_size, starter_sha256,
@@ -68,7 +81,7 @@ declare
   placed numeric;
 begin
   select p.edition_id into edition from public.project p where p.project_id = project;
-  if edition is null or not app.is_staff(edition) then
+  if edition is null or not app.may_edit_projects(edition) then
     raise exception 'only staff may reorder projects' using errcode = '42501';
   end if;
   if after is not null then

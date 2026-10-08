@@ -57,11 +57,11 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
       });
       if (named !== project) error(403, 'This token does not publish to this project.');
     } else if (by.kind === 'user') {
-      const staff = await asUser(ctx.sql, by.claims, async (tx) => {
-        const rows = await tx`select 1 from project where project_id = ${project} and app.is_staff(edition_id)`;
+      const allowed = await asUser(ctx.sql, by.claims, async (tx) => {
+        const rows = await tx`select 1 from project where project_id = ${project} and app.may_edit_projects(edition_id)`;
         return rows.length === 1;
       });
-      if (!staff) error(403, 'Only staff may publish a release.');
+      if (!allowed) error(403, 'Only staff may publish a release.');
     }
   } catch (e) {
     refuse(e);

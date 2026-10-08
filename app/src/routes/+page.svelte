@@ -4,8 +4,8 @@
   import StudentProjects from '#lib/StudentProjects.svelte';
   import { byUrgency, outstanding, progressOf } from '#lib/progress.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
-  import type { ActionData, PageData } from './$types';
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  import type { PageData } from './$types';
+  let { data }: { data: PageData } = $props();
   const staff = $derived(data.platformRole === 'teacher' || data.platformRole === 'admin');
   const active = $derived(data.editions.filter((e) => e.archived_at === null));
   const archived = $derived(data.editions.filter((e) => e.archived_at !== null));
@@ -14,7 +14,7 @@
   const now = new Date();
   const isStudent = $derived(data.editions.some((e) => e.role === 'student'));
   const todo = $derived(data.tasks
-    .filter((t) => outstanding(progressOf({ deadline: t.deadline, closesAt: t.closes_at, lastSubmittedAt: t.last_submitted_at, canSubmit: t.can_submit }, now)))
+    .filter((t) => outstanding(progressOf(t, now)))
     .toSorted(byUrgency));
   const done = $derived(data.tasks.filter((t) => t.last_submitted_at !== null));
   const tabs = $derived<Tab[]>([
@@ -47,7 +47,6 @@
   </section>
 {:else}
   <Tabs {tabs} current={tab} />
-  {#if form?.error}<p class="error">{form.error}</p>{/if}
 
   {#if tab === 'todo'}
     <section>

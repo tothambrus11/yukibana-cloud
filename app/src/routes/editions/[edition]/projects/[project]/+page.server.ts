@@ -19,6 +19,9 @@ interface ProjectRow {
   deadline: Date | null;
   closes_at: Date | null;
   role: string | null;
+  /** app.may_edit_projects: whether the settings and publishing controls
+   *  would be accepted, so whether to draw them. */
+  can_edit: boolean;
   ready: boolean;
   can_submit: boolean;
 }
@@ -68,6 +71,7 @@ export const load: PageServerLoad = async (event) => {
       const [p] = await tx<ProjectRow[]>`
         select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                app.role_in(p.edition_id)::text as role,
+               app.may_edit_projects(p.edition_id) as can_edit,
                app.current_starter(p.project_id) is not null as ready,
                app.can_submit(p.project_id) as can_submit
         from project p

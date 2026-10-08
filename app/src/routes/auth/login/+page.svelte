@@ -1,13 +1,6 @@
-<script lang="ts">
-  import type { ActionData } from './$types';
-  let { form }: { form: ActionData } = $props();
-</script>
-
 <div class="head">
   <h1>Log in</h1>
 </div>
-
-{#if form?.error}<p class="error">{form.error}</p>{/if}
 
 <section>
   <h2>Continue with GitHub</h2>

@@ -42,8 +42,9 @@ export const load: PageServerLoad = async (event) => {
   const edition = editionOf(event.params.edition);
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
-      const [head] = await tx<{ edition_id: string; label: string; archived_at: Date | null; code: string; title: string; role: string | null }[]>`
-        select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role
+      const [head] = await tx<{ edition_id: string; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
+        select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role,
+               app.may_edit_projects(e.edition_id) as can_edit
         from course_edition e join course c on c.course_id = e.course_id
         where e.edition_id = ${edition}`;
       if (head === undefined) error(404, 'No such edition.');
@@ -64,7 +65,10 @@ export const load: PageServerLoad = async (event) => {
             where en.edition_id = ${edition}
             order by en.role desc, en.email`
         : [];
-      return { edition: head, role: head.role, staff, owner: head.role === 'owner', projects, mine, roster, kinds: KINDS };
+      // `canEdit` is the database's answer, the same function its policies
+      // ask: the page draws the reorder handles and the new-project form only
+      // when they would be accepted.
+      return { edition: head, role: head.role, staff, owner: head.role === 'owner', canEdit: head.can_edit, projects, mine, roster, kinds: KINDS };
     }),
   );
 };
@@ -73,19 +77,21 @@ const failing = (e: unknown) => fail(statusOf(e).status, { error: statusOf(e).me
 
 export const actions: Actions = {
   /** A drop in the project list: `project` now sits after `after` and before
-   *  `before` (either may be empty, at an end). The page posts this itself,
-   *  with no save button; app.move_project checks the caller is staff and moves one
-   *  row. */
+   *  `before` (either empty at an end of the list). The page posts this as
+   *  the drop happens; app.move_project decides whether the caller may and
+   *  moves one row. */
   move: async (event) => {
     const claims = requireClaims(event);
     editionOf(event.params.edition);
     const form = await event.request.formData();
+    const neighbour = (name: string): ProjectId | null | undefined => {
+      const value = text(form, name);
+      return value === '' ? null : (uuidOf<ProjectId>(value) ?? undefined);
+    };
     const project = uuidOf<ProjectId>(text(form, 'project'));
-    const after = text(form, 'after') === '' ? null : uuidOf<ProjectId>(text(form, 'after'));
-    const before = text(form, 'before') === '' ? null : uuidOf<ProjectId>(text(form, 'before'));
-    if (project === null || (text(form, 'after') !== '' && after === null) || (text(form, 'before') !== '' && before === null)) {
-      return fail(400, { error: 'Not a project.' });
-    }
+    const after = neighbour('after');
+    const before = neighbour('before');
+    if (project === null || after === undefined || before === undefined) return fail(400, { error: 'Not a project.' });
     try {
       await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.move_project(${project}, ${after}, ${before})`));
     } catch (e) {
@@ -156,6 +162,9 @@ export const actions: Actions = {
         }),
       );
     } catch (e) {
+      // The one refusal a person can fix by typing something else: the
+      // constraint's own sentence names an index, not the slug.
+      if (statusOf(e).code === '23505') return fail(409, { error: `This edition already has a project called "${slug}". Choose another slug.` });
       return failing(e);
     }
     redirect(303, `/editions/${edition}/projects/${id}`);
