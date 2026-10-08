@@ -30,6 +30,12 @@
   // rewritten under the cursor, and the page says that it is out of date;
   // saving replaces their change, discarding loads it.
   let editing = $state(false);
+  // Tabs are links within one page, so the page survives switching tabs but
+  // the form does not: edits left behind on another tab are gone, and must
+  // not go on holding the page back.
+  $effect(() => {
+    if (tab !== 'settings') editing = false;
+  });
   $effect(() => (editing ? hold() : undefined));
   function discard(): void {
     editing = false;

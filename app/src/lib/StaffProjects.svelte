@@ -17,7 +17,7 @@
   import { tick } from 'svelte';
   import { postAction } from './action';
   import { when } from './format';
-  import { hold } from './live.svelte';
+  import { hold, refresh } from './live.svelte';
   import { move } from './order';
   import { toast } from './toast.svelte';
 
@@ -43,6 +43,7 @@
   let dragging = $state<number | null>(null);
   let over = $state<number | null>(null);
   let saving = $state(0);
+  let failed = false;
   let queue: Promise<void> = Promise.resolve();
 
   const now = Date.now();
@@ -58,10 +59,18 @@
       .then(() => postAction('?tab=projects&/move', { project: moved.items[to] ?? '', after: moved.after ?? '', before: moved.before ?? '' }))
       .catch((e: unknown) => {
         order = previous;
+        failed = true;
         toast(`The new order was not saved: ${e instanceof Error ? e.message : String(e)}`);
       })
       .finally(() => {
         saving -= 1;
+        // Moves queued after a refused one were placed on top of it, so
+        // undoing it on screen is only a guess; once the queue is empty,
+        // show the order the server actually has.
+        if (saving === 0 && failed) {
+          failed = false;
+          refresh();
+        }
       });
   }
 

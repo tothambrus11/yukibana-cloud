@@ -62,11 +62,15 @@ function heard(): void {
     return;
   }
   if (timer !== null) clearTimeout(timer);
-  timer = setTimeout(refresh, SETTLE_MS);
+  // A hold taken while this waits (a drag begun just after the news) wins:
+  // the reload waits for it too.
+  timer = setTimeout(() => {
+    timer = null;
+    if (holds.size > 0) live.stale = true;
+    else refresh();
+  }, SETTLE_MS);
 }
 
-// Deleting from a Map while iterating it is defined: entries already
-// visited stay visited, and removed ones are not visited again.
 let settling: Promise<void> = Promise.resolve();
 
 /** Listens to exactly `topics`, joining new ones and leaving the rest.
@@ -81,6 +85,8 @@ export function listen(config: { url: string; key: string; topics: readonly stri
   return settling;
 }
 
+// `leave` deletes from `channels` while the loops below iterate it, which a
+// Map allows: entries already visited stay visited, removed ones are skipped.
 async function apply(config: { url: string; key: string; topics: readonly string[] } | null): Promise<void> {
   if (config === null) {
     for (const topic of channels.keys()) await leave(topic);
