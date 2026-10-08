@@ -103,7 +103,7 @@ declare
   eid uuid;
   cid uuid;
 begin
-  if app.role_in(from_edition) <> 'owner' then
+  if app.role_in(from_edition) is distinct from 'owner' then
     raise exception 'only an owner may duplicate an edition' using errcode = '42501';
   end if;
   select course_id into cid from public.course_edition where edition_id = from_edition;
