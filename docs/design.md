@@ -58,7 +58,11 @@ every teacher every other teacher's hidden-test configuration.
 **Two role dimensions.** `app_user.role` is the platform role (`user`,
 `teacher`, `admin`): a teacher creates courses and editions, an admin makes
 teachers. `enrollment.role` is the role in one edition (`student`,
-`assistant`, `owner`). An admin is not implicitly staff of anything: to see
+`assistant`, `owner`). Owners and assistants are both staff and both
+look after the projects: create, edit, reorder, publish releases. Owners
+alone run the edition (roster, roles, duplicate, archive), delete a
+project, which takes its submissions with it, and make publishing tokens.
+An admin is not implicitly staff of anything: to see
 an edition they enrol in it, and it shows in the roster. The first admin is
 `app.bootstrap_admin`, run by an operator.
 
@@ -93,7 +97,7 @@ submission row is still never rewritten. A student keeps reading their own
 submissions after the window closes; `app.deadline_of` tells them the
 deadline of a project they submitted to and no longer see.
 
-**Order is a number between two numbers.** Owners arrange an edition's
+**Order is a number between two numbers.** Staff arrange an edition's
 projects by dragging them, and each drop is saved at once through
 `app.move_project(project, after, before)`. `project.position` is a
 `numeric`: a moved project takes the midpoint of its new neighbours', so a
@@ -106,7 +110,7 @@ shown.
 **What a student sees.** The home page's To do tab lists, across every
 edition they are a student in, what is still to hand in (soonest deadline
 first, overdue at the top) and what is handed in, late or not. Each
-edition's project list shows the same, in the owners' order. Every row
+edition's project list shows the same, in the order staff set. Every row
 links to the project, opens it in the IDE (`yukibana://project/open?id=<project
 id>`), downloads the starter, and goes to the upload form; the IDE's submit
 button and the form end in the same submission. "Overdue" is past the

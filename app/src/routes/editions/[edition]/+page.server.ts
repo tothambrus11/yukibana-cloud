@@ -74,7 +74,7 @@ const failing = (e: unknown) => fail(statusOf(e).status, { error: statusOf(e).me
 export const actions: Actions = {
   /** A drop in the project list: `project` now sits after `after` and before
    *  `before` (either may be empty, at an end). The page posts this itself,
-   *  with no save button; app.move_project checks the owner and moves one
+   *  with no save button; app.move_project checks the caller is staff and moves one
    *  row. */
   move: async (event) => {
     const claims = requireClaims(event);

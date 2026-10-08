@@ -18,7 +18,7 @@
   const now = Date.now();
   const past = (d: Date | null): boolean => d !== null && new Date(d).getTime() <= now;
 
-  // Staff see the projects in the owners' order; owners rearrange it by
+  // Staff see the projects in their order, and rearrange it by
   // dragging a row (or a row's handle with the arrow keys). Each drop is
   // saved at once through the `move` action: the list changes on screen
   // first, and goes back with the reason if the server refuses. Moves are
@@ -96,12 +96,12 @@
     {#if order.length === 0}
       <p class="empty">No projects yet.</p>
     {:else}
-      {#if data.owner}<p class="note">Drag a project to change the order students see. Changes are saved as you drop.</p>{/if}
+      {#if data.staff}<p class="note">Drag a project to change the order students see. Changes are saved as you drop.</p>{/if}
       <div class="scroll">
         <table class="projects">
           <thead>
             <tr>
-              {#if data.owner}<th><span class="sr-only">Order</span></th>{/if}
+              {#if data.staff}<th><span class="sr-only">Order</span></th>{/if}
               <th>Project</th><th>Opens</th><th>Deadline</th><th>Closes</th><th>Releases</th>
             </tr>
           </thead>
@@ -110,7 +110,7 @@
               {@const p = byId.get(id)}
               {#if p}
                 <tr
-                  draggable={data.owner}
+                  draggable={data.staff}
                   class:dragging={dragging === i}
                   class:over={over === i && dragging !== null && dragging !== i}
                   ondragstart={(e) => { dragging = i; e.dataTransfer?.setData('text/plain', id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }}
@@ -118,7 +118,7 @@
                   ondrop={(e) => { e.preventDefault(); if (dragging !== null) commit(dragging, i); dragging = null; over = null; }}
                   ondragend={() => { dragging = null; over = null; }}
                 >
-                  {#if data.owner}
+                  {#if data.staff}
                     <td class="grip">
                       <button type="button" class="handle" data-handle={id} aria-label="Move {p.title}: drag, or use the up and down arrow keys" title="Drag to reorder" onkeydown={(e) => keyMove(e, i)}>⠿</button>
                     </td>
@@ -145,7 +145,7 @@
   </section>
   {/if}
 
-  {#if data.owner}
+  {#if data.staff}
     <section>
       <h2>New project</h2>
       <form method="POST" action={actionIn('projects', 'createProject')} class="stack">

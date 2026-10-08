@@ -38,3 +38,4 @@ export const claimsOf = (addr: string): Claims => ({ sub: uid(addr), role: 'auth
 export const TEACHER = 'teacher@yukibana.local';
 export const ALICE = 'alice@yukibana.local';
 export const BOB = 'bob@yukibana.local';
+export const ASSISTANT = 'ta@yukibana.local';

@@ -1,7 +1,7 @@
 -- The order of an edition's projects: who may change it, and that a move
 -- touches one row and never runs out of room.
 begin;
-select plan(13);
+select plan(14);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -54,9 +54,11 @@ select throws_ok(
   $$ select app.move_project(tests.project('ord-a'), tests.project('ord-other'), null) $$,
   '23514', null, 'a neighbour from another edition is refused');
 
--- Nobody else reorders, and nobody writes the column directly.
+-- Assistants reorder too; students do not, and nobody writes the column
+-- directly.
 select tests.authenticate(tests.uid('ta@example.com'));
-select throws_ok($$ select app.move_project(tests.project('ord-a'), null, tests.project('ord-b')) $$, '42501', null, 'an assistant cannot reorder');
+select lives_ok($$ select app.move_project(tests.project('ord-a'), null, tests.project('ord-b')) $$, 'an assistant reorders');
+select throws_ok($$ select app.move_project(tests.project('ord-other'), null, null) $$, '42501', null, 'but not in an edition they are not staff of');
 select tests.authenticate(tests.uid('student@example.com'));
 select throws_ok($$ select app.move_project(tests.project('ord-a'), null, tests.project('ord-b')) $$, '42501', null, 'a student cannot reorder');
 select tests.authenticate(tests.uid('teacher@example.com'));
@@ -70,7 +72,7 @@ select results_eq(
   'a duplicated edition keeps the order of the one it came from');
 -- The audit log is admins' to read; count it as the test's own superuser.
 select tests.clear_auth();
-select is((select count(*) from public.audit_log where action = 'move_project'), 62::bigint, 'every move that happened is in the audit log, and the refused one is not');
+select is((select count(*) from public.audit_log where action = 'move_project'), 63::bigint, 'every move that happened is in the audit log, and the refused one is not');
 
 select * from finish();
 rollback;

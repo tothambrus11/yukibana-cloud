@@ -12,7 +12,8 @@
         { id: 'overview', label: 'Overview' },
         { id: 'submissions', label: 'Submissions', count: data.submissions.length },
         { id: 'releases', label: 'Releases', count: data.releases.length },
-        ...(data.owner ? [{ id: 'tokens', label: 'Tokens' }, { id: 'settings', label: 'Settings' }] : []),
+        ...(data.owner ? [{ id: 'tokens', label: 'Tokens' }] : []),
+        { id: 'settings', label: 'Settings' },
       ]
     : [
         { id: 'overview', label: 'Overview' },
@@ -162,23 +163,21 @@
     {/if}
   </section>
 
-  {#if data.owner}
-    <section>
-      <h2>Publish a release</h2>
-      <p>
-        From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
-        and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token from
-        the Tokens tab.
-      </p>
-      <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
-        <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
-        <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
-        <label>Label <input name="label" placeholder="v3, or what changed" /></label>
-        <label>Commit <input name="commit" placeholder="optional sha" /></label>
-        <button>Publish</button>
-      </form>
-    </section>
-  {/if}
+  <section>
+    <h2>Publish a release</h2>
+    <p>
+      From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
+      and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token an
+      owner makes in the Tokens tab.
+    </p>
+    <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
+      <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
+      <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
+      <label>Label <input name="label" placeholder="v3, or what changed" /></label>
+      <label>Commit <input name="commit" placeholder="optional sha" /></label>
+      <button>Publish</button>
+    </form>
+  </section>
 {:else if tab === 'tokens'}
   {#if form?.token}
     <section>

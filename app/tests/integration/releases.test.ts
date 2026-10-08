@@ -6,7 +6,7 @@ import { publishRelease, releaseUrl } from '../../src/lib/server/releases.js';
 import { sha256 } from '../../src/lib/bytes.js';
 import { trustId, type ProjectId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
-import { ALICE, TEACHER, claimsOf, config } from './env.js';
+import { ALICE, ASSISTANT, TEACHER, claimsOf, config } from './env.js';
 
 const sql = connect(config.databaseUrl);
 const bucket = s3Bucket(config.s3);
@@ -35,6 +35,13 @@ test('an owner publishes from the page; the newest release is what a student dow
   expect(await bucket.get(seen?.key as never)).toEqual(archive);
   const url = await releaseUrl(ctx, claimsOf(TEACHER), published.releaseId, 'teacher');
   expect((await fetch(url)).status).toBe(200);
+});
+
+test('an assistant publishes from the page as well; the release names them', async () => {
+  const project = await warmup();
+  const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(ASSISTANT) }, project, archive, other, 'by the assistant', null);
+  const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ by: string }[]>`select uploaded_by::text as by from project_release where release_id = ${published.releaseId}`);
+  expect(row?.by).toBe(claimsOf(ASSISTANT).sub);
 });
 
 test('a token publishes to its own project and to no other; a bad token stores nothing', async () => {
