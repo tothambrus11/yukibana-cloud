@@ -13,8 +13,17 @@ export async function postAction(action: string, fields: Record<string, string>)
   const body = new FormData();
   for (const [name, value] of Object.entries(fields)) body.set(name, value);
   const res = await fetch(action, { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
-  const result = deserialize(await res.text());
-  if (result.type === 'success' || result.type === 'redirect') return;
+  let result: ReturnType<typeof deserialize>;
+  try {
+    result = deserialize(await res.text());
+  } catch {
+    throw new Error(`the server answered ${res.status}`);
+  }
+  if (result.type === 'success') return;
+  // An action that saves redirects only when it did not get as far as
+  // saving: requireClaims sends a lapsed session to the login page. Counting
+  // that as success once left a reorder on screen that was never stored.
+  if (result.type === 'redirect') throw new Error('you are no longer signed in; log in again and redo it');
   const said: unknown = result.type === 'failure' ? result.data?.['error'] : (result.error as { message?: unknown } | null)?.message;
   throw new Error(typeof said === 'string' ? said : `the server answered ${res.status}`);
 }

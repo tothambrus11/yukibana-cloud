@@ -1,5 +1,6 @@
 import { test, expect } from 'vitest';
 import { ideUrl } from '../src/lib/ide';
+import { trustId, type ProjectId } from '../src/lib/ids';
 import { byUrgency, dueIn, outstanding, progressOf } from '../src/lib/progress';
 import { move } from '../src/lib/order';
 
@@ -7,7 +8,7 @@ const now = new Date('2026-10-08T12:00:00Z');
 const h = (n: number) => new Date(now.getTime() + n * 3_600_000);
 
 test('the IDE link names the project in the form the IDE registers', () => {
-  expect(ideUrl('01a1170d-cd55-7b64-bbee-521e6e8f8946')).toBe('yukibana://project/open?id=01a1170d-cd55-7b64-bbee-521e6e8f8946');
+  expect(ideUrl(trustId<ProjectId>('01a1170d-cd55-7b64-bbee-521e6e8f8946'))).toBe('yukibana://project/open?id=01a1170d-cd55-7b64-bbee-521e6e8f8946');
 });
 
 test('a project is submitted when the student handed something in, and late when the newest came after the deadline', () => {

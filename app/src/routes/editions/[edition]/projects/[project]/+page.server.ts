@@ -8,7 +8,7 @@ import { acceptSubmission } from '#lib/server/submissions.ts';
 import { publishRelease } from '#lib/server/releases.ts';
 
 interface ProjectRow {
-  project_id: string;
+  project_id: ProjectId;
   edition_id: string;
   course_code: string;
   edition_label: string;

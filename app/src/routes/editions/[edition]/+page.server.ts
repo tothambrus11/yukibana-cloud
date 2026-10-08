@@ -8,7 +8,7 @@ import { requireClaims, withContext } from '#lib/server/context.ts';
 import { studentProjects } from '#lib/server/student.ts';
 
 interface ProjectRow {
-  project_id: string;
+  project_id: ProjectId;
   slug: string;
   title: string;
   kind: string;
@@ -42,7 +42,7 @@ export const load: PageServerLoad = async (event) => {
   const edition = editionOf(event.params.edition);
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
-      const [head] = await tx<{ edition_id: string; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
+      const [head] = await tx<{ edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
         select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role,
                app.may_edit_projects(e.edition_id) as can_edit
         from course_edition e join course c on c.course_id = e.course_id

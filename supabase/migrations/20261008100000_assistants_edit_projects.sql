@@ -84,6 +84,12 @@ begin
   if edition is null or not app.may_edit_projects(edition) then
     raise exception 'only staff may reorder projects' using errcode = '42501';
   end if;
+  -- Two people dropping into the same gap at once would each read the same
+  -- neighbours and take the same midpoint, a tie the list then orders by
+  -- age rather than by where anyone dropped. Locking the edition's projects
+  -- makes concurrent moves in one edition take turns; moves are rare and
+  -- quick, and other editions are not touched.
+  perform 1 from public.project p where p.edition_id = edition order by p.project_id for update;
   if after is not null then
     select p.position into a from public.project p where p.project_id = after and p.edition_id = edition;
     if a is null then raise exception 'the project before it is not in this edition' using errcode = '23514'; end if;

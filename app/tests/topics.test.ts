@@ -1,9 +1,10 @@
 import { expect, test } from 'vitest';
+import { trustId, type EditionId, type UserId } from '../src/lib/ids';
 import { topicsFor } from '../src/lib/topics';
 
-const me = '01a11c0e-0000-7000-8000-000000000001';
-const course = '01a11c0e-0000-7000-8000-00000000000a';
-const other = '01a11c0e-0000-7000-8000-00000000000b';
+const me = trustId<UserId>('01a11c0e-0000-7000-8000-000000000001');
+const course = trustId<EditionId>('01a11c0e-0000-7000-8000-00000000000a');
+const other = trustId<EditionId>('01a11c0e-0000-7000-8000-00000000000b');
 
 test('a student listens to their editions and to themselves, never to a staff topic', () => {
   expect(topicsFor(me, [{ editionId: course, role: 'student' }])).toEqual([`edition:${course}`, `user:${me}`]);

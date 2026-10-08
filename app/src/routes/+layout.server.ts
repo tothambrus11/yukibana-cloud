@@ -1,5 +1,6 @@
 import type { LayoutServerLoad } from './$types';
 import type { EditionRole } from '#lib/api.ts';
+import type { EditionId } from '#lib/ids.ts';
 import { asUser } from '#lib/server/db.ts';
 import { withContext } from '#lib/server/context.ts';
 import { workerConfig } from '#lib/server/worker.ts';
@@ -15,7 +16,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   if (claims === null) return { user: null, live: null };
   const config = workerConfig();
   const memberships = await withContext((ctx) =>
-    asUser(ctx.sql, claims, (tx) => tx<{ edition_id: string; role: EditionRole }[]>`
+    asUser(ctx.sql, claims, (tx) => tx<{ edition_id: EditionId; role: EditionRole }[]>`
       select edition_id, role::text as role from enrollment where user_id = ${claims.sub}`),
   );
   return {

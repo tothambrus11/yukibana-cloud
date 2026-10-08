@@ -8,7 +8,12 @@
    *  upload form). `showCourse` adds the course, for a list across editions. */
   let { rows, showCourse = false, empty }: { rows: readonly StudentProjectRow[]; showCourse?: boolean; empty: string } = $props();
 
-  const now = new Date();
+  // The clock the statuses are read against, taken again whenever the rows
+  // are, so a page left open (and kept live) moves on to "overdue".
+  const now = $derived.by(() => {
+    void rows;
+    return new Date();
+  });
   const chip: Record<Progress, string> = { submitted: 'good', late: 'late', todo: '', overdue: 'late', missed: '' };
   const page = (r: StudentProjectRow): string => `/editions/${r.edition_id}/projects/${r.project_id}`;
 </script>

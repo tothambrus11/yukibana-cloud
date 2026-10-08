@@ -2,7 +2,7 @@
 -- each. The payload is never more than a table name, so the claim under test
 -- is about whom a change wakes, and that a draft wakes no student.
 begin;
-select plan(18);
+select plan(19);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -62,13 +62,20 @@ select app.publish_release(tests.project('live-draft'), 'v1', null, 'starters/li
 select tests.clear_auth();
 select is(pg_temp.heard('edition'), 2::bigint, 'and when a release of an open project is published');
 
+select tests.authenticate(tests.uid('ta@example.com'));
+insert into public.project (edition_id, slug, title, kind, available_after, deadline, closes_at)
+values (tests.edition('T-LIVE', '2026'), 'live-closed', 'Closed', 'rust-cargo', now() - interval '3 days', now() - interval '2 days', now() - interval '1 day');
+update public.project set title = 'Closed, renamed' where slug = 'live-closed';
+select tests.clear_auth();
+select is(pg_temp.heard('edition'), 2::bigint, 'a project that has closed wakes no student either');
+
 select tests.authenticate(tests.uid('student@example.com'));
 insert into public.submission (edition_id, project_id, object_key, byte_size, sha256)
 values (tests.edition('T-LIVE', '2026'), tests.project('live-draft'), 'submissions/live-1', 1, decode(repeat('cc', 32), 'hex'));
 select tests.clear_auth();
 select is(pg_temp.heard('student'), 1::bigint, 'a submission wakes its author''s other pages');
 select is(pg_temp.heard('edition'), 2::bigint, 'but not their classmates');
-select is(pg_temp.heard('staff'), 5::bigint, 'staff heard all five changes');
+select is(pg_temp.heard('staff'), 7::bigint, 'staff heard all seven changes');
 select is((select count(*) from realtime.messages where topic in (select name from topics) and payload - 'id' <> jsonb_build_object('table', payload ->> 'table')), 0::bigint,
   'and no message carries anything but the table''s name');
 

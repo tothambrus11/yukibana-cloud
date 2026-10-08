@@ -4,6 +4,8 @@
  *  this only says it.
  */
 
+import type { EditionId, ProjectId } from './ids';
+
 export type Progress =
   /** Submitted, and the newest submission was on time. */
   | 'submitted'
@@ -20,8 +22,8 @@ export type Progress =
  *  `studentProjects` (server/student.ts), read as the student. Field names
  *  are the database's. */
 export interface StudentProjectRow {
-  readonly project_id: string;
-  readonly edition_id: string;
+  readonly project_id: ProjectId;
+  readonly edition_id: EditionId;
   readonly course_code: string;
   readonly course_title: string;
   readonly edition_label: string;

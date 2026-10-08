@@ -56,6 +56,13 @@ export function refresh(): void {
   invalidateAll().catch((e: unknown) => report('live', `reloading after a change failed: ${String(e)}`));
 }
 
+/** Treats the page as out of date, as if the database had said so: it
+ *  reloads shortly, or when the last hold is released. For a page that
+ *  knows its own screen may be wrong (a refused save). */
+export function changed(): void {
+  heard();
+}
+
 function heard(): void {
   if (holds.size > 0) {
     live.stale = true;
@@ -116,8 +123,10 @@ function join(supabase: SupabaseClient, topic: string): void {
         // not heard, so assume something was.
         if (joinedBefore) heard();
         joinedBefore = true;
-      } else if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR) {
-        report('live', `could not listen to ${topic}: ${err?.message ?? 'refused'}`);
+      } else if (status === REALTIME_SUBSCRIBE_STATES.CHANNEL_ERROR || status === REALTIME_SUBSCRIBE_STATES.TIMED_OUT) {
+        // supabase-js keeps retrying; this says why the page is not live
+        // meanwhile. CLOSED is only ever us leaving.
+        report('live', `could not listen to ${topic}: ${err?.message ?? status}`);
       }
     });
   channels.set(topic, channel);

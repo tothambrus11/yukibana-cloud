@@ -7,7 +7,9 @@
  *  why the download sits beside it.
  */
 
+import type { ProjectId } from './ids';
+
 /** `yukibana://project/open?id=<project id>` */
-export function ideUrl(projectId: string): string {
+export function ideUrl(projectId: ProjectId): string {
   return `yukibana://project/open?id=${encodeURIComponent(projectId)}`;
 }

@@ -1,7 +1,10 @@
 <script module lang="ts">
-  /** One project as staff see it in an edition's list. */
+  import type { EditionId, ProjectId } from './ids';
+
+  /** One project as staff see it in an edition's list: a row of the edition
+   *  page's load, field names the database's. */
   export interface StaffProject {
-    readonly project_id: string;
+    readonly project_id: ProjectId;
     readonly title: string;
     readonly kind: string;
     readonly available_after: Date | null;
@@ -17,7 +20,7 @@
   import { tick } from 'svelte';
   import { postAction } from './action';
   import { when } from './format';
-  import { hold, refresh } from './live.svelte';
+  import { changed, hold } from './live.svelte';
   import { move } from './order';
   import { toast } from './toast.svelte';
 
@@ -34,7 +37,7 @@
    *  Changes others make arrive live (see live.svelte.ts), but not during a
    *  drag or while a move is unsaved: the list would jump under the pointer,
    *  or briefly show the server's older order. */
-  let { rows, editionId, reorder }: { rows: readonly StaffProject[]; editionId: string; reorder: boolean } = $props();
+  let { rows, editionId, reorder }: { rows: readonly StaffProject[]; editionId: EditionId; reorder: boolean } = $props();
 
   const byId = $derived(new Map(rows.map((p) => [p.project_id, p] as const)));
   // Follows `rows` whenever the page reloads, and is overridden by a move in
@@ -46,7 +49,12 @@
   let failed = false;
   let queue: Promise<void> = Promise.resolve();
 
-  const now = Date.now();
+  // Taken again whenever the rows are, so "late window" follows the clock on
+  // a page left open.
+  const now = $derived.by(() => {
+    void rows;
+    return Date.now();
+  });
   const past = (d: Date | null): boolean => d !== null && new Date(d).getTime() <= now;
 
   function commit(from: number, to: number): void {
@@ -69,7 +77,7 @@
         // show the order the server actually has.
         if (saving === 0 && failed) {
           failed = false;
-          refresh();
+          changed();
         }
       });
   }
@@ -112,7 +120,11 @@
     };
   }
 
-  $effect(() => (saving > 0 || dragging !== null ? hold() : undefined));
+  // One boolean, so the hold is taken and released only at its edges: an
+  // effect on `saving` itself would release and retake it on every move, and
+  // a release with news waiting reloads the list mid-save.
+  const busy = $derived(saving > 0 || dragging !== null);
+  $effect(() => (busy ? hold() : undefined));
 
   // A tab being closed gets the browser's own question; a link inside the
   // site gets ours.

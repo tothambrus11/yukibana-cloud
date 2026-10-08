@@ -57,6 +57,33 @@ create policy listen_to_signals on realtime.messages for select to authenticated
   and app.may_listen((select realtime.topic()))
 );
 
+-- Whether a project with this window is open to its students now: started,
+-- and not yet closed. app.project_open asked this with the role check
+-- around it; the signals need it without one (they run as the writer, not
+-- as a student), so it is its own function and project_open is rewritten
+-- to use it, so that the two cannot come apart. A first version of the
+-- signals tested only `available_after` and woke students for closed
+-- projects.
+create or replace function app.window_open(available_after timestamptz, closes_at timestamptz)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select available_after is not null
+     and available_after <= now()
+     and (closes_at is null or now() < closes_at)
+$$;
+
+create or replace function app.project_open(edition uuid, available_after timestamptz, closes_at timestamptz)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select app.role_in(edition) = 'student' and app.window_open(available_after, closes_at)
+$$;
+
 -- One broadcast, private, with nothing in it but the table that changed.
 create or replace function app.signal(topic text, source text)
 returns void
@@ -70,8 +97,9 @@ as $$
 $$;
 revoke execute on function app.signal(text, text) from public, anon, authenticated;
 
--- A project is students' to hear about once it has opened, before or after
--- the change; a draft or a project not yet open is staff's alone.
+-- A project is students' to hear about while it is open to them, before or
+-- after the change; a draft, one not yet open and one that has closed are
+-- staff's alone.
 create or replace function app.signal_project()
 returns trigger
 language plpgsql
@@ -81,8 +109,8 @@ as $$
 declare
   row_now public.project := case when tg_op = 'DELETE' then old else new end;
   visible boolean :=
-       (tg_op <> 'INSERT' and old.available_after is not null and old.available_after <= now())
-    or (tg_op <> 'DELETE' and new.available_after is not null and new.available_after <= now());
+       (tg_op <> 'INSERT' and app.window_open(old.available_after, old.closes_at))
+    or (tg_op <> 'DELETE' and app.window_open(new.available_after, new.closes_at));
 begin
   perform app.signal('edition:' || row_now.edition_id || ':staff', tg_table_name);
   if visible then
@@ -107,7 +135,7 @@ declare
 begin
   select * into p from public.project where project_id = new.project_id;
   perform app.signal('edition:' || p.edition_id || ':staff', tg_table_name);
-  if p.available_after is not null and p.available_after <= now() then
+  if app.window_open(p.available_after, p.closes_at) then
     perform app.signal('edition:' || p.edition_id, tg_table_name);
   end if;
   return null;

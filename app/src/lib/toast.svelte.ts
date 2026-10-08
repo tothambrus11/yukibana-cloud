@@ -27,6 +27,8 @@ export function toast(message: string): void {
   setTimeout(() => dismiss(id), SHOWN_MS);
 }
 
+/** Takes notice `id` away now, before its time; one already gone is
+ *  nothing to do. */
 export function dismiss(id: number): void {
   const i = toasts.findIndex((t) => t.id === id);
   if (i !== -1) toasts.splice(i, 1);

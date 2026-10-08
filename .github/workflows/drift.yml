@@ -46,3 +46,10 @@ jobs:
             echo "::error::production differs from the migrations (see drift.sql above); write the change down as a migration or revert it"
             exit 1
           fi
+      # The diff above leaves out the `realtime` schema, which is Supabase's
+      # and changes daily; the one rule of ours in it is checked exactly.
+      - name: Realtime policies are exactly ours
+        if: always()
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -q -f ops/realtime-policies.sql

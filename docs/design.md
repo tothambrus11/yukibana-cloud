@@ -129,8 +129,11 @@ read rules; `app.may_listen`, behind the policy on `realtime.messages`,
 only decides whom a change wakes. An edition's topic reaches everyone
 enrolled, its `:staff` topic reaches staff, and `user:<id>` reaches one
 person (their own submissions, say from the IDE, and their enrolments). A
-change to a project students cannot see yet goes to staff only, so a draft
-being worked on wakes no student. A page holds the news back while it would
+change to a project students cannot see (a draft, one not yet open, one
+closed) goes to staff only, by the same `app.window_open` the read
+policies use. The policy lives in Supabase's `realtime` schema, which the
+nightly drift diff leaves out, so `ops/realtime-policies.sql` checks it
+exactly, in CI and against production. A page holds the news back while it would
 lose something to a reload: during a drag, while its own moves are being
 saved, while a settings form has unsaved edits (which then says the
 project changed underneath it). What changes by the clock alone, a

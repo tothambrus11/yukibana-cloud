@@ -11,10 +11,10 @@ import type { StudentProjectRow } from '#lib/progress.ts';
 import type { EditionId } from '#lib/ids.ts';
 import type { Tx } from './db.ts';
 
-/** The caller's projects as a student, in their editions' own order: course,
- *  edition, then the order the teacher arranged. `edition` narrows to one. */
 export type { StudentProjectRow };
 
+/** The caller's projects as a student, in their editions' own order: course,
+ *  edition, then the order the teacher arranged. `edition` narrows to one. */
 export async function studentProjects(tx: Tx, claims: Claims, edition: EditionId | null): Promise<StudentProjectRow[]> {
   return tx<StudentProjectRow[]>`
     select p.project_id, p.edition_id, c.code as course_code, c.title as course_title, e.label as edition_label,

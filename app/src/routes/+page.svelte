@@ -11,7 +11,10 @@
   const archived = $derived(data.editions.filter((e) => e.archived_at !== null));
   // A student's work across every edition: what is still to hand in, most
   // urgent first, and what is already in.
-  const now = new Date();
+  const now = $derived.by(() => {
+    void data.tasks;
+    return new Date();
+  });
   const isStudent = $derived(data.editions.some((e) => e.role === 'student'));
   const todo = $derived(data.tasks
     .filter((t) => outstanding(progressOf(t, now)))
