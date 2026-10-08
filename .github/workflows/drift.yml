@@ -11,24 +11,35 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
+# Secrets go to the steps that use them and no others. The job reads
+# production with the database password, so nothing else it runs (an npm
+# install above all) may see it. The account access token is not given at
+# all: both commands below take the database URL and nothing more.
 jobs:
   drift:
     runs-on: ubuntu-latest
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      # The session pooler string: a direct connection is IPv6 and the runner
-      # is not. See .github/workflows/deploy.yml.
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # No install scripts: the Supabase CLI ships its binary as an optional
+      # dependency and needs none. A compromised dependency then gets no
+      # chance to run while installing; the only code that runs with the
+      # password is the Supabase CLI, in the two steps that need it.
+      - run: npm ci --ignore-scripts
       - name: Unapplied migrations
+        env:
+          # The session pooler string: a direct connection is IPv6 and the
+          # runner is not. See .github/workflows/database.yml.
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: npx supabase migration list --db-url "$SUPABASE_DB_URL"
       - name: Diff production against the migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
           npx supabase db diff --db-url "$SUPABASE_DB_URL" --schema public,app | tee drift.sql
           if [ -s drift.sql ]; then
