@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
   import { kb, local, when } from '#lib/format.ts';
+  import { ideUrl } from '#lib/ide.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { ActionData, PageData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -69,16 +70,20 @@
   {/if}
 
   <section>
-    <h2>Starter</h2>
+    <h2>{data.staff ? 'Starter' : 'Work on it'}</h2>
     {#if p.ready}
-      <p><a href="/api/projects/{p.project_id}/starter">Download {p.slug}.tar.gz</a></p>
+      <p class="row">
+        <a class="button" href={ideUrl(p.project_id)}>Open in Yukibana IDE</a>
+        <a class="button quiet" href="/api/projects/{p.project_id}/starter">Download {p.slug}.tar.gz</a>
+      </p>
+      {#if !data.staff}<p class="note">The IDE opens the project, downloading it if needed. Without the IDE, download the starter and work in that folder.</p>{/if}
     {:else}
       <p class="empty">No release has been published yet.</p>
     {/if}
   </section>
 
   {#if !data.staff}
-    <section>
+    <section id="submit">
       <h2>Submit your solution</h2>
       {#if p.can_submit}
         {#if pastDeadline}<p class="error">The deadline has passed: a submission now is recorded as late.</p>{/if}
@@ -88,7 +93,10 @@
           </label>
           <button>Submit</button>
         </form>
-        <p class="note">You can submit as many times as you like. Every version is kept; the latest version is the one assessed.</p>
+        <p class="note">
+          You can submit as many times as you like. Every version is kept; the latest version is the one assessed.
+          The IDE's submit button sends the right archive for you; to make one by hand, run <code>yukibana pack</code> in the project folder.
+        </p>
       {:else}
         <p class="empty">This project is not accepting submissions from you now.</p>
       {/if}

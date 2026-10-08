@@ -4,6 +4,7 @@ import { asUser, connect } from '../../src/lib/server/db.js';
 import { s3Bucket } from '../../src/lib/server/storage.js';
 import { acceptSubmission } from '../../src/lib/server/submissions.js';
 import { editions, members, project, projects, releases, submissions } from '../../src/lib/server/catalogue.js';
+import { studentProjects } from '../../src/lib/server/student.js';
 import { trustId, type EditionId, type ProjectId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
 import { ALICE, BOB, TEACHER, claimsOf, config, uid } from './env.js';
@@ -117,4 +118,16 @@ test('after the deadline a student still submits, and it reads as late; once the
   const [still] = await submissions(ctx, claimsOf(ALICE), id, { latest: false, author: null });
   expect(still).toMatchObject({ submissionId: sent.submissionId, late: true });
   expect(await status(submissions(ctx, claimsOf(BOB), id, { latest: false, author: null }))).toBe(404);
+});
+
+test('a student\'s project list says what they handed in and when; staff of an edition have no student list there', async () => {
+  const id = await warmup();
+  await acceptSubmission(ctx, claimsOf(BOB), id, zstd(42));
+  const mine = await asUser(sql, claimsOf(BOB), (tx) => studentProjects(tx, claimsOf(BOB), null));
+  const warm = mine.find((p) => p.project_id === id);
+  expect(warm).toMatchObject({ slug: 'warmup', can_submit: true, course_code: 'CS-101' });
+  expect(warm?.submissions).toBeGreaterThan(0);
+  expect(warm?.last_submitted_at).toBeInstanceOf(Date);
+  const teachers = await asUser(sql, claimsOf(TEACHER), (tx) => studentProjects(tx, claimsOf(TEACHER), null));
+  expect(teachers).toEqual([]);
 });

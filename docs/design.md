@@ -93,6 +93,26 @@ submission row is still never rewritten. A student keeps reading their own
 submissions after the window closes; `app.deadline_of` tells them the
 deadline of a project they submitted to and no longer see.
 
+**Order is a number between two numbers.** Owners arrange an edition's
+projects by dragging them, and each drop is saved at once through
+`app.move_project(project, after, before)`. `project.position` is a
+`numeric`: a moved project takes the midpoint of its new neighbours', so a
+move writes one row and the rest of the edition is never renumbered. The
+midpoint is `(a + b) * 0.5`, which is exact; `/ 2` would round to a scale
+and two positions would eventually tie. New projects go to the end, and a
+duplicated edition keeps the order. Positions are only compared, never
+shown.
+
+**What a student sees.** The home page's To do tab lists, across every
+edition they are a student in, what is still to hand in (soonest deadline
+first, overdue at the top) and what is handed in, late or not. Each
+edition's project list shows the same, in the owners' order. Every row
+links to the project, opens it in the IDE (`yukibana://project/open?id=<project
+id>`), downloads the starter, and goes to the upload form; the IDE's submit
+button and the form end in the same submission. "Overdue" is past the
+deadline and still open, "missed" is closed with nothing handed in; neither
+is stored, both are worked out from the dates when the page is drawn.
+
 **Submissions.** The body goes through the Worker as one request, not a
 presigned upload: the server computes the size and SHA-256 itself, stores
 the object, then inserts the row inside the student's policies. A refused

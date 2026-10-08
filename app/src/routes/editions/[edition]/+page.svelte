@@ -1,6 +1,10 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { deserialize } from '$app/forms';
+  import { tick } from 'svelte';
   import Tabs from '#lib/Tabs.svelte';
+  import StudentProjects from '#lib/StudentProjects.svelte';
+  import { move } from '#lib/order.ts';
   import { when } from '#lib/format.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { ActionData, PageData } from './$types';
@@ -13,6 +17,59 @@
   const tab = $derived(tabOf(page.url, tabs));
   const now = Date.now();
   const past = (d: Date | null): boolean => d !== null && new Date(d).getTime() <= now;
+
+  // Staff see the projects in the owners' order; owners rearrange it by
+  // dragging a row (or a row's handle with the arrow keys). Each drop is
+  // saved at once through the `move` action: the list changes on screen
+  // first, and goes back with the reason if the server refuses. Moves are
+  // sent one after another, in the order they were made, because each is
+  // placed between neighbours as the server has them.
+  const byId = $derived(new Map(data.projects.map((p) => [p.project_id, p] as const)));
+  let order = $derived(data.projects.map((p) => p.project_id));
+  let dragging = $state<number | null>(null);
+  let over = $state<number | null>(null);
+  let saveNote = $state('');
+  let saveError = $state('');
+  let queue: Promise<void> = Promise.resolve();
+
+  function commit(from: number, to: number): void {
+    const moved = move(order, from, to);
+    if (moved === null) return;
+    const previous = order;
+    const id = moved.items[to] ?? '';
+    order = moved.items;
+    saveError = '';
+    saveNote = 'Saving the new order…';
+    queue = queue.then(async () => {
+      const body = new FormData();
+      body.set('project', id);
+      body.set('after', moved.after ?? '');
+      body.set('before', moved.before ?? '');
+      try {
+        const res = await fetch('?tab=projects&/move', { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } });
+        const result = deserialize(await res.text());
+        if (result.type !== 'success') {
+          const why = result.type === 'failure' && typeof result.data?.['error'] === 'string' ? result.data['error'] : 'the server refused it';
+          throw new Error(why);
+        }
+        saveNote = 'Order saved.';
+      } catch (e) {
+        order = previous;
+        saveNote = '';
+        saveError = `The order was not saved: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    });
+  }
+
+  async function keyMove(e: KeyboardEvent, i: number): Promise<void> {
+    const to = e.key === 'ArrowUp' ? i - 1 : e.key === 'ArrowDown' ? i + 1 : null;
+    if (to === null) return;
+    e.preventDefault();
+    const id = order[i];
+    commit(i, to);
+    await tick();
+    document.querySelector<HTMLButtonElement>(`[data-handle="${id}"]`)?.focus();
+  }
 </script>
 
 <div class="head">
@@ -28,39 +85,65 @@
 {#if form?.error}<p class="error">{form.error}</p>{/if}
 
 {#if tab === 'projects'}
+  {#if !data.staff}
+    <section>
+      <h2>Projects</h2>
+      <StudentProjects rows={data.mine} empty="Nothing is open to you right now." />
+    </section>
+  {:else}
   <section>
     <h2>Projects</h2>
-    {#if data.projects.length === 0}
-      <p class="empty">{data.staff ? 'No projects yet.' : 'Nothing is open to you right now.'}</p>
+    {#if order.length === 0}
+      <p class="empty">No projects yet.</p>
     {:else}
+      {#if data.owner}<p class="note">Drag a project to change the order students see. Changes are saved as you drop.</p>{/if}
       <div class="scroll">
-        <table>
+        <table class="projects">
           <thead>
             <tr>
-              <th>Project</th><th>Opens</th><th>Deadline</th><th>Closes</th>
-              <th>{data.staff ? 'Releases' : 'Your submissions'}</th>
+              {#if data.owner}<th><span class="sr-only">Order</span></th>{/if}
+              <th>Project</th><th>Opens</th><th>Deadline</th><th>Closes</th><th>Releases</th>
             </tr>
           </thead>
           <tbody>
-            {#each data.projects as p (p.project_id)}
-              <tr>
-                <td>
-                  <a href="/editions/{data.edition.edition_id}/projects/{p.project_id}">{p.title}</a>
-                  <span class="chip">{p.kind}</span>
-                  {#if data.staff && p.available_after === null}<span class="chip">draft</span>{/if}
-                  {#if !p.ready}<span class="chip">no starter yet</span>{/if}
-                </td>
-                <td>{when(p.available_after)}</td>
-                <td>{when(p.deadline)}{#if past(p.deadline) && !past(p.closes_at)} <span class="chip late">late window</span>{/if}</td>
-                <td>{p.closes_at === null ? 'never' : when(p.closes_at)}</td>
-                <td>{#if data.staff}{p.releases}{:else}{p.my_submissions}{/if}</td>
-              </tr>
+            {#each order as id, i (id)}
+              {@const p = byId.get(id)}
+              {#if p}
+                <tr
+                  draggable={data.owner}
+                  class:dragging={dragging === i}
+                  class:over={over === i && dragging !== null && dragging !== i}
+                  ondragstart={(e) => { dragging = i; e.dataTransfer?.setData('text/plain', id); if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }}
+                  ondragover={(e) => { if (dragging !== null) { e.preventDefault(); over = i; } }}
+                  ondrop={(e) => { e.preventDefault(); if (dragging !== null) commit(dragging, i); dragging = null; over = null; }}
+                  ondragend={() => { dragging = null; over = null; }}
+                >
+                  {#if data.owner}
+                    <td class="grip">
+                      <button type="button" class="handle" data-handle={id} aria-label="Move {p.title}: drag, or use the up and down arrow keys" title="Drag to reorder" onkeydown={(e) => keyMove(e, i)}>⠿</button>
+                    </td>
+                  {/if}
+                  <td>
+                    <a href="/editions/{data.edition.edition_id}/projects/{p.project_id}">{p.title}</a>
+                    <span class="chip">{p.kind}</span>
+                    {#if p.available_after === null}<span class="chip">draft</span>{/if}
+                    {#if !p.ready}<span class="chip">no starter yet</span>{/if}
+                  </td>
+                  <td>{when(p.available_after)}</td>
+                  <td>{when(p.deadline)}{#if past(p.deadline) && !past(p.closes_at)} <span class="chip late">late window</span>{/if}</td>
+                  <td>{p.closes_at === null ? 'never' : when(p.closes_at)}</td>
+                  <td>{p.releases}</td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>
       </div>
+      <p class="note" aria-live="polite">{saveNote}</p>
+      {#if saveError}<p class="error" role="alert">{saveError}</p>{/if}
     {/if}
   </section>
+  {/if}
 
   {#if data.owner}
     <section>

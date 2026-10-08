@@ -1,10 +1,11 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { uuidOf, type EditionId } from '#lib/ids.ts';
+import { uuidOf, type EditionId, type ProjectId } from '#lib/ids.ts';
 import { KINDS, type Kind } from '#lib/kinds.ts';
 import { asUser, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
+import { studentProjects } from '#lib/server/student.ts';
 
 interface ProjectRow {
   project_id: string;
@@ -53,7 +54,9 @@ export const load: PageServerLoad = async (event) => {
                app.current_starter(p.project_id) is not null as ready,
                (select count(*) from submission s where s.project_id = p.project_id and s.author_id = ${claims.sub})::int as my_submissions
         from project p where p.edition_id = ${edition}
-        order by p.available_after nulls last, p.slug`;
+        order by p.position nulls last, p.created_at`;
+      // A student's list says where they stand with each project.
+      const mine = head.role === 'student' ? await studentProjects(tx, claims, edition) : [];
       const roster = staff
         ? await tx<RosterRow[]>`
             select en.email, en.role::text as role, en.source::text as source, en.user_id is not null as linked, u.full_name, u.github_login
@@ -61,7 +64,7 @@ export const load: PageServerLoad = async (event) => {
             where en.edition_id = ${edition}
             order by en.role desc, en.email`
         : [];
-      return { edition: head, role: head.role, staff, owner: head.role === 'owner', projects, roster, kinds: KINDS };
+      return { edition: head, role: head.role, staff, owner: head.role === 'owner', projects, mine, roster, kinds: KINDS };
     }),
   );
 };
@@ -69,6 +72,27 @@ export const load: PageServerLoad = async (event) => {
 const failing = (e: unknown) => fail(statusOf(e).status, { error: statusOf(e).message });
 
 export const actions: Actions = {
+  /** A drop in the project list: `project` now sits after `after` and before
+   *  `before` (either may be empty, at an end). The page posts this itself,
+   *  with no save button; app.move_project checks the owner and moves one
+   *  row. */
+  move: async (event) => {
+    const claims = requireClaims(event);
+    editionOf(event.params.edition);
+    const form = await event.request.formData();
+    const project = uuidOf<ProjectId>(text(form, 'project'));
+    const after = text(form, 'after') === '' ? null : uuidOf<ProjectId>(text(form, 'after'));
+    const before = text(form, 'before') === '' ? null : uuidOf<ProjectId>(text(form, 'before'));
+    if (project === null || (text(form, 'after') !== '' && after === null) || (text(form, 'before') !== '' && before === null)) {
+      return fail(400, { error: 'Not a project.' });
+    }
+    try {
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.move_project(${project}, ${after}, ${before})`));
+    } catch (e) {
+      return failing(e);
+    }
+    return { moved: project };
+  },
   enrol: async (event) => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);

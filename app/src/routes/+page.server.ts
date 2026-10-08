@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { asUser, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
+import { studentProjects } from '#lib/server/student.ts';
 
 interface EditionRow {
   edition_id: string;
@@ -13,11 +14,12 @@ interface EditionRow {
   role: string;
 }
 
-/** What the home screen shows: the editions the person is in, and for a
- *  teacher the courses they may add an edition to. Every row comes through
+/** What the home screen shows: the editions the person is in, a student's
+ *  projects for the to-do list, and for a teacher the courses they may add
+ *  an edition to. Every row comes through
  *  the policies, so there is nothing to filter here. */
 export const load: PageServerLoad = async (event) => {
-  if (event.locals.claims === null) return { user: null, editions: [], courses: [], platformRole: null };
+  if (event.locals.claims === null) return { user: null, editions: [], courses: [], platformRole: null, tasks: [] };
   const claims = event.locals.claims;
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
@@ -30,7 +32,10 @@ export const load: PageServerLoad = async (event) => {
       const courses = platformRole === 'teacher' || platformRole === 'admin'
         ? await tx<{ course_id: string; code: string; title: string }[]>`select course_id, code, title from course order by code`
         : [];
-      return { user: claims.sub, editions, courses, platformRole };
+      // The to-do list: every project the person has as a student, across
+      // editions. The page sorts and splits it.
+      const tasks = editions.some((e) => e.role === 'student') ? await studentProjects(tx, claims, null) : [];
+      return { user: claims.sub, editions, courses, platformRole, tasks };
     }),
   );
 };
