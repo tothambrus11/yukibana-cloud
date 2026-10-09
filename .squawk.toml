@@ -1,0 +1,14 @@
+# squawk reads this from the repository root; `npm run db:lint` passes the
+# rest of its settings on the command line.
+
+# Migrations that were linted clean, pushed and applied before a newer squawk
+# grew a rule they break. A pushed migration is never edited (CLAUDE.md), so
+# it cannot take an ignore comment; it is excluded here instead, by name,
+# with the reason. Every other rule still applies to every other file.
+#
+# 20261007120000_project_window.sql: squawk 2.67 added ban-drop-function,
+# which flags its `drop function app.project_open(uuid, timestamptz)`. The
+# two-argument version had no callers outside SQL, and the same migration
+# replaced every one (can_submit, current_starter, the project_read policy)
+# before dropping it; the Worker never called it.
+excluded_paths = ["supabase/migrations/20261007120000_project_window.sql"]
