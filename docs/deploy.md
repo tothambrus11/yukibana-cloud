@@ -60,9 +60,18 @@ is 10 GB of storage, 10 million reads a month and no egress charges.
 **Create the bucket**, named `yukibana-cloud`, the same name local development and CI use.
 
 **Create an R2 API token** (R2 → Manage API tokens → Create), with Object
-Read & Write on that bucket. It prints an Access Key ID and a Secret Access
-Key: those are the S3 credentials the Worker uses. The same page shows the
-S3 API endpoint, `https://<account id>.r2.cloudflarestorage.com`.
+Read & Write on that bucket. The page that follows shows three values, once:
+
+| Shown as | Length | Use |
+| --- | --- | --- |
+| Token value | about 40–53 characters | **not used**: it is for Cloudflare's own API |
+| Access Key ID | 32 hexadecimal characters | `S3_ACCESS_KEY_ID` |
+| Secret Access Key | 64 hexadecimal characters | `S3_SECRET_ACCESS_KEY` |
+
+The token value comes first and looks like a key, and pasting it as
+`S3_ACCESS_KEY_ID` makes every upload fail; the Worker checks the shapes and
+names the mistake. The same page shows the S3 API endpoint,
+`https://<account id>.r2.cloudflarestorage.com`.
 
 **Create the Hyperdrive config**, from a checkout. Note the user and the
 password: `yukibana_app`, with the value you will put in `APP_DB_PASSWORD`
