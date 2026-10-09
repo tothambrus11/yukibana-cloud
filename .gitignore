@@ -13,3 +13,6 @@ app/build/
 
 # Local bucket data, if run without Docker
 dev/data/
+
+# direnv
+.direnv/
