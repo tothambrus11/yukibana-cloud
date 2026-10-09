@@ -14,7 +14,9 @@ const host = process.env['SUPABASE_SERVICES_HOSTNAME'] ?? '127.0.0.1';
 export const config: Config = {
   databaseUrl: env('DATABASE_URL', `postgres://yukibana_app:yukibana@${host}:54322/postgres`),
   supabaseUrl: env('PUBLIC_SUPABASE_URL', `http://${host}:54321`),
-  supabasePublishableKey: env('SUPABASE_PUBLISHABLE_KEY', 'unused-here'),
+  // The key every local stack has unless told otherwise; CI passes what
+  // `supabase status` reports, in case a CLI release changes it.
+  supabasePublishableKey: env('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'),
   s3: {
     endpoint: env('S3_ENDPOINT', `http://${host}:9000`),
     publicEndpoint: env('S3_PUBLIC_ENDPOINT', `http://${host}:9000`),
@@ -26,6 +28,10 @@ export const config: Config = {
   submissionMaxBytes: 1024 * 1024,
   releaseMaxBytes: 1024 * 1024,
 };
+
+/** The local stack's mail catcher (`[local_smtp]` in supabase/config.toml),
+ *  where the login codes land. Mailpit, read over its HTTP API. */
+export const mailUrl = env('MAIL_URL', `http://${host}:54324`);
 
 /** The id `tests.create_user(addr)` gave this address in the seed. */
 export function uid(addr: string): UserId {

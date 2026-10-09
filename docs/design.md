@@ -75,12 +75,19 @@ trigger on `auth.users` fills it in when the address is confirmed. Roster
 feeds produce exactly (edition, address, role), so one table upserts against
 them. Removing someone is a delete whether or not they ever logged in.
 
-**Identity is GitHub's, via Supabase Auth.** The address GitHub reports as
-primary and verified is what enrolment matches on. There is no password path
-and no magic link. An institutional OIDC provider later changes the login
-screen and nothing else, because `auth.users.id` is the identity either way.
-Until then, students are told which address to make primary on GitHub, and
-the roster shows who has and has not linked.
+**Identity is a verified address, via Supabase Auth.** Two ways prove one:
+GitHub, whose primary verified address is what it reports, and a one-time
+code mailed to the address (2026-10). Enrolment matches on the address either
+way, and both reach the same `auth.users` row for it. There is no password
+and no link in the mail, only the code. Until 2026-10 GitHub was the only way
+in; that made every test account a GitHub account, and left a student whose
+GitHub primary was not the enrolled address with nothing to do but change it.
+A code account is confirmed by its code and not before
+(`enable_confirmations`), because a confirmed address is what links
+enrolments. Anyone may ask for a code: an account with no enrolment sees
+nothing. An institutional OIDC provider later changes the login screen and
+nothing else, because `auth.users.id` is the identity either way. The roster
+shows who has and has not linked.
 
 **No `user_contact` table.** Earlier drafts split addresses out of the
 profile to keep bulk reads from harvesting them. Supabase already holds the
@@ -230,10 +237,15 @@ integration suite, squawk over migrations, the deploy and drift workflows.
 
 ## Open questions
 
-* **Which address will students' GitHub accounts report?** If many use a
-  personal primary address, enrolment by GitHub login is the next matching
-  key (`app_user.github_login` already exists); it would be a second nullable
+* **Which address will students' GitHub accounts report?** Less pressing
+  since email codes (2026-10): a student whose GitHub primary is personal can
+  log in by code to the enrolled address instead. If that is still not
+  enough, enrolment by GitHub login is the next matching key
+  (`app_user.github_login` already exists); it would be a second nullable
   column on `enrollment`, not a redesign.
+* **Code login from the CLI and the IDE.** `yukibana login` and the Theia
+  library go straight to GitHub (`authorizeUrl` in `cli/src/lib/pkce.ts`).
+  An account that only ever logged in by code has no way in there yet.
 * **Retention.** Addresses and submission bodies are personal data. Cascading
   deletes from `auth.users` would erase graded work; the schema restricts
   instead, and bucket lifecycle rules must agree with whatever the database

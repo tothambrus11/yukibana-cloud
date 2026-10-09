@@ -68,6 +68,10 @@ jobs:
 
       - name: Start Supabase
         run: npx supabase start
+      # The login tests talk to Auth as the page does, with the publishable
+      # key; this is the stack's own rather than the default env.ts assumes.
+      - name: Publishable key for the integration tests
+        run: echo "SUPABASE_PUBLISHABLE_KEY=$(npx supabase status -o json | jq -r .PUBLISHABLE_KEY)" >> "$GITHUB_ENV"
       - name: Start the bucket
         run: npm run storage:start
 

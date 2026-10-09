@@ -56,9 +56,13 @@ port = 54323
 api_url = "http://127.0.0.1"
 openai_api_key = "env(OPENAI_API_KEY)"
 
-# Login is GitHub only; nothing sends mail.
+# Locally, Auth's mail (the login codes) lands in this catcher instead of an
+# inbox: http://127.0.0.1:54324. A deployed project sends through the SMTP
+# provider set on its dashboard, which nothing here declares, so `config
+# push` leaves it alone.
 [local_smtp]
-enabled = false
+enabled = true
+port = 54324
 
 # Files live in R2 (or RustFS locally) over S3, not in Supabase Storage.
 [storage]
@@ -82,7 +86,10 @@ minimum_password_length = 6
 password_requirements = ""
 
 [auth.rate_limit]
-email_sent = 2
+# Per hour, project-wide. A class logging in by code at the start of a lab is
+# thirty mails in a minute; Supabase's default of 2 is for its built-in
+# mailer, which a deployed project does not use.
+email_sent = 100
 sms_sent = 30
 anonymous_users = 30
 token_refresh = 150
@@ -90,15 +97,30 @@ sign_in_sign_ups = 30
 token_verifications = 30
 web3 = 30
 
-# No password or magic-link path: the only way in is the provider below.
+# A one-time code by email, beside GitHub (2026-10). No password and no link:
+# the mail carries a code the login page asks for. `enable_signup` is the
+# email provider itself, signing in included, not only new accounts.
+# Confirmations on: an account a code creates is confirmed by that code and
+# not before, since a confirmed address is what links enrolments. With them
+# off, Auth confirms a new address the moment anyone asks for a code for it.
 [auth.email]
-enable_signup = false
+enable_signup = true
 double_confirm_changes = true
-enable_confirmations = false
+enable_confirmations = true
 secure_password_change = false
 max_frequency = "1s"
 otp_length = 6
 otp_expiry = 3600
+
+# Both mails carry the code and no link. A new address gets the confirmation,
+# a known one the magic link; to the person they are the same mail.
+[auth.email.template.confirmation]
+subject = "Your Yukibana login code"
+content_path = "./supabase/templates/code.html"
+
+[auth.email.template.magic_link]
+subject = "Your Yukibana login code"
+content_path = "./supabase/templates/code.html"
 
 [auth.sms]
 enable_signup = false
