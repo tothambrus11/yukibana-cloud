@@ -96,7 +96,7 @@
       </p>
       {#if !data.staff}<p class="note">The IDE opens the project, downloading it if needed. Without the IDE, download the starter and work in that folder.</p>{/if}
     {:else}
-      <p class="empty">No release has been published yet.</p>
+      <p class="empty">No exercise contents have been released yet.</p>
     {/if}
   </section>
 

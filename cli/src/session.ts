@@ -1,7 +1,8 @@
 /** Logging in as a person, and staying logged in.
  *
- *  Identity is Supabase Auth's, with GitHub as the provider, exactly as on
- *  the web; what the registry receives is the same access token a browser
+ *  Identity is Supabase Auth's, with GitHub as the provider. The web also
+ *  takes a code by email; this does not yet (docs/design.md, open
+ *  questions). What the registry receives is the same access token a browser
  *  session has, as a bearer. A login is three steps so that whoever drives
  *  it chooses how the browser is shown and where it comes back to:
  *

@@ -112,8 +112,8 @@
         <button>Enrol</button>
       </form>
       <p class="note">
-        An address that has not logged in yet is linked at that person's first GitHub login, if
-        GitHub reports it as their primary verified email.
+        An address that has not logged in yet is linked the first time that person proves it: by a
+        code mailed to it, or by a GitHub login that reports it as their primary verified email.
       </p>
     </section>
   {/if}

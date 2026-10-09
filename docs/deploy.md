@@ -204,7 +204,8 @@ deploys the Worker alongside it.
 `ops/bootstrap.sql` sets the connection role's password and then tries to
 promote the first admin. On a brand-new project it finds nobody to promote
 and says so, because an account only exists once someone has logged in. So
-**open the app, log in with GitHub, and run the workflow again**. The second
+**open the app, log in (with GitHub, or a code mailed to `FIRST_ADMIN_EMAIL`),
+and run the workflow again**. The second
 run promotes you, and every run after that is a no-op.
 
 You are then an admin: `/admin` grants `teacher` to anyone who has logged in

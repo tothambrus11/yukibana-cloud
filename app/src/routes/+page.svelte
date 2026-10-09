@@ -46,7 +46,7 @@
       starter archive; students download it, solve it in their own editor, and submit as many
       versions as they like.
     </p>
-    <p><a href="/auth/login">Log in with GitHub</a> to see yours.</p>
+    <p><a class="button" href="/auth/login">Log in</a> to see yours, with GitHub or a code mailed to you.</p>
   </section>
 {:else}
   <Tabs {tabs} current={tab} />
