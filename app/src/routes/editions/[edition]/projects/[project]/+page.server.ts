@@ -1,15 +1,17 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { uuidOf, type EditionId, type ProjectId, type TokenId } from '#lib/ids.ts';
 import { asUser, statusOf } from '#lib/server/db.ts';
-import { text } from '#lib/server/form.ts';
+import { refusal, text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
 import { publishRelease } from '#lib/server/releases.ts';
+import { deleteProject } from '#lib/server/deletion.ts';
 
 interface ProjectRow {
   project_id: ProjectId;
   edition_id: string;
+  course_id: string;
   course_code: string;
   edition_label: string;
   slug: string;
@@ -69,7 +71,7 @@ export const load: PageServerLoad = async (event) => {
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [p] = await tx<ProjectRow[]>`
-        select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
+        select p.project_id, p.edition_id, c.course_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                app.role_in(p.edition_id)::text as role,
                app.may_edit_projects(p.edition_id) as can_edit,
                app.current_starter(p.project_id) is not null as ready,
@@ -105,13 +107,6 @@ export const load: PageServerLoad = async (event) => {
 };
 
 const failing = (e: unknown) => fail(statusOf(e).status, { error: statusOf(e).message });
-const httpFailing = (e: unknown) => {
-  if (typeof e === 'object' && e !== null && 'status' in e && 'body' in e) {
-    const err = e as { status: number; body: { message: string } };
-    return fail(err.status, { error: err.body.message });
-  }
-  return failing(e);
-};
 const dateOf = (value: string): Date | null => {
   if (value === '') return null;
   const d = new Date(value);
@@ -132,7 +127,7 @@ export const actions: Actions = {
       const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes));
       return { submitted: accepted };
     } catch (e) {
-      return httpFailing(e);
+      return refusal(e);
     }
   },
   /** A manual release: the two archives from the teacher's machine. The
@@ -151,7 +146,7 @@ export const actions: Actions = {
         publishRelease(ctx, { kind: 'user', claims }, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null));
       return { published };
     } catch (e) {
-      return httpFailing(e);
+      return refusal(e);
     }
   },
   update: async (event) => {
@@ -191,6 +186,18 @@ export const actions: Actions = {
     } catch (e) {
       return failing(e);
     }
+  },
+  /** Deletes the project and goes back to its edition. */
+  delete: async (event) => {
+    const claims = requireClaims(event);
+    const { edition, project } = ids(event.params);
+    const form = await event.request.formData();
+    try {
+      await withContext((ctx) => deleteProject(ctx, claims, project, text(form, 'confirm')));
+    } catch (e) {
+      return refusal(e);
+    }
+    redirect(303, `/editions/${edition}`);
   },
   revokeToken: async (event) => {
     const claims = requireClaims(event);

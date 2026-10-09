@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
+  import DeleteForm from '#lib/DeleteForm.svelte';
   import { kb, local, when } from '#lib/format.ts';
   import { ideUrl } from '#lib/ide.ts';
   import { hold, live, refresh } from '#lib/live.svelte.ts';
@@ -46,7 +47,8 @@
 <div class="head">
   <nav class="crumbs" aria-label="Breadcrumb">
     <a href="/">Courses</a>
-    <a href="/editions/{p.edition_id}">{p.course_code} {p.edition_label}</a>
+    <a href="/courses/{p.course_id}">{p.course_code}</a>
+    <a href="/editions/{p.edition_id}">{p.edition_label}</a>
     <span>{p.title}</span>
   </nav>
   <h1>{p.title}</h1>
@@ -268,4 +270,15 @@ YUKIBANA_URL     {data.origin}</pre>
       the project. Without a closing date, late work is accepted indefinitely.
     </p>
   </section>
+  {#if data.owner}
+    <DeleteForm
+      action={actionIn('settings', 'delete')}
+      what="project"
+      name={p.slug}
+      consequences="Deletes the project with every release and token. Students lose the starter at once. It cannot be undone."
+      blocked={data.submissions.length > 0
+        ? `Students have handed in ${data.submissions.length} ${data.submissions.length === 1 ? 'submission' : 'submissions'} here, and submissions are kept. Close the project instead, by giving it a closing date.`
+        : null}
+    />
+  {/if}
 {/if}

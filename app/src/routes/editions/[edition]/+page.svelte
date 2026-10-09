@@ -3,10 +3,14 @@
   import Tabs from '#lib/Tabs.svelte';
   import StaffProjects from '#lib/StaffProjects.svelte';
   import StudentProjects from '#lib/StudentProjects.svelte';
+  import DeleteForm from '#lib/DeleteForm.svelte';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
-  const tabs = $derived<Tab[]>([
+  // A teacher sees every edition (they browse all courses), but only its
+  // members see what is in it.
+  const outside = $derived(data.role === null);
+  const tabs = $derived<Tab[]>(outside ? [] : [
     { id: 'projects', label: 'Projects', count: data.projects.length },
     ...(data.staff ? [{ id: 'roster', label: 'Roster', count: data.roster.length }] : []),
     ...(data.owner ? [{ id: 'settings', label: 'Settings' }] : []),
@@ -15,7 +19,11 @@
 </script>
 
 <div class="head">
-  <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Courses</a><span>{data.edition.code} {data.edition.label}</span></nav>
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="/">Courses</a>
+    <a href="/courses/{data.edition.course_id}">{data.edition.code}</a>
+    <span>{data.edition.label}</span>
+  </nav>
   <h1>{data.edition.code} · {data.edition.title}</h1>
   <p>
     <span class="chip">{data.edition.label}</span>
@@ -25,7 +33,15 @@
 
 <Tabs {tabs} current={tab} />
 
-{#if tab === 'projects'}
+{#if outside}
+  <section>
+    <h2>You are not in this edition</h2>
+    <p class="empty">
+      Its projects, roster and submissions are for its members.
+      {#if data.edition.owners.length > 0}Ask {data.edition.owners.join(', ')} to add you.{/if}
+    </p>
+  </section>
+{:else if tab === 'projects'}
   {#if !data.staff}
     <section>
       <h2>Projects</h2>
@@ -138,4 +154,13 @@
       <button class="quiet">{data.edition.archived_at ? 'Unarchive' : 'Archive'} this edition</button>
     </form>
   </section>
+  <DeleteForm
+    action={actionIn('settings', 'delete')}
+    what="edition"
+    name={data.edition.label}
+    consequences="Deletes the edition with its roster, projects, releases and tokens. The course and its other editions stay. It cannot be undone."
+    blocked={data.submissions > 0
+      ? `Students have handed in ${data.submissions} ${data.submissions === 1 ? 'submission' : 'submissions'} here, and submissions are kept. Archive the edition instead.`
+      : null}
+  />
 {/if}

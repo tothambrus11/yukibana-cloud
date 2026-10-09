@@ -1,6 +1,6 @@
 -- What a student can see of a project, and when; releases and tokens.
 begin;
-select plan(27);
+select plan(29);
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');
@@ -34,10 +34,12 @@ select lives_ok(
   'an assistant creates a project');
 update public.project set title = 'Renamed by the assistant' where slug = 'proj-ta';
 select is((select title from public.project where slug = 'proj-ta'), 'Renamed by the assistant', 'and edits it');
--- Deleting takes the releases with it: that stays the owners'. RLS
--- hides the row from the delete rather than raising, so the row survives.
-delete from public.project where slug = 'proj-ta';
-select is((select count(*) from public.project where slug = 'proj-ta'), 1::bigint, 'but an assistant cannot delete a project');
+-- Deleting takes the releases with it: that stays the owners', and goes
+-- through app.delete_project (see deletion.test.sql). There is no bare
+-- delete for anyone since 20261009090000.
+select throws_ok($$ delete from public.project where slug = 'proj-ta' $$, '42501', null, 'an assistant cannot delete a project with a bare delete');
+select throws_ok($$ select app.delete_project(tests.project('proj-ta')) $$, '42501', null, 'nor through the function');
+select is((select count(*) from public.project where slug = 'proj-ta'), 1::bigint, 'and the project is still there');
 select tests.authenticate(tests.uid('teacher@example.com'));
 insert into public.project (edition_id, slug, title, kind, created_by)
 values (tests.edition('T-PROJ', '2026'), 'proj-draft', 'Draft', 'scala-sbt', tests.uid('ta@example.com'));

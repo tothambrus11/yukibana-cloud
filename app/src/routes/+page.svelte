@@ -1,14 +1,13 @@
 <script lang="ts">
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
+  import EditionList from '#lib/EditionList.svelte';
   import StudentProjects from '#lib/StudentProjects.svelte';
   import { byUrgency, outstanding, progressOf } from '#lib/progress.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
-  const staff = $derived(data.platformRole === 'teacher' || data.platformRole === 'admin');
-  const active = $derived(data.editions.filter((e) => e.archived_at === null));
-  const archived = $derived(data.editions.filter((e) => e.archived_at !== null));
+
   // A student's work across every edition: what is still to hand in, most
   // urgent first, and what is already in.
   const now = $derived.by(() => {
@@ -20,23 +19,63 @@
     .filter((t) => outstanding(progressOf(t, now)))
     .toSorted(byUrgency));
   const done = $derived(data.tasks.filter((t) => t.last_submitted_at !== null));
+
+  // Somebody who is not a teacher sees their editions as one list: they are
+  // in a handful, and the course is a column, not a heading.
+  const mine = $derived(data.editions.filter((e) => e.role !== null));
+  const active = $derived(mine.filter((e) => e.archived_at === null));
+  const archived = $derived(mine.filter((e) => e.archived_at !== null));
+
+  // A teacher sees courses, each with every edition of it. "Yours" is a
+  // course they are in an edition of, or made; "All" is the catalogue.
+  const courses = $derived(data.courses.map((c) => ({
+    ...c,
+    editions: data.editions.filter((e) => e.course_id === c.course_id),
+  })));
+  const yours = $derived(courses.filter((c) => c.mine || c.editions.some((e) => e.role !== null)));
+
   const tabs = $derived<Tab[]>([
     ...(isStudent ? [{ id: 'todo', label: 'To do', count: todo.length }] : []),
-    { id: 'active', label: 'Active', count: active.length },
-    ...(archived.length > 0 ? [{ id: 'archived', label: 'Archived', count: archived.length }] : []),
-    ...(staff ? [{ id: 'create', label: 'Create' }] : []),
+    ...(data.teacher
+      ? [
+          { id: 'courses', label: 'Your courses', count: yours.length },
+          { id: 'all', label: 'All courses', count: courses.length },
+          { id: 'create', label: 'New course' },
+        ]
+      : [
+          { id: 'active', label: 'Editions', count: active.length },
+          ...(archived.length > 0 ? [{ id: 'archived', label: 'Archived', count: archived.length }] : []),
+        ]),
   ]);
   const tab = $derived(tabOf(page.url, tabs));
   const shown = $derived(tab === 'archived' ? archived : active);
 </script>
 
 <div class="head">
-  <h1>Your courses</h1>
+  <h1>{data.teacher ? 'Courses' : 'Your courses'}</h1>
   <p>
     Course projects, and the work students submit for them.
     {#if data.platformRole === 'admin'}<a href="/admin">Administration</a>{/if}
   </p>
 </div>
+
+{#snippet courseCards(list: typeof courses, empty: string)}
+  {#if list.length === 0}
+    <section><p class="empty">{empty}</p></section>
+  {:else}
+    <div class="courses">
+      {#each list as c (c.course_id)}
+        <section class="course">
+          <h2>
+            <a href="/courses/{c.course_id}">{c.code} · {c.title}</a>
+            <a class="button quiet" href="/courses/{c.course_id}?tab=new">New edition</a>
+          </h2>
+          <EditionList rows={c.editions} empty="No editions yet." />
+        </section>
+      {/each}
+    </div>
+  {/if}
+{/snippet}
 
 {#if data.user === null}
   <section>
@@ -63,22 +102,11 @@
         <p class="note">You can keep submitting while a project is open; the latest version is the one assessed.</p>
       </section>
     {/if}
+  {:else if tab === 'courses'}
+    {@render courseCards(yours, 'You are not in any edition yet. Make a course, or find one under All courses and ask its owner to add you.')}
+  {:else if tab === 'all'}
+    {@render courseCards(courses, 'Nobody has made a course yet.')}
   {:else if tab === 'create'}
-    {#if data.courses.length > 0}
-      <section>
-        <h2>New edition</h2>
-        <form method="POST" action={actionIn('create', 'createEdition')} class="stack">
-          <label>Course
-            <select name="course_id">
-              {#each data.courses as c (c.course_id)}<option value={c.course_id}>{c.code} · {c.title}</option>{/each}
-            </select>
-          </label>
-          <label>Label <input name="label" placeholder="2026 autumn" required /></label>
-          <button>Create edition</button>
-        </form>
-        <p class="note">To reuse last year's projects and staff, open that edition and duplicate it instead.</p>
-      </section>
-    {/if}
     <section>
       <h2>New course</h2>
       <form method="POST" action={actionIn('create', 'createCourse')} class="stack">
@@ -86,7 +114,10 @@
         <label>Title <input name="title" placeholder="Introduction to Programming" required /></label>
         <button>Create course</button>
       </form>
-      <p class="note">A course groups its editions; the work lives in an edition.</p>
+      <p class="note">
+        A course groups its editions; the work lives in an edition. Next you make its first one.
+        To run an existing course again, open it and add an edition there instead.
+      </p>
     </section>
   {:else}
     <section>

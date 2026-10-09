@@ -1,9 +1,10 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { uuidOf, type EditionId, type ProjectId } from '#lib/ids.ts';
+import { uuidOf, type CourseId, type EditionId, type ProjectId } from '#lib/ids.ts';
 import { KINDS, type Kind } from '#lib/kinds.ts';
 import { asUser, statusOf } from '#lib/server/db.ts';
-import { text } from '#lib/server/form.ts';
+import { refusal, text } from '#lib/server/form.ts';
+import { deleteEdition } from '#lib/server/deletion.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { studentProjects } from '#lib/server/student.ts';
 
@@ -42,9 +43,9 @@ export const load: PageServerLoad = async (event) => {
   const edition = editionOf(event.params.edition);
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
-      const [head] = await tx<{ edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
-        select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role,
-               app.may_edit_projects(e.edition_id) as can_edit
+      const [head] = await tx<{ edition_id: EditionId; course_id: CourseId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean; owners: string[] }[]>`
+        select e.edition_id, e.course_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role,
+               app.may_edit_projects(e.edition_id) as can_edit, to_jsonb(array(select app.edition_owners(e.edition_id))) as owners
         from course_edition e join course c on c.course_id = e.course_id
         where e.edition_id = ${edition}`;
       if (head === undefined) error(404, 'No such edition.');
@@ -65,10 +66,15 @@ export const load: PageServerLoad = async (event) => {
             where en.edition_id = ${edition}
             order by en.role desc, en.email`
         : [];
+      // Submissions are kept, so an edition with any cannot be deleted; the
+      // owner's settings say so instead of offering a form that would fail.
+      const [subs] = head.role === 'owner'
+        ? await tx<{ n: number }[]>`select count(*)::int as n from submission where edition_id = ${edition}`
+        : [{ n: 0 }];
       // `canEdit` is the database's answer, the same function its policies
       // ask: the page draws the reorder handles and the new-project form only
       // when they would be accepted.
-      return { edition: head, role: head.role, staff, owner: head.role === 'owner', canEdit: head.can_edit, projects, mine, roster, kinds: KINDS };
+      return { edition: head, role: head.role, staff, owner: head.role === 'owner', canEdit: head.can_edit, projects, mine, roster, kinds: KINDS, submissions: subs?.n ?? 0 };
     }),
   );
 };
@@ -200,5 +206,23 @@ export const actions: Actions = {
       return failing(e);
     }
     return { ok: true };
+  },
+  /** Deletes the edition and goes to its course, which is still there. */
+  delete: async (event) => {
+    const claims = requireClaims(event);
+    const edition = editionOf(event.params.edition);
+    const form = await event.request.formData();
+    let course: CourseId;
+    try {
+      course = await withContext(async (ctx) => {
+        const [row] = await asUser(ctx.sql, claims, (tx) => tx<{ course_id: CourseId }[]>`select course_id from course_edition where edition_id = ${edition}`);
+        if (row === undefined) error(404, 'No such edition.');
+        await deleteEdition(ctx, claims, edition, text(form, 'confirm'));
+        return row.course_id;
+      });
+    } catch (e) {
+      return refusal(e);
+    }
+    redirect(303, `/courses/${course}`);
   },
 };
