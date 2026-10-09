@@ -57,9 +57,8 @@ api_url = "http://127.0.0.1"
 openai_api_key = "env(OPENAI_API_KEY)"
 
 # Locally, Auth's mail (the login codes) lands in this catcher instead of an
-# inbox: http://127.0.0.1:54324. A deployed project sends through the SMTP
-# provider set on its dashboard, which nothing here declares, so `config
-# push` leaves it alone.
+# inbox: http://127.0.0.1:54324. Production sends through Resend, declared
+# under [remotes.production] below.
 [local_smtp]
 enabled = true
 port = 54324
@@ -201,3 +200,17 @@ project_id = "zfklzzixyseiyhszkojf"
 [remotes.production.auth]
 site_url = "https://cloud.yukibana.dev"
 additional_redirect_urls = ["https://cloud.yukibana.dev/auth/callback", "http://127.0.0.1:*/callback"]
+
+# The login codes, sent through Resend. Not optional: Supabase's own mailer
+# reaches only the organisation's members, and on the free plan it refuses
+# any template but its own, which rejected the whole auth push the first time
+# (2026-10). The sender's domain is verified in Resend; the API key is the
+# password, a deploy secret.
+[remotes.production.auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(SUPABASE_AUTH_SMTP_PASS)"
+admin_email = "login@yukibana.dev"
+sender_name = "Yukibana"

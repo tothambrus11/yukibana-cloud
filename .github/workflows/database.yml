@@ -25,6 +25,8 @@
 #                           pooler is IPv4 on every plan. (Hyperdrive is the
 #                           opposite: it takes the direct string.)
 #   SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID, _SECRET   the production OAuth App
+#   SUPABASE_AUTH_SMTP_PASS a Resend API key with sending access, for the
+#                           login codes (config.toml, [remotes.production])
 #   APP_DB_PASSWORD         a password you generate for the yukibana_app role
 #   FIRST_ADMIN_EMAIL       who app.bootstrap_admin promotes, once
 #
@@ -58,6 +60,7 @@ jobs:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID }}
       SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET: ${{ secrets.SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET }}
+      SUPABASE_AUTH_SMTP_PASS: ${{ secrets.SUPABASE_AUTH_SMTP_PASS }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -98,7 +101,7 @@ jobs:
           missing=
           for v in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_URL \
                    SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET \
-                   APP_DB_PASSWORD FIRST_ADMIN_EMAIL; do
+                   SUPABASE_AUTH_SMTP_PASS APP_DB_PASSWORD FIRST_ADMIN_EMAIL; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           # Shape, not just presence. The access token is the last thing this

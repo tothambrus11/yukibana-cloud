@@ -47,12 +47,14 @@ Developer settings → OAuth Apps → New. The callback URL is
 `https://<ref>.supabase.co/auth/v1/callback`. Keep the client id and secret.
 This is an OAuth App, not a GitHub App: the registry reads no repositories.
 
-Login codes are mailed through an SMTP provider of your choosing (Resend,
-Postmark, SES, …), set on the dashboard under Authentication → Emails → SMTP
-Settings. Supabase's built-in mailer sends only to your organisation's own
-members, a couple of mails an hour. `config.toml` declares no SMTP block,
-so `config push` leaves this setting as the dashboard has it; it is the one
-auth setting that lives there.
+Login codes are mailed through **Resend**. Supabase's built-in mailer sends
+only to your organisation's own members, a couple of mails an hour, and on
+the free plan it refuses the code template, failing the whole auth push. At
+resend.com, add the domain `yukibana.dev` and put the DNS records it shows
+into Cloudflare, then create an API key with sending access. The rest is in
+`supabase/config.toml` under `[remotes.production.auth.email.smtp]`; the
+key is the `SUPABASE_AUTH_SMTP_PASS` secret below. Another provider, or
+another sender address, is a change to that block.
 
 Nothing else is configured by hand. The deploy workflow pushes the auth
 settings from `supabase/config.toml`, and the schema comes from the
@@ -160,6 +162,7 @@ GitHub → Settings → Secrets and variables → Actions.
 | `SUPABASE_DB_URL` | the **session pooler** connection string, percent-encoded |
 | `SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID` | the OAuth App's client id |
 | `SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET` | the OAuth App's secret |
+| `SUPABASE_AUTH_SMTP_PASS` | the Resend API key, for the login codes |
 | `APP_DB_PASSWORD` | a password you generate for the `yukibana_app` role |
 | `FIRST_ADMIN_EMAIL` | the address your GitHub account reports as primary |
 
