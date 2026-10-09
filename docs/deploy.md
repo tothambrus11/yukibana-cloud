@@ -47,6 +47,13 @@ Developer settings → OAuth Apps → New. The callback URL is
 `https://<ref>.supabase.co/auth/v1/callback`. Keep the client id and secret.
 This is an OAuth App, not a GitHub App: the registry reads no repositories.
 
+Login codes are mailed through an SMTP provider of your choosing (Resend,
+Postmark, SES, …), set on the dashboard under Authentication → Emails → SMTP
+Settings. Supabase's built-in mailer sends only to your organisation's own
+members, a couple of mails an hour. `config.toml` declares no SMTP block,
+so `config push` leaves this setting as the dashboard has it; it is the one
+auth setting that lives there.
+
 Nothing else is configured by hand. The deploy workflow pushes the auth
 settings from `supabase/config.toml`, and the schema comes from the
 migrations. The dashboard is read-only from here on; `drift.yml` fails

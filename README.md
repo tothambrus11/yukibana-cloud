@@ -18,7 +18,7 @@ is a working desktop client), and `CLAUDE.md` is how the code is written.
 | The app | SvelteKit in `app/`, one Cloudflare Worker on the free plan, Postgres through Hyperdrive as a role that can bypass no policy. |
 | The CLI | `cli/`: a teacher's `check`, `build`, `publish`, `download`, `assemble`; a student's `login`, `projects`, `starter`, `submit`. Also the library the Theia extension imports. `action/` wraps it as a GitHub Action. |
 | Files | Cloudflare R2 over S3 in production, RustFS over S3 locally. The database holds keys. |
-| Login | GitHub, through Supabase Auth, in the browser or from the CLI (`yukibana login`). Publishing from CI uses a per-project token instead. |
+| Login | Supabase Auth: GitHub, or a one-time code by email, in the browser; GitHub from the CLI (`yukibana login`). Publishing from CI uses a per-project token instead. |
 
 ## Start
 
@@ -42,7 +42,10 @@ npm run dev:vars                # .dev.vars from what the stack reports
 npm run dev                     # http://127.0.0.1:5173
 ```
 
-Log in with GitHub, then make yourself the admin of the local database:
+Log in with GitHub, or by email code: every mail the local stack sends lands
+in its catcher at http://127.0.0.1:54324, so any address works, including the
+seeded alice@, bob@, ta@ and teacher@yukibana.local. Then make yourself the
+admin of the local database:
 
 ```bash
 npm run local:admin -- you@example.com
