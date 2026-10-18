@@ -108,3 +108,15 @@ export interface AuthConfigJson {
   readonly supabaseUrl: string;
   readonly publishableKey: string;
 }
+
+/** Every refusal and failure under `/api/`, whatever the status and whatever
+ *  the caller's `Accept` says: a 400 for a request that cannot mean
+ *  anything, 401 for no session, 403 for a session that may not, 404 for no
+ *  such thing, 409 for a conflict, 5xx for the server's fault. `message` is
+ *  a sentence for a person; a client branches on the status, never on the
+ *  wording. A redirect or a 204 has no body at all. */
+export interface ErrorJson {
+  /** The response's own status, repeated for a client that kept only the body. */
+  readonly status: number;
+  readonly message: string;
+}
