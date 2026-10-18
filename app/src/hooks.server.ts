@@ -4,22 +4,34 @@ import { workerConfig } from '#lib/server/worker.ts';
 import { Misconfigured } from '#lib/server/db.ts';
 import { claimsFor, supabaseFor } from '#lib/server/session.ts';
 import { report } from '#lib/report.ts';
+import { asJsonError, errorResponse, isApiPath, preferringJson, unmatched } from '#lib/server/errors.ts';
 
 /** Every request: read the configuration, find out who is asking, and hand
  *  both to the route. The database client is created by the route that
  *  needs it (see #lib/server/context), so a page that only renders never
- *  opens a connection. */
+ *  opens a connection.
+ *
+ *  Under `/api/` every error is JSON with a status (see #lib/server/errors):
+ *  a path no route matches is answered here, before anything else, and the
+ *  rest are made JSON on the way in and on the way out. */
 export const handle: Handle = async ({ event, resolve }) => {
+  const api = isApiPath(event.url.pathname);
+  if (api && event.route.id === null) {
+    const { status, message } = unmatched(event.request.method, event.url.pathname);
+    return errorResponse(status, message);
+  }
   let config;
   try {
     config = workerConfig();
   } catch (e) {
     report('hooks', e instanceof Error ? e.message : String(e));
+    if (api) return errorResponse(500, 'The server is not configured.');
     error(500, 'The server is not configured.');
   }
   event.locals.supabase = supabaseFor(event.cookies, config.supabaseUrl, config.supabasePublishableKey);
   event.locals.claims = await claimsFor(event.locals.supabase, event.request.headers.get('authorization'));
-  return resolve(event);
+  if (!api) return resolve(event);
+  return asJsonError(await resolve({ ...event, request: preferringJson(event.request) }));
 };
 
 /** What a caller is told when something threw that nobody expected.
