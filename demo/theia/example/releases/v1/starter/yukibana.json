@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "kind": "rust-cargo",
+  "openFiles": [
+    "README.md",
+    "src/lib.rs"
+  ],
+  "readOnly": [
+    "README.md",
+    "Cargo.toml",
+    "tests",
+    "yukibana.json"
+  ],
+  "projectId": "0192f1e2-0000-7000-8000-000000000001",
+  "release": {
+    "id": "0192f1e2-0000-7000-8000-000000000101",
+    "label": "v1",
+    "seq": 1
+  }
+}

@@ -11,6 +11,10 @@
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"
     },
+    "./diff3": {
+      "types": "./dist/lib/diff3.d.ts",
+      "default": "./dist/lib/diff3.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

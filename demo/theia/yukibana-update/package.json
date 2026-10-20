@@ -1,0 +1,35 @@
+{
+  "name": "yukibana-update",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Applies a newer release of an assignment to a student's folder: read-only files are replaced, untouched files are updated, and files both the student and the teacher changed open in Theia's merge editor.",
+  "keywords": [
+    "theia-extension"
+  ],
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/core": "1.76.0",
+    "@theia/editor": "1.76.0",
+    "@theia/filesystem": "1.76.0",
+    "@theia/monaco": "1.76.0",
+    "@theia/scm": "1.76.0",
+    "@theia/workspace": "1.76.0",
+    "@yukibana/cli": "file:../../../cli"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "typescript": "~5.9.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/update-frontend-module",
+      "backend": "lib/node/update-backend-module"
+    }
+  ]
+}

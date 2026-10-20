@@ -162,6 +162,21 @@ Whether to offer the send button is the host's decision from that data: the
 demo offers it when there are no problems, the folder names a project, and
 that project is open to the student now (`sendable` in its `view.ts`).
 
+## Updating to a newer release
+
+When a teacher publishes a fix, `planUpdate(base, newest, folder)` says what
+happens to every file: read-only ones are replaced, editable ones the
+student never touched are ready to apply, and editable ones both changed
+need the student, with `merge3`'s result (every clean change applied,
+conflicts left as the base had them) as the starting point.
+`writesFor(plan, answers)` gives the writes, `yukibana.json` last. Both are
+pure; the host reads the two starters and the folder and does the writing.
+
+`demo/theia` is a prototype of the Theia side, using Theia's own three-way
+merge editor from `@theia/scm`; its README says how it fits together and
+what the merge editor decides for itself. `@yukibana/cli/diff3` is the
+merge alone, with no Node imports, for a frontend bundle.
+
 ## Errors
 
 A refusal is a `RegistryError` with the HTTP `status` and the registry's own

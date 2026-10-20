@@ -1,0 +1,14 @@
+.yukibana-update-body { padding: 12px 20px; max-width: 760px; overflow-y: auto; height: 100%; box-sizing: border-box; }
+.yukibana-update-body h2 { font-weight: 600; margin: 4px 0 12px; }
+.yukibana-update-body h3 { font-size: var(--theia-ui-font-size1); font-weight: 600; margin: 18px 0 6px; }
+.yukibana-update-notes { margin: 0 0 8px; padding: 8px 12px; border-left: 3px solid var(--theia-focusBorder); background: var(--theia-textBlockQuote-background); white-space: pre-wrap; }
+.yukibana-update-caption { font-size: 0.85em; opacity: 0.75; margin-bottom: 4px; }
+.yukibana-update-row { display: flex; align-items: center; gap: 8px; padding: 3px 0 3px 8px; }
+.yukibana-update-mark { width: 18px; display: inline-flex; justify-content: center; }
+.yukibana-update-path { font-family: var(--theia-code-font-family); }
+.yukibana-update-note { opacity: 0.8; }
+.yukibana-update-link { margin-left: auto; cursor: pointer; color: var(--theia-textLink-foreground); }
+.yukibana-update-warning { border: 1px solid var(--theia-inputValidation-warningBorder); padding: 4px 12px 10px; margin-top: 12px; }
+.yukibana-update-ack { display: block; margin-top: 8px; }
+.yukibana-update-actions { margin-top: 20px; display: flex; gap: 8px; }
+.yukibana-update-empty { padding: 20px; }

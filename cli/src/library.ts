@@ -29,7 +29,10 @@
  *
  *  The pure pieces under `lib/` (the config parser, the plans, tar, the
  *  assembly) are exported too, for an extension that wants to show what a
- *  read-only or hidden pattern matches.
+ *  read-only or hidden pattern matches, and so are the release update
+ *  (`planUpdate`, `writesFor`) and its three-way merge (`merge3`), which
+ *  the IDE's update widget is drawn from. `@yukibana/cli/diff3` is the merge
+ *  alone, with no Node imports, for a frontend bundle.
  *
  *  The library is headless: it owns the protocol, the data, the disk and the
  *  network, and nothing a person sees. Opening a browser, the page the
@@ -53,5 +56,7 @@ export { assemble, submissionRoot, teacherRoot, tampered, type Assembled, type A
 export { planSubmission, type Packing } from './lib/pack.js';
 export { parseConfig, protectedPaths, CONFIG_FILE, KINDS, type Config, type Kind, type SubmissionRules } from './lib/yukibana.js';
 export { matcher } from './lib/glob.js';
+export { merge3, render, splitLines, diffLines, type Chunk, type Hunk, type Merge, type MarkerLabels } from './lib/diff3.js';
+export { planUpdate, writesFor, group, textOf, type Answers, type Decision, type Group, type Planned, type Tree, type UpdatePlan, type Write } from './lib/update.js';
 export { readTar, writeTar, type Entry, type EntryType } from './lib/tar.js';
 export type { Accepted, Author, Edition, EditionRole, Me, Member, Project, Published, Release, Submission } from './lib/wire.js';

@@ -1,0 +1,13 @@
+{
+  "name": "yukibana-demo-theia",
+  "private": true,
+  "description": "A prototype of the release update tool as a Theia extension, and a browser Theia to run it in. Not part of the root check: Theia brings its own toolchain.",
+  "workspaces": [
+    "yukibana-update",
+    "browser-app"
+  ],
+  "scripts": {
+    "build": "npm run -w yukibana-update build && npm run -w browser-app build",
+    "start": "npm run -w browser-app start"
+  }
+}
