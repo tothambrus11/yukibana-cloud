@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { asPublisher, asUser, Misconfigured, statusOf } from '../src/lib/server/db';
+import { asPublisher, asUser, clashOf, Misconfigured, statusOf } from '../src/lib/server/db';
 import type { Sql, Tx } from '../src/lib/server/db';
 import type { Claims } from '../src/lib/claims';
 
@@ -52,5 +52,22 @@ describe('what the database said reaches the caller', () => {
     missing.code = '42P01';
     expect(statusOf(missing)).toMatchObject({ status: 500, code: '42P01' });
     expect(statusOf(new Error('the bucket is unreachable')).code).toBe('');
+  });
+});
+
+describe('a duplicate is named by what was duplicated', () => {
+  test('a unique violation says which constraint, so a page can say "that code is taken"', () => {
+    const taken: Error & { code?: string; constraint_name?: string } = new Error('duplicate key value violates unique constraint "course_code_key"');
+    taken.code = '23505';
+    taken.constraint_name = 'course_code_key';
+    expect(clashOf(taken)).toBe('course_code_key');
+  });
+
+  test('anything else names no constraint, even one that carries a name', () => {
+    const check: Error & { code?: string; constraint_name?: string } = new Error('new row violates check constraint');
+    check.code = '23514';
+    check.constraint_name = 'enrollment_email_check';
+    expect(clashOf(check)).toBe('');
+    expect(clashOf(new Error('the bucket is unreachable'))).toBe('');
   });
 });

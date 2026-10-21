@@ -20,6 +20,8 @@ export interface MeJson {
 export interface EditionJson {
   readonly editionId: string;
   readonly courseCode: string;
+  /** The course name this edition runs under, which its owners set; other
+   *  editions of the same course may have another. */
   readonly courseTitle: string;
   readonly label: string;
   readonly archived: boolean;
