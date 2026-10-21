@@ -388,6 +388,13 @@ connection string rather than the session pooler one. See step 1.
 not pushed the settings yet. The pushed values are printed by the "Supabase
 settings, before" step of the last deploy.
 
+**A merge to `main` changed nothing on the site.** Workers Builds reports
+a "Workers Builds: yukibana-cloud" check on every commit it builds; a
+commit on `main` without one was never built, and the site still runs the
+one before. Retry the build from the Worker's Deployments page in the
+Cloudflare dashboard, or push again. `/api/auth/config` answering without
+`siteUrl` is the sign that code from before the website login is live.
+
 **`yukibana login` or the IDE still goes straight to GitHub.** The deployed
 `wrangler.jsonc` has no `SUPABASE_OAUTH_CLIENT_ID`: `/api/auth/config`
 answers without `oauthClientId`. Step 7, 3. A CLI older than the website
