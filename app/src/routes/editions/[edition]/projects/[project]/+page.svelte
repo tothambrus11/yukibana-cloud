@@ -139,7 +139,7 @@
                 {/if}
                 <td>{when(s.submitted_at)}{#if s.late} <span class="chip late">late</span>{/if}</td>
                 {#if data.staff}
-                  <td>{#if s.base === null}<span class="muted">unknown</span>{:else}{s.base}{#if s.base_is_live} <span class="chip live">live</span>{/if}{/if}</td>
+                  <td>{#if s.base_id === null}<span class="muted">unknown</span>{:else}{#if s.base}{s.base} {/if}<code>{s.base_id}</code>{#if s.base_is_live} <span class="chip live">live</span>{/if}{/if}</td>
                 {/if}
                 <td>{kb(s.byte_size)}</td>
                 <td><code>{s.sha256.slice(0, 12)}</code></td>

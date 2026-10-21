@@ -33,9 +33,10 @@ export interface Choice<R extends ReleaseRef> {
   readonly notes: readonly string[];
 }
 
-/** A short name for a release, for a terminal: its label, else the start
- *  of its id. */
-export const nameOf = (r: ReleaseRef): string => (r.label === '' ? r.releaseId.slice(0, 8) : r.label);
+/** A release's name for a terminal: its label and its whole id, which is
+ *  what `--release` takes and the only name that tells two unlabelled
+ *  releases apart (the start of a v7 id is only its time). */
+export const nameOf = (r: ReleaseRef): string => (r.label === '' ? r.releaseId : `${r.label} (${r.releaseId})`);
 
 /** What `--release` names, checked against the project's releases before
  *  anything is downloaded: an id that is not one of them is refused, never

@@ -60,10 +60,10 @@ test('a claim naming another project\'s release is ignored and said out loud', (
 test('when the archive and the registry disagree, the registry\'s record wins and the teacher is told', () => {
   const c = chooseReleases(releases, 'own', V1.releaseId, V2.releaseId);
   assert.equal(c.base, V1);
-  assert.match(c.notes[0] ?? '', /sent as started from v1, but its yukibana.json names 00000000/);
+  assert.match(c.notes[0] ?? '', /sent as started from v1 \(00000000-0000-7000-8000-000000000001\), but its yukibana.json names 00000000-0000-7000-8000-000000000002;/);
 });
 
-test('a release without a label is called by the start of its id', () => {
-  assert.equal(nameOf(V2), '00000000');
-  assert.equal(nameOf(V3), 'v3');
+test('a release is called by its whole id, after its label when it has one', () => {
+  assert.equal(nameOf(V2), '00000000-0000-7000-8000-000000000002');
+  assert.equal(nameOf(V3), 'v3 (00000000-0000-7000-8000-000000000003)');
 });

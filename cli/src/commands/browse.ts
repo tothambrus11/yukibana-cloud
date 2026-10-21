@@ -133,6 +133,6 @@ export async function submissions(inv: Invocation): Promise<void> {
     github: (s) => s.author.githubLogin ?? '',
     size: (s) => bytes(s.byteSize),
     latest: (s) => [s.latest ? 'latest' : '', s.late ? 'late' : ''].filter(Boolean).join(', '),
-    'started from': (s) => s.baseReleaseId?.slice(0, 8) ?? '-',
+    'started from': (s) => s.baseReleaseId ?? '-',
   });
 }

@@ -86,7 +86,7 @@ export async function download(inv: Invocation): Promise<void> {
     else {
       const named = wanted === 'newest' ? newest?.releaseId : wanted.releaseId;
       const r = releases.find((x) => x.releaseId === named);
-      console.log(`assembling with release ${r === undefined ? '' : `${r.releaseId} (${nameOf(r)})`}`);
+      console.log(`assembling with release ${r === undefined ? '' : nameOf(r)}`);
     }
   }
   const teachers = new Map<string, Promise<Entry[]>>();
