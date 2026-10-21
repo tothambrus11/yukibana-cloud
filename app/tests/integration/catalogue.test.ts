@@ -2,13 +2,14 @@ import { test, expect, afterAll } from 'vitest';
 import { isHttpError } from '@sveltejs/kit';
 import { asUser, connect } from '../../src/lib/server/db.js';
 import { s3Bucket } from '../../src/lib/server/storage.js';
-import { acceptSubmission } from '../../src/lib/server/submissions.js';
+import { acceptSubmission, recordSubmission } from '../../src/lib/server/submissions.js';
 import { publishRelease } from '../../src/lib/server/releases.js';
 import { editions, members, project, projects, releases, submissions } from '../../src/lib/server/catalogue.js';
 import { studentProjects } from '../../src/lib/server/student.js';
-import { trustId, type EditionId, type ProjectId, type ReleaseId } from '../../src/lib/ids.js';
+import { trustId, trustKey, type EditionId, type ProjectId, type ReleaseId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
-import { ALICE, BOB, TEACHER, claimsOf, config, uid } from './env.js';
+import type { Bucket } from '../../src/lib/server/storage.js';
+import { ALICE, ASSISTANT, BOB, TEACHER, claimsOf, config, uid } from './env.js';
 
 const sql = connect(config.databaseUrl);
 const ctx: Context = { config, sql, bucket: s3Bucket(config.s3) };
@@ -23,15 +24,18 @@ async function warmup(): Promise<ProjectId> {
   return trustId<ProjectId>(row.project_id);
 }
 
-const status = async (p: Promise<unknown>): Promise<number> => {
+/** The status and the sentence a call answered with: 200 and '' when it
+ *  did not throw an HTTP error. */
+const outcome = async (p: Promise<unknown>): Promise<{ status: number; message: string }> => {
   try {
     await p;
-    return 200;
+    return { status: 200, message: '' };
   } catch (e) {
-    if (isHttpError(e)) return e.status;
+    if (isHttpError(e)) return { status: e.status, message: e.body.message };
     throw e;
   }
 };
+const status = async (p: Promise<unknown>): Promise<number> => (await outcome(p)).status;
 
 test('a student\'s open exercises are the published projects of their editions, with what they may do in each', async () => {
   const [p] = await projects(ctx, claimsOf(BOB), null);
@@ -115,7 +119,9 @@ test('after the deadline a student still submits, and it reads as late; once the
   await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
   expect((await projects(ctx, claimsOf(ALICE), null)).some((p) => p.projectId === id)).toBe(false);
   expect(await status(project(ctx, claimsOf(ALICE), id))).toBe(404);
-  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10), null))).toBe(403);
+  const late = await outcome(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10), null));
+  expect(late.status).toBe(403);
+  expect(late.message).toMatch(/^This project closed on \d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)? UTC and no longer accepts submissions\.$/);
   const [still] = await submissions(ctx, claimsOf(ALICE), id, { latest: false, author: null });
   expect(still).toMatchObject({ submissionId: sent.submissionId, late: true });
   expect(await status(submissions(ctx, claimsOf(BOB), id, { latest: false, author: null }))).toBe(404);
@@ -153,4 +159,55 @@ test('a submission records the release it started from only when that release is
   expect(base(based)).toBe(ours.releaseId);
   expect(base(misplaced)).toBeNull();
   expect(base(invented)).toBeNull();
+});
+
+test('a refused submission says why to the people in the edition, and nothing new to anyone else', async () => {
+  const [e] = await editions(ctx, claimsOf(TEACHER));
+  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+    insert into project (edition_id, slug, title, kind)
+    values (${e?.editionId ?? ''}, ${`draft-${Date.now()}`}, 'A draft', 'rust-cargo')
+    returning project_id`);
+  const draft = trustId<ProjectId>(made?.project_id ?? '');
+  const open = await warmup();
+
+  expect(await outcome(acceptSubmission(ctx, claimsOf(TEACHER), draft, zstd(30), null))).toEqual({
+    status: 403,
+    message: 'You are an owner of Introduction to Programming (2026 autumn); only its students can submit to this project.',
+  });
+  expect((await outcome(acceptSubmission(ctx, claimsOf(ASSISTANT), open, zstd(31), null))).message).toMatch(/^You are an assistant of Introduction to Programming \(2026 autumn\);/);
+  expect(await outcome(acceptSubmission(ctx, claimsOf(ALICE), draft, zstd(32), null))).toEqual({
+    status: 403,
+    message: 'This project is not open for submissions yet; it has no opening date.',
+  });
+
+  const stranger = claimsOf('stranger@yukibana.local'); // no account, no enrolment
+  const nowhere = trustId<ProjectId>('00000000-0000-4000-8000-000000000000');
+  const generic = { status: 403, message: 'This project is not accepting submissions from you now.' };
+  expect(await outcome(acceptSubmission(ctx, stranger, draft, zstd(33), null))).toEqual(generic);
+  expect(await outcome(acceptSubmission(ctx, claimsOf(ALICE), nowhere, zstd(34), null))).toEqual(generic);
+});
+
+test('a window that closes between the check and the insert stores nothing: no row, no object, and a 403 that says it closed', async () => {
+  const [e] = await editions(ctx, claimsOf(TEACHER));
+  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+    insert into project (edition_id, slug, title, kind, available_after, closes_at)
+    values (${e?.editionId ?? ''}, ${`race-${Date.now()}`}, 'Closing', 'rust-cargo', now() - interval '1 day', now() - interval '1 second')
+    returning project_id`);
+  const id = trustId<ProjectId>(made?.project_id ?? '');
+  // What the bucket was asked to do, so the test can see the object go.
+  const put: string[] = [];
+  const deleted: string[] = [];
+  const bucket: Bucket = {
+    ...ctx.bucket,
+    put: async (key, body, type) => { put.push(key); await ctx.bucket.put(key, body, type); },
+    delete: async (key) => { deleted.push(key); await ctx.bucket.delete(key); },
+  };
+
+  // Straight to the insert, as if the check had passed a moment earlier.
+  const raced = await outcome(recordSubmission({ ...ctx, bucket }, claimsOf(ALICE), id, zstd(50), null));
+  expect(raced.status).toBe(403);
+  expect(raced.message).toMatch(/^This project closed on /);
+  expect(deleted).toEqual(put);
+  expect(await ctx.bucket.head(trustKey(put[0] ?? ''))).toBeNull();
+  expect(await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: null })).toEqual([]);
 });
