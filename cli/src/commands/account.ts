@@ -14,8 +14,8 @@ export async function login(inv: Invocation): Promise<void> {
 }
 
 export async function logoutCommand(inv: Invocation): Promise<void> {
-  const { revoked } = await logout(inv.store);
-  console.log(revoked ? 'logged out' : 'logged out here (the session could not be ended at the server; it expires on its own)');
+  const { revoked, why } = await logout(inv.store);
+  console.log(revoked ? 'logged out' : `logged out here; the session was not ended at the server (${why ?? 'no reason given'}), so it lasts until it expires`);
 }
 
 export async function whoami(inv: Invocation): Promise<void> {

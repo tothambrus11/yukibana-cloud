@@ -173,9 +173,15 @@ enabled = false
 [auth.third_party.clerk]
 enabled = false
 
+# Auth as an OAuth 2.1 server, for one client: the registry's own, through
+# which the CLI and the IDE log in by way of the website (/auth/connect, see
+# app/src/lib/connect.ts). Auth sends the browser to site_url plus this path
+# with the authorization to approve. The client is registered once per
+# environment (`node scripts/oauth-client.mjs`, docs/deploy.md), not here:
+# clients are data, not settings. Nobody else may register one.
 [auth.oauth_server]
-enabled = false
-authorization_url_path = "/oauth/consent"
+enabled = true
+authorization_url_path = "/auth/connect/consent"
 allow_dynamic_registration = false
 
 # Kept for the smoke test's health function, which proves the bind mount into

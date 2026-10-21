@@ -305,6 +305,35 @@ run promotes you, and every run after that is a no-op.
 You are then an admin: `/admin` grants `teacher` to anyone who has logged in
 once, and a teacher creates courses, editions and projects.
 
+## 7. The IDE's OAuth client
+
+The CLI and the IDE log in through the website: `/auth/connect` shows the
+person whom they are signed in as, and on their say-so Supabase Auth's OAuth
+2.1 server issues a code for the registry's own OAuth client, which the CLI
+trades for a session of its own (`app/src/lib/connect.ts` says how and why).
+The server is switched on by `[auth.oauth_server]` in `supabase/config.toml`,
+which the Database workflow pushes like any setting. The client is data,
+not a setting, so it is registered once per environment, with the project's
+secret key (Settings → API keys), from a checkout:
+
+```bash
+SUPABASE_SECRET_KEY=<secret key> node scripts/oauth-client.mjs https://<ref>.supabase.co https://cloud.yukibana.dev
+```
+
+It prints the client's id. The site address given there must be the
+origin of Auth's `site_url` (`[remotes.production.auth]` in
+`supabase/config.toml`) and of `SITE_URL` in `wrangler.jsonc`: Auth sends
+the consent step to `site_url`, the client's one redirect URI is on that
+origin, and the cookie that says the person clicked "Continue" is set
+there, so a login started on any other address (the workers.dev one, say)
+is moved there first. Put the id in `wrangler.jsonc` as
+`SUPABASE_OAUTH_CLIENT_ID` and merge: from that deploy on, `yukibana login`
+and the IDE go through the website. Until then they log in with GitHub
+directly, as before, so the order of the two is free. Running the script
+again finds the client rather than making a second one. The secret key is
+used for this and nowhere else: it is not a Worker secret and not a
+repository secret.
+
 ## Afterwards
 
 The migrations in this repository have been applied to the production

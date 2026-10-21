@@ -43,9 +43,10 @@ export { createSubmissionBundle, bundleOf, type BundleFile, type BundleResult, t
 export { YukibanaClient, RegistryError, type ClientOptions, type SubmissionQuery } from './client.js';
 export {
   startLogin, refreshSession, tokenProvider, logout, memoryStore, codeOf, NotLoggedIn,
-  type PendingLogin, type Session, type SessionStore,
+  type LoggedOut, type PendingLogin, type Session, type SessionStore,
 } from './session.js';
 export { loginWithLoopback, type CallbackOutcome, type LoopbackOptions } from './loopback.js';
+export { loginCode } from './lib/pkce.js';
 export { fileStore, defaultSessionPath } from './store.js';
 export { readArchive, writeEntries } from './extract.js';
 export { publish, type PublishInput } from './publish.js';

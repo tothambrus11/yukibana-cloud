@@ -8,7 +8,8 @@ import { projects } from '../../src/lib/server/catalogue.js';
 import type { Context } from '../../src/lib/server/context.js';
 import type { Claims } from '../../src/lib/claims.js';
 import type { UserId } from '../../src/lib/ids.js';
-import { ALICE, TEACHER, claimsOf, config, mailUrl, uid } from './env.js';
+import { ALICE, TEACHER, claimsOf, config, uid } from './env.js';
+import { codeMailedTo } from './mail.js';
 
 const sql = connect(config.databaseUrl);
 const ctx: Context = { config, sql, bucket: s3Bucket(config.s3) };
@@ -31,25 +32,6 @@ const browser = (): CodeAuth =>
 
 /** An address no run has used, so a test never reads another's mail. */
 const fresh = (): string => `code-${randomUUID()}@yukibana.local`;
-
-type Found = { messages: { ID: string; Created: string }[] };
-
-/** The code in the newest mail to `addr` sent at or after `since`, from the
- *  local mail catcher. Auth sends asynchronously, so this waits a little. */
-async function codeMailedTo(addr: string, since: number): Promise<string> {
-  for (let i = 0; i < 50; i++) {
-    const found = (await (await fetch(`${mailUrl}/api/v1/search?query=${encodeURIComponent(`to:"${addr}"`)}`)).json()) as Found;
-    const mail = found.messages.find((m) => Date.parse(m.Created) >= since - 1000);
-    if (mail !== undefined) {
-      const { Text } = (await (await fetch(`${mailUrl}/api/v1/message/${mail.ID}`)).json()) as { Text: string };
-      const code = Text.match(/\b(\d{6})\b/)?.[1];
-      if (code === undefined) throw new Error(`the mail to ${addr} has no code in it: ${Text}`);
-      return code;
-    }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  throw new Error(`no mail reached ${addr} at ${mailUrl}: is [local_smtp] enabled in supabase/config.toml?`);
-}
 
 async function enrolAsTeacher(addr: string): Promise<void> {
   await asUser(sql, claimsOf(TEACHER), async (tx) => {

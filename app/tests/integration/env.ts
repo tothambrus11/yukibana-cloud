@@ -17,6 +17,10 @@ export const config: Config = {
   // The key every local stack has unless told otherwise; CI passes what
   // `supabase status` reports, in case a CLI release changes it.
   supabasePublishableKey: env('SUPABASE_PUBLISHABLE_KEY', 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'),
+  // Registered on the stack by `node scripts/oauth-client.mjs`, which CI
+  // runs before this suite; the connect tests say so when it is missing.
+  oauthClientId: process.env['SUPABASE_OAUTH_CLIENT_ID'] ?? null,
+  siteUrl: null,
   s3: {
     endpoint: env('S3_ENDPOINT', `http://${host}:9000`),
     publicEndpoint: env('S3_PUBLIC_ENDPOINT', `http://${host}:9000`),

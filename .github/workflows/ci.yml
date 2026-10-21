@@ -91,6 +91,14 @@ jobs:
       - name: Realtime policies are exactly ours
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -q -f ops/realtime-policies.sql
 
+      # After the reset, which empties Auth's tables along with ours: the
+      # registry's OAuth client, as an environment has it, for the connect
+      # tests (the IDE and CLI login by way of the website).
+      - name: Register the OAuth client
+        run: |
+          id=$(node scripts/oauth-client.mjs)
+          echo "SUPABASE_OAUTH_CLIENT_ID=$id" >> "$GITHUB_ENV"
+
       - name: Integration tests
         run: npm run test:integration
 
