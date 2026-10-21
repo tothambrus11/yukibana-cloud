@@ -2,12 +2,12 @@
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
   const account = $derived(data.account);
-  const who = $derived(account.name ?? (account.login === null ? null : `@${account.login}`) ?? account.email ?? 'this account');
+  const who = $derived(account.name ?? account.email ?? (account.login === null ? null : `@${account.login}`) ?? 'this account');
 </script>
 
 <section class="login">
   <img class="mark" src="/logo-64.png" alt="" width="48" height="48" />
-  <h1>Log in your IDE</h1>
+  <h1>Log in to the IDE</h1>
   <p class="muted">
     If you just ran <code>yukibana login</code> or clicked “Log in” in the Yukibana IDE, check that it shows
     <strong>{data.code}</strong>. If you did not, cancel.
@@ -29,6 +29,7 @@
 
   <p class="note">
     The IDE gets a session of its own: logging out there does not log you out here, and the other way round.
-    To use a different GitHub account, sign out of github.com first, or log in with an emailed code.
+    To use a different account, choose “Use a different account”. If the way you log in remembers you on this
+    browser, sign out there first, or choose another way to log in.
   </p>
 </section>
