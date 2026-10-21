@@ -58,7 +58,8 @@ select throws_ok($$ select app.set_course_code((select course from ids), '') $$,
 
 select tests.clear_auth();
 select results_eq(
-  $$ select c.code, c.title, e.label, e.title from public.course_edition e join public.course c using (course_id) $$,
+  $$ select c.code, c.title, e.label, e.title from public.course_edition e join public.course c using (course_id)
+     where course_id = (select course from ids) $$,
   $$ values ('T-REN', 'Old name', '2025', 'Old name') $$,
   'after every refusal, the course and its edition are as they were');
 
@@ -68,7 +69,8 @@ select lives_ok($$ select app.update_edition((select old from ids), ' 2025 autum
   'an owner renames the edition and its course name');
 select tests.clear_auth();
 select results_eq(
-  $$ select e.label, e.title, c.title from public.course_edition e join public.course c using (course_id) $$,
+  $$ select e.label, e.title, c.title from public.course_edition e join public.course c using (course_id)
+     where course_id = (select course from ids) $$,
   $$ values ('2025 autumn', 'New name', 'New name') $$,
   'trimmed, and the course shows the name of its only edition');
 
@@ -85,7 +87,8 @@ select app.update_edition(tests.edition('T-REN', '2026'), '2026', 'Newest name')
 select app.update_edition((select old from ids), '2025 autumn', 'Old name again');
 select tests.clear_auth();
 select results_eq(
-  $$ select e.label, e.title, c.title from public.course_edition e join public.course c using (course_id) order by e.label $$,
+  $$ select e.label, e.title, c.title from public.course_edition e join public.course c using (course_id)
+     where course_id = (select course from ids) order by e.label $$,
   $$ values ('2025 autumn', 'Old name again', 'Newest name'), ('2026', 'Newest name', 'Newest name') $$,
   'the course shows its latest edition''s name, whichever was renamed last');
 
