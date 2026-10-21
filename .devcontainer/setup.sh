@@ -13,7 +13,14 @@ export SUPABASE_AUTH_EXTERNAL_GITHUB_SECRET="${SUPABASE_AUTH_EXTERNAL_GITHUB_SEC
 # running stack: it applies neither config.toml changes nor repairs stopped
 # containers. Plain `stop` (never --no-backup) keeps the data volumes.
 npx --yes supabase stop || true
-npx --yes supabase start
+# One retry rides out what is not ours: a CI runner briefly holding one of the
+# stack's ports (5432x sit in Linux's ephemeral range, so any outgoing
+# connection can borrow one), or a registry rate-limiting the image pulls.
+if ! npx --yes supabase start; then
+  npx --yes supabase stop || true
+  sleep 10
+  npx --yes supabase start
+fi
 
 # The bucket, as sibling containers of the Supabase ones.
 docker compose -f dev/compose.yml up -d
