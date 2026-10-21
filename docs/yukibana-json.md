@@ -111,4 +111,9 @@ a later release is not reported as theirs. An assembly reports, per student:
 * **added**: a file under a read-only or hidden path that the teacher's
   project does not have, such as a test written into the hidden folder.
 
-Each is undone in the assembled folder either way.
+Each is undone in the assembled folder either way, as long as the release
+assembled with protects the path too. When it does not (a path that was
+read-only in the student's release and no longer is), the student's version
+stays and the download says so. A student file that only the release
+assembled with protects is replaced, and is listed as such: it was no rule
+of theirs that it broke.

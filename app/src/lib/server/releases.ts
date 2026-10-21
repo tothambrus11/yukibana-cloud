@@ -122,6 +122,10 @@ function refuse(e: unknown): never {
   if (isHttpError(e)) throw e;
   if (e instanceof Misconfigured) error(500, e.message);
   const { status, message, code } = statusOf(e);
+  // The one conflict publishing can meet. Said in words, because the likely
+  // reader is CI retrying a publish whose first attempt did land: the
+  // release it wanted is there, under this id, in this project or another.
+  if (code === '23505') error(409, 'A release with this id has already been published; a retry of the same publish has nothing left to do.');
   if (status !== 500) error(status, message);
   report('releases', message);
   error(500, `The release could not be recorded${code === '' ? '' : ` (SQLSTATE ${code})`}; the Worker log says why.`);

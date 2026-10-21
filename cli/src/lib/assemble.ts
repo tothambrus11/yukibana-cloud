@@ -14,7 +14,10 @@
  *  from the release it grades with (usually the newest, so a fixed hidden
  *  test applies to everyone), but asks what the student changed of the
  *  release they started from: a read-only file fixed in a later release is
- *  not something the student did.
+ *  not something the student did. When the two releases protect different
+ *  paths, nothing is lost in silence either way: a student's file replaced
+ *  only because the grading release protects it is `overridden`, and a
+ *  change the grading release no longer protects stays and is `unrestored`.
  *
  *  Pure: entries in, entries out. `yukibana download --assemble` and
  *  `yukibana assemble` do the reading and the writing.
@@ -46,6 +49,15 @@ export interface Assembly {
    *  directory comes before what is in it. */
   readonly entries: readonly Entry[];
   readonly tampering: Tampering;
+  /** Paths in `tampering` that the grading release does not protect, so the
+   *  student's version (or its absence) is what the assembly holds. Empty
+   *  when the student started from the release being graded with. Sorted. */
+  readonly unrestored: readonly string[];
+  /** Student files the release they started from let them change, which the
+   *  grading release protects and so replaced or dropped: not tampering, but
+   *  their work is not in the assembly. Empty when both releases are one.
+   *  Sorted. */
+  readonly overridden: readonly string[];
   /** Symlinks in the submission that pointed out of the project, dropped. */
   readonly refused: readonly string[];
 }
@@ -117,9 +129,14 @@ export function assemble(submission: readonly Entry[], teacherArchive: readonly 
   const out = new Map<string, Entry>();
   const mine = new Map<string, Entry>();
   const refused: string[] = [];
+  const overridden: string[] = [];
   for (const e of submissionRoot(submission)) {
     if (wasProtected(e.path) && e.type !== 'dir') mine.set(e.path, e);
-    if (isProtected(e.path)) continue;
+    if (isProtected(e.path)) {
+      const t = theirs.get(e.path);
+      if (!wasProtected(e.path) && e.type !== 'dir' && (t === undefined || !same(e, t))) overridden.push(e.path);
+      continue;
+    }
     if (e.type === 'symlink' && (e.linkTarget === undefined || escapes(e.path, e.linkTarget))) {
       refused.push(e.path);
       continue;
@@ -147,10 +164,14 @@ export function assemble(submission: readonly Entry[], teacherArchive: readonly 
 
   for (const [path, e] of theirs) out.set(path, e);
   const entries = [...out.values()].toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const unrestored = [...modified, ...deleted, ...added].filter((p) => !isProtected(p)).toSorted();
   return {
     ok: true,
     config,
-    assembly: { entries, refused, tampering: { modified: modified.toSorted(), deleted: deleted.toSorted(), added: added.toSorted() } },
+    assembly: {
+      entries, refused, unrestored, overridden: overridden.toSorted(),
+      tampering: { modified: modified.toSorted(), deleted: deleted.toSorted(), added: added.toSorted() },
+    },
   };
 }
 

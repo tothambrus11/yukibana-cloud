@@ -15,3 +15,11 @@ export function uuidIn<T extends string>(form: FormData, name: string): T | null
   if (given === '') return null;
   return uuidOf<T>(given) ?? error(400, `\`${name}\` is an id, a uuid; "${given}" is not one.`);
 }
+
+/** The same for a query parameter: absent or empty is null, anything but a
+ *  uuid is a 400 naming it. */
+export function uuidParam<T extends string>(url: URL, name: string): T | null {
+  const given = url.searchParams.get(name)?.trim() ?? '';
+  if (given === '') return null;
+  return uuidOf<T>(given) ?? error(400, `\`${name}\` is an id, a uuid; "${given}" is not one.`);
+}

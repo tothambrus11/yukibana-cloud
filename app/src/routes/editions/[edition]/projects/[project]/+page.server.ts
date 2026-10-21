@@ -36,7 +36,8 @@ interface SubmissionRow {
   github_login: string | null;
   late: boolean;
   /** The release the submission says it started from, for staff: its
-   *  label, or the start of its id when it has none. Null when it said
+   *  label, or the end of its id when it has none. The end, because the
+   *  start of a v7 id is its time and two releases a minute apart share it. Null when it said
    *  none, and always null for a student, who cannot read releases. */
   base: string | null;
   /** Whether that release is the newest one. */
@@ -90,7 +91,7 @@ export const load: PageServerLoad = async (event) => {
       const submissions = await tx<SubmissionRow[]>`
         select s.submission_id, s.submitted_at, s.byte_size, encode(s.sha256, 'hex') as sha256, s.author_id, u.full_name, u.github_login,
                coalesce(s.submitted_at > ${p.deadline}::timestamptz, false) as late,
-               coalesce(nullif(r.label, ''), left(r.release_id::text, 8)) as base,
+               coalesce(nullif(r.label, ''), '…' || right(r.release_id::text, 8)) as base,
                coalesce(r.seq = (select max(seq) from project_release where project_id = ${project}), false) as base_is_live
         from submission s
         left join app_user u on u.user_id = s.author_id

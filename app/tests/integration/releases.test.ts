@@ -73,29 +73,53 @@ test('a student cannot publish, and the archives must be gzip', async () => {
   expect(named?.p).toBeNull();
 });
 
-test('a release gets the id its publisher wrote into the starter, and an id already taken stores nothing', async () => {
+test('a release gets the id its publisher wrote into the starter, and an id already taken stores nothing, not even its objects', async () => {
   const project = await warmup();
   const chosen = trustId<ReleaseId>(crypto.randomUUID());
   const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'stamped', null, chosen);
   expect(published.releaseId).toBe(chosen);
 
+  // A bucket that remembers what it was given and what it was told to drop.
+  const put: string[] = [];
+  const deleted: string[] = [];
+  const recording: Context = {
+    ...ctx,
+    bucket: {
+      ...bucket,
+      put: async (key, body, type) => { put.push(key); await bucket.put(key, body, type); },
+      delete: async (key) => { deleted.push(key); await bucket.delete(key); },
+    },
+  };
   const count = async () => {
     const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ n: number }[]>`select count(*)::int as n from project_release where project_id = ${project}`);
     return row?.n;
   };
   const before = await count();
-  await expect(publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'again', null, chosen)).rejects.toMatchObject({ status: 409 });
+  await expect(publishRelease(recording, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'again', null, chosen))
+    .rejects.toMatchObject({ status: 409, body: { message: expect.stringMatching(/already been published/) } });
   expect(await count()).toBe(before);
+  expect(put).toHaveLength(2);
+  expect(deleted.toSorted()).toEqual(put.toSorted());
+  for (const key of put) expect(await bucket.head(key as never)).toBeNull();
 });
 
 test('a token cannot take an id another project already has', async () => {
   const project = await warmup();
   const taken = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'first', null, trustId<ReleaseId>(crypto.randomUUID()));
+  const elsewhere = await asUser(sql, claimsOf(TEACHER), async (tx) => {
+    const [row] = await tx<{ project_id: string }[]>`
+      insert into project (edition_id, slug, title, kind)
+      select edition_id, ${`ids-${Date.now()}`}, 'Another project, a draft', 'rust-cargo' from project where project_id = ${project}
+      returning project_id`;
+    return trustId<ProjectId>(row?.project_id ?? '');
+  });
   const secret = await asUser(sql, claimsOf(TEACHER), async (tx) => {
-    const [row] = await tx<{ secret: string }[]>`select app.create_project_token(${project}, 'ids') as secret`;
+    const [row] = await tx<{ secret: string }[]>`select app.create_project_token(${elsewhere}, 'ids') as secret`;
     return row?.secret ?? '';
   });
-  await expect(publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'ci', null, taken.releaseId)).rejects.toMatchObject({ status: 409 });
+  await expect(publishRelease(ctx, { kind: 'token', secret }, elsewhere, archive, other, 'ci', null, taken.releaseId)).rejects.toMatchObject({ status: 409 });
+  const [still] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`select project_id from project_release where release_id = ${taken.releaseId}`);
+  expect(still?.project_id).toBe(project);
   const fresh = trustId<ReleaseId>(crypto.randomUUID());
-  expect((await publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'ci', null, fresh)).releaseId).toBe(fresh);
+  expect((await publishRelease(ctx, { kind: 'token', secret }, elsewhere, archive, other, 'ci', null, fresh)).releaseId).toBe(fresh);
 });

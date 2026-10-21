@@ -198,6 +198,7 @@
         <label>Label <input name="label" placeholder="v3, or what changed" /></label>
         <label>Commit <input name="commit" placeholder="optional sha" /></label>
         <label>Release id <input name="release" placeholder="the id yukibana build printed" /></label>
+        <p class="note">Leave it empty only for archives built without one: otherwise the release gets another id than its starter names, and its students' submissions will not say which release they started from.</p>
         <button>Publish</button>
       </form>
     </section>

@@ -79,8 +79,10 @@ export interface SubmissionJson {
   readonly late: boolean;
   /** The release the student's folder said it started from, always one of
    *  this project's. Null for a submission from before releases carried
-   *  ids, a hand-made archive, or a claim that named no release of this
-   *  project. A student's claim: it says which release to compare their
+   *  ids, a hand-made archive, one uploaded through the project page (which
+   *  does not open the archive to read the id), or a claim that named no
+   *  release of this project, such as a starter uploaded by hand without
+   *  its release id. A student's claim: it says which release to compare their
    *  read-only files with, and decides nothing about who may do what. */
   readonly baseReleaseId: string | null;
 }

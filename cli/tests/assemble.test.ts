@@ -150,3 +150,33 @@ test('a broken archive for the release the student started from is a problem, no
   assert.ok(!made.ok);
   assert.match(made.problem, /the release the student started from/);
 });
+
+test('a file the grading release protects but the student\'s did not is replaced, and said so rather than lost in silence', () => {
+  const base: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton')];
+  const grade: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","Main.scala"],"hidden":["hidden"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton 2'), file('hello/hidden/h.scala', 'H')];
+  const sub = [file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*"]}'), file('tests/a.scala', 'A'), file('Main.scala', 'student work'), file('hidden/mine.scala', 'mine')];
+  const made = assemble(sub, grade, base);
+  assert.ok(made.ok);
+  assert.ok(!tampered(made.assembly.tampering), 'the student broke no rule of the release they had');
+  assert.deepEqual(made.assembly.overridden, ['Main.scala', 'hidden/mine.scala']);
+  assert.equal(body(made.assembly.entries, 'Main.scala'), 'skeleton 2');
+});
+
+test('a change the grading release no longer protects stays the student\'s, and is not reported as undone', () => {
+  const base: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","Main.scala"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton')];
+  const grade: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton')];
+  const sub = [file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","Main.scala"]}'), file('tests/a.scala', 'A'), file('Main.scala', 'student')];
+  const made = assemble(sub, grade, base);
+  assert.ok(made.ok);
+  assert.deepEqual(made.assembly.tampering.modified, ['Main.scala']);
+  assert.deepEqual(made.assembly.unrestored, ['Main.scala']);
+  assert.equal(body(made.assembly.entries, 'Main.scala'), 'student');
+});
+
+test('with one release, nothing is overridden or left unrestored', () => {
+  const sub = honest().map((e) => (e.path === 'tests/public.scala' ? file(e.path, 'assert(true)') : e));
+  const made = assemble(sub, teacher);
+  assert.ok(made.ok);
+  assert.deepEqual(made.assembly.overridden, []);
+  assert.deepEqual(made.assembly.unrestored, []);
+});

@@ -35,19 +35,24 @@ alter table public.project_release
 -- hand, and for a claim the trigger below forgot.
 alter table public.submission add column base_release_id uuid;
 -- Restrict: releases are never deleted on their own, and a project with
--- submissions cannot be deleted, so this never fires; if it ever does, the
--- evidence wins. NOT VALID only spares the rows already there, which are
+-- submissions cannot be deleted (the project key already refuses it), so
+-- this adds nothing but a second name for the same 23503; the evidence
+-- wins either way. NOT VALID only spares the rows already there, which are
 -- all null and so could not violate it; every row written from now on is
--- checked. Validating in the same transaction would block reads of the
--- table while it ran, for nothing.
+-- checked. The constraint is left unvalidated rather than validated here
+-- because squawk's rule is to validate in a later transaction, and with
+-- every existing row null there is nothing for a validation to find.
 alter table public.submission
   add constraint submission_base_release foreign key (project_id, base_release_id)
   references public.project_release (project_id, release_id) on delete restrict not valid;
 
 -- Whether `release` is a release of `project`. Security definer because a
 -- student cannot read project_release (its rows carry the teacher archive's
--- key), and the insert trigger asks on their behalf. It answers about one
--- pair of ids the caller already holds, and reads nothing else.
+-- key), and the insert trigger asks on their behalf. Nobody may call it
+-- directly. A student can still learn its answer, one submission per
+-- guess, by reading back the base their own row kept; with 74 random bits
+-- in a v7 id that tells them nothing they could guess, and nothing about
+-- any release but one whose id they already hold.
 create or replace function app.is_release_of(project uuid, release uuid)
 returns boolean
 language sql

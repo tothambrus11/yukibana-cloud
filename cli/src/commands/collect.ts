@@ -1,7 +1,7 @@
 /** A teacher's commands for what students sent: download it, one folder per
  *  student, and assemble it with the teacher's project. */
 
-import { readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { assemble, submissionRoot, tampered, type Tampering } from '../lib/assemble.js';
 import { chooseReleases, nameOf, wantedRelease, type Wanted } from '../lib/grading.js';
@@ -33,6 +33,12 @@ interface Downloaded {
    *  without `--assemble`. */
   readonly assembledWith: string | null;
   readonly tampering: Tampering | null;
+  /** Of `tampering`, what the release assembled with does not protect, so
+   *  the student's version stayed; and the student's files that release
+   *  replaced though the one they started from did not protect them. Both
+   *  empty when the two releases are one. */
+  readonly unrestored: readonly string[];
+  readonly overridden: readonly string[];
 }
 
 /** `download <project> [--out dir]`: by default every student's newest
@@ -120,6 +126,8 @@ export async function download(inv: Invocation): Promise<void> {
       let base: string | null = s.baseReleaseId;
       let assembledWith: string | null = null;
       let started = '';
+      let unrestored: readonly string[] = [];
+      let overridden: readonly string[] = [];
       if (o.archive === true) {
         await save(target, archive);
       } else {
@@ -129,13 +137,23 @@ export async function download(inv: Invocation): Promise<void> {
           for (const n of choice.notes) console.error(`warning: ${folder}: ${n}`);
           const grade = choice.grade;
           const teacher = await teacherOf(grade);
-          const made = assemble(entries, teacher, choice.base === null || choice.base === grade ? teacher : await teacherOf(choice.base));
+          let baseTeacher = teacher;
+          if (choice.base !== null && choice.base !== grade) {
+            try {
+              baseTeacher = await teacherOf(choice.base);
+            } catch (e) {
+              console.error(`warning: ${folder}: ${e instanceof Error ? e.message : String(e)}; what the student changed is measured against ${nameOf(grade)} instead`);
+            }
+          }
+          const made = assemble(entries, teacher, baseTeacher);
           if (!made.ok) {
             problems.push(`${folder}: ${made.problem}`);
             continue;
           }
           entries = [...made.assembly.entries];
           tampering = made.assembly.tampering;
+          unrestored = made.assembly.unrestored;
+          overridden = made.assembly.overridden;
           base = choice.base?.releaseId ?? null;
           assembledWith = grade.releaseId;
           if (choice.base === null) bases.unknown++;
@@ -147,12 +165,16 @@ export async function download(inv: Invocation): Promise<void> {
         }
         for (const r of await writeEntries(target, entries)) console.error(`warning: ${folder}: not unpacked: ${r}`);
       }
-      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, baseReleaseId: base, assembledWith, tampering });
-      console.log(`${folder}${s.late ? '  (late)' : ''}${started}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering)}` : ''}`);
+      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, baseReleaseId: base, assembledWith, tampering, unrestored, overridden });
+      console.log(`${folder}${s.late ? '  (late)' : ''}${started}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering, unrestored)}` : ''}`);
+      if (overridden.length > 0) console.log(`  ${folder}: replaced by the release assembled with, which protects them: ${overridden.join(', ')}`);
     } catch (e) {
       problems.push(`${folder}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  // Every submission may have failed, and then nothing made the folder; the
+  // problems below are the answer, not an ENOENT from writing the manifest.
+  await mkdir(out, { recursive: true });
   await writeFile(join(out, 'yukibana-download.json'), JSON.stringify({ projectId: id, downloadedAt: new Date().toISOString(), submissions: done }, null, 2) + '\n');
   console.log(`${done.length} of ${chosen.length} into ${out}`);
   if (o.assemble === true) {
@@ -230,10 +252,13 @@ function versionNames(subs: readonly Submission[]): Map<string, string> {
   return out;
 }
 
-function describe(t: Tampering): string {
+function describe(t: Tampering, unrestored: readonly string[]): string {
   const parts: string[] = [];
   if (t.modified.length > 0) parts.push(`modified ${t.modified.join(', ')}`);
   if (t.deleted.length > 0) parts.push(`deleted ${t.deleted.join(', ')}`);
   if (t.added.length > 0) parts.push(`added ${t.added.join(', ')}`);
-  return `${parts.join('; ')} (replaced from the release)`;
+  const all = t.modified.length + t.deleted.length + t.added.length;
+  if (unrestored.length === 0) return `${parts.join('; ')} (replaced from the release)`;
+  const kept = `the release assembled with does not protect ${unrestored.join(', ')}, so the student's version stays`;
+  return `${parts.join('; ')} (${unrestored.length === all ? kept : `replaced from the release, except that ${kept}`})`;
 }

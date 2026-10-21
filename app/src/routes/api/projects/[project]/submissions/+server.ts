@@ -4,6 +4,7 @@ import { uuidOf, type ProjectId, type ReleaseId, type UserId } from '#lib/ids.ts
 import { submissions } from '#lib/server/catalogue.ts';
 import { answering, requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
+import { uuidParam } from '#lib/server/form.ts';
 
 /** Submissions to the project, newest first: everyone's for staff, the
  *  caller's own for a student. `?latest=true` keeps each author's newest,
@@ -29,9 +30,7 @@ export const POST: RequestHandler = async (event) => {
   const claims = requireClaims(event);
   const project = uuidOf<ProjectId>(event.params.project);
   if (project === null) error(404, 'No such project.');
-  const givenRelease = event.url.searchParams.get('release');
-  const base = givenRelease === null ? null : uuidOf<ReleaseId>(givenRelease);
-  if (givenRelease !== null && base === null) error(400, '`release` is a release id.');
+  const base = uuidParam<ReleaseId>(event.url, 'release');
   const declared = Number(event.request.headers.get('content-length') ?? '');
   if (!Number.isFinite(declared)) error(411, 'Send a Content-Length.');
   const accepted = await withContext(async (ctx) => {
