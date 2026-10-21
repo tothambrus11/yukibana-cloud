@@ -5,18 +5,111 @@ bucket. Everything below fits the free tier of both, with one caveat: R2 asks
 for a payment method before it will turn on, even though the 10 GB allowance
 is genuinely free.
 
-After the first setup, deploying is `git push` to `main`, and two things
-answer it:
+This page has two halves. The first is how a change reaches production once
+an environment exists; the second, from step 1, is setting one up.
+`architecture.md` says what the pieces are and how they connect.
 
-* **Cloudflare Workers Builds** is connected to this repository and builds
-  and deploys the Worker;
-* the **Database** workflow in GitHub Actions applies migrations, runs the
-  per-environment bootstrap and pushes the Supabase settings.
+## The pipeline
 
-They run side by side, so neither guarantees the other's order. What keeps
-the site up is the rule that migrations only ever add: an old Worker against
-a new schema is fine. The other direction is not, so when a change needs
-both, push it twice: the migration first, the code that reads it after.
+After the first setup, deploying is `git push` to `main`. Four things
+listen to the repository:
+
+```
+ push / pull request ──▶ CI (ci.yml, ci-devcontainer.yml)
+                           │ success on main
+                           ▼
+                         Database (database.yml)
+                           placeholders → secrets → migration list → db push
+                           → ops/bootstrap.sql → config diff → config push
+
+ push to main ─────────▶ Cloudflare Workers Builds
+                           npm run build → npx wrangler deploy
+ push to another branch ▶ Cloudflare Workers Builds
+                           npm run build → a preview version, not deployed
+
+ 03:17 UTC daily ──────▶ Drift (drift.yml)
+                           production vs migrations, Realtime policies
+```
+
+| | Triggered by | Does | Needs |
+| --- | --- | --- | --- |
+| **CI** | every push and pull request, any branch | `npm run check`, the app and CLI builds, `yukibana check` over the fixture; then the real stack on the runner: squawk, every migration from empty, pgTAP, the Realtime policy check, the integration suite; and, separately, the devcontainer build | nothing secret |
+| **Database** | CI finishing successfully on `main` (`workflow_run`), or by hand | checks no placeholder is left, checks every secret is set, lists then applies pending migrations, runs `ops/bootstrap.sql`, prints the settings diff, pushes `supabase/config.toml`'s production block. One run at a time (`concurrency: deploy`). | the repository secrets in step 5 |
+| **Workers Builds** | every push to any branch, from Cloudflare's own connection to the repository | `npm run build` (installs and builds `app/`); on `main`, `npx wrangler deploy` with `wrangler.jsonc`; on any other branch, a preview version with its own URL, which the bot links on the pull request | the Worker secrets in step 4, set once |
+| **Drift** | nightly, or by hand | `supabase db diff` of production against the migrations for `public` and `app`, and `ops/realtime-policies.sql` | `SUPABASE_DB_URL` only |
+
+Two consequences are worth knowing before the first change:
+
+* **The database waits for CI; the Worker does not.** Workers Builds is
+  Cloudflare's, not a GitHub workflow, so it deploys every push to `main`
+  whether CI passes or not. Keep `main` green by merging pull requests whose
+  CI passed, not by relying on the deploy to stop.
+* **A preview is production with other code.** A branch's preview URL runs
+  the branch's Worker with production's bindings and secrets: the same
+  database, the same bucket, the same accounts. Log in there only to look,
+  and remember that the production schema is what it sees, so a preview of
+  code that needs an unapplied migration will fail where it reads it.
+* **Neither half knows about the other**, so nothing orders them. What keeps
+  the site up is the rule that migrations only ever add: an old Worker
+  against a new schema is fine. The other direction is not.
+
+## Shipping a change
+
+**Code only** (pages, API, anything under `app/`). Merge to `main`. Workers
+Builds deploys it; the Database workflow runs and finds
+nothing to apply.
+
+**A migration only** (a policy, a function, a new column nobody reads yet).
+`npx supabase migration new <name>`, write it by hand, add its pgTAP
+negatives, `npm run db:lint`, `npm run db:reset`, `npm run db:test`. Merge;
+the Database workflow applies it after CI passes, and the "Migrations
+pending" step in its log is the record of which files ran.
+
+**Both: code that needs a new migration.** Two pushes. The migration first;
+wait for the Database run to go green; then the code that uses it. In one
+push, Workers Builds would usually win the race and serve code that reads a
+column that does not exist yet.
+
+**Removing something.** The other way round, and also two pushes: first
+stop reading it and deploy, then drop it in a later migration. An old
+Worker still running against a dropped column is the failure this avoids.
+
+**Supabase settings** (auth providers, redirect URLs, mail, rate limits).
+Edit `[remotes.production]` in `supabase/config.toml` and merge. The
+"Supabase settings, before" step prints what the push will change; the
+dashboard stays read-only.
+
+**Worker configuration.** A non-secret value is `vars` in `wrangler.jsonc`
+and ships with the next build. A secret is `npx wrangler secret put <NAME>`
+from a checkout, which takes effect at once and needs no deploy.
+
+**By hand.** The Database workflow has a "Run workflow" button
+(`workflow_dispatch`); it applies `main`'s migrations and settings without
+waiting for a push. A Worker build can be retried from the Cloudflare
+dashboard, or deployed from a checkout with `npm run build && npm run
+deploy` after `npx wrangler login`.
+
+## Rolling back
+
+**The Worker.** Cloudflare keeps previous versions: the Worker's
+Deployments tab in the dashboard, or `npx wrangler rollback`, puts one back
+in seconds. Because migrations only add, the older Worker works against the
+newer schema. Then revert the commit on `main`, or the next push redeploys
+what was rolled back.
+
+**The database.** There are no down migrations. A migration that went out
+wrong is corrected by a new migration that undoes or repairs it, reviewed
+and pushed like any other. Never edit a migration that has run, and never
+fix production by hand: the next drift run would fail, and the ledger would
+no longer describe the database.
+
+**Settings.** Revert the change to `supabase/config.toml` and let the
+workflow push it again.
+
+## Setting up an environment
+
+Once per environment, in this order. Production already exists; this is
+for a new one, or for finding out how the existing one was made.
 
 ## 1. Supabase
 
@@ -109,8 +202,7 @@ change it later, change the secret, deploy, then
 `npx wrangler hyperdrive update <id> --connection-string=...`.
 
 **Point Workers Builds at this repository**, if it is not already: the
-Worker → Settings → Builds. Because the app is one package of several, set
-
+Worker → Settings → Builds.
 Cloudflare's defaults are what this repository is arranged for, so leave the
 root directory empty: `wrangler.jsonc` sits at the root, `npm run build`
 there builds the app, and `npx wrangler deploy` deploys it. An earlier
@@ -119,9 +211,10 @@ failed with "could not detect a directory containing static files", which is
 what wrangler says when it is run somewhere with no configuration to find.
 
 Note the account id from the dashboard sidebar: it is the first label of the
-R2 S3 endpoint, and one of the four values below.
+R2 S3 endpoint, which `S3_ENDPOINT` and `S3_PUBLIC_ENDPOINT` in
+`wrangler.jsonc` hold.
 
-## 3. Fill in the four placeholders
+## 3. Fill in the three placeholders
 
 `node scripts/check-production-config.mjs` names them and where each lives;
 the deploy workflow runs it first and refuses to deploy while any remain.
@@ -196,7 +289,8 @@ connection role every deploy, so it never appears in a migration.
 
 ## 6. Deploy, log in, deploy again
 
-Push to `main`, or run the Database workflow by hand. It will check the
+Push to `main` (the Database workflow then runs once CI has passed), or run
+the Database workflow by hand. It will check the
 placeholders are gone, list and apply pending migrations, run
 `ops/bootstrap.sql`, and push the Supabase settings; Cloudflare builds and
 deploys the Worker alongside it.

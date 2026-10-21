@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { asUser, statusOf } from '#lib/server/db.ts';
+import { asUser, clashOf, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { studentProjects } from '#lib/server/student.ts';
@@ -24,12 +24,13 @@ export const load: PageServerLoad = async (event) => {
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const editions = await tx<EditionRow[]>`
-        select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role
+        select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role
         from course_edition e join course c on c.course_id = e.course_id
         order by e.archived_at nulls first, c.code, e.label desc`;
       const [me] = await tx<{ role: string | null }[]>`select app.platform_role()::text as role`;
       const platformRole = me?.role ?? null;
       const courses = platformRole === 'teacher' || platformRole === 'admin'
+        // A course is named by its latest edition: `course.title` is kept so.
         ? await tx<{ course_id: string; code: string; title: string }[]>`select course_id, code, title from course order by code`
         : [];
       // The to-do list: every project the person has as a student, across
@@ -50,6 +51,7 @@ export const actions: Actions = {
     try {
       await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_course(${code}, ${title})`));
     } catch (e) {
+      if (clashOf(e) === 'course_code_key') return fail(409, { error: `A course with the code "${code}" already exists. Add an edition to it instead.` });
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }
     return { ok: true };
@@ -63,6 +65,7 @@ export const actions: Actions = {
     try {
       await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_edition(${course}, ${label})`));
     } catch (e) {
+      if (clashOf(e) === 'course_edition_course_id_label_key') return fail(409, { error: `This course already has an edition called "${label}". Choose another label.` });
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }
     return { ok: true };

@@ -119,6 +119,20 @@
   {/if}
 {:else if tab === 'settings'}
   <section>
+    <h2>Details</h2>
+    <form method="POST" action={actionIn('settings', 'details')} class="stack">
+      <label>Label <input name="label" value={data.edition.label} required /></label>
+      <label>Course name <input name="title" value={data.edition.title} required /></label>
+      <label>Course code <input name="code" value={data.edition.code} required /></label>
+      <button>Save</button>
+    </form>
+    <p class="note">
+      The course name belongs to this edition: other editions keep theirs, and the course is listed
+      under the name of its latest one. The code is shared by every edition of the course.
+    </p>
+  </section>
+
+  <section>
     <h2>Duplicate</h2>
     <form method="POST" action={actionIn('settings', 'duplicate')} class="stack">
       <label>New edition's label <input name="label" placeholder="2027 autumn" required /></label>

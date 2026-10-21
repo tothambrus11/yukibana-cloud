@@ -99,3 +99,14 @@ export function statusOf(e: unknown): { status: number; message: string; code: s
     default: return { status: 500, message, code };
   }
 }
+
+/** The unique constraint `e` broke, by name, or '' when `e` is anything
+ *  else. Postgres's own sentence for a 23505 names an index
+ *  (`duplicate key value violates unique constraint "course_code_key"`),
+ *  which is no use to the person who typed the duplicate; a route that knows
+ *  which constraint means which field says so in its own words instead.
+ *  postgres.js carries the name as `constraint_name`. */
+export function clashOf(e: unknown): string {
+  if (statusOf(e).code !== '23505') return '';
+  return typeof e === 'object' && e !== null && 'constraint_name' in e ? String(e.constraint_name) : '';
+}

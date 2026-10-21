@@ -6,7 +6,8 @@ and submissions, and transforms nothing. The database decides who may do
 what; the Worker asks it, as the person asking; the pages show what came
 back. The CLI (`cli/`) is where a course repository becomes the two archives
 a release is made of, on a teacher's machine or in their CI. `README.md`
-says how to run it and `docs/design.md` says why the model is what it is.
+says how to run it, `docs/architecture.md` what the parts are and how they
+connect, and `docs/design.md` why the model is what it is.
 This file is how the code is written.
 
 ## The one rule about the database
@@ -141,6 +142,8 @@ so; the bugs are the documentation people read.
 
 `npm run check` at the root: lint, typecheck, unit tests. With the stack
 running: `npm run db:lint`, `npm run db:reset`, `npm run db:test`,
-`npm run test:integration`. CI runs all of it, plus the devcontainer build,
-and `main` deploys only after CI is green: migrations, bootstrap, settings,
-Worker, in that order.
+`npm run test:integration`. CI runs all of it, plus the devcontainer build.
+On `main`, the database deploys only after CI is green (migrations,
+bootstrap, settings), but Cloudflare deploys the Worker on every push
+regardless, so nothing orders the two: a change that needs a migration ships
+in two pushes, migration first (`docs/deploy.md`).
