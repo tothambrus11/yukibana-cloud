@@ -24,6 +24,8 @@ listen to the repository:
 
  push to main ─────────▶ Cloudflare Workers Builds
                            npm run build → npx wrangler deploy
+ push to another branch ▶ Cloudflare Workers Builds
+                           npm run build → a preview version, not deployed
 
  03:17 UTC daily ──────▶ Drift (drift.yml)
                            production vs migrations, Realtime policies
@@ -33,7 +35,7 @@ listen to the repository:
 | --- | --- | --- | --- |
 | **CI** | every push and pull request, any branch | `npm run check`, the app and CLI builds, `yukibana check` over the fixture; then the real stack on the runner: squawk, every migration from empty, pgTAP, the Realtime policy check, the integration suite; and, separately, the devcontainer build | nothing secret |
 | **Database** | CI finishing successfully on `main` (`workflow_run`), or by hand | checks no placeholder is left, checks every secret is set, lists then applies pending migrations, runs `ops/bootstrap.sql`, prints the settings diff, pushes `supabase/config.toml`'s production block. One run at a time (`concurrency: deploy`). | the repository secrets in step 5 |
-| **Workers Builds** | every push to `main`, from Cloudflare's own connection to the repository | `npm run build` (installs and builds `app/`) and `npx wrangler deploy` with `wrangler.jsonc` | the Worker secrets in step 4, set once |
+| **Workers Builds** | every push to any branch, from Cloudflare's own connection to the repository | `npm run build` (installs and builds `app/`); on `main`, `npx wrangler deploy` with `wrangler.jsonc`; on any other branch, a preview version with its own URL, which the bot links on the pull request | the Worker secrets in step 4, set once |
 | **Drift** | nightly, or by hand | `supabase db diff` of production against the migrations for `public` and `app`, and `ops/realtime-policies.sql` | `SUPABASE_DB_URL` only |
 
 Two consequences are worth knowing before the first change:
@@ -42,6 +44,11 @@ Two consequences are worth knowing before the first change:
   Cloudflare's, not a GitHub workflow, so it deploys every push to `main`
   whether CI passes or not. Keep `main` green by merging pull requests whose
   CI passed, not by relying on the deploy to stop.
+* **A preview is production with other code.** A branch's preview URL runs
+  the branch's Worker with production's bindings and secrets: the same
+  database, the same bucket, the same accounts. Log in there only to look,
+  and remember that the production schema is what it sees, so a preview of
+  code that needs an unapplied migration will fail where it reads it.
 * **Neither half knows about the other**, so nothing orders them. What keeps
   the site up is the rule that migrations only ever add: an old Worker
   against a new schema is fine. The other direction is not.

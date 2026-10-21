@@ -70,7 +70,7 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
 | --- | --- | --- |
 | **CI** (`ci.yml`, `ci-devcontainer.yml`) | every push and pull request | lint, typecheck, unit tests, a build; the whole stack from empty migrations, pgTAP, integration tests; the devcontainer. |
 | **Database** (`database.yml`) | after CI succeeds on `main`, or by hand | migrations, `ops/bootstrap.sql`, Supabase settings. |
-| **Cloudflare Workers Builds** | every push to `main` | builds and deploys the Worker. |
+| **Cloudflare Workers Builds** | every push | builds the Worker; deploys it on `main`, uploads a preview version elsewhere. |
 | **Drift** (`drift.yml`) | nightly | fails if production differs from the migrations. |
 
 ## 2. How they relate
