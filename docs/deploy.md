@@ -70,6 +70,12 @@ wait for the Database run to go green; then the code that uses it. In one
 push, Workers Builds would usually win the race and serve code that reads a
 column that does not exist yet.
 
+**A Supabase setting** (`supabase/config.toml`'s production block). Merge;
+the Database workflow pushes it after CI passes, and prints the before and
+after. When code needs the setting, the setting goes first and the code reads
+it only once it is live, the same as a migration. Turning on the IDE's login
+(step 7) is this case.
+
 **Removing something.** The other way round, and also two pushes: first
 stop reading it and deploy, then drop it in a later migration. An old
 Worker still running against a dropped column is the failure this avoids.
@@ -230,6 +236,10 @@ because that is what is deployed and what a diff should show) and `supabase/conf
 `[remotes.production]`, which is what `config push` applies to the project;
 everything above that block stays local). Commit the result.
 
+One more value is the environment's own without being a placeholder:
+`SITE_URL` in `wrangler.jsonc`, the address people use. It must be the
+origin of `site_url` under `[remotes.production.auth]`; step 7 says why.
+
 ## 4. Worker secrets
 
 Three, set once. The Worker already exists, so this works before the first
@@ -314,23 +324,41 @@ trades for a session of its own (`app/src/lib/connect.ts` says how and why).
 The server is switched on by `[auth.oauth_server]` in `supabase/config.toml`,
 which the Database workflow pushes like any setting. The client is data,
 not a setting, so it is registered once per environment, with the project's
-secret key (Settings → API keys), from a checkout:
+secret key (Settings → API keys). Turning it on, in a new environment or in
+one that runs without it, is four steps, in this order:
 
-```bash
-SUPABASE_SECRET_KEY=<secret key> node scripts/oauth-client.mjs https://<ref>.supabase.co https://cloud.yukibana.dev
-```
+1. **The setting.** Merge with `[auth.oauth_server]` enabled, and wait for
+   that Database run to go green. Until it has pushed the setting, Auth has
+   no OAuth server and the script below fails with a 404 from
+   `/auth/v1/admin/oauth/clients`.
+2. **The client.** From a checkout of `main`, with the key in a git-ignored
+   file rather than on the command line, where it would stay in the shell's
+   history (`.env` is ignored here):
 
-It prints the client's id. The site address given there must be the
+   ```bash
+   node --env-file=.env scripts/oauth-client.mjs https://<ref>.supabase.co https://cloud.yukibana.dev
+   ```
+
+   where `.env` holds `SUPABASE_SECRET_KEY=<secret key>`. It prints the
+   client's id, which is not a secret.
+3. **The id.** Put it in `wrangler.jsonc` as `SUPABASE_OAUTH_CLIENT_ID` and
+   merge. Workers Builds deploys it; nothing waits on the database.
+4. **Check.** `curl https://cloud.yukibana.dev/api/auth/config` answers with
+   the id as `oauthClientId` and the address as `siteUrl`. Then `yukibana
+   login` prints a four-letter code and opens the website, which shows the
+   same code beside "Continue as …".
+
+The site address given to the script must be the
 origin of Auth's `site_url` (`[remotes.production.auth]` in
 `supabase/config.toml`) and of `SITE_URL` in `wrangler.jsonc`: Auth sends
 the consent step to `site_url`, the client's one redirect URI is on that
 origin, and the cookie that says the person clicked "Continue" is set
 there, so a login started on any other address (the workers.dev one, say)
-is moved there first. Put the id in `wrangler.jsonc` as
-`SUPABASE_OAUTH_CLIENT_ID` and merge: from that deploy on, `yukibana login`
-and the IDE go through the website. Until then they log in with GitHub
-directly, as before, so the order of the two is free. Running the script
-again finds the client rather than making a second one. The secret key is
+is moved there first. Until step 3 is deployed, the CLI and the IDE log in
+with GitHub directly, as before, so nothing breaks between the steps.
+Running the script again finds the client rather than making a second one,
+and refuses to reuse a client of that name that is not public, has other
+grants, or has more than one redirect URI. The secret key is
 used for this and nowhere else: it is not a Worker secret and not a
 repository secret.
 
@@ -359,6 +387,23 @@ connection string rather than the session pooler one. See step 1.
 `supabase/config.toml` still has the placeholder subdomain, or the deploy has
 not pushed the settings yet. The pushed values are printed by the "Supabase
 settings, before" step of the last deploy.
+
+**`yukibana login` or the IDE still goes straight to GitHub.** The deployed
+`wrangler.jsonc` has no `SUPABASE_OAUTH_CLIENT_ID`: `/api/auth/config`
+answers without `oauthClientId`. Step 7, 3. A CLI older than the website
+login also goes to GitHub whatever the registry says; the IDE needs an
+`@yukibana/cli` from after it.
+
+**The website says the login expired or was already used.** Five minutes
+passed between "Continue" and the browser coming back; or the browser
+refuses the site's cookies; or the client was registered for another
+address than `site_url`'s, so Auth sends the consent step where the cookie
+is not. Run the script again with the right address: it registers a client
+for it, and `SUPABASE_OAUTH_CLIENT_ID` must be that client's id.
+
+**The client script answers 404.** The OAuth server is not on yet: step 7,
+1. The "Supabase settings, before" step of the last Database run shows
+whether `[auth.oauth_server]` has been pushed.
 
 **A submission is rejected but a small one works.** The Worker hashes each
 upload, and the Workers free plan allows about 10 ms of CPU per request.
