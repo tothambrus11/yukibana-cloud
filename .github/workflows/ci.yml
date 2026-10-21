@@ -95,7 +95,9 @@ jobs:
       # registry's OAuth client, as an environment has it, for the connect
       # tests (the IDE and CLI login by way of the website).
       - name: Register the OAuth client
-        run: echo "SUPABASE_OAUTH_CLIENT_ID=$(node scripts/oauth-client.mjs)" >> "$GITHUB_ENV"
+        run: |
+          id=$(node scripts/oauth-client.mjs)
+          echo "SUPABASE_OAUTH_CLIENT_ID=$id" >> "$GITHUB_ENV"
 
       - name: Integration tests
         run: npm run test:integration

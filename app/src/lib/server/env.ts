@@ -29,6 +29,11 @@ export interface Config {
    *  registered: the CLI then falls back to logging in with GitHub
    *  directly, as before. */
   readonly oauthClientId: string | null;
+  /** The site's canonical address, which must be Auth's `site_url`: the
+   *  IDE login works only there (see #lib/connect), so `/auth/connect`
+   *  moves to it and `/api/auth/config` tells the CLI. Null where the site
+   *  is wherever it was asked (development). */
+  readonly siteUrl: string | null;
   readonly s3: S3Config;
   /** The largest submission body the API accepts, whatever the project says. */
   readonly submissionMaxBytes: number;
@@ -43,6 +48,12 @@ function text(env: Record<string, unknown>, name: string): string {
   return v;
 }
 
+/** An optional value: unset and empty are both null. */
+function optional(env: Record<string, unknown>, name: string): string | null {
+  const v = env[name];
+  return typeof v === 'string' && v !== '' ? v : null;
+}
+
 /** The configuration in `env`, or an error naming the first missing value. */
 export function configOf(env: Cloudflare.Env): Config {
   const databaseUrl = env.HYPERDRIVE?.connectionString ?? text(env, 'DATABASE_URL');
@@ -50,7 +61,8 @@ export function configOf(env: Cloudflare.Env): Config {
     databaseUrl,
     supabaseUrl: text(env, 'PUBLIC_SUPABASE_URL'),
     supabasePublishableKey: text(env, 'SUPABASE_PUBLISHABLE_KEY'),
-    oauthClientId: typeof env['SUPABASE_OAUTH_CLIENT_ID'] === 'string' && env['SUPABASE_OAUTH_CLIENT_ID'] !== '' ? env['SUPABASE_OAUTH_CLIENT_ID'] : null,
+    oauthClientId: optional(env, 'SUPABASE_OAUTH_CLIENT_ID'),
+    siteUrl: optional(env, 'SITE_URL'),
     s3: {
       endpoint: text(env, 'S3_ENDPOINT'),
       publicEndpoint: typeof env['S3_PUBLIC_ENDPOINT'] === 'string' && env['S3_PUBLIC_ENDPOINT'] !== '' ? env['S3_PUBLIC_ENDPOINT'] : text(env, 'S3_ENDPOINT'),

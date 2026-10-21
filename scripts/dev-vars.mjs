@@ -31,6 +31,7 @@ const vars = [
   `SUPABASE_PUBLISHABLE_KEY=${status.PUBLISHABLE_KEY ?? status.ANON_KEY}`,
   `PUBLIC_SUPABASE_URL=${status.API_URL}`,
   `SUPABASE_OAUTH_CLIENT_ID=${oauthClient}`,
+  "SITE_URL=http://127.0.0.1:5173",
   "",
   "# RustFS, from dev/compose.yml.",
   `S3_ENDPOINT=http://${host}:9000`,

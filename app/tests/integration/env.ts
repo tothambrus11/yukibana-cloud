@@ -20,6 +20,7 @@ export const config: Config = {
   // Registered on the stack by `node scripts/oauth-client.mjs`, which CI
   // runs before this suite; the connect tests say so when it is missing.
   oauthClientId: process.env['SUPABASE_OAUTH_CLIENT_ID'] ?? null,
+  siteUrl: null,
   s3: {
     endpoint: env('S3_ENDPOINT', `http://${host}:9000`),
     publicEndpoint: env('S3_PUBLIC_ENDPOINT', `http://${host}:9000`),

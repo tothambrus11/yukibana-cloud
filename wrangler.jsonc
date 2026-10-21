@@ -56,6 +56,10 @@
     // `node scripts/oauth-client.mjs` (docs/deploy.md, step 7); not a secret.
     // Empty: they log in with GitHub directly, as before.
     "SUPABASE_OAUTH_CLIENT_ID": "",
+    // The site's canonical address, which must be Auth's site_url
+    // (supabase/config.toml): the IDE login works only there, so
+    // /auth/connect moves to it, and the CLI is told it.
+    "SITE_URL": "https://cloud.yukibana.dev",
     "SUBMISSION_MAX_BYTES": "33554432",
     // Two of these must fit one request under the platform's 100 MB body limit.
     "RELEASE_MAX_BYTES": "41943040"

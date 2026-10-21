@@ -12,6 +12,8 @@ PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 # `node scripts/oauth-client.mjs` prints. Empty, they log in with GitHub
 # directly, as before.
 SUPABASE_OAUTH_CLIENT_ID=
+# Auth's local site_url (supabase/config.toml), where `npm run dev` serves.
+SITE_URL=http://127.0.0.1:5173
 
 # RustFS, from dev/compose.yml. It wants a real region name; R2 says "auto".
 S3_ENDPOINT=http://127.0.0.1:9000

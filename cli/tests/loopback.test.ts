@@ -71,6 +71,26 @@ test('through the website, the browser is sent to the registry\'s connect page, 
   assert.deepEqual({ accessToken: session.accessToken, clientId: session.clientId }, { accessToken: 'at', clientId: 'client-1' });
 });
 
+test('a visit to the port without this login\'s state is answered 400 and ignored, and the login still finishes', async () => {
+  const strays: number[] = [];
+  const session = await loginWithLoopback('https://cloud.example', {
+    fetch: registryWithClient,
+    callbackPage: () => '',
+    open: async (url) => {
+      const back = new URL(url.searchParams.get('redirect_uri') ?? '');
+      for (const query of ['code=forged', 'code=forged&state=wrong', 'error=access_denied&state=wrong']) {
+        strays.push((await fetch(`${back.toString()}?${query}`)).status);
+      }
+      strays.push((await fetch(new URL('/elsewhere', back))).status);
+      back.searchParams.set('code', 'abc');
+      back.searchParams.set('state', url.searchParams.get('state') ?? '');
+      await (await fetch(back)).text();
+    },
+  });
+  assert.deepEqual(strays, [400, 400, 400, 404]);
+  assert.equal(session.accessToken, 'at');
+});
+
 test('cancelling on the website ends the wait with the website\'s reason', async () => {
   await assert.rejects(loginWithLoopback('https://cloud.example', {
     fetch: registryWithClient,

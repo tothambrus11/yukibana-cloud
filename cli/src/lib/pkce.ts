@@ -63,6 +63,16 @@ export function connectUrl(registry: string, redirect: string, challenge: string
   return url;
 }
 
+/** Four characters the CLI prints and the website shows beside "Continue",
+ *  so the person can see the page is asking about the login they started.
+ *  A courtesy, not a check. The website makes the same from the same state
+ *  (`loginCode` in app/src/lib/connect.ts). Null for an address that is not
+ *  a connect page. */
+export function loginCode(url: URL): string | null {
+  const st = url.pathname === '/auth/connect' ? url.searchParams.get('state') : null;
+  return st === null || st === '' ? null : st.slice(0, 4).toUpperCase();
+}
+
 /** The redirect URI of the registry's OAuth client, which the code was
  *  issued for and which the exchange must name again. */
 export const connectReturnUrl = (registry: string): string => `${new URL(registry).origin}/auth/connect/return`;

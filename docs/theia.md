@@ -67,7 +67,11 @@ Nothing reaches the loopback before they choose. Then Supabase Auth's OAuth
 2.1 server issues a code for the registry's OAuth client, the page hands it
 to the loopback, and the library trades it with the PKCE verifier, which
 never leaves the backend, for a session of the IDE's own: not the website's
-cookie session, so logging out of one leaves the other signed in.
+cookie session, so logging out of one leaves the other signed in. The
+listener ignores (with a 400) any visit that does not carry this login's
+state, and waits up to ten minutes, enough for an emailed code. The page
+shows four characters of the state; `loginCode(pending.authorizeUrl)` gives
+the same, for the IDE to show beside its "waiting for the browser".
 `Session.clientId` names the client; keep it with the rest of the session,
 because a refresh needs it. Nothing about the login is remembered on the
 loopback, and every login asks again.
@@ -81,7 +85,9 @@ production); a browser Theia's callback address has to be added there, and
 reaches production with the next deploy (`supabase config push`).
 
 `logout(store)` ends only this session (`scope=local`): the website and the
-person's other machines stay signed in.
+person's other machines stay signed in. It renews an expired session first,
+so it has a live token to end it with; when the server did not end it,
+`revoked` is false and `why` says why, for the IDE to tell the person.
 
 If the IDE already has a Supabase session for the same project (one login for
 the IDE and Yukibana), skip all of this: hand its access token to the client.

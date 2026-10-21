@@ -7,19 +7,26 @@
  *  state of its own. The person logs in to the website as usual (GitHub or
  *  an emailed code), sees whom they are signed in as, and confirms. Only
  *  then does the browser go to Supabase Auth's OAuth 2.1 server, which
- *  comes back to the website's consent route, which approves for the
- *  person signed in; Auth then sends the code to `/auth/connect/return`,
- *  the one redirect URI the OAuth client has, and that route hands it on to
- *  the loopback. The CLI trades the code for a session of its own with its
- *  PKCE verifier.
+ *  sends it to the website's consent route; that approves for the person
+ *  signed in, takes the code from Auth's answer, and sends the browser with
+ *  it straight to the loopback. The CLI trades the code for a session of
+ *  its own with its PKCE verifier.
  *
- *  Why the hop through `/return`: Auth matches a client's redirect URIs
- *  exactly, and a loopback listener's port is whatever the system gave it,
- *  so no loopback address can be registered. The website's own address can,
- *  and the loopback goes inside `state`, which Auth carries untouched and
- *  this module checks again on the way out. What reaches the loopback is a
- *  code, never a token: worth nothing without the verifier, used once, and
- *  dead three minutes after the authorization began.
+ *  Auth matches a client's redirect URIs exactly, and a loopback listener's
+ *  port is whatever the system gave it, so no loopback address can be
+ *  registered. The client's one redirect URI is the website's own
+ *  `/auth/connect/return`: the code is issued for it, but the consent route
+ *  reads the code from Auth's answer instead of sending the browser there
+ *  with it. The loopback travels inside `state`, which Auth carries
+ *  untouched and the consent route checks again before relaying. What
+ *  reaches the loopback is a code, never a token: worth nothing without the
+ *  verifier, used once, and dead three minutes after the authorization
+ *  began.
+ *
+ *  All of this works only on the origin that is Auth's `site_url`: the
+ *  consent route is found there, the redirect URI is registered there, and
+ *  the cookie that proves the person clicked is set there. The CLI learns
+ *  that origin from `/api/auth/config`, and `/auth/connect` moves to it.
  */
 
 /** A request to connect, as the CLI sent it to `/auth/connect`. */
@@ -86,6 +93,21 @@ export interface Relay {
 }
 
 export const relayState = (r: Relay): string => `${r.port}.${r.state}.${r.nonce}`;
+
+/** The cookie that remembers, for five minutes, that the person in this
+ *  browser clicked "Continue" for the login with this nonce. One per login,
+ *  so two at once (the IDE and a terminal, two windows, a double click) do
+ *  not overwrite each other. `__Host-`: this origin's alone, only over TLS
+ *  (or to 127.0.0.1 in development), for every path. Its value says
+ *  nothing; its name is the proof. */
+export const CONNECT_COOKIE_PREFIX = '__Host-yukibana-connect-';
+export const connectCookie = (nonce: string): string => `${CONNECT_COOKIE_PREFIX}${nonce}`;
+
+/** Four characters the CLI prints and the website shows, so the person can
+ *  see that the page asking them is the login they started. A courtesy,
+ *  not a check: the state and the verifier are the checks. The CLI makes
+ *  the same from the same state (`loginCode` in cli/src/lib/pkce.ts). */
+export const loginCode = (state: string): string => state.slice(0, 4).toUpperCase();
 
 /** The relay a `state` names, or null if it is not one this module made. */
 export function relayOf(state: string | null): Relay | null {

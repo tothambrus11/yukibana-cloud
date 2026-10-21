@@ -121,6 +121,10 @@ export interface AuthConfigJson {
    *  CLI then logs in with GitHub directly. A CLI older than this field
    *  ignores it and does the same. */
   readonly oauthClientId: string | null;
+  /** The site's canonical origin, Auth's `site_url`: where a CLI opens
+   *  `/auth/connect`, and whose `/auth/connect/return` it names when it
+   *  trades the code. */
+  readonly siteUrl: string;
 }
 
 /** Every refusal and failure under `/api/`, whatever the status and whatever

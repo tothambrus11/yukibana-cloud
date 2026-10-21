@@ -1,8 +1,8 @@
 import { test, expect, beforeAll } from 'vitest';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { authorizeUrl, deliveryUrl, relayOf, type ConnectRequest } from '../../src/lib/connect.js';
-import { approve, nonce, returnUrlOf } from '../../src/lib/server/connect.js';
+import { authorizeUrl, connectCookie, type ConnectRequest } from '../../src/lib/connect.js';
+import { approve, consent, nonce, returnUrlOf } from '../../src/lib/server/connect.js';
 import { claimsOf } from '../../src/lib/claims.js';
 import { sendCode, verifyCode } from '../../src/lib/server/login.js';
 import { config } from './env.js';
@@ -61,21 +61,24 @@ beforeAll(async () => {
   userId = signedIn.userId;
 });
 
+const expected = () => ({ clientId: clientId(), returnUrl: RETURN });
+
 /** From "Continue" to the code on the loopback address: the authorize
- *  request the browser makes, the consent step Auth sends it to, and the
- *  relay to the CLI. Returns the loopback address the browser is sent to. */
+ *  request the browser makes, and the consent route's decision on where
+ *  Auth sends it, holding the cookie "Continue" set. Returns the loopback
+ *  address the browser is sent to. */
 async function confirm(req: ConnectRequest, as: Browser = site): Promise<URL> {
   const n = nonce();
   const res = await fetch(authorizeUrl(config.supabaseUrl, clientId(), RETURN, req, n), { redirect: 'manual' });
   expect(res.status).toBe(302);
-  const consent = new URL(res.headers.get('location') ?? '');
-  expect(consent.origin + consent.pathname).toBe(`${SITE}/auth/connect/consent`);
-  const approved = await approve(as.auth.oauth, consent.searchParams.get('authorization_id') ?? '', RETURN);
-  if (!approved.ok) throw new Error(approved.message);
-  const relay = relayOf(approved.redirect.searchParams.get('state'));
-  expect(relay).toEqual({ port: req.port, state: req.state, nonce: n });
-  if (relay === null) throw new Error('no relay');
-  return deliveryUrl(relay, approved.redirect.searchParams);
+  const at = new URL(res.headers.get('location') ?? '');
+  expect(at.origin + at.pathname).toBe(`${SITE}/auth/connect/consent`);
+  const decided = await consent({
+    authorizationId: at.searchParams.get('authorization_id'), signedIn: true, cookies: [connectCookie(n)], auth: as.auth.oauth, expected: expected(),
+  });
+  expect(decided.spend).toEqual([connectCookie(n)]);
+  if ('status' in decided.to) throw new Error(decided.to.message);
+  return decided.to.redirect;
 }
 
 test('the person signed in on the website, once they confirm, gives the IDE a code that only its verifier can trade, for a session of its own', async () => {
@@ -137,7 +140,7 @@ test('someone else, signed in elsewhere, cannot approve an authorization the fir
   const res = await fetch(authorizeUrl(config.supabaseUrl, clientId(), RETURN, req, nonce()), { redirect: 'manual' });
   const id = new URL(res.headers.get('location') ?? '').searchParams.get('authorization_id') ?? '';
   // The first to look at it binds it to themselves.
-  const mine = await approve(site.auth.oauth, id, RETURN);
+  const mine = await approve(site.auth.oauth, id, expected());
   expect(mine.ok).toBe(true);
   const other = browser();
   const addr = `connect-${randomUUID()}@yukibana.local`;
@@ -145,5 +148,5 @@ test('someone else, signed in elsewhere, cannot approve an authorization the fir
   await sendCode(other.auth, addr);
   const signedIn = await verifyCode(other.auth, addr, await codeMailedTo(addr, since));
   if (!signedIn.ok) throw new Error(signedIn.message);
-  expect(await approve(other.auth.oauth, id, RETURN)).toMatchObject({ ok: false, status: 400 });
+  expect(await approve(other.auth.oauth, id, expected())).toMatchObject({ ok: false, status: 400 });
 });

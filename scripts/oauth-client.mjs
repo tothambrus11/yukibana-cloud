@@ -46,8 +46,38 @@ async function call(method, body) {
   return JSON.parse(text);
 }
 
-const { clients = [] } = await call("GET");
+// Auth (v2.197) answers the whole list in one response; were it ever to
+// page, a missing client would be registered twice, so follow any `page`
+// it offers rather than assume.
+const clients = [];
+for (let page = 1; page < 100; page++) {
+  const url = new URL(endpoint);
+  if (page > 1) url.searchParams.set("page", String(page));
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    console.error(`GET ${url} answered ${res.status}: ${await res.text()}`);
+    console.error("Is [auth.oauth_server] enabled in supabase/config.toml, and the stack restarted since?");
+    process.exit(1);
+  }
+  const body = await res.json();
+  clients.push(...(body.clients ?? []));
+  const more = res.headers.get("link")?.includes('rel="next"') ?? false;
+  if (!more) break;
+}
 const existing = clients.find((c) => c.client_name === NAME && (c.redirect_uris ?? []).includes(redirect));
+if (existing !== undefined) {
+  // Reused only as it was meant: public, no secret, the two grants, the one URI.
+  const grants = [...(existing.grant_types ?? [])].sort().join(",");
+  const problems = [
+    existing.client_type !== "public" && `it is ${existing.client_type}, not public`,
+    grants !== "authorization_code,refresh_token" && `its grants are ${grants}`,
+    (existing.redirect_uris ?? []).length !== 1 && `it has ${existing.redirect_uris.length} redirect URIs`,
+  ].filter(Boolean);
+  if (problems.length > 0) {
+    console.error(`"${NAME}" (${existing.client_id}) exists but ${problems.join("; ")}. Fix or delete it in the dashboard, then run this again.`);
+    process.exit(1);
+  }
+}
 const client = existing ?? (await call("POST", {
   client_name: NAME,
   client_type: "public",

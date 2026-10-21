@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { codeOf, logout, memoryStore, refreshSession, startLogin, tokenProvider, NotLoggedIn, type Session } from '../src/session.js';
-import { challengeOf } from '../src/lib/pkce.js';
+import { challengeOf, loginCode } from '../src/lib/pkce.js';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -102,11 +102,34 @@ test('with an OAuth client, a loopback login goes through the website\'s connect
   assert.equal(sent.get('client_secret'), null, 'a public client has no secret to send');
 });
 
-test('a code that comes back with another request\'s state is refused before it is traded', async () => {
+test('a code or an error that comes back without this request\'s state is not acted on: nothing is traded, and no refusal is believed', async () => {
   const seen: Request[] = [];
   const pending = await startLogin('https://cloud.example', 'http://127.0.0.1:4242/callback', connecting(seen));
-  await assert.rejects(pending.finish('http://127.0.0.1:4242/callback?code=abc&state=someone-elses-state'), /different request/);
+  for (const stray of [
+    'http://127.0.0.1:4242/callback?code=abc&state=someone-elses-state',
+    'http://127.0.0.1:4242/callback?code=abc',
+    'abc',
+    'http://127.0.0.1:4242/callback?error=access_denied&error_description=Forged',
+    'http://127.0.0.1:4242/callback?error=access_denied&error_description=Forged&state=wrong',
+  ]) await assert.rejects(pending.finish(stray), /without this request's state/, stray);
   assert.equal(seen.length, 1, 'nothing was sent to the Auth server');
+  assert.equal(pending.state, pending.authorizeUrl.searchParams.get('state'));
+});
+
+test('the connect page and the code\'s redirect URI are on the site the registry names, which may not be the address asked', async () => {
+  const seen: Request[] = [];
+  const fetchFn: typeof fetch = async (input, init) => {
+    const req = new Request(input, init);
+    seen.push(req);
+    if (req.url.endsWith('/api/auth/config')) return json({ supabaseUrl: 'https://auth.example', publishableKey: 'pk', oauthClientId: 'client-1', siteUrl: 'https://cloud.example' });
+    return json({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 });
+  };
+  const pending = await startLogin('https://yukibana.workers.example', 'http://127.0.0.1:4242/callback', fetchFn);
+  assert.equal(pending.authorizeUrl.origin, 'https://cloud.example');
+  assert.equal(loginCode(pending.authorizeUrl), (pending.state ?? '').slice(0, 4).toUpperCase());
+  const made = await pending.finish(`http://127.0.0.1:4242/callback?code=abc&state=${pending.state ?? ''}`);
+  assert.equal(new URLSearchParams(await seen[1]?.text()).get('redirect_uri'), 'https://cloud.example/auth/connect/return');
+  assert.equal(made.url, 'https://yukibana.workers.example', 'the API stays where it was asked');
 });
 
 test('a redirect that is not the loopback, or a registry without a client, logs in with GitHub directly as before', async () => {
@@ -143,8 +166,33 @@ test('logging out ends this session only, not the website or the person\'s other
     return new Response(null, { status: 204 });
   };
   const store = memoryStore(session(5000));
-  assert.deepEqual(await logout(store, fetchFn), { revoked: true });
+  assert.deepEqual(await logout(store, fetchFn, () => 1000), { revoked: true, why: null });
   assert.equal(seen[0]?.url, 'https://auth.example/auth/v1/logout?scope=local');
   assert.equal(seen[0]?.headers.get('authorization'), 'Bearer at-5000');
+  assert.ok(seen[0]?.signal, 'the call can be abandoned');
   assert.equal(await store.load(), null);
+});
+
+test('a session idle past its hour is renewed first, so the logout has a live token to end it with', async () => {
+  const seen: Request[] = [];
+  const fetchFn: typeof fetch = async (input, init) => {
+    const req = new Request(input, init);
+    seen.push(req);
+    if (req.url.includes('/token')) return json({ access_token: 'fresh', refresh_token: 'rt2', expires_in: 3600 });
+    return new Response(null, { status: 204 });
+  };
+  assert.deepEqual(await logout(memoryStore(session(900)), fetchFn, () => 1000), { revoked: true, why: null });
+  assert.deepEqual(seen.map((r) => new URL(r.url).pathname), ['/auth/v1/token', '/auth/v1/logout']);
+  assert.equal(seen[1]?.headers.get('authorization'), 'Bearer fresh');
+});
+
+test('a logout the Auth server did not carry out says why, and still forgets the session here', async () => {
+  const refused: typeof fetch = async () => new Response(null, { status: 401 });
+  const store = memoryStore(session(5000));
+  assert.deepEqual(await logout(store, refused, () => 1000), { revoked: false, why: 'the Auth server answered 401' });
+  assert.equal(await store.load(), null);
+  const unreachable: typeof fetch = async () => { throw new Error('timed out'); };
+  assert.match((await logout(memoryStore(session(5000)), unreachable, () => 1000)).why ?? '', /could not be reached \(timed out\)/);
+  assert.match((await logout(memoryStore(session(900)), unreachable, () => 1000)).why ?? '', /could not be renewed/);
+  assert.deepEqual(await logout(memoryStore()), { revoked: false, why: 'nobody was logged in' });
 });

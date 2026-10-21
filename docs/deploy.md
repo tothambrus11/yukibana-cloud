@@ -320,7 +320,13 @@ secret key (Settings → API keys), from a checkout:
 SUPABASE_SECRET_KEY=<secret key> node scripts/oauth-client.mjs https://<ref>.supabase.co https://cloud.yukibana.dev
 ```
 
-It prints the client's id. Put it in `wrangler.jsonc` as
+It prints the client's id. The site address given there must be the
+origin of Auth's `site_url` (`[remotes.production.auth]` in
+`supabase/config.toml`) and of `SITE_URL` in `wrangler.jsonc`: Auth sends
+the consent step to `site_url`, the client's one redirect URI is on that
+origin, and the cookie that says the person clicked "Continue" is set
+there, so a login started on any other address (the workers.dev one, say)
+is moved there first. Put the id in `wrangler.jsonc` as
 `SUPABASE_OAUTH_CLIENT_ID` and merge: from that deploy on, `yukibana login`
 and the IDE go through the website. Until then they log in with GitHub
 directly, as before, so the order of the two is free. Running the script

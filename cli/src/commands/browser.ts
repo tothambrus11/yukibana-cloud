@@ -5,11 +5,14 @@
 
 import { spawn } from 'node:child_process';
 import type { CallbackOutcome } from '../loopback.js';
+import { loginCode } from '../lib/pkce.js';
 
 /** Prints the address, in case no browser opens, and opens it in the
  *  system browser, best effort. */
 export function openInBrowser(url: URL): void {
   console.error(`Opening your browser to log in. If it does not open, visit:\n\n  ${url.toString()}\n`);
+  const code = loginCode(url);
+  if (code !== null) console.error(`The page should show the code ${code}.\n`);
   const [command, args] = process.platform === 'darwin'
     ? ['open', [url.toString()]]
     : process.platform === 'win32'

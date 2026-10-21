@@ -90,9 +90,16 @@ export interface PendingLogin {
   readonly authorizeUrl: URL;
   /** Where the browser will come back to, as given. */
   readonly redirectUrl: string;
-  /** Finishes the login with the address the browser came back to (or just
-   *  the `code` from it). Throws with the Auth server's sentence when the
-   *  person declined or the code is spent. */
+  /** The `state` the browser must bring back, for a login through the
+   *  website; null for the GitHub-direct login, which has none. A listener
+   *  answers anything else that reaches it with a 400 and keeps waiting. */
+  readonly state: string | null;
+  /** Finishes the login with the address the browser came back to. Throws
+   *  with the Auth server's sentence when the person declined or the code
+   *  is spent. A login through the website needs the whole address, with
+   *  its state, and refuses one whose state is not `state` before it reads
+   *  the code or the error; the GitHub-direct login also takes just the
+   *  `code`. */
   finish(callback: URL | string): Promise<Session>;
 }
 
@@ -105,16 +112,19 @@ export async function startLogin(registry: string, redirectUrl: string, fetchFn:
   const pair = pkce();
   if (auth.oauthClientId !== null && isLoopback(redirectUrl)) {
     const clientId = auth.oauthClientId;
+    // Auth's site_url, where the website's part of the login works; an
+    // older registry does not say, and is its own site.
+    const site = auth.siteUrl ?? base.origin;
     const st = newState();
     return {
-      authorizeUrl: connectUrl(base.origin, redirectUrl, pair.challenge, st),
+      authorizeUrl: connectUrl(site, redirectUrl, pair.challenge, st),
       redirectUrl,
+      state: st,
       async finish(callback) {
+        if (stateOf(callback) !== st) throw new Error('the login came back without this request\'s state; start it again');
         const code = codeOf(callback);
-        const came = stateOf(callback);
-        if (came !== null && came !== st) throw new Error('the login came back for a different request; start it again');
         const body = await oauthTokenCall(fetchFn, auth.supabaseUrl, auth.publishableKey, {
-          grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: connectReturnUrl(base.origin), code_verifier: pair.verifier,
+          grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: connectReturnUrl(site), code_verifier: pair.verifier,
         });
         return sessionOf(base.origin, auth.supabaseUrl, auth.publishableKey, body, clientId);
       },
@@ -123,6 +133,7 @@ export async function startLogin(registry: string, redirectUrl: string, fetchFn:
   return {
     authorizeUrl: authorizeUrl(auth.supabaseUrl, redirectUrl, pair.challenge),
     redirectUrl,
+    state: null,
     async finish(callback) {
       const code = codeOf(callback);
       const body = await tokenCall(fetchFn, auth.supabaseUrl, auth.publishableKey, 'pkce', { auth_code: code, code_verifier: pair.verifier });
@@ -164,12 +175,12 @@ function stateOf(callback: URL | string): string | null {
 /** A new session for an old one, by its refresh token. A session that
  *  came through the website refreshes at the OAuth server's token
  *  endpoint and names its client; any other at Auth's own. */
-export async function refreshSession(session: Session, fetchFn: typeof fetch = fetch): Promise<Session> {
+export async function refreshSession(session: Session, fetchFn: typeof fetch = fetch, timeoutMs = AUTH_TIMEOUT_MS): Promise<Session> {
   if (session.clientId !== undefined) {
-    const fresh = await oauthTokenCall(fetchFn, session.supabaseUrl, session.publishableKey, { grant_type: 'refresh_token', refresh_token: session.refreshToken, client_id: session.clientId });
+    const fresh = await oauthTokenCall(fetchFn, session.supabaseUrl, session.publishableKey, { grant_type: 'refresh_token', refresh_token: session.refreshToken, client_id: session.clientId }, timeoutMs);
     return sessionOf(session.url, session.supabaseUrl, session.publishableKey, fresh, session.clientId, session.email);
   }
-  const body = await tokenCall(fetchFn, session.supabaseUrl, session.publishableKey, 'refresh_token', { refresh_token: session.refreshToken });
+  const body = await tokenCall(fetchFn, session.supabaseUrl, session.publishableKey, 'refresh_token', { refresh_token: session.refreshToken }, timeoutMs);
   return sessionOf(session.url, session.supabaseUrl, session.publishableKey, body);
 }
 
@@ -199,45 +210,68 @@ export function tokenProvider(store: SessionStore, fetchFn: typeof fetch = fetch
   };
 }
 
+/** How a logout went. `revoked` is whether the Auth server ended the
+ *  session; when it did not, `why` says why in a sentence a host can show,
+ *  because the refresh token then still works until it expires. */
+export interface LoggedOut {
+  readonly revoked: boolean;
+  readonly why: string | null;
+}
+
 /** Ends this session at the Auth server (so the refresh token is dead even
  *  if the stored copy leaks later) and forgets it. Only this session, by
  *  `scope=local`: Auth's default, `global`, would also end every other
  *  session the person has, the website in each of their browsers and the
- *  IDE on their other machines. A failure to reach the server still
- *  forgets it, and says so. */
-export async function logout(store: SessionStore, fetchFn: typeof fetch = fetch): Promise<{ revoked: boolean }> {
-  const session = await store.load();
+ *  IDE on their other machines.
+ *
+ *  Logging out takes a live access token, and a session idle for an hour
+ *  (the usual case before a logout) has none: so an expired one is
+ *  refreshed first, and the fresh one revoked. Each call gives up after
+ *  `timeoutMs`. The session is forgotten here whatever happens. */
+export async function logout(store: SessionStore, fetchFn: typeof fetch = fetch, now: () => number = () => Date.now() / 1000, timeoutMs = 5000): Promise<LoggedOut> {
+  let session = await store.load();
   await store.clear();
-  if (session === null) return { revoked: false };
+  if (session === null) return { revoked: false, why: 'nobody was logged in' };
+  try {
+    if (session.expiresAt <= now()) session = await refreshSession(session, fetchFn, timeoutMs);
+  } catch (e) {
+    return { revoked: false, why: `the session had expired and could not be renewed to end it (${e instanceof Error ? e.message : String(e)})` };
+  }
   try {
     const res = await fetchFn(new URL('/auth/v1/logout?scope=local', session.supabaseUrl), {
       method: 'POST',
       headers: { apikey: session.publishableKey, authorization: `Bearer ${session.accessToken}` },
+      signal: AbortSignal.timeout(timeoutMs),
     });
-    return { revoked: res.ok };
-  } catch {
-    return { revoked: false };
+    return res.ok ? { revoked: true, why: null } : { revoked: false, why: `the Auth server answered ${res.status}` };
+  } catch (e) {
+    return { revoked: false, why: `the Auth server could not be reached (${e instanceof Error ? e.message : String(e)})` };
   }
 }
 
-async function tokenCall(fetchFn: typeof fetch, supabaseUrl: string, key: string, grant: string, payload: Record<string, string>): Promise<unknown> {
+/** How long a call to the Auth server may take before it is abandoned. */
+const AUTH_TIMEOUT_MS = 30_000;
+
+async function tokenCall(fetchFn: typeof fetch, supabaseUrl: string, key: string, grant: string, payload: Record<string, string>, timeoutMs = AUTH_TIMEOUT_MS): Promise<unknown> {
   const url = new URL('/auth/v1/token', supabaseUrl);
   url.searchParams.set('grant_type', grant);
   const res = await fetchFn(url, {
     method: 'POST',
     headers: { apikey: key, 'content-type': 'application/json' },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   return answer(res);
 }
 
 /** The OAuth 2.1 server's token endpoint: a form, as RFC 6749 has it, from
  *  a public client (its id in the body, no secret). */
-async function oauthTokenCall(fetchFn: typeof fetch, supabaseUrl: string, key: string, form: Record<string, string>): Promise<unknown> {
+async function oauthTokenCall(fetchFn: typeof fetch, supabaseUrl: string, key: string, form: Record<string, string>, timeoutMs = AUTH_TIMEOUT_MS): Promise<unknown> {
   const res = await fetchFn(new URL('/auth/v1/oauth/token', supabaseUrl), {
     method: 'POST',
     headers: { apikey: key, 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(form).toString(),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   return answer(res);
 }
