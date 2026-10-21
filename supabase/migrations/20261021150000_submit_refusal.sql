@@ -25,7 +25,8 @@
 -- course name and label, which they already see. They learn nothing else
 -- about it: not its title, not its releases. The id itself reaches a
 -- student from a starter, a link or a teacher, and is not guessable.
--- Whether this is the right trade is the course's call; this is what it is.
+-- This was decided, not overlooked (2026-10): telling an enrolled student
+-- why their submission is refused is worth their learning that much.
 
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
