@@ -391,8 +391,12 @@ settings, before" step of the last deploy.
 **A merge to `main` changed nothing on the site.** Workers Builds reports
 a "Workers Builds: yukibana-cloud" check on every commit it builds; a
 commit on `main` without one was never built, and the site still runs the
-one before. Retry the build from the Worker's Deployments page in the
-Cloudflare dashboard, or push again. `/api/auth/config` answering without
+one before. Workers Builds starts from a GitHub webhook, so first look at
+githubstatus.com: when Webhooks is degraded, the delivery is late rather
+than lost, and the build appears once GitHub works through its backlog (on
+2026-10-21 the merge of #49 waited this way). If GitHub is fine, or the
+check never comes, retry the build from the Worker's Deployments page in
+the Cloudflare dashboard, or push again. `/api/auth/config` answering without
 `siteUrl` is the sign that code from before the website login is live.
 
 **`yukibana login` or the IDE still goes straight to GitHub.** The deployed
