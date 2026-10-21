@@ -11,6 +11,12 @@ jobs:
   devcontainer:
     runs-on: ubuntu-latest
     steps:
+      # The stack publishes fixed host ports, 54320-54329 (supabase/config.toml),
+      # which lie in Linux's ephemeral range: any outgoing connection, such as an
+      # image pull, could take one first and fail the start. Reserving them takes
+      # them out of that range; explicit binds like Docker's still get them.
+      - name: Keep the stack's ports out of the ephemeral range
+        run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
       - uses: actions/checkout@v7
       - name: Build devcontainer and run the smoke test inside it
         uses: devcontainers/ci@v0.3
