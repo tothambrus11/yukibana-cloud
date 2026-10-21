@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { chooseReleases, nameOf, wantedRelease, type ReleaseRef } from '../src/lib/grading.js';
+import { behind, chooseReleases, nameOf, wantedRelease, type ReleaseRef } from '../src/lib/grading.js';
 
 const V3: ReleaseRef = { releaseId: '00000000-0000-7000-8000-000000000003', label: 'v3' };
 const V2: ReleaseRef = { releaseId: '00000000-0000-7000-8000-000000000002', label: '' };
@@ -66,4 +66,17 @@ test('when the archive and the registry disagree, the registry\'s record wins an
 test('a release is called by its whole id, after its label when it has one', () => {
   assert.equal(nameOf(V2), '00000000-0000-7000-8000-000000000002');
   assert.equal(nameOf(V3), 'v3 (00000000-0000-7000-8000-000000000003)');
+});
+
+test('a submission based on an older release, or on none it says, is behind; one on the newest is not', () => {
+  assert.equal(behind(releases, V3.releaseId), null);
+  assert.match(behind(releases, V2.releaseId) ?? '', /started from 00000000-0000-7000-8000-000000000002, one release behind the newest, v3 \(/);
+  assert.match(behind(releases, V1.releaseId) ?? '', /started from v1 \(.*\), 2 releases behind/);
+  assert.match(behind(releases, null) ?? '', /does not say which release it started from/);
+  assert.match(behind(releases, ELSEWHERE) ?? '', /not a release of this project/);
+});
+
+test('without releases to compare with, as for a student, nothing is behind', () => {
+  assert.equal(behind([], null), null);
+  assert.equal(behind([], V1.releaseId), null);
 });

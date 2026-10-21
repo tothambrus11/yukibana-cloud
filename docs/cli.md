@@ -36,8 +36,8 @@ request as you, and the database's policies decide.
 | `starter <id> [--out dir]` | download and unpack the starter |
 | `pack [dir]` | list what `submit` would send, and write the archive |
 | `submit [dir] [--yes]` | list what would be sent, ask, send. The project is the one in `./yukibana.json` |
-| `submissions [<id>] [--latest] [--student-submissions who]` | newest first; staff see everyone's; late ones marked, with the release each started from |
-| `download [<id>] [--out dir]` | each student's newest submission, unpacked into `dir/<student name>/` |
+| `submissions [<id>] [--latest] [--student-submissions who]` | newest first; staff see everyone's; late ones marked, with the release each started from, and a warning for each not based on the newest release |
+| `download [<id>] [--out dir]` | each student's newest submission, unpacked into `dir/<student name>/`; a warning for each not based on the newest release |
 | `  --all-versions`, `--submission id` | every version (or the named ones) into `dir/<student name>/<time>/` |
 | `  --student-submissions who` | some students' submissions: a name, GitHub login, address or user id (repeatable; `--student` is the old name and still works, with a warning) |
 | `  --assemble` | overlay a release's read-only and hidden files and report what the student changed of the release they started from |

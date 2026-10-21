@@ -1,5 +1,6 @@
 /** Reading the registry as yourself, and the roster writes an owner has. */
 
+import { behind } from '../lib/grading.js';
 import type { EditionRole, Project, Submission } from '../lib/wire.js';
 import { bytes, clientFor, fail, print, projectOf, studentsOf, when, type Invocation } from './common.js';
 
@@ -122,10 +123,15 @@ export function select(all: readonly Submission[], students: readonly string[], 
     (students.length === 0 || students.some((s) => names(s, x))) && (ids.length === 0 || ids.includes(x.submissionId)));
 }
 
+/** `submissions`: the list, then a warning on stderr for each one not based
+ *  on the newest release (staff only: a student's release list is empty, so
+ *  they get none). Stderr, so `--json` stays parseable. */
 export async function submissions(inv: Invocation): Promise<void> {
   const id = await projectOf(inv, inv.args[0]);
-  const all = await (await clientFor(inv)).submissions(id, { latest: inv.options.latest === true });
+  const client = await clientFor(inv);
+  const all = await client.submissions(id, { latest: inv.options.latest === true });
   const rows = select(all, studentsOf(inv), inv.options.submission ?? []);
+  const published = await client.releases(id);
   print(inv, rows, {
     submission: (s) => s.submissionId,
     submitted: (s) => when(s.submittedAt),
@@ -135,4 +141,9 @@ export async function submissions(inv: Invocation): Promise<void> {
     latest: (s) => [s.latest ? 'latest' : '', s.late ? 'late' : ''].filter(Boolean).join(', '),
     'started from': (s) => s.baseReleaseId ?? '-',
   });
+  for (const s of rows) {
+    const lag = behind(published, s.baseReleaseId);
+    const who = s.author.fullName ?? s.author.githubLogin ?? s.author.email ?? s.author.userId;
+    if (lag !== null) console.error(`warning: ${who}, submission ${s.submissionId}: ${lag}`);
+  }
 }

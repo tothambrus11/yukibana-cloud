@@ -4,7 +4,7 @@
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { assemble, submissionRoot, tampered, type Tampering } from '../lib/assemble.js';
-import { chooseReleases, nameOf, wantedRelease, type Wanted } from '../lib/grading.js';
+import { behind, chooseReleases, nameOf, wantedRelease, type Wanted } from '../lib/grading.js';
 import { sha256Hex } from '../lib/bytes.js';
 import { folderNames, stampOf } from '../lib/names.js';
 import type { Entry } from '../lib/tar.js';
@@ -56,7 +56,11 @@ interface Downloaded {
  *  (the newest when that is unknown); `--release newest` the newest for
  *  everyone, so a fixed hidden test reaches every submission; `--release
  *  <id>` that one, which must be a release of this project. What the
- *  student changed is measured against their base whichever is used. */
+ *  student changed is measured against their base whichever is used.
+ *
+ *  For staff, every submission not based on the newest release is a
+ *  warning, with or without `--assemble`: started from an older release, or
+ *  saying none. */
 export async function download(inv: Invocation): Promise<void> {
   const id = await projectOf(inv, inv.args[0]);
   const o = inv.options;
@@ -73,11 +77,11 @@ export async function download(inv: Invocation): Promise<void> {
 
   // The project's own releases are the only ones an assembly will use: an
   // id from anywhere else (a flag, a student's file) is checked against
-  // this list, never fetched on its word.
-  let releases: readonly Release[] = [];
+  // this list, never fetched on its word. Fetched without --assemble too,
+  // to say which submissions are behind the newest; a student's is empty.
+  const releases: readonly Release[] = await client.releases(id);
   let wanted: Wanted = 'own';
   if (o.assemble === true) {
-    releases = await client.releases(id);
     const w = wantedRelease(releases, o.release);
     if (!w.ok) return fail(w.problem);
     wanted = w.wanted;
@@ -167,6 +171,8 @@ export async function download(inv: Invocation): Promise<void> {
       }
       done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, baseReleaseId: base, assembledWith, tampering, unrestored, overridden });
       console.log(`${folder}${s.late ? '  (late)' : ''}${started}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering, unrestored)}` : ''}`);
+      const lag = behind(releases, base);
+      if (lag !== null) console.error(`warning: ${folder}: ${lag}`);
       if (overridden.length > 0) console.log(`  ${folder}: replaced by the release assembled with, which protects them: ${overridden.join(', ')}`);
     } catch (e) {
       problems.push(`${folder}: ${e instanceof Error ? e.message : String(e)}`);

@@ -70,3 +70,18 @@ export function chooseReleases<R extends ReleaseRef>(releases: readonly R[], wan
   const grade = wanted === 'own' ? (base ?? newest) : wanted === 'newest' ? newest : (find(wanted.releaseId) ?? newest);
   return { grade, base, notes };
 }
+
+/** Why a submission is not based on the newest release, as a sentence for a
+ *  warning, or null when it is (or there are no releases to compare with:
+ *  a student's list is empty, since students cannot read releases).
+ *  `releases` is the project's list, newest first; `base` the release the
+ *  registry recorded for the submission. */
+export function behind(releases: readonly ReleaseRef[], base: string | null): string | null {
+  const [newest] = releases;
+  if (newest === undefined || base === newest.releaseId) return null;
+  if (base === null) return `does not say which release it started from, so it may predate the newest, ${nameOf(newest)}`;
+  const at = releases.findIndex((r) => r.releaseId === base);
+  const from = releases[at];
+  if (from === undefined) return `started from ${base}, which is not a release of this project`;
+  return `started from ${nameOf(from)}, ${at === 1 ? 'one release' : `${at} releases`} behind the newest, ${nameOf(newest)}`;
+}
