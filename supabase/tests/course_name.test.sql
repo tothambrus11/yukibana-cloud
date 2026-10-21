@@ -3,7 +3,9 @@
 -- anything: not an assistant, not a student, not a stranger, not a teacher
 -- who owns no edition of the course.
 begin;
-select plan(19);
+select plan(20);
+
+select col_not_null('public', 'course_edition', 'title', 'every edition has a course name: the column says so, not just the functions');
 
 select tests.create_user('teacher@example.com', 'Teacher', 'teacher');
 update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@example.com');

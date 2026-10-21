@@ -43,7 +43,7 @@ export const load: PageServerLoad = async (event) => {
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [head] = await tx<{ edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
-        select e.edition_id, e.label, e.archived_at, c.code, coalesce(e.title, c.title) as title, app.role_in(e.edition_id)::text as role,
+        select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role,
                app.may_edit_projects(e.edition_id) as can_edit
         from course_edition e join course c on c.course_id = e.course_id
         where e.edition_id = ${edition}`;

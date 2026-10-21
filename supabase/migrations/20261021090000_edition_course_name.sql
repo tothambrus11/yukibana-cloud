@@ -24,14 +24,17 @@
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
 
--- Nullable, and never null in practice, for the reason `project.position`
--- is (20261008090000_project_order.sql): filled for every existing row
--- here, and by every function that creates an edition; there is no insert
--- or update grant on the table, so nothing else writes it. `not null` would
--- cost a default to drop or a scan, both of which squawk rightly flags.
+-- Not null: an edition without a course name has nothing to show. Added
+-- nullable, filled from the course, then constrained. `set not null` scans
+-- the table under its lock, which squawk flags; `course_edition` holds one
+-- row per course per term, so the scan is over in well under the lock
+-- timeout, and a nullable column that is "never null in practice" would
+-- leave every reader handling a null that cannot occur.
 alter table public.course_edition add column title text;
 update public.course_edition e set title = c.title
 from public.course c where c.course_id = e.course_id;
+-- squawk-ignore adding-not-nullable-field
+alter table public.course_edition alter column title set not null;
 
 -- Keeps `course.title` the name of the course's latest edition. Runs after
 -- an edition is created or renamed; renaming an older edition recomputes

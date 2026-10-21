@@ -17,7 +17,7 @@ export type { StudentProjectRow };
  *  edition, then the order the teacher arranged. `edition` narrows to one. */
 export async function studentProjects(tx: Tx, claims: Claims, edition: EditionId | null): Promise<StudentProjectRow[]> {
   return tx<StudentProjectRow[]>`
-    select p.project_id, p.edition_id, c.code as course_code, coalesce(e.title, c.title) as course_title, e.label as edition_label,
+    select p.project_id, p.edition_id, c.code as course_code, e.title as course_title, e.label as edition_label,
            p.slug, p.title, p.kind::text as kind, p.deadline, p.closes_at,
            app.can_submit(p.project_id) as can_submit,
            app.current_starter(p.project_id) is not null as starter_ready,

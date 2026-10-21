@@ -24,7 +24,7 @@ export const load: PageServerLoad = async (event) => {
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const editions = await tx<EditionRow[]>`
-        select e.edition_id, e.label, e.archived_at, c.code, coalesce(e.title, c.title) as title, app.role_in(e.edition_id)::text as role
+        select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role
         from course_edition e join course c on c.course_id = e.course_id
         order by e.archived_at nulls first, c.code, e.label desc`;
       const [me] = await tx<{ role: string | null }[]>`select app.platform_role()::text as role`;
