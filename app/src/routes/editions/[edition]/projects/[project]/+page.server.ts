@@ -5,7 +5,6 @@ import { asUser, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
-import { publishRelease } from '#lib/server/releases.ts';
 
 interface ProjectRow {
   project_id: ProjectId;
@@ -35,6 +34,15 @@ interface SubmissionRow {
   full_name: string | null;
   github_login: string | null;
   late: boolean;
+  /** The release the submission says it started from, for staff: its
+   *  label, or '' when it has none (`base_id` is shown either way). Null when it said
+   *  none, and always null for a student, who cannot read releases. */
+  base: string | null;
+  /** That release's id, whole: what `download --release` takes, and the
+   *  only name that tells two unlabelled releases apart. */
+  base_id: string | null;
+  /** Whether that release is the newest one. */
+  base_is_live: boolean;
 }
 
 interface ReleaseRow {
@@ -83,8 +91,12 @@ export const load: PageServerLoad = async (event) => {
       const owner = p.role === 'owner';
       const submissions = await tx<SubmissionRow[]>`
         select s.submission_id, s.submitted_at, s.byte_size, encode(s.sha256, 'hex') as sha256, s.author_id, u.full_name, u.github_login,
-               coalesce(s.submitted_at > ${p.deadline}::timestamptz, false) as late
-        from submission s left join app_user u on u.user_id = s.author_id
+               coalesce(s.submitted_at > ${p.deadline}::timestamptz, false) as late,
+               r.label as base, r.release_id as base_id,
+               coalesce(r.seq = (select max(seq) from project_release where project_id = ${project}), false) as base_is_live
+        from submission s
+        left join app_user u on u.user_id = s.author_id
+        left join project_release r on r.release_id = s.base_release_id
         where s.project_id = ${project}
         order by s.submitted_at desc`;
       const releases = staff
@@ -129,27 +141,8 @@ export const actions: Actions = {
     if (!(file instanceof File)) return fail(400, { error: 'Choose a .tar.zst file.' });
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
-      const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes));
+      const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes, null));
       return { submitted: accepted };
-    } catch (e) {
-      return httpFailing(e);
-    }
-  },
-  /** A manual release: the two archives from the teacher's machine. The
-   *  CLI's `yukibana build` makes them; so can anything that makes a .tar.gz. */
-  publish: async (event) => {
-    const claims = requireClaims(event);
-    const { project } = ids(event.params);
-    const form = await event.request.formData();
-    const starter = form.get('starter');
-    const teacher = form.get('teacher');
-    if (!(starter instanceof File) || !(teacher instanceof File)) return fail(400, { error: 'Choose both archives.' });
-    const starterBytes = new Uint8Array(await starter.arrayBuffer());
-    const teacherBytes = new Uint8Array(await teacher.arrayBuffer());
-    try {
-      const published = await withContext((ctx) =>
-        publishRelease(ctx, { kind: 'user', claims }, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null));
-      return { published };
     } catch (e) {
       return httpFailing(e);
     }

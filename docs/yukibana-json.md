@@ -34,6 +34,7 @@ CLI, for what a student must never receive and what a submission holds.
 | `submission.filename` | no | What a packed submission is called on disk. Default `submission.tar.zst`. The bytes are always a zstandard-compressed tar, whatever the name. |
 | `submission.maxBytes` | no | The largest submission this project expects. Default 32 MiB; the registry has its own cap above which this cannot go. |
 | `projectId` | no | Written by `publish` (or `build --project`) into the starter's copy, so `yukibana submit` and the IDE know where a submission from that folder goes without the student choosing. A course repository leaves it out; a starter built without a project has none, and its students name the project when they submit. The registry does not trust it: a submission is accepted only where the student's enrolment allows. |
+| `releaseId` | no | Written by `publish` and `build` into the starter's copy: the release this starter is. The CLI chooses the id before building and the release row is given the same one, so it cannot name a different release however late a student downloads. `submit` and the IDE send it with the submission. The registry keeps it only when it is a release of the same project, and grading uses it to tell what the student changed from what a later release changed. A course repository leaves it out. |
 
 Globs are relative to the project root. `*` stays inside a path segment, `**`
 crosses segments, `?` is one character, and a pattern that names a directory
@@ -57,7 +58,9 @@ default the directory's name; make it the project's slug):
   from it; students never can;
 * **the starter**: the same minus `.github/` and everything `hidden`
   matches, plus a copy of `yukibana.json` with `hidden` removed and
-  `projectId` added.
+  `projectId` and `releaseId` added. Only `publish` (and the Action) upload
+  a release, with the same id; the archives `build` writes are for a look
+  inside, and their id names a release that will not exist.
 
 The build fails, with every reason on the terminal and a non-zero exit, when:
 
@@ -78,7 +81,8 @@ A `.tar.zst` of the student's project folder, paths relative to its root,
 CLI's `submit` and the IDE extension make it with the same library function,
 so both send the same files. It is sent as the body of
 `POST /api/projects/{projectId}/submissions` with `Content-Type:
-application/zstd` and a `Content-Length`, authenticated by an
+application/zstd` and a `Content-Length`, and `?release=<releaseId>` when
+the folder's `yukibana.json` has one, authenticated by an
 `Authorization: Bearer <access token>` header (or the session cookie). The
 response is `201` with the submission id, size and SHA-256. Every submission
 is kept and the newest is the one that counts. Submissions are accepted
@@ -90,15 +94,26 @@ deadline is accepted and listed as late.
 
 What a teacher grades: the student's files, except that `yukibana.json`,
 every `readOnly` path and every `hidden` path are deleted from the
-submission and taken from the teacher archive of the project's newest
-release. The teacher's `yukibana.json` decides what is protected, never the
-student's copy. An assembly reports, per student:
+submission and taken from the teacher archive of a release. By default that
+is the release the submission started from (the newest, when that is not
+known); `download --assemble --release newest` uses the newest for everyone,
+so a fixed hidden test reaches every submission, and `--release <id>` any
+one release of the project. The teacher's `yukibana.json` decides what is
+protected, never the student's copy. What the student changed is always
+measured against the release they started from, so a read-only file fixed in
+a later release is not reported as theirs. An assembly reports, per student:
 
-* **modified**: a read-only file (or `yukibana.json`, `projectId` and
-  formatting aside) with contents other than the starter had;
+* **modified**: a read-only file (or `yukibana.json`, `projectId`,
+  `releaseId` and formatting aside) with contents other than the starter
+  had;
 * **deleted**: a read-only file (or `yukibana.json`) the starter had and the
   submission does not;
 * **added**: a file under a read-only or hidden path that the teacher's
   project does not have, such as a test written into the hidden folder.
 
-Each is undone in the assembled folder either way.
+Each is undone in the assembled folder either way, as long as the release
+assembled with protects the path too. When it does not (a path that was
+read-only in the student's release and no longer is), the student's version
+stays and the download says so. A student file that only the release
+assembled with protects is replaced, and is listed as such: it was no rule
+of theirs that it broke.

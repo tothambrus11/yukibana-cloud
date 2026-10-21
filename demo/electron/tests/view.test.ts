@@ -46,7 +46,7 @@ test('a student\'s card counts their submissions; staff see their role instead',
 
 test('the latest version is marked as such, and late ones say so', () => {
   const sub = (id: string, latest: boolean, late: boolean): Submission => ({
-    submissionId: id, projectId: 'p', submittedAt: iso(-H), byteSize: 2048, sha256: 'ab', latest, late,
+    submissionId: id, projectId: 'p', submittedAt: iso(-H), byteSize: 2048, sha256: 'ab', latest, late, baseReleaseId: null,
     author: { userId: 'u', fullName: null, githubLogin: 'ada', email: null },
   });
   const rows = submissionRows([sub('c', true, true), sub('b', false, true), sub('a', false, false)]);

@@ -32,6 +32,10 @@ export interface SubmissionBundle {
    *  none (a course repository rather than a starter). `submit` refuses a
    *  bundle without one unless it is told the project. */
   readonly projectId: string | null;
+  /** The release the folder's starter was, or null when its yukibana.json
+   *  names none. `submit` sends it so the teacher can tell which release a
+   *  submission started from. */
+  readonly releaseId: string | null;
   /** The folder's `yukibana.json`, parsed. */
   readonly config: Config;
   /** Every file the archive will hold, in archive order. */
@@ -91,6 +95,7 @@ export function bundleOf(tree: readonly Entry[]): BundleResult {
     ok: true,
     bundle: {
       projectId: config.projectId,
+      releaseId: config.releaseId,
       config,
       files,
       skipped: packing.skipped,

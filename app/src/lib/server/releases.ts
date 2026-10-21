@@ -1,6 +1,6 @@
 /** Publishing a release and handing out its archives. The same function
- *  serves the CLI (a project token) and the project page (a staff member's
- *  session), so both make the same decisions in the same order: check the
+ *  serves CI (a project token) and the CLI as a person (their access
+ *  token), so both make the same decisions in the same order: check the
  *  archives, store both, then record the row under the caller's policies;
  *  a refused row deletes both objects again.
  */
@@ -35,8 +35,15 @@ async function tokenHash(secret: string): Promise<Uint8Array> {
 
 /** Publishes `starter` and `teacher` as a release of `project`, or throws the
  *  HTTP error that says why not. A token that does not name `project` is a
- *  403 before any byte is stored. */
-export async function publishRelease(ctx: Context, by: Publisher, project: ProjectId, starter: Uint8Array, teacher: Uint8Array, label: string, commit: string | null): Promise<Published> {
+ *  403 before any byte is stored.
+ *
+ *  `release` is the id the publisher chose and wrote into the starter's
+ *  yukibana.json, so a student's folder says which release it is; the row
+ *  gets exactly that id or is not written. An id already taken, by this
+ *  project or any other, is a 409 and both objects are deleted again. Null
+ *  lets the database choose, for archives that carry no id; their
+ *  submissions then record no base. */
+export async function publishRelease(ctx: Context, by: Publisher, project: ProjectId, starter: Uint8Array, teacher: Uint8Array, label: string, commit: string | null, release: ReleaseId | null): Promise<Published> {
   for (const [name, bytes] of [['starter', starter], ['teacher', teacher]] as const) {
     if (bytes.byteLength === 0) error(400, `The ${name} archive is empty.`);
     if (bytes.byteLength > ctx.config.releaseMaxBytes) error(413, `The ${name} archive is larger than ${ctx.config.releaseMaxBytes} bytes.`);
@@ -74,14 +81,14 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
   await ctx.bucket.put(keys.teacher, teacher, 'application/gzip');
 
   try {
-    const args = [label, commit, keys.starter, starter.byteLength, digests.starter as Uint8Array<ArrayBuffer>, keys.teacher, teacher.byteLength, digests.teacher as Uint8Array<ArrayBuffer>] as const;
+    const args = [release, label, commit, keys.starter, starter.byteLength, digests.starter as Uint8Array<ArrayBuffer>, keys.teacher, teacher.byteLength, digests.teacher as Uint8Array<ArrayBuffer>] as const;
     const id = hash !== null
       ? await asPublisher(ctx.sql, async (tx) => {
-          const [row] = await tx<{ id: string }[]>`select app.publish_release_with_token(${hash as Uint8Array<ArrayBuffer>}, ${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}) as id`;
+          const [row] = await tx<{ id: string }[]>`select app.publish_release_with_token(${hash as Uint8Array<ArrayBuffer>}, ${args[0]}::uuid, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}, ${args[8]}) as id`;
           return row?.id ?? null;
         })
       : await asUser(ctx.sql, (by as { claims: Claims }).claims, async (tx) => {
-          const [row] = await tx<{ id: string }[]>`select app.publish_release(${project}, ${args[0]}, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}) as id`;
+          const [row] = await tx<{ id: string }[]>`select app.publish_release(${project}, ${args[0]}::uuid, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}, ${args[8]}) as id`;
           return row?.id ?? null;
         });
     if (id === null) throw new Error('publish returned nothing');
@@ -115,6 +122,10 @@ function refuse(e: unknown): never {
   if (isHttpError(e)) throw e;
   if (e instanceof Misconfigured) error(500, e.message);
   const { status, message, code } = statusOf(e);
+  // The one conflict publishing can meet. Said in words, because the likely
+  // reader is CI retrying a publish whose first attempt did land: the
+  // release it wanted is there, under this id, in this project or another.
+  if (code === '23505') error(409, 'A release with this id has already been published; a retry of the same publish has nothing left to do.');
   if (status !== 500) error(status, message);
   report('releases', message);
   error(500, `The release could not be recorded${code === '' ? '' : ` (SQLSTATE ${code})`}; the Worker log says why.`);

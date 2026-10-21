@@ -67,7 +67,7 @@ test('an assembly protects the config itself, the read-only paths and the hidden
 
 test('a student copy that says what the starter said is unchanged, whatever its formatting', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
-  const copy = starterConfig(c, 'p-1');
+  const copy = starterConfig(c, 'p-1', null);
   assert.ok(sameStudentConfig(c, copy));
   assert.ok(sameStudentConfig(c, '{"readOnly":["tests/*"],"kind":"rust-cargo","version":1}'), 'key order and the project id do not matter');
   assert.ok(!sameStudentConfig(c, copy.replace('"tests/*"', '"nothing"')), 'an emptied read-only list is a change');
@@ -84,7 +84,7 @@ test('what is always dropped comes first, then the kind, then the teacher', () =
 
 test('the starter copy carries the project id and not the hidden paths', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","hidden":["tests/hidden"]}');
-  const copy = JSON.parse(starterConfig(c, 'p-1')) as Record<string, unknown>;
+  const copy = JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>;
   assert.equal(copy['projectId'], 'p-1');
   assert.equal(copy['kind'], 'rust-cargo');
   assert.equal('hidden' in copy, false, 'the copy must not say what was removed');
@@ -113,7 +113,7 @@ test('a workspace member that is hidden is a problem too', () => {
 test('the schema the IDE validates against and the parser here know the same fields', async () => {
   const { readFile } = await import('node:fs/promises');
   const schema = JSON.parse(await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8')) as { properties: Record<string, unknown>; required: string[] };
-  const every = Object.fromEntries(Object.keys(schema.properties).map((k) => [k, k === 'version' ? 1 : k === 'kind' ? 'rust-cargo' : k === 'projectId' ? 'p' : k === 'openFiles' || k === 'readOnly' || k === 'hidden' ? [] : {}]));
+  const every = Object.fromEntries(Object.keys(schema.properties).map((k) => [k, k === 'version' ? 1 : k === 'kind' ? 'rust-cargo' : k === 'projectId' ? 'p' : k === 'releaseId' ? '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' : k === 'openFiles' || k === 'readOnly' || k === 'hidden' ? [] : {}]));
   const p = parseConfig(JSON.stringify(every));
   assert.ok(p.ok, p.ok ? '' : p.error);
   assert.deepEqual(p.warnings, [], 'every field the schema has, the parser knows');
@@ -122,9 +122,29 @@ test('the schema the IDE validates against and the parser here know the same fie
 
 test('a starter built without a project leaves the id out, and its copy still parses so a student can submit', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","hidden":["tests/hidden"]}');
-  const copy = starterConfig(c, '');
+  const copy = starterConfig(c, '', null);
   assert.equal('projectId' in (JSON.parse(copy) as Record<string, unknown>), false);
   const back = parseConfig(copy);
   assert.ok(back.ok, back.ok ? '' : back.error);
   assert.equal(back.config.projectId, null);
+});
+
+test('a starter copy names its release, and a student\'s copy that does is not a change to the file', () => {
+  const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
+  const copy = starterConfig(c, 'p-1', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const back = parseConfig(copy);
+  assert.ok(back.ok, back.ok ? '' : back.error);
+  assert.equal(back.config.releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  assert.ok(sameStudentConfig(c, copy));
+  assert.ok(sameStudentConfig(c, copy.replace('5a5c', '5a5d')), 'nor is another release id: which release it names is the download\'s question');
+  assert.equal('releaseId' in (JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>), false, 'a check names no release');
+});
+
+test('a release id that is not a uuid is refused, and a repository\'s own is never copied into a starter', () => {
+  const notUuid = parseConfig('{"version":1,"kind":"rust-cargo","releaseId":"v2"}');
+  assert.ok(!notUuid.ok);
+  assert.match(notUuid.error, /"releaseId" must be a release id/);
+  const c = ok('{"version":1,"kind":"rust-cargo","releaseId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a5c"}');
+  assert.equal('releaseId' in (JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>), false);
+  assert.equal(ok('{"version":1,"kind":"rust-cargo","releaseId":"01A0B563-AEFF-7C42-AE73-5AAB2F2B5A5C"}').releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
 });

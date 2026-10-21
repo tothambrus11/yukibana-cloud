@@ -17,6 +17,9 @@ export interface Options {
   readonly token?: string | undefined;
   readonly project?: string | undefined;
   readonly edition?: string | undefined;
+  readonly 'student-submissions'?: readonly string[] | undefined;
+  /** The old name of `--student-submissions`, still read so scripts keep
+   *  working; it warns. */
   readonly student?: readonly string[] | undefined;
   readonly submission?: readonly string[] | undefined;
   readonly release?: string | undefined;
@@ -89,6 +92,16 @@ export async function projectOf(inv: Invocation, positional: string | undefined,
     // no file: fall through to the sentence below
   }
   return fail(`which project? give its id, or run this in a folder whose ${CONFIG_FILE} names one`);
+}
+
+/** Whose submissions `--student-submissions` asks for: names, logins,
+ *  addresses or user ids, as `select` matches them. `--student`, its old
+ *  name, still counts, with a warning: it read like a switch for "students
+ *  only" rather than a filter by person. */
+export function studentsOf(inv: Invocation): readonly string[] {
+  const old = inv.options.student ?? [];
+  if (old.length > 0) console.error('warning: --student is now --student-submissions; the old name will go');
+  return [...(inv.options['student-submissions'] ?? []), ...old];
 }
 
 /** Prints rows as aligned columns, or as JSON with `--json` (the whole

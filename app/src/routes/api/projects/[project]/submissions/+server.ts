@@ -1,9 +1,10 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { uuidOf, type ProjectId, type UserId } from '#lib/ids.ts';
+import { uuidOf, type ProjectId, type ReleaseId, type UserId } from '#lib/ids.ts';
 import { submissions } from '#lib/server/catalogue.ts';
 import { answering, requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
+import { uuidParam } from '#lib/server/form.ts';
 
 /** Submissions to the project, newest first: everyone's for staff, the
  *  caller's own for a student. `?latest=true` keeps each author's newest,
@@ -20,19 +21,22 @@ export const GET: RequestHandler = async (event) => {
 };
 
 /** A submission: the archive as the request body, `Content-Type:
- *  application/zstd`, with the session as a bearer token or a cookie. This
+ *  application/zstd`, with the session as a bearer token or a cookie.
+ *  `?release=<id>` is the release the student's folder started from, as
+ *  its yukibana.json says (see `acceptSubmission`). This
  *  is what an IDE extension calls. The body is read whole: the cap is small
  *  enough that streaming buys nothing yet. */
 export const POST: RequestHandler = async (event) => {
   const claims = requireClaims(event);
   const project = uuidOf<ProjectId>(event.params.project);
   if (project === null) error(404, 'No such project.');
+  const base = uuidParam<ReleaseId>(event.url, 'release');
   const declared = Number(event.request.headers.get('content-length') ?? '');
   if (!Number.isFinite(declared)) error(411, 'Send a Content-Length.');
   const accepted = await withContext(async (ctx) => {
     if (declared > ctx.config.submissionMaxBytes) error(413, `The submission is larger than ${ctx.config.submissionMaxBytes} bytes.`);
     const body = new Uint8Array(await event.request.arrayBuffer());
-    return acceptSubmission(ctx, claims, project, body);
+    return acceptSubmission(ctx, claims, project, body, base);
   });
   return json(accepted, { status: 201 });
 };

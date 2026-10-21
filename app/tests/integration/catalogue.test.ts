@@ -3,9 +3,10 @@ import { isHttpError } from '@sveltejs/kit';
 import { asUser, connect } from '../../src/lib/server/db.js';
 import { s3Bucket } from '../../src/lib/server/storage.js';
 import { acceptSubmission } from '../../src/lib/server/submissions.js';
+import { publishRelease } from '../../src/lib/server/releases.js';
 import { editions, members, project, projects, releases, submissions } from '../../src/lib/server/catalogue.js';
 import { studentProjects } from '../../src/lib/server/student.js';
-import { trustId, type EditionId, type ProjectId } from '../../src/lib/ids.js';
+import { trustId, type EditionId, type ProjectId, type ReleaseId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
 import { ALICE, BOB, TEACHER, claimsOf, config, uid } from './env.js';
 
@@ -41,9 +42,9 @@ test('a student\'s open exercises are the published projects of their editions, 
 
 test('a teacher sees every version and, by default in the CLI, the latest of each student; a student sees only their own', async () => {
   const id = await warmup();
-  const first = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(1));
-  const second = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(2));
-  const bobs = await acceptSubmission(ctx, claimsOf(BOB), id, zstd(3));
+  const first = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(1), null);
+  const second = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(2), null);
+  const bobs = await acceptSubmission(ctx, claimsOf(BOB), id, zstd(3), null);
 
   const all = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: null });
   const ids = all.map((s) => s.submissionId);
@@ -103,7 +104,7 @@ test('after the deadline a student still submits, and it reads as late; once the
 
   const open = await project(ctx, claimsOf(ALICE), id);
   expect(open).toMatchObject({ canSubmit: true, late: true });
-  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(9));
+  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(9), null);
   const [mine] = await submissions(ctx, claimsOf(ALICE), id, { latest: true, author: null });
   expect(mine).toMatchObject({ submissionId: sent.submissionId, late: true });
 
@@ -114,7 +115,7 @@ test('after the deadline a student still submits, and it reads as late; once the
   await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
   expect((await projects(ctx, claimsOf(ALICE), null)).some((p) => p.projectId === id)).toBe(false);
   expect(await status(project(ctx, claimsOf(ALICE), id))).toBe(404);
-  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10)))).toBe(403);
+  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10), null))).toBe(403);
   const [still] = await submissions(ctx, claimsOf(ALICE), id, { latest: false, author: null });
   expect(still).toMatchObject({ submissionId: sent.submissionId, late: true });
   expect(await status(submissions(ctx, claimsOf(BOB), id, { latest: false, author: null }))).toBe(404);
@@ -122,7 +123,7 @@ test('after the deadline a student still submits, and it reads as late; once the
 
 test('a student\'s project list says what they handed in and when; staff of an edition have no student list there', async () => {
   const id = await warmup();
-  await acceptSubmission(ctx, claimsOf(BOB), id, zstd(42));
+  await acceptSubmission(ctx, claimsOf(BOB), id, zstd(42), null);
   const mine = await asUser(sql, claimsOf(BOB), (tx) => studentProjects(tx, claimsOf(BOB), null));
   const warm = mine.find((p) => p.project_id === id);
   expect(warm).toMatchObject({ slug: 'warmup', can_submit: true, course_code: 'CS-101' });
@@ -130,4 +131,26 @@ test('a student\'s project list says what they handed in and when; staff of an e
   expect(warm?.last_submitted_at).toBeInstanceOf(Date);
   const teachers = await asUser(sql, claimsOf(TEACHER), (tx) => studentProjects(tx, claimsOf(TEACHER), null));
   expect(teachers).toEqual([]);
+});
+
+test('a submission records the release it started from only when that release is of the same project', async () => {
+  const id = await warmup();
+  const [e] = await editions(ctx, claimsOf(TEACHER));
+  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+    insert into project (edition_id, slug, title, kind)
+    values (${e?.editionId ?? ''}, ${`elsewhere-${Date.now()}`}, 'Elsewhere, a draft', 'rust-cargo')
+    returning project_id`);
+  const elsewhere = trustId<ProjectId>(made?.project_id ?? '');
+  const gz = new Uint8Array([0x1f, 0x8b, 8, 0]);
+  const ours = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, id, gz, gz, 'ours', null, trustId<ReleaseId>(crypto.randomUUID()));
+  const theirs = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, elsewhere, gz, gz, 'theirs', null, trustId<ReleaseId>(crypto.randomUUID()));
+
+  const based = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(20), ours.releaseId);
+  const misplaced = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(21), theirs.releaseId);
+  const invented = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(22), trustId<ReleaseId>(crypto.randomUUID()));
+  const all = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: uid(ALICE) });
+  const base = (s: { submissionId: string }) => all.find((x) => x.submissionId === s.submissionId)?.baseReleaseId;
+  expect(base(based)).toBe(ours.releaseId);
+  expect(base(misplaced)).toBeNull();
+  expect(base(invented)).toBeNull();
 });

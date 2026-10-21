@@ -14,7 +14,7 @@ const body = (entries: readonly Entry[], path: string) => {
 const CONFIG = '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","README.md","yukibana.json"],"hidden":["tests/hidden"]}';
 const parsed = parseConfig(CONFIG);
 if (!parsed.ok) throw new Error(parsed.error);
-const studentCopy = starterConfig(parsed.config, 'p-1');
+const studentCopy = starterConfig(parsed.config, 'p-1', null);
 
 /** The teacher archive: the whole project in its folder. */
 const teacher: Entry[] = [
@@ -104,4 +104,79 @@ test('a teacher archive without a config cannot assemble anything, and says so',
   const made = assemble(honest(), [file('x/Main.scala', '')]);
   assert.ok(!made.ok);
   assert.match(made.problem, /no yukibana.json/);
+});
+
+/** A later release that fixed the public test and made one more file
+ *  read-only. */
+const CONFIG_V2 = '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","README.md","yukibana.json","Util.scala"],"hidden":["tests/hidden"]}';
+const teacherV2: Entry[] = teacher.map((e) =>
+  e.path === 'hello/tests/public.scala' ? file(e.path, 'fixed public test')
+  : e.path === 'hello/yukibana.json' ? file(e.path, CONFIG_V2)
+  : e).concat([file('hello/Util.scala', 'helper')]);
+
+test('a read-only file fixed in a later release is not reported as the student\'s change, and the fix is what gets graded', () => {
+  const made = assemble(honest(), teacherV2, teacher);
+  assert.ok(made.ok);
+  assert.ok(!tampered(made.assembly.tampering), 'the student who started from the first release changed nothing');
+  assert.equal(body(made.assembly.entries, 'tests/public.scala'), 'fixed public test');
+  assert.equal(body(made.assembly.entries, 'Util.scala'), 'helper', 'and the newer release decides what is protected');
+  assert.equal(body(made.assembly.entries, 'yukibana.json'), CONFIG_V2);
+});
+
+test('compared with the newest release alone, the same honest student would have been flagged', () => {
+  const made = assemble(honest(), teacherV2);
+  assert.ok(made.ok);
+  assert.deepEqual(made.assembly.tampering.modified, ['tests/public.scala', 'yukibana.json']);
+});
+
+test('a student who started from an old release and changed its read-only file is still caught', () => {
+  const sub = honest().map((e) => (e.path === 'tests/public.scala' ? file(e.path, 'assert(true)') : e));
+  const made = assemble(sub, teacherV2, teacher);
+  assert.ok(made.ok);
+  assert.deepEqual(made.assembly.tampering.modified, ['tests/public.scala']);
+  assert.equal(body(made.assembly.entries, 'tests/public.scala'), 'fixed public test');
+});
+
+test('a starter copy naming its release is not a change to yukibana.json', () => {
+  const stamped = starterConfig(parsed.config, 'p-1', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const sub = honest().map((e) => (e.path === 'yukibana.json' ? file(e.path, stamped) : e));
+  const made = assemble(sub, teacher);
+  assert.ok(made.ok);
+  assert.ok(!tampered(made.assembly.tampering));
+});
+
+test('a broken archive for the release the student started from is a problem, not a silent comparison with another', () => {
+  const made = assemble(honest(), teacher, [file('x/Main.scala', '')]);
+  assert.ok(!made.ok);
+  assert.match(made.problem, /the release the student started from/);
+});
+
+test('a file the grading release protects but the student\'s did not is replaced, and said so rather than lost in silence', () => {
+  const base: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton')];
+  const grade: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","Main.scala"],"hidden":["hidden"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton 2'), file('hello/hidden/h.scala', 'H')];
+  const sub = [file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*"]}'), file('tests/a.scala', 'A'), file('Main.scala', 'student work'), file('hidden/mine.scala', 'mine')];
+  const made = assemble(sub, grade, base);
+  assert.ok(made.ok);
+  assert.ok(!tampered(made.assembly.tampering), 'the student broke no rule of the release they had');
+  assert.deepEqual(made.assembly.overridden, ['Main.scala', 'hidden/mine.scala']);
+  assert.equal(body(made.assembly.entries, 'Main.scala'), 'skeleton 2');
+});
+
+test('a change the grading release no longer protects stays the student\'s, and is not reported as undone', () => {
+  const base: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","Main.scala"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton')];
+  const grade: Entry[] = [file('hello/yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*"]}'), file('hello/tests/a.scala', 'A'), file('hello/Main.scala', 'skeleton')];
+  const sub = [file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","Main.scala"]}'), file('tests/a.scala', 'A'), file('Main.scala', 'student')];
+  const made = assemble(sub, grade, base);
+  assert.ok(made.ok);
+  assert.deepEqual(made.assembly.tampering.modified, ['Main.scala']);
+  assert.deepEqual(made.assembly.unrestored, ['Main.scala']);
+  assert.equal(body(made.assembly.entries, 'Main.scala'), 'student');
+});
+
+test('with one release, nothing is overridden or left unrestored', () => {
+  const sub = honest().map((e) => (e.path === 'tests/public.scala' ? file(e.path, 'assert(true)') : e));
+  const made = assemble(sub, teacher);
+  assert.ok(made.ok);
+  assert.deepEqual(made.assembly.overridden, []);
+  assert.deepEqual(made.assembly.unrestored, []);
 });

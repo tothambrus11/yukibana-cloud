@@ -129,7 +129,7 @@
       <div class="scroll">
         <table>
           <thead>
-            <tr>{#if data.staff}<th>Student</th>{/if}<th>Submitted</th><th>Size</th><th>SHA-256</th><th></th></tr>
+            <tr>{#if data.staff}<th>Student</th>{/if}<th>Submitted</th>{#if data.staff}<th>Based on</th>{/if}<th>Size</th><th>SHA-256</th><th></th></tr>
           </thead>
           <tbody>
             {#each data.submissions as s (s.submission_id)}
@@ -138,6 +138,9 @@
                   <td>{s.full_name ?? ''} {#if s.github_login}<span class="muted">@{s.github_login}</span>{/if}</td>
                 {/if}
                 <td>{when(s.submitted_at)}{#if s.late} <span class="chip late">late</span>{/if}</td>
+                {#if data.staff}
+                  <td>{#if s.base_id === null}<span class="muted">unknown</span>{:else}{#if s.base}{s.base} {/if}<code>{s.base_id}</code>{#if s.base_is_live} <span class="chip live">live</span>{/if}{/if}</td>
+                {/if}
                 <td>{kb(s.byte_size)}</td>
                 <td><code>{s.sha256.slice(0, 12)}</code></td>
                 <td><a href="/api/submissions/{s.submission_id}">Download</a></td>
@@ -149,7 +152,6 @@
     {/if}
   </section>
 {:else if tab === 'releases'}
-  {#if form?.published}<p class="ok">Published release {form.published.releaseId}.</p>{/if}
   <section>
     <h2>Releases</h2>
     {#if data.releases.length === 0}
@@ -184,17 +186,11 @@
     <section>
       <h2>Publish a release</h2>
       <p>
-        From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
-        and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token an
-        owner makes in the Tokens tab.
+        From a checkout of the project, <code>yukibana publish --project {p.project_id}</code>
+        builds both archives and publishes them, logged in as staff. CI publishes the same way,
+        with a token an owner makes in the Tokens tab. There is no upload here: the release id
+        has to travel inside the starter, and only the CLI puts it there.
       </p>
-      <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
-        <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
-        <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
-        <label>Label <input name="label" placeholder="v3, or what changed" /></label>
-        <label>Commit <input name="commit" placeholder="optional sha" /></label>
-        <button>Publish</button>
-      </form>
     </section>
   {/if}
 {:else if tab === 'tokens'}

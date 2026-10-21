@@ -35,9 +35,10 @@ export function unwrap(entries: readonly Entry[]): Entry[] {
 }
 
 /** The starter for a snapshot whose paths are already relative to the
- *  repository root. `folder` is the directory the archive unpacks into and
- *  `projectId` is written into the starter's copy of yukibana.json. */
-export function planStarter(snapshot: readonly Entry[], folder: string, projectId: string): Plan {
+ *  repository root. `folder` is the directory the archive unpacks into;
+ *  `projectId` and `releaseId` are written into the starter's copy of
+ *  yukibana.json (see `starterConfig`). */
+export function planStarter(snapshot: readonly Entry[], folder: string, projectId: string, releaseId: string | null): Plan {
   const byPath = new Map(snapshot.map((e) => [e.path, e] as const));
   const configEntry = byPath.get(CONFIG_FILE);
   if (configEntry === undefined || configEntry.type !== 'file') {
@@ -75,7 +76,7 @@ export function planStarter(snapshot: readonly Entry[], folder: string, projectI
     type: 'file',
     mode: 0o644,
     mtime,
-    data: new TextEncoder().encode(starterConfig(config, projectId)),
+    data: new TextEncoder().encode(starterConfig(config, projectId, releaseId)),
   });
   if (config.hidden.length > 0 && hidden.length === 0) {
     problems.push(`"hidden" names ${config.hidden.join(', ')} but nothing in the repository matches; check the paths`);
