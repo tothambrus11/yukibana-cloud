@@ -37,6 +37,12 @@
     if (tab !== 'settings') editing = false;
   });
   $effect(() => (editing ? hold() : undefined));
+  // Saving is a plain form post: the page stays on screen until the answer
+  // arrives, and the save's own broadcast usually arrives first. It is news
+  // about our change, not somebody else's, so while a save is on its way the
+  // page does not say it is out of date. It used to, and every save flashed
+  // the warning before "Saved.".
+  let saving = $state(false);
   function discard(): void {
     editing = false;
     refresh();
@@ -243,14 +249,14 @@ YUKIBANA_URL     {data.origin}</pre>
   {#if form?.ok}<p class="ok">Saved.</p>{/if}
   <section>
     <h2>Settings</h2>
-    {#if editing && live.stale}
+    {#if editing && live.stale && !saving}
       <p class="error" role="alert">
         Somebody else changed this project while you were editing. Saving replaces their change.
         <button type="button" class="quiet" onclick={discard}>Discard my edits and show theirs</button>
       </p>
     {/if}
     {#key p}
-      <form method="POST" action={actionIn('settings', 'update')} class="stack" oninput={() => (editing = true)}>
+      <form method="POST" action={actionIn('settings', 'update')} class="stack" oninput={() => (editing = true)} onsubmit={() => (saving = true)}>
         <label>Title <input name="title" value={p.title} required /></label>
         <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
         <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
