@@ -36,18 +36,20 @@ request as you, and the database's policies decide.
 | `starter <id> [--out dir]` | download and unpack the starter |
 | `pack [dir]` | list what `submit` would send, and write the archive |
 | `submit [dir] [--yes]` | list what would be sent, ask, send. The project is the one in `./yukibana.json` |
-| `submissions [<id>] [--latest] [--student who]` | newest first; staff see everyone's; late ones marked |
+| `submissions [<id>] [--latest] [--student-submissions who]` | newest first; staff see everyone's; late ones marked, with the release each started from |
 | `download [<id>] [--out dir]` | each student's newest submission, unpacked into `dir/<student name>/` |
 | `  --all-versions`, `--submission id` | every version (or the named ones) into `dir/<student name>/<time>/` |
-| `  --student who` | some students: a name, GitHub login, address or user id |
-| `  --assemble` | overlay the newest release's read-only and hidden files and report what the student changed |
+| `  --student-submissions who` | some students' submissions: a name, GitHub login, address or user id (repeatable; `--student` is the old name and still works, with a warning) |
+| `  --assemble` | overlay a release's read-only and hidden files and report what the student changed of the release they started from |
+| `  --release id\|newest` | with `--assemble`: which release to overlay. By default each submission's own (the newest when unknown); an id must be one of the project's releases |
 | `  --archive` | keep each `.tar.zst` as sent |
 | `assemble <submission> --teacher <archive or dir> --out dir` | the same from files already here |
 | `check`, `build`, `publish [dir]` | a teacher's release, as before; `publish` takes a project token or your login |
 | `enrol`, `unenrol <edition> <email>...` | owners |
 
 `download` writes `yukibana-download.json` beside the folders: which folder is
-whose, the submission id, time and SHA-256, and what an assembly found.
+whose, the submission id, time and SHA-256, the release it started from and
+the one it was assembled with, and what an assembly found.
 Student names become folder names that every filesystem accepts (no
 separators or reserved characters, no reserved Windows names, no leading
 dot); two students whose names match, ignoring case, both get their GitHub

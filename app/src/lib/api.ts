@@ -77,6 +77,12 @@ export interface SubmissionJson {
   /** Whether it arrived after the project's deadline, as the deadline is
    *  now: an extension granted later makes it on time again. */
   readonly late: boolean;
+  /** The release the student's folder said it started from, always one of
+   *  this project's. Null for a submission from before releases carried
+   *  ids, a hand-made archive, or a claim that named no release of this
+   *  project. A student's claim: it says which release to compare their
+   *  read-only files with, and decides nothing about who may do what. */
+  readonly baseReleaseId: string | null;
 }
 
 export interface ReleaseJson {

@@ -11,6 +11,10 @@ export interface PublishInput {
   /** A project token (`yk_…`) from CI, or a person's access token. */
   readonly token: string;
   readonly projectId: string;
+  /** The id written into the starter's yukibana.json, which the release
+   *  row is given; null lets the registry choose, for archives that carry
+   *  none. A taken id is refused (409) and nothing is stored. */
+  readonly releaseId: string | null;
   readonly starter: Uint8Array;
   readonly teacher: Uint8Array;
   readonly label: string;
@@ -25,6 +29,7 @@ export async function publish(input: PublishInput, fetchFn: typeof fetch = fetch
   form.set('teacher', new Blob([buffer(input.teacher)], { type: 'application/gzip' }), 'teacher.tar.gz');
   form.set('label', input.label);
   if (input.commit !== null) form.set('commit', input.commit);
+  if (input.releaseId !== null) form.set('release', input.releaseId);
   // The registry is a SvelteKit app, and SvelteKit refuses a cross-origin
   // POST whose content type is one a browser form can produce —
   // multipart/form-data among them — with "cross-site POST form submissions

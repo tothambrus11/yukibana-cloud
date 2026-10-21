@@ -4,14 +4,16 @@
 import { readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { assemble, submissionRoot, tampered, type Tampering } from '../lib/assemble.js';
+import { chooseReleases, nameOf, wantedRelease, type Wanted } from '../lib/grading.js';
 import { sha256Hex } from '../lib/bytes.js';
 import { folderNames, stampOf } from '../lib/names.js';
 import type { Entry } from '../lib/tar.js';
-import type { Submission } from '../lib/wire.js';
+import type { Release, Submission } from '../lib/wire.js';
+import { CONFIG_FILE, parseConfig } from '../lib/yukibana.js';
 import { isEmptyDir, readArchive, writeEntries } from '../extract.js';
 import { readTree } from '../tree.js';
 import { select } from './browse.js';
-import { clientFor, fail, projectOf, type Invocation } from './common.js';
+import { clientFor, fail, projectOf, studentsOf, type Invocation } from './common.js';
 import { save } from './work.js';
 
 /** What `download` writes beside the folders, so a grading script knows
@@ -24,44 +26,75 @@ interface Downloaded {
   readonly late: boolean;
   readonly sha256: string;
   readonly author: Submission['author'];
+  /** The release the student started from, when known; what `tampering`
+   *  was measured against. */
+  readonly baseReleaseId: string | null;
+  /** The release whose read-only and hidden files the folder holds; null
+   *  without `--assemble`. */
+  readonly assembledWith: string | null;
   readonly tampering: Tampering | null;
 }
 
 /** `download <project> [--out dir]`: by default every student's newest
  *  submission, unpacked into `dir/<student name>/`. `--all-versions` takes
  *  every submission into `dir/<student name>/<time>/`, and so does naming
- *  submissions with `--submission`. `--student` narrows to some students
- *  (by name, GitHub login, address or id). `--assemble` overlays the newest
+ *  submissions with `--submission`. `--student-submissions` narrows to some
+ *  students (by name, GitHub login, address or id). `--assemble` overlays a
  *  release's read-only and hidden files and says what the student had
- *  changed; `--archive` keeps each `.tar.zst` as sent instead of unpacking.
- *  A student sees only their own submissions, so the same command is how a
- *  student gets back what they sent. */
+ *  changed of the release they started from; `--archive` keeps each
+ *  `.tar.zst` as sent instead of unpacking. A student sees only their own
+ *  submissions, so the same command is how a student gets back what they
+ *  sent.
+ *
+ *  Which release `--assemble` uses: by default each submission's own base
+ *  (the newest when that is unknown); `--release newest` the newest for
+ *  everyone, so a fixed hidden test reaches every submission; `--release
+ *  <id>` that one, which must be a release of this project. What the
+ *  student changed is measured against their base whichever is used. */
 export async function download(inv: Invocation): Promise<void> {
   const id = await projectOf(inv, inv.args[0]);
   const o = inv.options;
   if (o.assemble === true && o.archive === true) fail('--assemble unpacks; --archive keeps the archive. Choose one.');
+  if (o.release !== undefined && o.assemble !== true) fail('--release says which release to assemble with; it needs --assemble');
   const ids = o.submission ?? [];
   const versions = o['all-versions'] === true || ids.length > 0;
   const client = await clientFor(inv);
-  const chosen = select(await client.submissions(id, { latest: !versions }), o.student ?? [], ids);
+  const chosen = select(await client.submissions(id, { latest: !versions }), studentsOf(inv), ids);
   if (chosen.length === 0) {
     console.log('no submissions to download');
     return;
   }
 
-  let teacher: Entry[] | null = null;
+  // The project's own releases are the only ones an assembly will use: an
+  // id from anywhere else (a flag, a student's file) is checked against
+  // this list, never fetched on its word.
+  let releases: readonly Release[] = [];
+  let wanted: Wanted = 'own';
   if (o.assemble === true) {
-    const [newest] = await client.releases(id);
-    if (newest === undefined) fail('no release to assemble with: publish one first');
+    releases = await client.releases(id);
+    const w = wantedRelease(releases, o.release);
+    if (!w.ok) return fail(w.problem);
+    wanted = w.wanted;
+    const [newest] = releases;
+    if (wanted === 'own') console.log(`assembling each submission with the release it started from (the newest, ${newest === undefined ? '' : nameOf(newest)}, when unknown)`);
     else {
-      try {
-        teacher = await readArchive(await client.downloadRelease(newest.releaseId, 'teacher'));
-      } catch (e) {
-        fail(`the teacher archive of release ${newest.releaseId} could not be read (${e instanceof Error ? e.message : String(e)}); publish a new release`);
-      }
-      console.log(`assembling with release ${newest.releaseId}${newest.label === '' ? '' : ` (${newest.label})`}`);
+      const named = wanted === 'newest' ? newest?.releaseId : wanted.releaseId;
+      const r = releases.find((x) => x.releaseId === named);
+      console.log(`assembling with release ${r === undefined ? '' : `${r.releaseId} (${nameOf(r)})`}`);
     }
   }
+  const teachers = new Map<string, Promise<Entry[]>>();
+  const teacherOf = (r: Release): Promise<Entry[]> => {
+    let got = teachers.get(r.releaseId);
+    if (got === undefined) {
+      got = client.downloadRelease(r.releaseId, 'teacher').then(readArchive).catch((e: unknown) => {
+        throw new Error(`the teacher archive of release ${r.releaseId} could not be read (${e instanceof Error ? e.message : String(e)})`);
+      });
+      teachers.set(r.releaseId, got);
+    }
+    return got;
+  };
+  const bases = { same: 0, older: 0, unknown: 0 };
 
   const out = resolve(o.out ?? `submissions-${id.slice(0, 8)}`);
   const authors = [...new Map(chosen.map((s) => [s.author.userId, s.author] as const)).values()];
@@ -84,29 +117,48 @@ export async function download(inv: Invocation): Promise<void> {
         continue;
       }
       let tampering: Tampering | null = null;
+      let base: string | null = s.baseReleaseId;
+      let assembledWith: string | null = null;
+      let started = '';
       if (o.archive === true) {
         await save(target, archive);
       } else {
         let entries = submissionRoot(await readArchive(archive));
-        if (teacher !== null) {
-          const made = assemble(entries, teacher);
-          if (!made.ok) fail(made.problem);
-          if (made.ok) {
-            entries = [...made.assembly.entries];
-            tampering = made.assembly.tampering;
-            for (const r of made.assembly.refused) console.error(`warning: ${folder}: dropped ${r}, a symlink out of the project`);
+        if (o.assemble === true) {
+          const choice = chooseReleases(releases, wanted, s.baseReleaseId, claimedRelease(entries));
+          for (const n of choice.notes) console.error(`warning: ${folder}: ${n}`);
+          const grade = choice.grade;
+          const teacher = await teacherOf(grade);
+          const made = assemble(entries, teacher, choice.base === null || choice.base === grade ? teacher : await teacherOf(choice.base));
+          if (!made.ok) {
+            problems.push(`${folder}: ${made.problem}`);
+            continue;
           }
+          entries = [...made.assembly.entries];
+          tampering = made.assembly.tampering;
+          base = choice.base?.releaseId ?? null;
+          assembledWith = grade.releaseId;
+          if (choice.base === null) bases.unknown++;
+          else if (choice.base === releases[0]) bases.same++;
+          else bases.older++;
+          if (choice.base === null) started = '  (started from an unknown release)';
+          else if (choice.base !== grade) started = `  (started from ${nameOf(choice.base)})`;
+          for (const r of made.assembly.refused) console.error(`warning: ${folder}: dropped ${r}, a symlink out of the project`);
         }
         for (const r of await writeEntries(target, entries)) console.error(`warning: ${folder}: not unpacked: ${r}`);
       }
-      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, tampering });
-      console.log(`${folder}${s.late ? '  (late)' : ''}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering)}` : ''}`);
+      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, baseReleaseId: base, assembledWith, tampering });
+      console.log(`${folder}${s.late ? '  (late)' : ''}${started}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering)}` : ''}`);
     } catch (e) {
       problems.push(`${folder}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   await writeFile(join(out, 'yukibana-download.json'), JSON.stringify({ projectId: id, downloadedAt: new Date().toISOString(), submissions: done }, null, 2) + '\n');
   console.log(`${done.length} of ${chosen.length} into ${out}`);
+  if (o.assemble === true) {
+    const [newest] = releases;
+    console.log(`started from the newest release${newest === undefined ? '' : ` (${nameOf(newest)})`}: ${bases.same}; from an older one: ${bases.older}; unknown: ${bases.unknown}`);
+  }
   if (problems.length > 0) fail(...problems);
 }
 
@@ -142,6 +194,15 @@ export async function assembleCommand(inv: Invocation): Promise<void> {
   }
 }
 
+/** The release a submission's own yukibana.json says it started from, or
+ *  null when it says none or the file is not there or not valid. */
+function claimedRelease(entries: readonly Entry[]): string | null {
+  const cfg = entries.find((e) => e.path === CONFIG_FILE && e.type === 'file');
+  if (cfg === undefined) return null;
+  const parsed = parseConfig(new TextDecoder().decode(cfg.data));
+  return parsed.ok ? parsed.config.releaseId : null;
+}
+
 async function entriesOf(path: string): Promise<Entry[]> {
   return (await stat(path)).isDirectory() ? readTree(path) : readArchive(new Uint8Array(await readFile(path)));
 }
@@ -174,5 +235,5 @@ function describe(t: Tampering): string {
   if (t.modified.length > 0) parts.push(`modified ${t.modified.join(', ')}`);
   if (t.deleted.length > 0) parts.push(`deleted ${t.deleted.join(', ')}`);
   if (t.added.length > 0) parts.push(`added ${t.added.join(', ')}`);
-  return `${parts.join('; ')} (restored from the release)`;
+  return `${parts.join('; ')} (replaced from the release)`;
 }

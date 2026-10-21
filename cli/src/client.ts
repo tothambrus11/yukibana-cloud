@@ -111,18 +111,22 @@ export class YukibanaClient {
   async submit(bundle: SubmissionBundle, project: string | null = bundle.projectId): Promise<Accepted> {
     if (bundle.problems.length > 0) throw new Error(`not submitted: ${bundle.problems.join('; ')}`);
     if (project === null) throw new Error('not submitted: the folder names no project; give one');
-    return this.submitArchive(project, await bundle.archive());
+    return this.submitArchive(project, await bundle.archive(), bundle.releaseId);
   }
 
-  /** Sends an archive made elsewhere (a `.tar.zst`) as a new submission. */
-  submitArchive(project: string, archive: Uint8Array): Promise<Accepted> {
-    return this.#json('POST', `/api/projects/${seg(project)}/submissions`, decodeAccepted, { bytes: archive, contentType: 'application/zstd' });
+  /** Sends an archive made elsewhere (a `.tar.zst`) as a new submission.
+   *  `release` is the release the work started from, as the folder's
+   *  yukibana.json says; null when it says none. */
+  submitArchive(project: string, archive: Uint8Array, release: string | null = null): Promise<Accepted> {
+    const q = release === null ? '' : `?release=${encodeURIComponent(release)}`;
+    return this.#json('POST', `/api/projects/${seg(project)}/submissions${q}`, decodeAccepted, { bytes: archive, contentType: 'application/zstd' });
   }
 
   /** Publishes a release as the person (owners and assistants). CI uses a project
-   *  token instead; see `publish`. */
-  async publishRelease(project: string, starter: Uint8Array, teacher: Uint8Array, label = '', commit: string | null = null): Promise<Published> {
-    return publish({ url: this.origin, token: await this.#token(), projectId: project, starter, teacher, label, commit }, this.#fetch);
+   *  token instead; see `publish`. `release` is the id the starter carries
+   *  (see `build`), or null for archives that carry none. */
+  async publishRelease(project: string, starter: Uint8Array, teacher: Uint8Array, label = '', commit: string | null = null, release: string | null = null): Promise<Published> {
+    return publish({ url: this.origin, token: await this.#token(), projectId: project, releaseId: release, starter, teacher, label, commit }, this.#fetch);
   }
 
   /** A submission's archive, as sent (a `.tar.zst`). */

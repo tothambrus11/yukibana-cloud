@@ -10,6 +10,12 @@
  *  teacher archive instead. What the student had changed there is undone
  *  and reported, never silently.
  *
+ *  Two releases can be involved. The assembly takes its protected files
+ *  from the release it grades with (usually the newest, so a fixed hidden
+ *  test applies to everyone), but asks what the student changed of the
+ *  release they started from: a read-only file fixed in a later release is
+ *  not something the student did.
+ *
  *  Pure: entries in, entries out. `yukibana download --assemble` and
  *  `yukibana assemble` do the reading and the writing.
  */
@@ -23,7 +29,8 @@ import { CONFIG_FILE, excludes, parseConfig, protectedPaths, sameStudentConfig, 
  *  is sorted and empty when they did nothing. */
 export interface Tampering {
   /** Read-only files (or `yukibana.json`) the submission has with other
-   *  contents than the starter had. */
+   *  contents than the starter had. All three lists are against the release
+   *  the student started from, whatever the assembly grades with. */
   readonly modified: readonly string[];
   /** Read-only files (or `yukibana.json`) the starter had and the
    *  submission does not. */
@@ -81,28 +88,38 @@ export function teacherRoot(entries: readonly Entry[]): { ok: true; entries: Ent
 /** Assembles a submission (as unpacked; see `submissionRoot`) with a teacher
  *  archive (as read, still in its folder). The teacher's config decides
  *  what is protected: the student's copy of the file is one of the things a
- *  student could have changed. */
-export function assemble(submission: readonly Entry[], teacherArchive: readonly Entry[]): Assembled {
+ *  student could have changed.
+ *
+ *  `baseArchive` is the teacher archive of the release the student started
+ *  from, when that is known and is not `teacherArchive`: what they changed
+ *  is measured against it, under its config. Left out, both are the same
+ *  release, which is all an assembly could do before releases had ids. */
+export function assemble(submission: readonly Entry[], teacherArchive: readonly Entry[], baseArchive: readonly Entry[] = teacherArchive): Assembled {
   const teacher = teacherRoot(teacherArchive);
   if (!teacher.ok) return teacher;
+  const base = baseArchive === teacherArchive ? teacher : teacherRoot(baseArchive);
+  if (!base.ok) return { ok: false, problem: `the release the student started from: ${base.problem}` };
   const config = teacher.config;
   const isProtected = matcher(protectedPaths(config));
+  const wasProtected = matcher(protectedPaths(base.config));
   // What the starter had: a file the student never received cannot have
   // been deleted by them.
-  const notInStarter = matcher(excludes(config));
+  const notInStarter = matcher(excludes(base.config));
 
   const theirs = new Map<string, Entry>();
   for (const e of teacher.entries) {
     if (isProtected(e.path)) theirs.set(e.path, e);
   }
+  const before = new Map<string, Entry>();
+  for (const e of base.entries) {
+    if (wasProtected(e.path)) before.set(e.path, e);
+  }
   const out = new Map<string, Entry>();
   const mine = new Map<string, Entry>();
   const refused: string[] = [];
   for (const e of submissionRoot(submission)) {
-    if (isProtected(e.path)) {
-      if (e.type !== 'dir') mine.set(e.path, e);
-      continue;
-    }
+    if (wasProtected(e.path) && e.type !== 'dir') mine.set(e.path, e);
+    if (isProtected(e.path)) continue;
     if (e.type === 'symlink' && (e.linkTarget === undefined || escapes(e.path, e.linkTarget))) {
       refused.push(e.path);
       continue;
@@ -114,16 +131,16 @@ export function assemble(submission: readonly Entry[], teacherArchive: readonly 
   const deleted: string[] = [];
   const added: string[] = [];
   for (const [path, e] of mine) {
-    const t = theirs.get(path);
+    const t = before.get(path);
     if (path === CONFIG_FILE) {
-      if (e.type !== 'file' || !sameStudentConfig(config, new TextDecoder().decode(e.data))) modified.push(path);
+      if (e.type !== 'file' || !sameStudentConfig(base.config, new TextDecoder().decode(e.data))) modified.push(path);
     } else if (t === undefined || notInStarter(path)) {
       added.push(path);
     } else if (!same(e, t)) {
       modified.push(path);
     }
   }
-  for (const [path, t] of theirs) {
+  for (const [path, t] of before) {
     if (t.type === 'dir' || mine.has(path)) continue;
     if (path === CONFIG_FILE || !notInStarter(path)) deleted.push(path);
   }

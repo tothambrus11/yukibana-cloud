@@ -78,6 +78,10 @@ export interface Submission {
   readonly latest: boolean;
   /** Whether it arrived after the deadline, as the deadline is now. */
   readonly late: boolean;
+  /** The release it started from, always one of its project's; null when
+   *  unknown (older submissions, hand-made archives, a claim that named no
+   *  release of the project, or a registry from before releases had ids). */
+  readonly baseReleaseId: string | null;
 }
 
 export interface Release {
@@ -186,6 +190,7 @@ export function decodeSubmission(v: unknown, w = 'submission'): Submission {
   return {
     submissionId: str(o, 'submissionId', w), projectId: str(o, 'projectId', w), submittedAt: str(o, 'submittedAt', w),
     byteSize: num(o, 'byteSize', w), sha256: str(o, 'sha256', w), latest: bool(o, 'latest', w), late: bool(o, 'late', w),
+    baseReleaseId: strOrNull(o, 'baseReleaseId', w),
     author: { userId: str(a, 'userId', aw), fullName: strOrNull(a, 'fullName', aw), githubLogin: strOrNull(a, 'githubLogin', aw), email: strOrNull(a, 'email', aw) },
   };
 }

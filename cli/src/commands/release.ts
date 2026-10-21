@@ -3,7 +3,7 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
-import { build, commitOf } from '../build.js';
+import { build, commitOf, newReleaseId } from '../build.js';
 import { sha256Hex } from '../lib/bytes.js';
 import { publish } from '../publish.js';
 import { accessTokenFor, fail, projectOf, registryUrl, type Invocation } from './common.js';
@@ -19,7 +19,11 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
     ? await projectOf(inv, inv.options.project, dir).catch(() => fail('--project (or YUKIBANA_PROJECT) is required to publish'))
     : (inv.options.project ?? inv.env['YUKIBANA_PROJECT'] ?? '');
 
-  const result = await build(dir, folder, projectId);
+  // The id is chosen before the build so the starter can carry it, and the
+  // publish below (or the upload form, after `build`) gives the row the same
+  // one. A check publishes nothing, so its starter names no release.
+  const releaseId = command === 'check' ? null : newReleaseId();
+  const result = await build(dir, folder, projectId, releaseId);
   if (!result.ok) fail(...result.problems);
   if (!result.ok) return;
   const { built } = result;
@@ -37,6 +41,7 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
     await writeFile(join(out, 'starter.tar.gz'), built.starter);
     await writeFile(join(out, 'teacher.tar.gz'), built.teacher);
     console.log(`wrote ${join(out, 'starter.tar.gz')} and ${join(out, 'teacher.tar.gz')}`);
+    console.log(`release id ${releaseId ?? ''}: give it with the upload, or students' submissions will not say which release they started from`);
     return;
   }
 
@@ -45,6 +50,6 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
   const token = inv.options.token ?? inv.env['YUKIBANA_TOKEN'] ?? (await accessTokenFor(inv)().catch(() => ''));
   if (token === '') fail('--token (or YUKIBANA_TOKEN) is required to publish, unless you are logged in as staff of the project');
   const commit = await commitOf(dir);
-  const published = await publish({ url, token, projectId, starter: built.starter, teacher: built.teacher, label: inv.options.label ?? '', commit });
+  const published = await publish({ url, token, projectId, releaseId, starter: built.starter, teacher: built.teacher, label: inv.options.label ?? '', commit });
   console.log(`published release ${published.releaseId}${commit === null ? '' : ` at ${commit.slice(0, 12)}`}`);
 }

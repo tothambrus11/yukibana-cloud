@@ -129,7 +129,7 @@
       <div class="scroll">
         <table>
           <thead>
-            <tr>{#if data.staff}<th>Student</th>{/if}<th>Submitted</th><th>Size</th><th>SHA-256</th><th></th></tr>
+            <tr>{#if data.staff}<th>Student</th>{/if}<th>Submitted</th>{#if data.staff}<th>Based on</th>{/if}<th>Size</th><th>SHA-256</th><th></th></tr>
           </thead>
           <tbody>
             {#each data.submissions as s (s.submission_id)}
@@ -138,6 +138,9 @@
                   <td>{s.full_name ?? ''} {#if s.github_login}<span class="muted">@{s.github_login}</span>{/if}</td>
                 {/if}
                 <td>{when(s.submitted_at)}{#if s.late} <span class="chip late">late</span>{/if}</td>
+                {#if data.staff}
+                  <td>{#if s.base === null}<span class="muted">unknown</span>{:else}{s.base}{#if s.base_is_live} <span class="chip live">live</span>{/if}{/if}</td>
+                {/if}
                 <td>{kb(s.byte_size)}</td>
                 <td><code>{s.sha256.slice(0, 12)}</code></td>
                 <td><a href="/api/submissions/{s.submission_id}">Download</a></td>
@@ -185,7 +188,8 @@
       <h2>Publish a release</h2>
       <p>
         From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
-        and <code>teacher.tar.gz</code>; upload them here. CI can publish instead, with a token an
+        and <code>teacher.tar.gz</code>; upload them here, with the release id it printed, so that
+        students' submissions say which release they started from. CI can publish instead, with a token an
         owner makes in the Tokens tab.
       </p>
       <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
@@ -193,6 +197,7 @@
         <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
         <label>Label <input name="label" placeholder="v3, or what changed" /></label>
         <label>Commit <input name="commit" placeholder="optional sha" /></label>
+        <label>Release id <input name="release" placeholder="the id yukibana build printed" /></label>
         <button>Publish</button>
       </form>
     </section>

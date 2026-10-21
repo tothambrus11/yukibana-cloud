@@ -67,3 +67,18 @@ test('a bundle is sent as a zstd body with an origin; one with problems is not s
   await assert.rejects(client.submit(broken.bundle, 'p-1'), /not submitted/);
   assert.equal(seen.length, 1);
 });
+
+test('a submission says which release its folder started from, and the list says it back', async () => {
+  const file = (path: string, body: string): Entry => ({ path, type: 'file', mode: 0o644, mtime: 1, data: new TextEncoder().encode(body) });
+  const made = bundleOf([file('yukibana.json', '{"version":1,"kind":"rust-cargo","projectId":"p-1","releaseId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a5c"}'), file('src/lib.rs', '')]);
+  assert.ok(made.ok);
+  assert.equal(made.bundle.releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const { seen, client } = recording((req) => req.method === 'POST'
+    ? json({ submissionId: 's-9', byteSize: 3, sha256: 'cd' }, 201)
+    : json([{ ...submission, baseReleaseId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' }, submission]));
+  await client.submit(made.bundle);
+  assert.equal(seen[0]?.url, 'https://cloud.example/api/projects/p-1/submissions?release=01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const [based, older] = await client.submissions('p-1');
+  assert.equal(based?.baseReleaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  assert.equal(older?.baseReleaseId, null, 'a registry that does not say is read as unknown');
+});

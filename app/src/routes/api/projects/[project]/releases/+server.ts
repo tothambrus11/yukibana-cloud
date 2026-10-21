@@ -1,10 +1,10 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { uuidOf, type ProjectId } from '#lib/ids.ts';
+import { uuidOf, type ProjectId, type ReleaseId } from '#lib/ids.ts';
 import { answering, requireBearer, requireClaims, withContext } from '#lib/server/context.ts';
 import { releases } from '#lib/server/catalogue.ts';
 import { publishRelease, type Publisher } from '#lib/server/releases.ts';
-import { text } from '#lib/server/form.ts';
+import { text, uuidIn } from '#lib/server/form.ts';
 
 /** The project's releases, newest first. Staff only, by the table's
  *  policy; a student gets an empty list. */
@@ -16,7 +16,8 @@ export const GET: RequestHandler = async (event) => {
 };
 
 /** A release: multipart with `starter` and `teacher` (both .tar.gz), an
- *  optional `label` and `commit`. Authenticated by a bearer, and only a
+ *  optional `label` and `commit`, and the optional `release` id the
+ *  publisher wrote into the starter (see `publishRelease`). Authenticated by a bearer, and only a
  *  bearer: a project token (`yk_…`, from CI), or a person's access token
  *  (from `yukibana publish` after `yukibana login`), who must own the
  *  project.
@@ -39,6 +40,7 @@ export const POST: RequestHandler = async (event) => {
 
   const form = await event.request.formData().catch(() => null);
   if (form === null) error(400, 'Send the two archives as multipart form data.');
+  const release = uuidIn<ReleaseId>(form, 'release');
   const starter = form.get('starter');
   const teacher = form.get('teacher');
   if (!(starter instanceof File) || !(teacher instanceof File)) error(400, 'Both `starter` and `teacher` files are required.');
@@ -46,7 +48,7 @@ export const POST: RequestHandler = async (event) => {
   const starterBytes = new Uint8Array(await starter.arrayBuffer());
   const teacherBytes = new Uint8Array(await teacher.arrayBuffer());
   const published = await withContext((ctx) =>
-    publishRelease(ctx, by, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null),
+    publishRelease(ctx, by, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null, release),
   );
   return json(published, { status: 201 });
 };

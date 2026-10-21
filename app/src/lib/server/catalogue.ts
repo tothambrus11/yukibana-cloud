@@ -118,11 +118,11 @@ export async function submissions(ctx: Context, claims: Claims, id: ProjectId, f
     if (seen.length === 0) error(404, 'No such project.');
     const rows = await tx<{
       submission_id: string; project_id: string; submitted_at: Date; byte_size: string; sha256: string;
-      author_id: string; full_name: string | null; github_login: string | null; email: string | null; latest: boolean; late: boolean;
+      author_id: string; full_name: string | null; github_login: string | null; email: string | null; latest: boolean; late: boolean; base_release_id: string | null;
     }[]>`
       select * from (
         select s.submission_id, s.project_id, s.submitted_at, s.byte_size::text as byte_size, encode(s.sha256, 'hex') as sha256,
-               s.author_id, u.full_name, u.github_login, en.email,
+               s.author_id, u.full_name, u.github_login, en.email, s.base_release_id,
                coalesce(s.submitted_at > app.deadline_of(s.project_id), false) as late,
                row_number() over (partition by s.author_id order by s.submitted_at desc, s.submission_id desc) = 1 as latest
         from submission s
@@ -135,7 +135,7 @@ export async function submissions(ctx: Context, claims: Claims, id: ProjectId, f
       order by x.submitted_at desc, x.submission_id desc`;
     return rows.map((r) => ({
       submissionId: r.submission_id, projectId: r.project_id, submittedAt: r.submitted_at.toISOString(),
-      byteSize: Number(r.byte_size), sha256: r.sha256, latest: r.latest, late: r.late,
+      byteSize: Number(r.byte_size), sha256: r.sha256, latest: r.latest, late: r.late, baseReleaseId: r.base_release_id,
       author: { userId: r.author_id, fullName: r.full_name, githubLogin: r.github_login, email: r.email },
     }));
   });

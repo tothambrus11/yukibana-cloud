@@ -123,6 +123,11 @@
       "type": "string",
       "format": "uuid"
     },
+    "releaseId": {
+      "description": "Written by `yukibana build` and `publish` into the starter's copy of this file: the release this starter is, chosen before the upload so the release row has the same id. A submission sends it, so a teacher can tell which release it started from. A course repository leaves it out.",
+      "type": "string",
+      "format": "uuid"
+    },
     "submission": {
       "default": {},
       "type": "object",

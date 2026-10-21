@@ -4,7 +4,7 @@ import { asPublisher, asUser, connect } from '../../src/lib/server/db.js';
 import { s3Bucket } from '../../src/lib/server/storage.js';
 import { publishRelease, releaseUrl } from '../../src/lib/server/releases.js';
 import { sha256 } from '../../src/lib/bytes.js';
-import { trustId, type ProjectId } from '../../src/lib/ids.js';
+import { trustId, type ProjectId, type ReleaseId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
 import { ALICE, ASSISTANT, TEACHER, claimsOf, config } from './env.js';
 
@@ -25,7 +25,7 @@ async function warmup(): Promise<ProjectId> {
 
 test('an owner publishes from the page; the newest release is what a student downloads', async () => {
   const project = await warmup();
-  const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'manual v1', null);
+  const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'manual v1', null, null);
   expect(published.starter.size).toBe(archive.byteLength);
   expect(published.teacher.size).toBe(other.byteLength);
   const [seen] = await asUser(sql, claimsOf(ALICE), (tx) => tx<{ key: string | null }[]>`select app.current_starter(${project}) as key`);
@@ -39,7 +39,7 @@ test('an owner publishes from the page; the newest release is what a student dow
 
 test('an assistant publishes from the page as well; the release names them', async () => {
   const project = await warmup();
-  const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(ASSISTANT) }, project, archive, other, 'by the assistant', null);
+  const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(ASSISTANT) }, project, archive, other, 'by the assistant', null, null);
   const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ by: string }[]>`select uploaded_by::text as by from project_release where release_id = ${published.releaseId}`);
   expect(row?.by).toBe(claimsOf(ASSISTANT).sub);
 });
@@ -51,24 +51,51 @@ test('a token publishes to its own project and to no other; a bad token stores n
     return row?.secret ?? '';
   });
   expect(secret).toMatch(/^yk_[0-9a-f]{64}$/);
-  const published = await publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'ci', 'abc1234');
+  const published = await publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'ci', 'abc1234', null);
   const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ label: string; commit_sha: string; via: boolean; by: string }[]>`
     select label, commit_sha, token_id is not null as via, uploaded_by::text as by from project_release where release_id = ${published.releaseId}`);
   expect(row).toEqual({ label: 'ci', commit_sha: 'abc1234', via: true, by: claimsOf(TEACHER).sub });
 
   const otherProject = trustId<ProjectId>('01a0b47d-0000-7000-8000-000000000000');
-  await expect(publishRelease(ctx, { kind: 'token', secret }, otherProject, archive, other, 'x', null)).rejects.toMatchObject({ status: 403 });
-  await expect(publishRelease(ctx, { kind: 'token', secret: 'yk_' + '0'.repeat(64) }, project, archive, other, 'x', null)).rejects.toMatchObject({ status: 403 });
+  await expect(publishRelease(ctx, { kind: 'token', secret }, otherProject, archive, other, 'x', null, null)).rejects.toMatchObject({ status: 403 });
+  await expect(publishRelease(ctx, { kind: 'token', secret: 'yk_' + '0'.repeat(64) }, project, archive, other, 'x', null, null)).rejects.toMatchObject({ status: 403 });
 
   await asUser(sql, claimsOf(TEACHER), (tx) => tx`select app.revoke_project_token((select token_id from project_token where label = 'test' and revoked_at is null order by created_at desc limit 1))`);
-  await expect(publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'x', null)).rejects.toMatchObject({ status: 403 });
+  await expect(publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'x', null, null)).rejects.toMatchObject({ status: 403 });
 });
 
 test('a student cannot publish, and the archives must be gzip', async () => {
   const project = await warmup();
-  await expect(publishRelease(ctx, { kind: 'user', claims: claimsOf(ALICE) }, project, archive, other, 'x', null)).rejects.toMatchObject({ status: 403 });
-  await expect(publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, new Uint8Array([1, 2, 3]), other, 'x', null)).rejects.toMatchObject({ status: 415 });
+  await expect(publishRelease(ctx, { kind: 'user', claims: claimsOf(ALICE) }, project, archive, other, 'x', null, null)).rejects.toMatchObject({ status: 403 });
+  await expect(publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, new Uint8Array([1, 2, 3]), other, 'x', null, null)).rejects.toMatchObject({ status: 415 });
   const hash = await sha256(new TextEncoder().encode('yk_' + '1'.repeat(64)));
   const [named] = await asPublisher(sql, (tx) => tx<{ p: string | null }[]>`select app.project_for_token(${hash as Uint8Array<ArrayBuffer>}) as p`);
   expect(named?.p).toBeNull();
+});
+
+test('a release gets the id its publisher wrote into the starter, and an id already taken stores nothing', async () => {
+  const project = await warmup();
+  const chosen = trustId<ReleaseId>(crypto.randomUUID());
+  const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'stamped', null, chosen);
+  expect(published.releaseId).toBe(chosen);
+
+  const count = async () => {
+    const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ n: number }[]>`select count(*)::int as n from project_release where project_id = ${project}`);
+    return row?.n;
+  };
+  const before = await count();
+  await expect(publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'again', null, chosen)).rejects.toMatchObject({ status: 409 });
+  expect(await count()).toBe(before);
+});
+
+test('a token cannot take an id another project already has', async () => {
+  const project = await warmup();
+  const taken = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'first', null, trustId<ReleaseId>(crypto.randomUUID()));
+  const secret = await asUser(sql, claimsOf(TEACHER), async (tx) => {
+    const [row] = await tx<{ secret: string }[]>`select app.create_project_token(${project}, 'ids') as secret`;
+    return row?.secret ?? '';
+  });
+  await expect(publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'ci', null, taken.releaseId)).rejects.toMatchObject({ status: 409 });
+  const fresh = trustId<ReleaseId>(crypto.randomUUID());
+  expect((await publishRelease(ctx, { kind: 'token', secret }, project, archive, other, 'ci', null, fresh)).releaseId).toBe(fresh);
 });

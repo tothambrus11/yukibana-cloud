@@ -10,6 +10,7 @@ const input = (over: Partial<PublishInput> = {}): PublishInput => ({
   teacher: new Uint8Array([4, 5, 6, 7]),
   label: 'v1',
   commit: null,
+  releaseId: null,
   ...over,
 });
 
@@ -80,4 +81,13 @@ test('a refusal reaches the teacher in the words the registry used, not as a sta
     new Response(JSON.stringify({ message: 'unknown or revoked token' }), { status: 401 }),
   );
   await assert.rejects(publish(input(), fetchFn), /the registry answered 401: unknown or revoked token/);
+});
+
+test('the release id the starter carries goes with the upload, so the row gets the same one', async () => {
+  const { seen, fetchFn } = recorder(accepted());
+  await publish(input({ releaseId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' }), fetchFn);
+  assert.equal((await seen.request?.formData())?.get('release'), '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const none = recorder(accepted());
+  await publish(input(), none.fetchFn);
+  assert.equal((await none.seen.request?.formData())?.get('release'), null, 'archives without an id send none');
 });

@@ -58,6 +58,14 @@ export interface Config {
   /** The registry project this folder submits to. Only a starter's copy has
    *  one (`starterConfig` writes it); in a course repository it is null. */
   readonly projectId: string | null;
+  /** The release this folder's starter was, as `yukibana build` and
+   *  `publish` wrote it before uploading, so it is the release row's own id.
+   *  A submission sends it, and grading compares the student's read-only
+   *  files with that release rather than the newest. Null in a course
+   *  repository, in a starter from before releases carried ids, and in one
+   *  built only to check. A student can edit it, so it is a claim: the
+   *  registry keeps it only when it names a release of the same project. */
+  readonly releaseId: string | null;
   /** The parsed file as written, so the starter's copy carries the IDE's
    *  fields exactly, including ones this version does not know. */
   readonly raw: Readonly<Record<string, unknown>>;
@@ -118,7 +126,7 @@ export type Parsed =
 /** The top-level fields this version knows. Anything else is passed through
  *  to the starter with a warning: the IDE may know a field the CLI does not,
  *  and a typo like "hiden" should not pass in silence. */
-const KNOWN = new Set(['version', 'kind', 'features', 'layout', 'openFiles', 'readOnly', 'hidden', 'projectId', 'submission']);
+const KNOWN = new Set(['version', 'kind', 'features', 'layout', 'openFiles', 'readOnly', 'hidden', 'projectId', 'releaseId', 'submission']);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
@@ -162,6 +170,8 @@ export function parseConfig(text: string): Parsed {
 
   const projectId = raw['projectId'] ?? null;
   if (projectId !== null && (typeof projectId !== 'string' || projectId === '')) return bad('"projectId" must be a project id');
+  const releaseId = raw['releaseId'] ?? null;
+  if (releaseId !== null && (typeof releaseId !== 'string' || !isUuid(releaseId))) return bad('"releaseId" must be a release id, a uuid');
 
   const submission = raw['submission'] ?? {};
   if (!isObject(submission)) return bad('"submission" must be an object');
@@ -192,6 +202,7 @@ export function parseConfig(text: string): Parsed {
       readOnly: lists.readOnly,
       submission: { include, exclude, filename, maxBytes },
       projectId,
+      releaseId: releaseId === null ? null : releaseId.toLowerCase(),
       raw,
     },
   };
@@ -209,27 +220,41 @@ function globs(v: unknown): string[] | string {
   return list;
 }
 
+/** Whether `s` is a uuid, in any case. Release ids are the database's
+ *  uuids, so this is the whole check the CLI can make of one. */
+export const isUuid = (s: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
 /** The fields of the starter's copy: the file minus `hidden` (which would
- *  name what it hides) and minus any `projectId` the repository had. */
+ *  name what it hides) and minus any `projectId` or `releaseId` the
+ *  repository had, which only a build may write. */
 function studentFields(raw: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const copy: Record<string, unknown> = { ...raw };
   delete copy['hidden'];
   delete copy['projectId'];
+  delete copy['releaseId'];
   return copy;
 }
 
 /** The copy of the file a starter carries: the same file minus `hidden`
  *  plus the project id, so the IDE and `yukibana submit` know where a
- *  submission goes. An empty `projectId` (a build that was not told the
- *  project) leaves the field out: it once wrote `""`, which the parser
- *  rightly refuses, and a student could not submit from that folder at all. */
-export function starterConfig(config: Config, projectId: string): string {
-  const fields = studentFields(config.raw);
-  return JSON.stringify(projectId === '' ? fields : { ...fields, projectId }, null, 2) + '\n';
+ *  submission goes, and the release id, so a submission says which
+ *  release it started from. An empty `projectId` (a build that was not told
+ *  the project) leaves the field out: it once wrote `""`, which the parser
+ *  rightly refuses, and a student could not submit from that folder at all.
+ *  A null `releaseId` (a build that is only a check) leaves its field out
+ *  likewise. */
+export function starterConfig(config: Config, projectId: string, releaseId: string | null): string {
+  const fields: Record<string, unknown> = studentFields(config.raw);
+  if (projectId !== '') fields['projectId'] = projectId;
+  if (releaseId !== null) fields['releaseId'] = releaseId;
+  return JSON.stringify(fields, null, 2) + '\n';
 }
 
 /** Whether a student's copy of the file says what the starter's copy said,
- *  `projectId` and formatting aside. An assembly asks this to tell a
+ *  `projectId`, `releaseId` and formatting aside. The release id differs
+ *  from one release to the next by design, so it is not a change the
+ *  student made; whether it names the right release is the download's
+ *  question, not this one. An assembly asks this to tell a
  *  student who changed their read-only list from one who did not; the copy
  *  is replaced by the teacher's either way. */
 export function sameStudentConfig(teacher: Config, studentText: string): boolean {

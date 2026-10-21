@@ -26,7 +26,7 @@ const USAGE = `usage: yukibana <command> [arguments] [options]
     projects [--edition <id>] [--open]  your projects; --open: the ones taking submissions
     project [<project>]
     releases [<project>]
-    submissions [<project>] [--latest] [--student <who>]...
+    submissions [<project>] [--latest] [--student-submissions <who>]...
 
   students
     starter <project> [--out <dir>]     download and unpack the starter
@@ -37,8 +37,9 @@ const USAGE = `usage: yukibana <command> [arguments] [options]
     check [<dir>]                       build in memory and report problems
     build [<dir>] [--out <dir>]         write starter.tar.gz and teacher.tar.gz
     publish [<dir>] --project <id> [--token <token>] [--label <text>]
-    download [<project>] [--out <dir>] [--student <who>]... [--all-versions]
-             [--submission <id>]... [--assemble] [--archive] [--force]
+    download [<project>] [--out <dir>] [--student-submissions <who>]...
+             [--all-versions] [--submission <id>]... [--assemble [--release <id|newest>]]
+             [--archive] [--force]
     assemble <submission> --teacher <archive|dir> --out <dir>
     enrol <edition> <email>... [--role student|assistant|owner]
     unenrol <edition> <email>...
@@ -72,6 +73,7 @@ async function main(): Promise<void> {
       token: { type: 'string' },
       project: { type: 'string' },
       edition: { type: 'string' },
+      'student-submissions': { type: 'string', multiple: true },
       student: { type: 'string', multiple: true },
       submission: { type: 'string', multiple: true },
       release: { type: 'string' },

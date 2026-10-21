@@ -6,6 +6,7 @@ import { gzip } from './lib/gzip.js';
 import { writeTar } from './lib/tar.js';
 import { planStarter, planTeacher } from './lib/starter.js';
 import type { Config } from './lib/yukibana.js';
+import { uuidv7 } from './lib/uuid.js';
 import { readTree } from './tree.js';
 
 export interface Built {
@@ -24,12 +25,15 @@ export interface Built {
 
 export type BuildResult = { ok: true; built: Built } | { ok: false; problems: readonly string[] };
 
-/** Builds `dir`. `folder` is what the archives unpack into; `projectId` goes
- *  into the starter's copy of yukibana.json, or is left empty when the build
- *  is only a check. Problems are sentences for the terminal. */
-export async function build(dir: string, folder: string, projectId: string): Promise<BuildResult> {
+/** Builds `dir`. `folder` is what the archives unpack into; `projectId` and
+ *  `releaseId` go into the starter's copy of yukibana.json, or are left out
+ *  (empty, null) when the build is only a check. The release id must be the
+ *  one the release is then published with (`newReleaseId`), or the
+ *  student's folder names a release that does not exist. Problems are
+ *  sentences for the terminal. */
+export async function build(dir: string, folder: string, projectId: string, releaseId: string | null): Promise<BuildResult> {
   const tree = await readTree(dir);
-  const plan = planStarter(tree, folder, projectId);
+  const plan = planStarter(tree, folder, projectId, releaseId);
   if (plan.problems.length > 0 || plan.config === null) return { ok: false, problems: plan.problems };
   const starter = await gzip(writeTar(plan.entries));
   const teacher = await gzip(writeTar(planTeacher(tree, folder, plan.config)));
@@ -45,4 +49,10 @@ export async function commitOf(dir: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** A fresh id for a release about to be built and published: chosen here,
+ *  before the build, so the starter can carry it. */
+export function newReleaseId(): string {
+  return uuidv7(Date.now(), crypto.getRandomValues(new Uint8Array(10)));
 }

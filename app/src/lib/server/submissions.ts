@@ -6,7 +6,7 @@
 import { error } from '@sveltejs/kit';
 import type { Claims } from '#lib/claims.ts';
 import { isZstd, sha256 } from '#lib/bytes.ts';
-import { submissionKey, trustId, trustKey, type ProjectId, type SubmissionId } from '#lib/ids.ts';
+import { submissionKey, trustId, trustKey, type ProjectId, type ReleaseId, type SubmissionId } from '#lib/ids.ts';
 import { report } from '#lib/report.ts';
 import { asUser, statusOf } from './db';
 import type { Context } from './context';
@@ -22,8 +22,14 @@ export interface Accepted {
  *  first, so a late student is told before uploading; the object before the
  *  row, so every row has a body; the row inside the caller's policies, so
  *  the deadline is the database's decision. A rejected row deletes the
- *  object again, and a failure to do that is reported, not swallowed. */
-export async function acceptSubmission(ctx: Context, claims: Claims, project: ProjectId, body: Uint8Array): Promise<Accepted> {
+ *  object again, and a failure to do that is reported, not swallowed.
+ *
+ *  `base` is the release the student's folder says it started from. It is
+ *  their claim and decides nothing: the database keeps it only when it is a
+ *  release of `project`, and records none otherwise (see
+ *  20261021090000_release_ids_in_starters.sql), so a wrong id never costs a
+ *  student their hand-in. */
+export async function acceptSubmission(ctx: Context, claims: Claims, project: ProjectId, body: Uint8Array, base: ReleaseId | null): Promise<Accepted> {
   if (body.byteLength === 0) error(400, 'The submission is empty.');
   if (body.byteLength > ctx.config.submissionMaxBytes) error(413, `The submission is larger than ${ctx.config.submissionMaxBytes} bytes.`);
   if (!isZstd(body)) error(415, 'A submission is a .tar.zst archive.');
@@ -42,8 +48,8 @@ export async function acceptSubmission(ctx: Context, claims: Claims, project: Pr
   try {
     await asUser(ctx.sql, claims, async (tx) => {
       await tx`
-        insert into submission (submission_id, edition_id, project_id, author_id, object_key, byte_size, sha256)
-        select ${id}, p.edition_id, p.project_id, ${claims.sub}, ${key}, ${body.byteLength}, ${digest as Uint8Array<ArrayBuffer>}
+        insert into submission (submission_id, edition_id, project_id, author_id, object_key, byte_size, sha256, base_release_id)
+        select ${id}, p.edition_id, p.project_id, ${claims.sub}, ${key}, ${body.byteLength}, ${digest as Uint8Array<ArrayBuffer>}, ${base}::uuid
         from project p where p.project_id = ${project}`;
     });
   } catch (e) {
