@@ -10,18 +10,22 @@
 --
 -- This function says which condition failed. It decides nothing:
 -- `can_submit` and the submission insert policy still decide, and the
--- Worker asks this only after they have said no. It answers only people
--- enrolled in the project's edition, in any role, because they already
--- know the edition and its course, and the project's id reached them from
--- it (a starter, a page, a teacher). Anyone else gets no row, the same as
--- for a project that does not exist, so an id tells a stranger nothing.
+-- Worker asks this only after they have said no, in the same transaction
+-- as `can_submit` so both read the same `now()`.
 --
--- A student is told when a project opens or closed even though the
--- project's policy hides it from them outside its window. Hiding is what
--- keeps the list of current exercises current; it is not a secret from
--- the student holding the id, and the dates are the ones the course
--- announced. A draft has no date to tell, and says only that it is not
--- open yet.
+-- Who learns what. Someone not enrolled in the project's edition gets no
+-- row, the same as for a project that does not exist: for them an id
+-- tells nothing, as a 404 does in app/src/lib/server/catalogue.ts. Someone
+-- enrolled in the edition, in any role, is told the reason, and that is
+-- more than the rest of the app tells a student: the project policy hides
+-- a project from its students outside its window, and the catalogue
+-- answers 404 for it. A student who holds the id of a hidden project
+-- learns from this that it exists in their edition, whether it is a draft
+-- or opens later (and when) or has closed (and when), and the edition's
+-- course name and label, which they already see. They learn nothing else
+-- about it: not its title, not its releases. The id itself reaches a
+-- student from a starter, a link or a teacher, and is not guessable.
+-- Whether this is the right trade is the course's call; this is what it is.
 
 set local lock_timeout = '10s';
 set local statement_timeout = '5min';
@@ -30,34 +34,35 @@ set local statement_timeout = '5min';
 -- submit to it now, none otherwise (no such project, not enrolled, or
 -- nothing to refuse). `reason` is, first match wins:
 --   'staff'     the caller's role in the edition is not student
---   'not_open'  no `available_after` (a draft), or it is still ahead
 --   'closed'    `closes_at` has passed
--- The order matches what a person can do about it: staff never submit, so
--- the window is beside the point for them. The window test is
--- `app.window_open`'s, spelled out, so the reasons and the decision cannot
--- disagree about a project whose window is open: such a row has no reason
--- and is filtered out.
+--   'not_open'  any other closed window: a draft (no `available_after`)
+--               or one whose `available_after` is still ahead
+-- A window that `app.window_open` calls open gives no reason, so the
+-- reasons are the decision's complement by construction rather than by a
+-- second copy of its test. `at` is when the window opens ('not_open';
+-- null for a draft) or when it closed ('closed'); null for 'staff'.
 create or replace function app.submit_refusal(project uuid)
 returns table (
   reason text,
   role app.edition_role,
   course_title text,
   edition_label text,
-  available_after timestamptz,
-  closes_at timestamptz
+  at timestamptz
 )
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select r.reason, r.role, r.course_title, r.edition_label, r.available_after, r.closes_at
+  select r.reason, r.role, r.course_title, r.edition_label,
+         case r.reason when 'not_open' then r.available_after when 'closed' then r.closes_at end
   from (
     select
       case
         when m.role <> 'student' then 'staff'
-        when p.available_after is null or p.available_after > now() then 'not_open'
-        when p.closes_at is not null and now() >= p.closes_at then 'closed'
+        when app.window_open(p.available_after, p.closes_at) then null
+        when p.closes_at is not null and p.closes_at <= now() then 'closed'
+        else 'not_open'
       end as reason,
       m.role, e.title as course_title, e.label as edition_label, p.available_after, p.closes_at
     from public.project p

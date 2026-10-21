@@ -147,11 +147,17 @@ deleted, and a failure to delete is reported as an orphan.
 library function into a `.tar.zst` and posts it to
 `/api/projects/<id>/submissions`; the upload form on the project page ends
 in the same function, `acceptSubmission`. The Worker asks `app.can_submit`, so a closed window is refused before the
-upload is stored, writes the object, then inserts the row as the student.
-A refusal is a 403 whose sentence comes from `app.submit_refusal`: to
-someone in the edition it says whether they are staff, the project is not
-open yet, or it has closed; to anyone else it says only that the project is
-not accepting submissions from them.
+upload is stored, writes the object, then inserts the row as the student
+and takes the row's id back with `returning`. A window that closes in
+between makes that insert see no project (the policy hides it) and insert
+nothing without an error, so no row back is a refusal and the object is
+deleted again; the insert policy's own error is reached only when the
+student's role changed in between. A refusal is a 403 whose sentence comes
+from `app.submit_refusal`, asked in the same transaction as `can_submit`:
+to someone in the edition it says whether they are staff, the project is
+not open yet, or it has closed; to anyone else, or when the reason cannot
+be had, it says only that the project is not accepting submissions from
+them.
 `submitted_at` and `author_id` are forced by a trigger; late is
 `submitted_at > deadline`, computed when read.
 

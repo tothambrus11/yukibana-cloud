@@ -16,22 +16,24 @@ export type RefusalReason =
   /** Its `closes_at` has passed. */
   | 'closed';
 
-/** One row of `app.submit_refusal`. Field names are the database's. The
- *  dates are the project's own, whichever the reason; null where the
- *  project has none. */
+/** One row of `app.submit_refusal`. Field names are the database's. */
 export interface RefusalRow {
   readonly reason: RefusalReason;
   readonly role: 'student' | 'assistant' | 'owner';
   readonly course_title: string;
   readonly edition_label: string;
-  readonly available_after: Date | null;
-  readonly closes_at: Date | null;
+  /** When the window opens (`not_open`; null for a draft) or closed
+   *  (`closed`); null for `staff`. */
+  readonly at: Date | null;
 }
 
 /** The sentence for anyone the database gives no reason to: not enrolled
  *  in the project's edition, or no such project. Deliberately the same for
- *  both, so an id tells a stranger nothing (as a 404 does elsewhere). */
+ *  both, so an id tells a stranger nothing (as a 404 does elsewhere). It is
+ *  also what is said when the reason could not be had at all. */
 export const NOT_ACCEPTING = 'This project is not accepting submissions from you now.';
+
+const article = (word: string): string => (/^[aeiou]/i.test(word) ? 'an' : 'a');
 
 /** The sentence a refused submission answers with. `row` null, or a reason
  *  this version does not know (a newer database), says only what it always
@@ -39,13 +41,13 @@ export const NOT_ACCEPTING = 'This project is not accepting submissions from you
 export function refusalMessage(row: RefusalRow | null): string {
   switch (row?.reason) {
     case 'staff':
-      return `Only students enrolled in ${row.course_title} ${row.edition_label} can submit to this project; you are its ${row.role}.`;
+      return `You are ${article(row.role)} ${row.role} of ${row.course_title} (${row.edition_label}); only its students can submit to this project.`;
     case 'not_open':
-      return row.available_after === null
+      return row.at === null
         ? 'This project is not open for submissions yet; it has no opening date.'
-        : `This project is not open for submissions yet; it opens on ${utc(row.available_after)}.`;
+        : `This project is not open for submissions yet; it opens on ${utc(row.at)}.`;
     case 'closed':
-      return row.closes_at === null ? NOT_ACCEPTING : `This project closed on ${utc(row.closes_at)} and no longer accepts submissions.`;
+      return row.at === null ? NOT_ACCEPTING : `This project closed on ${utc(row.at)} and no longer accepts submissions.`;
     default:
       return NOT_ACCEPTING;
   }
