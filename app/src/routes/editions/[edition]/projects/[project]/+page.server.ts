@@ -1,11 +1,10 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { uuidOf, type EditionId, type ProjectId, type ReleaseId, type TokenId } from '#lib/ids.ts';
+import { uuidOf, type EditionId, type ProjectId, type TokenId } from '#lib/ids.ts';
 import { asUser, statusOf } from '#lib/server/db.ts';
-import { text, uuidIn } from '#lib/server/form.ts';
+import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
-import { publishRelease } from '#lib/server/releases.ts';
 
 interface ProjectRow {
   project_id: ProjectId;
@@ -144,26 +143,6 @@ export const actions: Actions = {
     try {
       const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes, null));
       return { submitted: accepted };
-    } catch (e) {
-      return httpFailing(e);
-    }
-  },
-  /** A manual release: the two archives from the teacher's machine. The
-   *  CLI's `yukibana build` makes them; so can anything that makes a .tar.gz. */
-  publish: async (event) => {
-    const claims = requireClaims(event);
-    const { project } = ids(event.params);
-    const form = await event.request.formData();
-    const starter = form.get('starter');
-    const teacher = form.get('teacher');
-    if (!(starter instanceof File) || !(teacher instanceof File)) return fail(400, { error: 'Choose both archives.' });
-    const starterBytes = new Uint8Array(await starter.arrayBuffer());
-    const teacherBytes = new Uint8Array(await teacher.arrayBuffer());
-    try {
-      const release = uuidIn<ReleaseId>(form, 'release');
-      const published = await withContext((ctx) =>
-        publishRelease(ctx, { kind: 'user', claims }, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null, release));
-      return { published };
     } catch (e) {
       return httpFailing(e);
     }

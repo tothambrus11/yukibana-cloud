@@ -20,8 +20,9 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
     : (inv.options.project ?? inv.env['YUKIBANA_PROJECT'] ?? '');
 
   // The id is chosen before the build so the starter can carry it, and the
-  // publish below (or the upload form, after `build`) gives the row the same
-  // one. A check publishes nothing, so its starter names no release.
+  // publish below gives the row the same one. A check publishes nothing, so
+  // its starter names no release; a `build` is for a look inside, and its id
+  // names a release that will not exist.
   const releaseId = command === 'check' ? null : newReleaseId();
   const result = await build(dir, folder, projectId, releaseId);
   if (!result.ok) fail(...result.problems);
@@ -41,7 +42,6 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
     await writeFile(join(out, 'starter.tar.gz'), built.starter);
     await writeFile(join(out, 'teacher.tar.gz'), built.teacher);
     console.log(`wrote ${join(out, 'starter.tar.gz')} and ${join(out, 'teacher.tar.gz')}`);
-    console.log(`release id ${releaseId ?? ''}: give it with the upload, or students' submissions will not say which release they started from`);
     return;
   }
 

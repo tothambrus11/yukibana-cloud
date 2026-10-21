@@ -58,9 +58,9 @@ default the directory's name; make it the project's slug):
   from it; students never can;
 * **the starter**: the same minus `.github/` and everything `hidden`
   matches, plus a copy of `yukibana.json` with `hidden` removed and
-  `projectId` and `releaseId` added. `build` prints the release id; give it
-  in the upload form's *Release id* field, or the row gets another one and
-  the starter names a release that does not exist.
+  `projectId` and `releaseId` added. Only `publish` (and the Action) upload
+  a release, with the same id; the archives `build` writes are for a look
+  inside, and their id names a release that will not exist.
 
 The build fails, with every reason on the terminal and a non-zero exit, when:
 

@@ -94,8 +94,7 @@ npm run cli -- publish . --project <id> --url <registry> --token <token>
 `npm run build --prefix cli` first; `npm install -g ./cli` gives you a
 `yukibana` command instead of `npm run cli --`. After `yukibana login`,
 `publish` works without a token for a project you are staff of. The project
-id is on the project page, and so is a publishing token (owners only). Or upload the two
-files from `build` on that page by hand.
+id is on the project page, and so is a publishing token (owners only).
 
 In the repository's own CI, the Action does the same on every push:
 

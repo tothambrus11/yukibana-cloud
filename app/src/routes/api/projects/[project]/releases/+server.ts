@@ -28,8 +28,9 @@ export const GET: RequestHandler = async (event) => {
  *  POST, and cookies would have ridden along with it. A page on evil.com
  *  could have published a release to a project its visitor owns. A bearer
  *  header is never ambient, so a person's token is as safe here as a
- *  project's. The project page uploads through its own form action, which
- *  SvelteKit protects because it is same-origin. */
+ *  project's. The project page has no upload of its own any more (see
+ *  docs/design.md): a release's id travels inside its starter, and only the
+ *  CLI writes it there. */
 export const POST: RequestHandler = async (event) => {
   const project = uuidOf<ProjectId>(event.params.project);
   if (project === null) error(404, 'No such project.');

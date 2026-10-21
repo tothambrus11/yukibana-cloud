@@ -23,7 +23,7 @@ async function warmup(): Promise<ProjectId> {
   return trustId<ProjectId>(row.project_id);
 }
 
-test('an owner publishes from the page; the newest release is what a student downloads', async () => {
+test('an owner publishes with their own login; the newest release is what a student downloads', async () => {
   const project = await warmup();
   const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'manual v1', null, null);
   expect(published.starter.size).toBe(archive.byteLength);
@@ -37,7 +37,7 @@ test('an owner publishes from the page; the newest release is what a student dow
   expect((await fetch(url)).status).toBe(200);
 });
 
-test('an assistant publishes from the page as well; the release names them', async () => {
+test('an assistant publishes with their login as well; the release names them', async () => {
   const project = await warmup();
   const published = await publishRelease(ctx, { kind: 'user', claims: claimsOf(ASSISTANT) }, project, archive, other, 'by the assistant', null, null);
   const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ by: string }[]>`select uploaded_by::text as by from project_release where release_id = ${published.releaseId}`);

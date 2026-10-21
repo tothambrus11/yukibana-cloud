@@ -26,7 +26,7 @@ grading integrations would later have to fight:
   time, a webhook surface, and a copy of every teacher's repository in the
   bucket. Moving the transformation into a CLI that runs where the
   repository already is (a laptop, the repository's own CI) removed all
-  three, and lets a teacher without CI upload the two files by hand.
+  three. A teacher without CI runs the same CLI on their own machine.
 
 ## Constraints
 
@@ -174,11 +174,17 @@ records sizes and SHA-256s, and serves the newest starter to students whose
 project is open. Staff see the whole history and can fetch either archive of
 any release; a wrong release is followed by a right one.
 
-Three ways to publish, all the same request:
+Two ways to publish, both the same request:
 
 * `yukibana publish` from a teacher's machine;
-* the GitHub Action in the course repository's CI, on every push;
-* the project page, uploading the two files from `yukibana build` by hand.
+* the GitHub Action in the course repository's CI, on every push.
+
+The project page used to take the two files from `yukibana build` by hand.
+It stopped (2026-10) when releases began carrying their id inside the
+starter: an upload could only match its starter if the teacher pasted the
+id `build` printed, and a blank or wrong field failed in silence, leaving
+every submission from that starter unable to say which release it started
+from. Nobody wanted to assemble a starter by hand anyway.
 
 CI cannot log in with GitHub SSO, so it uses a **project token**: made by an
 owner on the project page, shown once, stored only as a SHA-256. The Worker

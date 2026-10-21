@@ -152,7 +152,6 @@
     {/if}
   </section>
 {:else if tab === 'releases'}
-  {#if form?.published}<p class="ok">Published release {form.published.releaseId}.</p>{/if}
   <section>
     <h2>Releases</h2>
     {#if data.releases.length === 0}
@@ -187,20 +186,11 @@
     <section>
       <h2>Publish a release</h2>
       <p>
-        From a checkout of the project, <code>yukibana build</code> writes <code>starter.tar.gz</code>
-        and <code>teacher.tar.gz</code>; upload them here, with the release id it printed, so that
-        students' submissions say which release they started from. CI can publish instead, with a token an
-        owner makes in the Tokens tab.
+        From a checkout of the project, <code>yukibana publish --project {p.project_id}</code>
+        builds both archives and publishes them, logged in as staff. CI publishes the same way,
+        with a token an owner makes in the Tokens tab. There is no upload here: the release id
+        has to travel inside the starter, and only the CLI puts it there.
       </p>
-      <form method="POST" action={actionIn('releases', 'publish')} enctype="multipart/form-data" class="stack">
-        <label>Starter (.tar.gz) <input type="file" name="starter" accept=".gz,application/gzip" required /></label>
-        <label>Teacher archive (.tar.gz) <input type="file" name="teacher" accept=".gz,application/gzip" required /></label>
-        <label>Label <input name="label" placeholder="v3, or what changed" /></label>
-        <label>Commit <input name="commit" placeholder="optional sha" /></label>
-        <label>Release id <input name="release" placeholder="the id yukibana build printed" /></label>
-        <p class="note">Leave it empty only for archives built without one: otherwise the release gets another id than its starter names, and its students' submissions will not say which release they started from.</p>
-        <button>Publish</button>
-      </form>
     </section>
   {/if}
 {:else if tab === 'tokens'}

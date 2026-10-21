@@ -1,6 +1,6 @@
 /** Publishing a release and handing out its archives. The same function
- *  serves the CLI (a project token) and the project page (a staff member's
- *  session), so both make the same decisions in the same order: check the
+ *  serves CI (a project token) and the CLI as a person (their access
+ *  token), so both make the same decisions in the same order: check the
  *  archives, store both, then record the row under the caller's policies;
  *  a refused row deletes both objects again.
  */
