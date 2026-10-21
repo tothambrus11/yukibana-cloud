@@ -8,6 +8,7 @@ import type { Claims } from '#lib/claims.ts';
 import { isZstd, sha256 } from '#lib/bytes.ts';
 import { submissionKey, trustId, trustKey, type ProjectId, type ReleaseId, type SubmissionId } from '#lib/ids.ts';
 import { report } from '#lib/report.ts';
+import { refusalMessage, type RefusalRow } from '#lib/refusal.ts';
 import { asUser, statusOf } from './db';
 import type { Context } from './context';
 
@@ -23,6 +24,8 @@ export interface Accepted {
  *  row, so every row has a body; the row inside the caller's policies, so
  *  the deadline is the database's decision. A rejected row deletes the
  *  object again, and a failure to do that is reported, not swallowed.
+ *  Either refusal is a 403 that says why, as far as the caller may know
+ *  (see `refusal`).
  *
  *  `base` is the release the student's folder says it started from. It is
  *  their claim and decides nothing: the database keeps it only when it is a
@@ -38,7 +41,7 @@ export async function acceptSubmission(ctx: Context, claims: Claims, project: Pr
     const [row] = await tx<{ ok: boolean }[]>`select app.can_submit(${project}) as ok`;
     return row?.ok === true;
   });
-  if (!open) error(403, 'This project is not accepting submissions from you now.');
+  if (!open) error(403, await refusal(ctx, claims, project));
 
   const digest = await sha256(body);
   const id = crypto.randomUUID() as SubmissionId; // a v4 is fine here: the key needs to be unguessable, not sortable
@@ -59,10 +62,26 @@ export async function acceptSubmission(ctx: Context, claims: Claims, project: Pr
       report('submissions', `orphaned ${key}: ${inner instanceof Error ? inner.message : String(inner)}`);
     }
     const { status, message } = statusOf(e);
-    if (status === 500) report('submissions', message);
-    error(status === 500 ? 500 : 403, status === 500 ? 'The submission could not be recorded.' : 'The project is not accepting submissions from you now.');
+    if (status === 500) {
+      report('submissions', message);
+      error(500, 'The submission could not be recorded.');
+    }
+    // The window closed between the check and the insert, most likely.
+    error(403, await refusal(ctx, claims, project));
   }
   return { submissionId: id, byteSize: body.byteLength, sha256: Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('') };
+}
+
+/** Why the caller may not submit to `project`, as a sentence, asked only
+ *  once the database has refused. `app.submit_refusal` says which condition
+ *  failed to people enrolled in the project's edition, and nothing to
+ *  anyone else, who get the sentence they always got. */
+async function refusal(ctx: Context, claims: Claims, project: ProjectId): Promise<string> {
+  const row = await asUser(ctx.sql, claims, async (tx) => {
+    const [r] = await tx<RefusalRow[]>`select * from app.submit_refusal(${project})`;
+    return r ?? null;
+  });
+  return refusalMessage(row);
 }
 
 /** A URL for the caller to download `submission`, if they may. The policy

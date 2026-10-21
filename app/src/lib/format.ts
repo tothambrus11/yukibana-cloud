@@ -17,3 +17,9 @@ export function local(d: Date | null): string {
 
 /** A size in kilobytes, never below 1. */
 export const kb = (n: number): string => `${Math.max(1, Math.round(n / 1024))} KB`;
+
+/** A moment in UTC, to the minute, with the zone said ("2026-10-07 14:03
+ *  UTC"). For sentences the server writes, which reach a terminal or an IDE
+ *  wherever its reader is: the Worker has no viewer's zone to use, and a
+ *  time without one would be read as local. */
+export const utc = (d: Date): string => `${new Date(d).toISOString().slice(0, 16).replace('T', ' ')} UTC`;

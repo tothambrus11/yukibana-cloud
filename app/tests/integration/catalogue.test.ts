@@ -8,7 +8,7 @@ import { editions, members, project, projects, releases, submissions } from '../
 import { studentProjects } from '../../src/lib/server/student.js';
 import { trustId, type EditionId, type ProjectId, type ReleaseId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
-import { ALICE, BOB, TEACHER, claimsOf, config, uid } from './env.js';
+import { ALICE, ASSISTANT, BOB, TEACHER, claimsOf, config, uid } from './env.js';
 
 const sql = connect(config.databaseUrl);
 const ctx: Context = { config, sql, bucket: s3Bucket(config.s3) };
@@ -29,6 +29,17 @@ const status = async (p: Promise<unknown>): Promise<number> => {
     return 200;
   } catch (e) {
     if (isHttpError(e)) return e.status;
+    throw e;
+  }
+};
+
+/** The status and the sentence an HTTP error answered with. */
+const refused = async (p: Promise<unknown>): Promise<{ status: number; message: string }> => {
+  try {
+    await p;
+    return { status: 200, message: '' };
+  } catch (e) {
+    if (isHttpError(e)) return { status: e.status, message: e.body.message };
     throw e;
   }
 };
@@ -115,7 +126,9 @@ test('after the deadline a student still submits, and it reads as late; once the
   await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
   expect((await projects(ctx, claimsOf(ALICE), null)).some((p) => p.projectId === id)).toBe(false);
   expect(await status(project(ctx, claimsOf(ALICE), id))).toBe(404);
-  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10), null))).toBe(403);
+  const late = await refused(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10), null));
+  expect(late.status).toBe(403);
+  expect(late.message).toMatch(/^This project closed on \d{4}-\d\d-\d\d \d\d:\d\d UTC and no longer accepts submissions\.$/);
   const [still] = await submissions(ctx, claimsOf(ALICE), id, { latest: false, author: null });
   expect(still).toMatchObject({ submissionId: sent.submissionId, late: true });
   expect(await status(submissions(ctx, claimsOf(BOB), id, { latest: false, author: null }))).toBe(404);
@@ -153,4 +166,30 @@ test('a submission records the release it started from only when that release is
   expect(base(based)).toBe(ours.releaseId);
   expect(base(misplaced)).toBeNull();
   expect(base(invented)).toBeNull();
+});
+
+test('a refused submission says why to the people in the edition, and nothing new to anyone else', async () => {
+  const [e] = await editions(ctx, claimsOf(TEACHER));
+  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+    insert into project (edition_id, slug, title, kind)
+    values (${e?.editionId ?? ''}, ${`draft-${Date.now()}`}, 'A draft', 'rust-cargo')
+    returning project_id`);
+  const draft = trustId<ProjectId>(made?.project_id ?? '');
+  const open = await warmup();
+
+  expect(await refused(acceptSubmission(ctx, claimsOf(TEACHER), draft, zstd(30), null))).toEqual({
+    status: 403,
+    message: 'Only students enrolled in Introduction to Programming 2026 autumn can submit to this project; you are its owner.',
+  });
+  expect((await refused(acceptSubmission(ctx, claimsOf(ASSISTANT), open, zstd(31), null))).message).toMatch(/you are its assistant\.$/);
+  expect(await refused(acceptSubmission(ctx, claimsOf(ALICE), draft, zstd(32), null))).toEqual({
+    status: 403,
+    message: 'This project is not open for submissions yet; it has no opening date.',
+  });
+
+  const stranger = claimsOf('stranger@yukibana.local'); // no account, no enrolment
+  const nowhere = trustId<ProjectId>('00000000-0000-4000-8000-000000000000');
+  const generic = { status: 403, message: 'This project is not accepting submissions from you now.' };
+  expect(await refused(acceptSubmission(ctx, stranger, draft, zstd(33), null))).toEqual(generic);
+  expect(await refused(acceptSubmission(ctx, claimsOf(ALICE), nowhere, zstd(34), null))).toEqual(generic);
 });

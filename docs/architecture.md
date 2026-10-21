@@ -148,6 +148,10 @@ library function into a `.tar.zst` and posts it to
 `/api/projects/<id>/submissions`; the upload form on the project page ends
 in the same function, `acceptSubmission`. The Worker asks `app.can_submit`, so a closed window is refused before the
 upload is stored, writes the object, then inserts the row as the student.
+A refusal is a 403 whose sentence comes from `app.submit_refusal`: to
+someone in the edition it says whether they are staff, the project is not
+open yet, or it has closed; to anyone else it says only that the project is
+not accepting submissions from them.
 `submitted_at` and `author_id` are forced by a trigger; late is
 `submitted_at > deadline`, computed when read.
 
