@@ -25,6 +25,7 @@ export interface StudentProjectRow {
   readonly project_id: ProjectId;
   readonly edition_id: EditionId;
   readonly course_code: string;
+  /** The course name of the project's own edition, not the course's latest. */
   readonly course_title: string;
   readonly edition_label: string;
   readonly slug: string;

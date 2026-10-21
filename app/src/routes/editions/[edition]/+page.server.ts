@@ -2,7 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { uuidOf, type EditionId, type ProjectId } from '#lib/ids.ts';
 import { KINDS, type Kind } from '#lib/kinds.ts';
-import { asUser, statusOf } from '#lib/server/db.ts';
+import { asUser, clashOf, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { studentProjects } from '#lib/server/student.ts';
@@ -43,7 +43,7 @@ export const load: PageServerLoad = async (event) => {
   return withContext((ctx) =>
     asUser(ctx.sql, claims, async (tx) => {
       const [head] = await tx<{ edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
-        select e.edition_id, e.label, e.archived_at, c.code, c.title, app.role_in(e.edition_id)::text as role,
+        select e.edition_id, e.label, e.archived_at, c.code, coalesce(e.title, c.title) as title, app.role_in(e.edition_id)::text as role,
                app.may_edit_projects(e.edition_id) as can_edit
         from course_edition e join course c on c.course_id = e.course_id
         where e.edition_id = ${edition}`;
@@ -74,6 +74,16 @@ export const load: PageServerLoad = async (event) => {
 };
 
 const failing = (e: unknown) => fail(statusOf(e).status, { error: statusOf(e).message });
+
+/** The two names a person types here that another row may already have,
+ *  each refused in words about what they typed rather than the index's. */
+const clashing = (e: unknown, label: string, code: string) => {
+  switch (clashOf(e)) {
+    case 'course_edition_course_id_label_key': return fail(409, { error: `This course already has an edition called "${label}". Choose another label.` });
+    case 'course_code_key': return fail(409, { error: `Another course already has the code "${code}".` });
+    default: return failing(e);
+  }
+};
 
 export const actions: Actions = {
   /** A drop in the project list: `project` now sits after `after` and before
@@ -185,9 +195,37 @@ export const actions: Actions = {
         }),
       );
     } catch (e) {
-      return failing(e);
+      return clashing(e, label, '');
     }
     redirect(303, `/editions/${id}`);
+  },
+  /** The edition's label and course name, and the code its course is
+   *  listed under, from the Settings form. One transaction, so a code that
+   *  is taken leaves the names as they were too. The code is only written
+   *  when it changed: it is the course's, shared with editions this owner
+   *  may not be in, and the audit log should not show it set to itself. */
+  details: async (event) => {
+    const claims = requireClaims(event);
+    const edition = editionOf(event.params.edition);
+    const form = await event.request.formData();
+    const label = text(form, 'label');
+    const title = text(form, 'title');
+    const code = text(form, 'code');
+    if (label === '' || title === '' || code === '') return fail(400, { error: 'An edition needs a label, a course name and a course code.' });
+    try {
+      await withContext((ctx) =>
+        asUser(ctx.sql, claims, async (tx) => {
+          await tx`select app.update_edition(${edition}, ${label}, ${title})`;
+          const [course] = await tx<{ course_id: string; code: string }[]>`
+            select c.course_id, c.code from course_edition e join course c on c.course_id = e.course_id
+            where e.edition_id = ${edition}`;
+          if (course !== undefined && course.code !== code) await tx`select app.set_course_code(${course.course_id}, ${code})`;
+        }),
+      );
+    } catch (e) {
+      return clashing(e, label, code);
+    }
+    return { ok: true };
   },
   archive: async (event) => {
     const claims = requireClaims(event);

@@ -47,8 +47,12 @@ grading integrations would later have to fight:
 
 ## The model
 
-**Course → edition → project → submission.** A course is a name that groups
-editions; nearly everything hangs off an edition. A new edition is a copy of
+**Course → edition → project → submission.** A course is a code that groups
+editions; nearly everything hangs off an edition, including the course's
+name: each edition carries the name it ran under, its owners may change it,
+and where the page means the course rather than one edition it shows the
+latest edition's name (2026-10; until then a course's title was fixed at
+creation). A new edition is a copy of
 the previous one (`app.duplicate_edition`): projects and staff come along,
 students and dates do not. A project belongs to one edition; reusing an
 assignment next year is duplicating the edition, not sharing the project,
