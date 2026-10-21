@@ -27,7 +27,7 @@ export interface Accepted {
  *  `base` is the release the student's folder says it started from. It is
  *  their claim and decides nothing: the database keeps it only when it is a
  *  release of `project`, and records none otherwise (see
- *  20261021090000_release_ids_in_starters.sql), so a wrong id never costs a
+ *  20261021130000_release_ids_in_starters.sql), so a wrong id never costs a
  *  student their hand-in. */
 export async function acceptSubmission(ctx: Context, claims: Claims, project: ProjectId, body: Uint8Array, base: ReleaseId | null): Promise<Accepted> {
   if (body.byteLength === 0) error(400, 'The submission is empty.');
