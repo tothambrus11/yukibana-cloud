@@ -122,6 +122,11 @@ export interface Published {
 export interface AuthConfig {
   readonly supabaseUrl: string;
   readonly publishableKey: string;
+  /** The registry's OAuth client on that Auth server, through which a
+   *  loopback login goes by way of the website (`/auth/connect`). Null from
+   *  a registry that has none, or that is older than the field: the login
+   *  then goes to GitHub directly, as it always did. */
+  readonly oauthClientId: string | null;
 }
 
 /** A response that is not what this version expects. */
@@ -226,7 +231,7 @@ export function decodePublished(v: unknown, w = 'release'): Published {
 
 export function decodeAuthConfig(v: unknown, w = 'auth config'): AuthConfig {
   const o = obj(v, w);
-  return { supabaseUrl: str(o, 'supabaseUrl', w), publishableKey: str(o, 'publishableKey', w) };
+  return { supabaseUrl: str(o, 'supabaseUrl', w), publishableKey: str(o, 'publishableKey', w), oauthClientId: strOrNull(o, 'oauthClientId', w) };
 }
 
 export const decodeList = <T>(item: (v: unknown, where: string) => T, where: string) => (v: unknown): T[] => list(v, where, item);

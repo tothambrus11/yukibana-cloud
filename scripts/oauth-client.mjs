@@ -1,0 +1,59 @@
+// Registers the registry's OAuth client on Supabase Auth, once per
+// environment, and prints its id: the value of SUPABASE_OAUTH_CLIENT_ID.
+// Through it the CLI and the IDE log in by way of the website
+// (/auth/connect, app/src/lib/connect.ts). Idempotent: a client with this
+// name and this redirect URI already there is reused, not duplicated.
+//
+//   node scripts/oauth-client.mjs                      the local stack
+//   node scripts/oauth-client.mjs <auth url> <site>    another one; the
+//       secret key is read from SUPABASE_SECRET_KEY, never an argument
+//
+// The client is public (no secret: a CLI cannot keep one), may use the
+// authorization code and refresh token grants, and has exactly one
+// redirect URI, the site's /auth/connect/return. Auth matches it exactly.
+import { execFileSync } from "node:child_process";
+
+const NAME = "Yukibana IDE and CLI";
+
+let [authUrl, site] = process.argv.slice(2);
+let key = process.env.SUPABASE_SECRET_KEY;
+if (authUrl === undefined) {
+  const status = JSON.parse(
+    execFileSync("npx", ["--yes", "supabase", "status", "-o", "json"], { encoding: "utf8", shell: process.platform === "win32" }),
+  );
+  authUrl = status.API_URL;
+  key ??= status.SECRET_KEY ?? status.SERVICE_ROLE_KEY;
+  // The local site_url in supabase/config.toml, where `npm run dev` serves.
+  site ??= "http://127.0.0.1:5173";
+}
+if (site === undefined || key === undefined || key === "") {
+  console.error("usage: SUPABASE_SECRET_KEY=... node scripts/oauth-client.mjs <auth url> <site url>");
+  process.exit(2);
+}
+
+const redirect = `${new URL(site).origin}/auth/connect/return`;
+const headers = { apikey: key, authorization: `Bearer ${key}`, "content-type": "application/json" };
+const endpoint = new URL("/auth/v1/admin/oauth/clients", authUrl);
+
+async function call(method, body) {
+  const res = await fetch(endpoint, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  if (!res.ok) {
+    console.error(`${method} ${endpoint} answered ${res.status}: ${text}`);
+    console.error("Is [auth.oauth_server] enabled in supabase/config.toml, and the stack restarted since?");
+    process.exit(1);
+  }
+  return JSON.parse(text);
+}
+
+const { clients = [] } = await call("GET");
+const existing = clients.find((c) => c.client_name === NAME && (c.redirect_uris ?? []).includes(redirect));
+const client = existing ?? (await call("POST", {
+  client_name: NAME,
+  client_type: "public",
+  token_endpoint_auth_method: "none",
+  grant_types: ["authorization_code", "refresh_token"],
+  redirect_uris: [redirect],
+}));
+console.error(`${existing === undefined ? "registered" : "found"} "${NAME}" for ${redirect}`);
+console.log(client.client_id);

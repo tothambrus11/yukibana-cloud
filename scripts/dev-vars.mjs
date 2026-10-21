@@ -6,6 +6,7 @@
 //   node scripts/dev-vars.mjs
 import { execFileSync } from "node:child_process";
 import { existsSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const target = new URL("../.dev.vars", import.meta.url);
 if (existsSync(target)) {
@@ -19,12 +20,17 @@ const status = JSON.parse(
 // differs: the CLI already honours SUPABASE_SERVICES_HOSTNAME in its URLs,
 // and the bucket gets the same treatment.
 const host = process.env.SUPABASE_SERVICES_HOSTNAME ?? "127.0.0.1";
+// The OAuth client the CLI and the IDE log in through (scripts/oauth-client.mjs).
+// A `db reset` empties Auth's tables, so after one, delete this file and run
+// this again.
+const oauthClient = execFileSync(process.execPath, [fileURLToPath(new URL("./oauth-client.mjs", import.meta.url))], { encoding: "utf8" }).trim();
 const vars = [
   "# Written by `npm run dev:vars`. Local overrides for wrangler.jsonc,",
   "# which holds production values. Delete this file to regenerate it.",
   "",
   `SUPABASE_PUBLISHABLE_KEY=${status.PUBLISHABLE_KEY ?? status.ANON_KEY}`,
   `PUBLIC_SUPABASE_URL=${status.API_URL}`,
+  `SUPABASE_OAUTH_CLIENT_ID=${oauthClient}`,
   "",
   "# RustFS, from dev/compose.yml.",
   `S3_ENDPOINT=http://${host}:9000`,

@@ -51,6 +51,11 @@
     "S3_BUCKET": "yukibana-cloud",
     // R2 has one region and calls it "auto". RustFS locally wants a real name.
     "S3_REGION": "auto",
+    // The registry's OAuth client on Supabase Auth, through which the CLI and
+    // the IDE log in by way of the website (/auth/connect). Printed by
+    // `node scripts/oauth-client.mjs` (docs/deploy.md, step 7); not a secret.
+    // Empty: they log in with GitHub directly, as before.
+    "SUPABASE_OAUTH_CLIENT_ID": "",
     "SUBMISSION_MAX_BYTES": "33554432",
     // Two of these must fit one request under the platform's 100 MB body limit.
     "RELEASE_MAX_BYTES": "41943040"

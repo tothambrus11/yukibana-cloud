@@ -102,9 +102,12 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
 * **Clients reach Auth directly to log in, and the Worker for everything
   else.** A browser goes through GitHub or a mailed code and lands on
   `/auth/callback`, which stores the session in cookies. The CLI and the IDE
-  library do OAuth with PKCE against Supabase Auth through the system
-  browser, back to a listener on `127.0.0.1`, and then send the access token
-  as `Authorization: Bearer`. CI sends a project token instead.
+  library open `/auth/connect` in the system browser: the person logs in to
+  the website and confirms which account, Supabase Auth's OAuth 2.1 server
+  issues a PKCE-bound code for the registry's OAuth client, and the page
+  relays it to a listener on `127.0.0.1`. The CLI trades it for a session
+  of its own and sends the access token as `Authorization: Bearer`. CI
+  sends a project token instead.
 * **The Worker trusts a request only after Auth's keys say so.** The hook
   verifies the JWT (`getClaims`) on every request; a bearer header wins over
   cookies. Enrolling and publishing through the API demand a bearer, so a

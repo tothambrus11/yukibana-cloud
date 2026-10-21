@@ -3,7 +3,10 @@
  *  For a host whose backend runs where the browser does: the terminal, a
  *  desktop IDE. It listens on 127.0.0.1 on a port the system picks, hands
  *  the host the address to open, and waits for the browser to come back to
- *  `/callback`. An IDE served from another machine cannot use this (the
+ *  `/callback`. The address is the registry's `/auth/connect`, where the
+ *  person logs in to the website and confirms which account (see
+ *  `session.ts`); from a registry without an OAuth client, it is GitHub's
+ *  sign-in through the Auth server. An IDE served from another machine cannot use this (the
  *  browser's 127.0.0.1 is not the server's) and drives `startLogin` with a
  *  redirect of its own instead.
  *

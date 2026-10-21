@@ -116,6 +116,11 @@ export interface MemberJson {
 export interface AuthConfigJson {
   readonly supabaseUrl: string;
   readonly publishableKey: string;
+  /** The OAuth client a terminal or IDE logs in through, by way of
+   *  `/auth/connect` on this site; null when the registry has none, and a
+   *  CLI then logs in with GitHub directly. A CLI older than this field
+   *  ignores it and does the same. */
+  readonly oauthClientId: string | null;
 }
 
 /** Every refusal and failure under `/api/`, whatever the status and whatever

@@ -22,6 +22,13 @@ export interface Config {
   readonly databaseUrl: string;
   readonly supabaseUrl: string;
   readonly supabasePublishableKey: string;
+  /** The id of the registry's client on Supabase Auth's OAuth 2.1 server,
+   *  through which a terminal or an IDE logs in by way of the website
+   *  (`/auth/connect`, see #lib/connect). Not a secret: the client is
+   *  public, and PKCE is what protects its codes. Null where none is
+   *  registered: the CLI then falls back to logging in with GitHub
+   *  directly, as before. */
+  readonly oauthClientId: string | null;
   readonly s3: S3Config;
   /** The largest submission body the API accepts, whatever the project says. */
   readonly submissionMaxBytes: number;
@@ -43,6 +50,7 @@ export function configOf(env: Cloudflare.Env): Config {
     databaseUrl,
     supabaseUrl: text(env, 'PUBLIC_SUPABASE_URL'),
     supabasePublishableKey: text(env, 'SUPABASE_PUBLISHABLE_KEY'),
+    oauthClientId: typeof env['SUPABASE_OAUTH_CLIENT_ID'] === 'string' && env['SUPABASE_OAUTH_CLIENT_ID'] !== '' ? env['SUPABASE_OAUTH_CLIENT_ID'] : null,
     s3: {
       endpoint: text(env, 'S3_ENDPOINT'),
       publicEndpoint: typeof env['S3_PUBLIC_ENDPOINT'] === 'string' && env['S3_PUBLIC_ENDPOINT'] !== '' ? env['S3_PUBLIC_ENDPOINT'] : text(env, 'S3_ENDPOINT'),

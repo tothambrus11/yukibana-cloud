@@ -253,9 +253,11 @@ integration suite, squawk over migrations, the deploy and drift workflows.
   enough, enrolment by GitHub login is the next matching key
   (`app_user.github_login` already exists); it would be a second nullable
   column on `enrollment`, not a redesign.
-* **Code login from the CLI and the IDE.** `yukibana login` and the Theia
-  library go straight to GitHub (`authorizeUrl` in `cli/src/lib/pkce.ts`).
-  An account that only ever logged in by code has no way in there yet.
+* **Code login from the CLI and the IDE.** Settled (2026-10): they log in
+  through the website (`/auth/connect`), so by GitHub or by code, as the
+  account the person confirms there, by way of Supabase Auth's OAuth 2.1
+  server. A registry without the OAuth client still sends them straight to
+  GitHub (`authorizeUrl` in `cli/src/lib/pkce.ts`).
 * **Retention.** Addresses and submission bodies are personal data. Cascading
   deletes from `auth.users` would erase graded work; the schema restricts
   instead, and bucket lifecycle rules must agree with whatever the database

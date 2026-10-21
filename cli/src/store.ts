@@ -52,5 +52,6 @@ function isSession(v: unknown): v is Session {
   const o = v as Record<string, unknown>;
   return ['url', 'supabaseUrl', 'publishableKey', 'accessToken', 'refreshToken'].every((k) => typeof o[k] === 'string')
     && typeof o['expiresAt'] === 'number'
-    && (o['email'] === null || typeof o['email'] === 'string');
+    && (o['email'] === null || typeof o['email'] === 'string')
+    && (o['clientId'] === undefined || typeof o['clientId'] === 'string');
 }

@@ -19,7 +19,7 @@ is a working desktop client), and `CLAUDE.md` is how the code is written.
 | The app | SvelteKit in `app/`, one Cloudflare Worker on the free plan, Postgres through Hyperdrive as a role that can bypass no policy. |
 | The CLI | `cli/`: a teacher's `check`, `build`, `publish`, `download`, `assemble`; a student's `login`, `projects`, `starter`, `submit`. Also the library the Theia extension imports. `action/` wraps it as a GitHub Action. |
 | Files | Cloudflare R2 over S3 in production, RustFS over S3 locally. The database holds keys. |
-| Login | Supabase Auth: GitHub, or a one-time code by email, in the browser; GitHub from the CLI (`yukibana login`). Publishing from CI uses a per-project token instead. |
+| Login | Supabase Auth: GitHub, or a one-time code by email, in the browser. The CLI (`yukibana login`) and the IDE log in through the website, as the account the person confirms there. Publishing from CI uses a per-project token instead. |
 
 ## Start
 

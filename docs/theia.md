@@ -58,14 +58,30 @@ openInNewTab(pending.authorizeUrl);
 const session2 = await pending.finish(callbackUrl);
 ```
 
-It is OAuth with PKCE against the registry's Supabase Auth, with GitHub as
-the provider, the same identity as the website. The code the browser carries
-is useless without a verifier that never leaves the backend.
+With the loopback, the browser goes to the registry's own page,
+`/auth/connect`. The person logs in to the website there if they are not
+already (GitHub, or a code mailed to them), sees whom they are signed in as,
+and chooses: **Continue as** that account, **Use a different account** (which
+logs the website out in that browser and back to the login), or **Cancel**.
+Nothing reaches the loopback before they choose. Then Supabase Auth's OAuth
+2.1 server issues a code for the registry's OAuth client, the page hands it
+to the loopback, and the library trades it with the PKCE verifier, which
+never leaves the backend, for a session of the IDE's own: not the website's
+cookie session, so logging out of one leaves the other signed in.
+`Session.clientId` names the client; keep it with the rest of the session,
+because a refresh needs it. Nothing about the login is remembered on the
+loopback, and every login asks again.
 
-The redirect must be on the Auth server's allow list (`supabase/config.toml`,
-`additional_redirect_urls`, local and production). The loopback with any
-port is there already; a browser Theia's callback address has to be added
-there, and reaches production with the next deploy (`supabase config push`).
+A registry without an OAuth client (`/api/auth/config` says
+`oauthClientId: null`) and a redirect that is not the loopback (browser
+Theia's own route) log in the older way: OAuth with PKCE straight to GitHub
+through the Auth server. That redirect must be on the Auth server's allow
+list (`supabase/config.toml`, `additional_redirect_urls`, local and
+production); a browser Theia's callback address has to be added there, and
+reaches production with the next deploy (`supabase config push`).
+
+`logout(store)` ends only this session (`scope=local`): the website and the
+person's other machines stay signed in.
 
 If the IDE already has a Supabase session for the same project (one login for
 the IDE and Yukibana), skip all of this: hand its access token to the client.
