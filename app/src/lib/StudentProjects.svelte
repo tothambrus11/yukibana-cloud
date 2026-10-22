@@ -5,7 +5,11 @@
 
   /** A student's projects as a table: where they stand with each, when it is
    *  due, and the three ways to get on with it (the IDE, the starter, the
-   *  upload form). `showCourse` adds the course, for a list across editions. */
+   *  upload form). The IDE opens a project by fetching its starter, so the
+   *  IDE link and the download appear together, once a starter has been
+   *  released, as on the project's own page; offering the IDE alone once
+   *  sent students to a project it could not open. `showCourse` adds the
+   *  course, for a list across editions. */
   let { rows, showCourse = false, empty }: { rows: readonly StudentProjectRow[]; showCourse?: boolean; empty: string } = $props();
 
   // The clock the statuses are read against, taken again whenever the rows
@@ -44,8 +48,10 @@
             </td>
             <td>
               <div class="actions">
-                <a class="button" href={ideUrl(r.project_id)}>Open in IDE</a>
-                {#if r.starter_ready}<a class="button quiet" href="/api/projects/{r.project_id}/starter">Download</a>{/if}
+                {#if r.starter_ready}
+                  <a class="button" href={ideUrl(r.project_id)}>Open in IDE</a>
+                  <a class="button quiet" href="/api/projects/{r.project_id}/starter">Download</a>
+                {/if}
                 {#if r.can_submit}<a class="button quiet" href="{page(r)}#submit">Submit</a>{/if}
               </div>
             </td>
