@@ -8,17 +8,21 @@
   import type { ActionData, PageData } from './$types';
   let { data, form }: { data: PageData; form: ActionData } = $props();
   const p = $derived(data.project);
+  // Without a starter there is nothing to start from, so nothing to submit:
+  // the page leaves submissions out until one is released. Submissions that
+  // exist anyway (sent through the API before any release) stay visible.
+  const submissions = $derived(p.ready || data.submissions.length > 0);
   const tabs = $derived<Tab[]>(data.staff
     ? [
         { id: 'overview', label: 'Overview' },
-        { id: 'submissions', label: 'Submissions', count: data.submissions.length },
+        ...(submissions ? [{ id: 'submissions', label: 'Submissions', count: data.submissions.length }] : []),
         { id: 'releases', label: 'Releases', count: data.releases.length },
         ...(data.owner ? [{ id: 'tokens', label: 'Tokens' }] : []),
         ...(data.project.can_edit ? [{ id: 'settings', label: 'Settings' }] : []),
       ]
     : [
         { id: 'overview', label: 'Overview' },
-        { id: 'submissions', label: 'My submissions', count: data.submissions.length },
+        ...(submissions ? [{ id: 'submissions', label: 'My submissions', count: data.submissions.length }] : []),
       ]);
   const tab = $derived(tabOf(page.url, tabs));
   const pastDeadline = $derived(p.deadline !== null && new Date(p.deadline).getTime() <= Date.now());
@@ -76,18 +80,22 @@
       <div><strong>{when(p.deadline)}</strong><span>Deadline</span></div>
       <div><strong>{p.closes_at === null ? 'Never' : when(p.closes_at)}</strong><span>Closes</span></div>
     </div>
-    <p class="note">
-      Submissions after the deadline are accepted until the project closes, and are marked late.
-    </p>
+    {#if submissions}
+      <p class="note">
+        Submissions after the deadline are accepted until the project closes, and are marked late.
+      </p>
+    {/if}
   </section>
 
   {#if data.staff}
     <section>
       <h2>At a glance</h2>
       <div class="stats">
-        <div><strong>{data.submissions.length}</strong><span>Submissions</span></div>
-        <div><strong>{students}</strong><span>Students who submitted</span></div>
-        <div><strong>{late}</strong><span>Late submissions</span></div>
+        {#if submissions}
+          <div><strong>{data.submissions.length}</strong><span>Submissions</span></div>
+          <div><strong>{students}</strong><span>Students who submitted</span></div>
+          <div><strong>{late}</strong><span>Late submissions</span></div>
+        {/if}
         <div><strong>{data.releases.length}</strong><span>Releases</span></div>
       </div>
     </section>
@@ -106,7 +114,7 @@
     {/if}
   </section>
 
-  {#if !data.staff}
+  {#if !data.staff && p.ready}
     <section id="submit">
       <h2>Submit your solution</h2>
       {#if p.can_submit}
