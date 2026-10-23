@@ -31,6 +31,7 @@ CLI, for what a student must never receive and what a submission holds.
 | `hidden` | no | Globs of files the student never receives. Removed from the starter and from the starter's copy of this file; put back by an assembly. |
 | `submission.include` | no | When present, only matching paths are submitted (and `yukibana.json`, always). |
 | `submission.exclude` | no | Globs never submitted. |
+| `submission.respectGitignore` | no | Whether what the project's `.gitignore` files ignore is left out of a submission too, as git would leave it out of a commit. Default `true`. |
 | `submission.filename` | no | What `yukibana pack` calls the archive it writes (into a fresh folder under the system's temporary directory, unless told `--out`). Default `submission.tar.gz`. The bytes are always a gzipped tar, whatever the name. |
 | `submission.maxBytes` | no | The largest submission this project expects. Default 32 MiB; the registry has its own cap above which this cannot go. |
 | `projectId` | no | Written by `publish` (or `build --project`) into the starter's copy, so `yukibana submit` and the IDE know where a submission from that folder goes without the student choosing. A course repository leaves it out; a starter built without a project has none, and its students name the project when they submit. The registry does not trust it: a submission is accepted only where the student's enrolment allows. |
@@ -45,6 +46,12 @@ shipping the tests in silence.
 
 Never in any archive or submission, whatever the file says: `.git/`, and
 `.theia/`, because everything the IDE is set up with is declared here.
+Never in a submission either: `node_modules/`, at any depth, and the
+kind's build output (`target/` and the like). A submission leaves out what
+the project's `.gitignore` files ignore, unless
+`submission.respectGitignore` is `false`; `yukibana.json` always goes.
+The IDE and `yukibana submit` apply the same rules, through the same
+library function.
 
 ## What a release is
 

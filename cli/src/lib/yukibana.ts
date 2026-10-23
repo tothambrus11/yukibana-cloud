@@ -36,6 +36,9 @@ export interface SubmissionRules {
   /** Never submitted, on top of what is never submitted for any project
    *  (`NEVER_SUBMITTED`) and what the kind's build leaves (`buildOutput`). */
   readonly exclude: readonly string[];
+  /** `true` iff what the project's `.gitignore` files ignore is not
+   *  submitted either, as git would leave it out of a commit. */
+  readonly respectGitignore: boolean;
   /** What a packed submission is called on disk. Only a name: the bytes are
    *  always a gzipped tar, because that is what the registry accepts. */
   readonly filename: string;
@@ -90,8 +93,9 @@ export const IDE_STATE = '.theia';
 export const ALWAYS_EXCLUDED: readonly string[] = ['.git', '.github', IDE_STATE, CONFIG_FILE];
 
 /** What no submission carries, whatever the project says: a student's
- *  history is theirs and can be large, and the IDE's state is not work. */
-export const NEVER_SUBMITTED: readonly string[] = ['.git', IDE_STATE];
+ *  history is theirs and can be large, the IDE's state is not work, and
+ *  what a package manager installed is not the student's either. */
+export const NEVER_SUBMITTED: readonly string[] = ['.git', IDE_STATE, '**/node_modules'];
 
 /** What each build system leaves lying around that no archive carries,
  *  starter, teacher or submission. A teacher builds from their working
@@ -186,6 +190,8 @@ export function parseConfig(text: string): Parsed {
   if (typeof filename !== 'string' || filename === '' || /[/\\]/.test(filename)) {
     return bad('"submission.filename" must be a file name, without a directory');
   }
+  const respectGitignore = submission['respectGitignore'] ?? true;
+  if (typeof respectGitignore !== 'boolean') return bad('"submission.respectGitignore" must be true or false');
   const maxBytes = submission['maxBytes'] ?? DEFAULT_MAX_BYTES;
   if (typeof maxBytes !== 'number' || !Number.isInteger(maxBytes) || maxBytes <= 0) {
     return bad('"submission.maxBytes" must be a positive integer');
@@ -199,7 +205,7 @@ export function parseConfig(text: string): Parsed {
       kind: kind as Kind,
       hidden: lists.hidden,
       readOnly: lists.readOnly,
-      submission: { include, exclude, filename, maxBytes },
+      submission: { include, exclude, respectGitignore, filename, maxBytes },
       projectId,
       releaseId: releaseId === null ? null : releaseId.toLowerCase(),
       raw,
