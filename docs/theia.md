@@ -3,7 +3,7 @@
 What a student's IDE needs from Yukibana is four things: who the student is,
 which exercises are open to them, what a submission from their folder would
 hold, and a way to send it. All four are in `@yukibana/cli`'s library
-(`cli/src/library.ts`), whose dependencies are `modern-tar` and `uuid` (neither
+(`cli/src/library.ts`), whose dependencies are `modern-tar`, `uuid`, `ignore` and `zod` (none
 with dependencies of its own), and which runs wherever Node 22.15
 or later does: a Theia backend, an Electron main process, a VS Code
 extension host. `demo/electron` is a complete, small client built on it;
