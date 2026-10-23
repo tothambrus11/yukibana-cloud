@@ -7,7 +7,7 @@
  */
 
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, posix, resolve, sep } from 'node:path';
 import { submissionRoot } from './lib/assemble.js';
 import { escapes } from './lib/starter.js';
 import { readTar, type Entry } from './lib/tar.js';
@@ -112,10 +112,18 @@ export async function unpackStarter(archive: Uint8Array, folder: string): Promis
   try {
     return await writeEntries(root, entries);
   } catch (e) {
-    const written = created !== undefined ? [created] : [...new Set(entries.map((x) => join(root, x.path.replace(/\/.*/, ''))))];
+    const written = created !== undefined ? [created] : [...new Set(entries.map((x) => join(root, topLevel(x.path))))];
     const left: string[] = [];
     for (const path of written) await rm(path, { recursive: true, force: true }).catch(() => left.push(path));
     const why = e instanceof Error ? e.message : String(e);
     throw new Error(left.length === 0 ? why : `${why}; and could not remove what was written: ${left.join(', ')}`, { cause: e });
   }
+}
+
+/** Returns the first segment of `path`, an archive path: `src` for
+ *  `src/main.rs`, and `README.md` for itself. */
+function topLevel(path: string): string {
+  let top = path;
+  while (posix.dirname(top) !== '.') top = posix.dirname(top);
+  return top;
 }
