@@ -145,9 +145,14 @@ in `demo/electron/src/view.ts`; they are an example, not part of the library.
 
 ## The workspace
 
-`client.downloadStarter(projectId)` returns the starter archive;
-`readArchive` and `writeEntries` unpack it safely (nothing outside the
-target folder, no symlink out of it). The starter carries a `yukibana.json`
+`client.downloadStarter(projectId)` returns the starter archive, and
+`unpackStarter(archive, folder)` unpacks it into `folder`, which must be
+missing or empty. The host names that folder: the project's slug, or what
+the student typed. A starter is one folder; its contents go into `folder`
+and its name is ignored. Nothing is written outside `folder`, no link
+points out of it, and an unpack that fails leaves nothing behind.
+
+The starter carries a `yukibana.json`
 with the IDE's settings (`features`, `layout`, `openFiles`, `readOnly`) and
 the `projectId`, so the workspace knows where it submits to. `readOnly` is a
 list of globs: `matcher(config.readOnly)` from the library answers "is this

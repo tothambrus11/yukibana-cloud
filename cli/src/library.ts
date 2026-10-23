@@ -48,7 +48,7 @@ export {
 export { loginWithLoopback, type CallbackOutcome, type LoopbackOptions } from './loopback.js';
 export { loginCode } from './lib/pkce.js';
 export { fileStore, defaultSessionPath } from './store.js';
-export { readArchive, writeEntries } from './extract.js';
+export { readArchive, unpackStarter, writeEntries } from './extract.js';
 export { publish, type PublishInput } from './publish.js';
 export { assemble, submissionRoot, teacherRoot, tampered, type Assembled, type Assembly, type Tampering } from './lib/assemble.js';
 export { planSubmission, type Packing } from './lib/pack.js';
