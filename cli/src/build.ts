@@ -2,11 +2,11 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { v7 as uuidv7 } from 'uuid';
 import { gzip } from './lib/gzip.js';
 import { writeTar } from './lib/tar.js';
 import { planStarter, planTeacher } from './lib/starter.js';
 import type { Config } from './lib/yukibana.js';
-import { uuidv7 } from './lib/uuid.js';
 import { readTree } from './tree.js';
 
 export interface Built {
@@ -35,8 +35,8 @@ export async function build(dir: string, folder: string, projectId: string, rele
   const tree = await readTree(dir);
   const plan = planStarter(tree, folder, projectId, releaseId);
   if (plan.problems.length > 0 || plan.config === null) return { ok: false, problems: plan.problems };
-  const starter = await gzip(writeTar(plan.entries));
-  const teacher = await gzip(writeTar(planTeacher(tree, folder, plan.config)));
+  const starter = await gzip(await writeTar(plan.entries));
+  const teacher = await gzip(await writeTar(planTeacher(tree, folder, plan.config)));
   return { ok: true, built: { starter, teacher, config: plan.config, hidden: plan.hidden, warnings: plan.warnings, starterEntries: plan.entries.length - 1 } };
 }
 
@@ -52,7 +52,12 @@ export async function commitOf(dir: string): Promise<string | null> {
 }
 
 /** A fresh id for a release about to be built and published: chosen here,
- *  before the build, so the starter can carry it. */
+ *  before the build, so the starter can carry it. A UUIDv7 (RFC 9562), as
+ *  the database's `app.uuidv7()` makes, so it looks and sorts like an id the
+ *  database chose. Uniqueness comes from its random bits, not the clock, and
+ *  the database refuses a duplicate anyway; ordering between releases is
+ *  `project_release.seq`, never this id. Made by the `uuid` package, which
+ *  replaced a generator of our own (October 2026). */
 export function newReleaseId(): string {
-  return uuidv7(Date.now(), crypto.getRandomValues(new Uint8Array(10)));
+  return uuidv7();
 }

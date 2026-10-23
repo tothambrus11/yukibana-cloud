@@ -102,7 +102,7 @@ export function bundleOf(tree: readonly Entry[]): BundleResult {
       problems,
       totalBytes,
       read: (path) => byPath.get(path),
-      archive: () => (archived ??= zstd(writeTar(packing.entries))),
+      archive: () => (archived ??= writeTar(packing.entries).then(zstd)),
     },
   };
 }

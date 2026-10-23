@@ -35,5 +35,9 @@
     "oxlint-tsgolint": "^7.0.2001",
     "typescript": "^7.0.2",
     "vitest": "^5.0.4"
+  },
+  "dependencies": {
+    "modern-tar": "^0.8.6",
+    "uuid": "^14.0.3"
   }
 }
