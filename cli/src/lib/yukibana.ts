@@ -239,6 +239,7 @@ export const settingsSchema = z.object(settingsShape);
 
 /** The whole file: `settingsSchema` plus what a release is built from. */
 export const configSchema = z.object({
+  $schema: about(z.optional(z.string()), 'The URL of this schema, for an editor to check the file with. The IDE and the CLI ignore it.'),
   version: about(z.literal(1), 'The shape of this file. Always 1; a future shape gets a new number.'),
   kind: about(z.enum(KINDS),
     'The build system. Chooses the build output no archive carries and the manifest checks the build makes.'),

@@ -1,7 +1,7 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { configJSONSchema, SCHEMA_URL } from '../src/lib/yukibana.js';
+import { configJSONSchema, parseConfig, SCHEMA_URL } from '../src/lib/yukibana.js';
 
 test('the published JSON schema is the one the parser checks with, generated from it', async () => {
   const committed = await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8');
@@ -13,4 +13,10 @@ test('the schema says where it lives and what a file must have', () => {
   const schema = configJSONSchema();
   assert.equal(schema['$id'], SCHEMA_URL);
   assert.deepEqual(schema['required'], ['version', 'kind']);
+});
+
+test('a file that names the schema as $schema parses without a warning', () => {
+  const p = parseConfig(JSON.stringify({ $schema: SCHEMA_URL, version: 1, kind: 'rust-cargo' }));
+  assert.ok(p.ok);
+  assert.deepEqual(p.warnings, []);
 });
