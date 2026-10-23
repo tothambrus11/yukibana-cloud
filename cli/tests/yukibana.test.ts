@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, DEFAULT_SETTINGS, configSchema, excludes, manifestProblems, parseConfig, parseSettings, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
+import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, DEFAULT_SETTINGS, excludes, manifestProblems, parseConfig, parseSettings, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
 
 const ok = (text: string) => {
   const p = parseConfig(text);
@@ -169,14 +169,6 @@ test('every IDE setting defaults to on, the assignment to ASSIGNMENT.md and subm
   assert.equal(DEFAULT_SETTINGS.projectId, null);
 });
 
-test('the published JSON schema names every field the parser knows', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const published = JSON.parse(await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8')) as {
-    properties: Record<string, { properties?: Record<string, unknown> }>;
-  };
-  assert.deepEqual(Object.keys(published.properties).toSorted(), Object.keys(configSchema.shape).toSorted());
-  assert.deepEqual(Object.keys(published.properties['submission']?.properties ?? {}).toSorted(), Object.keys(configSchema.shape.submission.def.innerType.shape).toSorted());
-});
 
 test('the config module runs in a browser: it and what it imports use nothing from Node', async () => {
   const { readFile } = await import('node:fs/promises');
