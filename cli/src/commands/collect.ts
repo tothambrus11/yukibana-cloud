@@ -10,7 +10,7 @@ import { folderNames, stampOf } from '../lib/names.js';
 import type { Entry } from '../lib/tar.js';
 import type { Release, Submission } from '../lib/wire.js';
 import { CONFIG_FILE, parseConfig } from '../lib/yukibana.js';
-import { archiveExtension, isEmptyDir, readArchive, writeEntries } from '../extract.js';
+import { isEmptyDir, readArchive, writeEntries } from '../extract.js';
 import { readTree } from '../tree.js';
 import { select } from './browse.js';
 import { clientFor, fail, projectOf, studentsOf, type Invocation } from './common.js';
@@ -48,8 +48,7 @@ interface Downloaded {
  *  students (by name, GitHub login, address or id). `--assemble` overlays a
  *  release's read-only and hidden files and says what the student had
  *  changed of the release they started from; `--archive` keeps each
- *  archive as sent (a `.tar.gz`, or a `.tar.zst` from an older client)
- *  instead of unpacking. A student sees only their own
+ *  `.tar.gz` as sent instead of unpacking. A student sees only their own
  *  submissions, so the same command is how a student gets back what they
  *  sent.
  *
@@ -117,20 +116,14 @@ export async function download(inv: Invocation): Promise<void> {
     const name = folders.get(s.author.userId) ?? s.author.userId;
     const folder = versions ? join(name, versionFolders.get(s.submissionId) ?? s.submissionId) : name;
     try {
-      // An archive is named after its format, known only once downloaded.
-      const unpacked = join(out, folder);
-      if (o.archive !== true && !(await vacant(unpacked, o.force === true))) {
-        problems.push(`${unpacked} already exists; --force replaces it`);
+      const target = join(out, o.archive === true ? `${folder}.tar.gz` : folder);
+      if (!(await vacant(target, o.force === true))) {
+        problems.push(`${target} already exists; --force replaces it`);
         continue;
       }
       const archive = await client.downloadSubmission(s.submissionId);
       if (sha256Hex(archive) !== s.sha256) {
         problems.push(`${folder}: the download does not match the recorded sha256; not written`);
-        continue;
-      }
-      const target = o.archive === true ? `${unpacked}.${archiveExtension(archive) ?? 'tar.gz'}` : unpacked;
-      if (o.archive === true && !(await vacant(target, o.force === true))) {
-        problems.push(`${target} already exists; --force replaces it`);
         continue;
       }
       let tampering: Tampering | null = null;

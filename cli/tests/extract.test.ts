@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 import { lstat, mkdtemp, readFile, readlink, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { zstdCompressSync } from 'node:zlib';
-import { archiveExtension, readArchive, writeEntries } from '../src/extract.js';
+import { readArchive, writeEntries } from '../src/extract.js';
 import { gzip } from '../src/lib/gzip.js';
 import { writeTar, type Entry } from '../src/lib/tar.js';
 
@@ -33,11 +32,8 @@ test('unpacking a hostile submission writes nothing outside the folder and no li
   assert.equal(refused.length, 4);
 });
 
-test('a submission an older client compressed with zstd is still read', async () => {
+test('only a .tar.gz is read; a .tar.zst is refused', async () => {
   const tar = await writeTar([file('yukibana.json', '{}'), file('src/main.rs', 'fn main() {}')]);
-  const entries = await readArchive(new Uint8Array(zstdCompressSync(tar)));
-  assert.deepEqual(entries.map((e) => e.path), ['yukibana.json', 'src/main.rs']);
-  assert.equal(archiveExtension(new Uint8Array(zstdCompressSync(tar))), 'tar.zst');
-  assert.equal(archiveExtension(await gzip(tar)), 'tar.gz');
-  assert.equal(archiveExtension(new Uint8Array([0x50, 0x4b, 3, 4])), null);
+  assert.deepEqual((await readArchive(await gzip(tar))).map((e) => e.path), ['yukibana.json', 'src/main.rs']);
+  await assert.rejects(readArchive(new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0])), /not a \.tar\.gz/);
 });

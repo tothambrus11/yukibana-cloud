@@ -129,8 +129,7 @@ export class YukibanaClient {
     return publish({ url: this.origin, token: await this.#token(), projectId: project, releaseId: release, starter, teacher, label, commit }, this.#fetch);
   }
 
-  /** A submission's archive, as sent: a `.tar.gz`, or a `.tar.zst` from an
-   *  older client. */
+  /** A submission's archive, as sent (a `.tar.gz`). */
   downloadSubmission(submission: string): Promise<Uint8Array> {
     return this.#download(`/api/submissions/${seg(submission)}`);
   }

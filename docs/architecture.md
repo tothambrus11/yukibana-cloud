@@ -48,7 +48,7 @@ holds **projects**, a project has **releases** and **submissions**.
 
 Object keys are `starters/<project>/<uuid>.tar.gz`,
 `teacher/<project>/<uuid>.tar.gz` and `submissions/<submission>.tar.gz`
-(`.tar.zst` for submissions older clients sent; `app/src/lib/ids.ts`).
+(`app/src/lib/ids.ts`).
 
 ### Inside the Worker
 
@@ -135,8 +135,7 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
 * **The CLI and the registry share nothing but the HTTP API.** The archives
   are made by the CLI before they arrive, by pure functions in `cli/src/lib`;
   the registry checks they are gzip and under a cap, and stores them
-  without opening them. Every archive is a `.tar.gz`; submissions from
-  clients older than October 2026 are `.tar.zst` and still accepted.
+  without opening them. Every archive is a `.tar.gz`.
 
 ### The flows that cross every element
 

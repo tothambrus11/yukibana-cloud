@@ -15,10 +15,8 @@ const sql = connect(config.databaseUrl);
 const ctx: Context = { config, sql, bucket: s3Bucket(config.s3) };
 afterAll(() => sql.end({ timeout: 5 }));
 
-// The registry checks the first bytes and nothing else: a gzip member, or a
-// zstandard frame from an older client.
+// The registry checks the gzip magic number and nothing else.
 const gz = (n: number) => new Uint8Array([0x1f, 0x8b, n]);
-const zstd = (n: number) => new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, n]);
 
 async function warmup(): Promise<ProjectId> {
   const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`select project_id from project where slug = 'warmup'`);
@@ -39,14 +37,9 @@ const outcome = async (p: Promise<unknown>): Promise<{ status: number; message: 
 };
 const status = async (p: Promise<unknown>): Promise<number> => (await outcome(p)).status;
 
-test('a submission is stored as a .tar.gz, and one an older client sent as a .tar.zst keeps that name', async () => {
+test('a submission is a .tar.gz; anything else, a .tar.zst included, is refused before it is stored', async () => {
   const id = await warmup();
-  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(60), null);
-  const older = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(61), null);
-  const keys = await asUser(sql, claimsOf(ALICE), (tx) => tx<{ submission_id: string; object_key: string }[]>`
-    select submission_id, object_key from submission where submission_id in (${sent.submissionId}, ${older.submissionId})`);
-  expect(keys.find((k) => k.submission_id === sent.submissionId)?.object_key).toMatch(/\.tar\.gz$/);
-  expect(keys.find((k) => k.submission_id === older.submissionId)?.object_key).toMatch(/\.tar\.zst$/);
+  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0]), null))).toBe(415);
   expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, new Uint8Array([0x50, 0x4b, 3, 4]), null))).toBe(415);
 });
 

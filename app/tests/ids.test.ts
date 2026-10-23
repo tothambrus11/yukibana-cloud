@@ -15,8 +15,7 @@ test('object keys say what they hold', () => {
   const s = uuidOf<SubmissionId>('01a0b47d-e9ed-7340-93b5-ef8247900e23') as SubmissionId;
   assert.equal(starterKey(p, 'obj'), 'starters/01a0b47d-e9ec-717b-859d-bb6ecd7cfd22/obj.tar.gz');
   assert.equal(teacherKey(p, 'obj'), 'teacher/01a0b47d-e9ec-717b-859d-bb6ecd7cfd22/obj.tar.gz');
-  assert.equal(submissionKey(s, 'gzip'), 'submissions/01a0b47d-e9ed-7340-93b5-ef8247900e23.tar.gz');
-  assert.equal(submissionKey(s, 'zstd'), 'submissions/01a0b47d-e9ed-7340-93b5-ef8247900e23.tar.zst', 'as an older client sent it');
+  assert.equal(submissionKey(s), 'submissions/01a0b47d-e9ed-7340-93b5-ef8247900e23.tar.gz');
 });
 
 test('claims come only from a token that names an authenticated person', () => {

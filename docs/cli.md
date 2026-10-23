@@ -42,7 +42,7 @@ request as you, and the database's policies decide.
 | `  --student-submissions who` | some students' submissions: a name, GitHub login, address or user id (repeatable; `--student` is the old name and still works, with a warning) |
 | `  --assemble` | overlay a release's read-only and hidden files and report what the student changed of the release they started from |
 | `  --release id\|newest` | with `--assemble`: which release to overlay. By default each submission's own (the newest when unknown); an id must be one of the project's releases |
-| `  --archive` | keep each archive as sent (`.tar.gz`, or `.tar.zst` from an older client) |
+| `  --archive` | keep each `.tar.gz` as sent |
 | `assemble <submission> --teacher <archive or dir> --out dir` | the same from files already here |
 | `check`, `build`, `publish [dir]` | a teacher's release, as before; `publish` takes a project token or your login |
 | `enrol`, `unenrol <edition> <email>...` | owners |
