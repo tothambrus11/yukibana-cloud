@@ -146,6 +146,11 @@
             "type": "string"
           }
         },
+        "respectGitignore": {
+          "description": "Whether what the project's .gitignore files ignore is left out of a submission too.",
+          "type": "boolean",
+          "default": true
+        },
         "filename": {
           "description": "What a packed submission is called on disk. The registry accepts a gzipped tar, whatever the name says.",
           "default": "submission.tar.gz",
