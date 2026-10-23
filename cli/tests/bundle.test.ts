@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bundleOf, createSubmissionBundle } from '../src/bundle.js';
+import { readTree } from '../src/tree.js';
 import { readArchive } from '../src/extract.js';
 import type { Entry } from '../src/lib/tar.js';
 
@@ -22,7 +23,7 @@ test('a bundle lists what would be sent and leaves out history, IDE state, build
   assert.ok(made.ok);
   const { bundle } = made;
   assert.deepEqual(bundle.files.map((f) => f.path), ['yukibana.json', 'build.sbt', 'src/Main.scala']);
-  assert.deepEqual(bundle.skipped.toSorted(), ['.git/HEAD', '.metals/db', '.theia/settings.json', 'notes', 'target/x.class']);
+  assert.deepEqual(bundle.skipped.toSorted(), ['.git/', '.metals/', '.theia/', 'notes', 'target/'], 'a folder left out whole is listed once');
   assert.equal(bundle.projectId, 'p-1');
   assert.deepEqual(bundle.problems, []);
   assert.equal(new TextDecoder().decode(bundle.read('src/Main.scala')), 'object Main', 'a preview reads the bytes that will be sent');
@@ -66,4 +67,50 @@ test('a bundle is made from a folder on disk the same way', async () => {
   const made = await createSubmissionBundle(root);
   assert.ok(made.ok);
   assert.deepEqual(made.bundle.files.map((f) => f.path), ['src/lib.rs', 'yukibana.json']);
+});
+
+test('what the .gitignore files of a project ignore is not submitted, a deeper file overriding a shallower one', () => {
+  const made = bundleOf([
+    config(), file('.gitignore', '*.log\nbuild/\n'), file('a.log', ''), dir('build'), file('build/out', ''),
+    dir('src'), file('src/.gitignore', '!keep.log\nscratch.txt\n'), file('src/keep.log', 'k'), file('src/scratch.txt', ''), file('src/Main.scala', ''),
+  ]);
+  assert.ok(made.ok);
+  assert.deepEqual(made.bundle.files.map((f) => f.path), ['yukibana.json', '.gitignore', 'src/.gitignore', 'src/keep.log', 'src/Main.scala']);
+  assert.deepEqual(made.bundle.skipped.toSorted(), ['a.log', 'build/', 'src/scratch.txt']);
+});
+
+test('a project that turns respectGitignore off submits what .gitignore names, but never node_modules, at any depth', () => {
+  const made = bundleOf([
+    config({ submission: { respectGitignore: false } }), file('.gitignore', '*.log\n'), file('a.log', 'a'),
+    dir('node_modules'), file('node_modules/x.js', ''), dir('web'), dir('web/node_modules'), file('web/node_modules/y.js', ''),
+  ]);
+  assert.ok(made.ok);
+  assert.deepEqual(made.bundle.files.map((f) => f.path), ['yukibana.json', '.gitignore', 'a.log']);
+  assert.deepEqual(made.bundle.skipped, ['node_modules/', 'web/node_modules/']);
+});
+
+test('yukibana.json is submitted even when a .gitignore names it', () => {
+  const made = bundleOf([config(), file('.gitignore', '*.json\n')]);
+  assert.ok(made.ok);
+  assert.deepEqual(made.bundle.files.map((f) => f.path), ['yukibana.json', '.gitignore']);
+});
+
+test('a folder on disk that the rules leave out is never entered, and the bundle is the same as from memory', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'yukibana-bundle-'));
+  await writeFile(join(root, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'rust-cargo', projectId: 'p-3' }));
+  await writeFile(join(root, '.gitignore'), 'scratch/\n');
+  await mkdir(join(root, 'scratch/deep'), { recursive: true });
+  await writeFile(join(root, 'scratch/deep/big.bin'), 'x');
+  await mkdir(join(root, 'target'));
+  await writeFile(join(root, 'target/junk'), 'x');
+  const fromDisk = await createSubmissionBundle(root);
+  const fromMemory = bundleOf(await readTree(root));
+  assert.ok(fromDisk.ok && fromMemory.ok);
+  assert.deepEqual(fromDisk.bundle.files, fromMemory.bundle.files);
+  assert.deepEqual(fromDisk.bundle.skipped, fromMemory.bundle.skipped);
+  assert.deepEqual(fromDisk.bundle.skipped, ['scratch/', 'target/']);
+
+  const seen: string[] = [];
+  await readTree(root, { skip: (path) => { seen.push(path); return path === 'scratch'; } });
+  assert.ok(!seen.some((p) => p.startsWith('scratch/')), 'nothing in a skipped folder is even looked at');
 });

@@ -16,6 +16,11 @@
         "scala-sbt"
       ]
     },
+    "assignmentFile": {
+      "description": "The file the IDE opens as the assignment, relative to the project root.",
+      "default": "ASSIGNMENT.md",
+      "type": "string"
+    },
     "features": {
       "default": {},
       "type": "object",
@@ -145,6 +150,16 @@
           "items": {
             "type": "string"
           }
+        },
+        "respectGitignore": {
+          "description": "Whether what the project's .gitignore files ignore is left out of a submission too.",
+          "type": "boolean",
+          "default": true
+        },
+        "target": {
+          "description": "Where the IDE sends a submission: cloud, the registry, or file, an archive the student saves. The CLI always sends to the registry.",
+          "default": "cloud",
+          "type": "string"
         },
         "filename": {
           "description": "What a packed submission is called on disk. The registry accepts a gzipped tar, whatever the name says.",
