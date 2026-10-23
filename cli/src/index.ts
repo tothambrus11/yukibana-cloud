@@ -30,7 +30,7 @@ const USAGE = `usage: yukibana <command> [arguments] [options]
 
   students
     starter <project> [--out <dir>]     download and unpack the starter
-    pack [<dir>] [--out <file>]         write what submit would send, and list it
+    pack [<dir>] [--out <file>]         write what submit would send (to a temp folder), and list it
     submit [<dir>] [--yes]              list what would be sent, ask, send
 
   teachers

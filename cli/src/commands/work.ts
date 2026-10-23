@@ -1,7 +1,8 @@
 /** A student's commands: get the starter, look at what would be submitted,
  *  submit it. The same bundle the IDE extension previews. */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { createSubmissionBundle, type SubmissionBundle } from '../bundle.js';
@@ -37,14 +38,20 @@ function preview(bundle: SubmissionBundle): void {
 }
 
 /** `pack [dir] [--out file]`: the archive `submit` would send, written to
- *  disk, for the project page's upload form or for a look inside. */
+ *  disk, for the project page's upload form or for a look inside. Without
+ *  `--out` it goes into a new folder of its own under the system's
+ *  temporary directory, named `submission.filename`. It used to be written
+ *  into the project, where nothing excluded it, so the next submission
+ *  carried the last one inside it. `submit` writes nothing at all. */
 export async function pack(inv: Invocation): Promise<void> {
   const bundle = await bundleIn(resolve(inv.args[0] ?? '.'));
   preview(bundle);
   if (bundle.problems.length > 0) fail('not packed: fix the problems above');
   const archive = await bundle.archive();
-  const out = resolve(inv.options.out ?? bundle.config.submission.filename);
-  await writeFile(out, archive);
+  const out = inv.options.out === undefined
+    ? join(await mkdtemp(join(tmpdir(), 'yukibana-pack-')), bundle.config.submission.filename)
+    : resolve(inv.options.out);
+  await save(out, archive);
   console.log(`wrote ${out}: ${bytes(archive.byteLength)}, sha256 ${sha256Hex(archive)}`);
 }
 

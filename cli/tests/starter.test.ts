@@ -11,7 +11,7 @@ const dir = (path: string): Entry => ({ path, type: 'dir', mode: 0o755, mtime: 1
 
 async function fixture(): Promise<Entry[]> {
   const bytes = readFileSync(new URL('./fixtures/repo.tar.gz', import.meta.url));
-  return unwrap(readTar(await gunzip(new Uint8Array(bytes))));
+  return unwrap(await readTar(await gunzip(new Uint8Array(bytes))));
 }
 
 test('the starter keeps the sources and drops the hidden tests, the CI, the build output and the history', async () => {

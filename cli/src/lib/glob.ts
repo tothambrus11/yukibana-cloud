@@ -6,6 +6,15 @@
  *  everything under it, so `tests/hidden` and `tests/hidden/**` hide the same
  *  files. There is no negation and no brace expansion: the point of the file
  *  is to be read by a teacher in a hurry.
+ *
+ *  This is ours rather than a library's on purpose (October 2026): it is
+ *  0.4 KB gzipped in a bundle. picomatch keeps these rules with five
+ *  options (`dot`, `nobrace`, `noextglob`, `nonegate`, `literalBrackets`)
+ *  but is 9 KB, because what the options turn off is still in its parser.
+ *  zeptomatch (3.5 KB) and Node's `path.matchesGlob` cannot turn off braces,
+ *  brackets or negation, and both skip dotfiles: `tests/*` would stop
+ *  hiding `tests/.secret.rs`. fast-glob walks a filesystem, which this never
+ *  does; the paths come from a tree or an archive in memory.
  */
 
 /** The regular expression for one pattern, anchored to the whole path. */
