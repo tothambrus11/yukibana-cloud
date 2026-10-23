@@ -17,6 +17,13 @@
     },
     "./package.json": "./package.json"
   },
+  "typesVersions": {
+    "*": {
+      "config": [
+        "dist/lib/yukibana.d.ts"
+      ]
+    }
+  },
   "bin": {
     "yukibana": "dist/index.js"
   },
