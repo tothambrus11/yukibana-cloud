@@ -30,6 +30,7 @@ import * as z from 'zod/mini';
 // zod/mini spells it _default, since default is a keyword.
 import { _default as withDefault } from 'zod/mini';
 import { matcher } from './glob.js';
+import { expectation, fieldOf } from './issues.js';
 
 /** The file's name, at the project root, in the repository and in every
  *  starter. */
@@ -183,10 +184,10 @@ export function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
-const bool = z.boolean({ error: 'must be true or false' });
+const bool = z.boolean();
 const on = withDefault(bool, true);
-const flags = z.record(z.string(), bool, { error: 'must be an object of true and false' });
-const paths = z.array(z.string({ error: 'must be a list of paths' }), { error: 'must be a list of paths' });
+const flags = z.record(z.string(), bool);
+const paths = z.array(z.string());
 /** A list of globs relative to the project root. */
 const globs = paths.check(
   z.refine((list: string[]) => list.every((s) => s !== ''), 'must be a list of paths'),
@@ -198,19 +199,19 @@ const about = <T extends z.ZodMiniType>(schema: T, text: string): T => schema.ch
 
 /** The fields of `Settings`, as the file spells them, with their defaults. */
 const settingsShape = {
-  assignmentFile: about(withDefault(z.string({ error: 'must be a path' }), 'ASSIGNMENT.md'),
+  assignmentFile: about(withDefault(z.string(), 'ASSIGNMENT.md'),
     'The file the IDE opens as the assignment, relative to the project root.'),
   features: about(z.prefault(z.object({
     codeSuggestions: about(on, 'Code completion in the editor.'),
     squiggles: about(on, 'Error and warning underlines in the editor.'),
     ai: about(on, 'The IDE\'s AI features.'),
-  }, { error: 'must be an object of true and false' }), {}), 'Which of the IDE\'s helpers are on; each is on unless set false.'),
+  }), {}), 'Which of the IDE\'s helpers are on; each is on unless set false.'),
   layout: about(z.prefault(z.object({
-    widgets: about(z.prefault(z.object({ files: on, search: on, vcs: on, debug: on, testing: on, outline: on, aiChat: on }, { error: 'must be an object of true and false' }), {}),
+    widgets: about(z.prefault(z.object({ files: on, search: on, vcs: on, debug: on, testing: on, outline: on, aiChat: on }), {}),
       'Which of the IDE\'s views show; each shows unless set false.'),
     containers: about(withDefault(flags, {}), 'View containers by id, shown if true and hidden if false; one not named is left as it is.'),
     views: about(withDefault(flags, {}), 'Views by id, shown if true and hidden if false; one not named is left as it is.'),
-  }, { error: 'must be an object' }), {}), 'How the IDE lays out the project\'s window.'),
+  }), {}), 'How the IDE lays out the project\'s window.'),
   openFiles: about(withDefault(paths, []), 'Files the IDE opens when the project opens, relative to the project root.'),
   readOnly: about(withDefault(globs, []),
     'Globs of files the student receives but may not change. When a teacher assembles a submission, whatever the student sent under these paths is replaced by the teacher\'s version, and every change is reported.'),
@@ -218,16 +219,16 @@ const settingsShape = {
     include: about(withDefault(z.nullable(globs), null), 'When present, only paths matching these globs are submitted, and yukibana.json always.'),
     exclude: about(withDefault(globs, []), 'Globs never submitted, on top of the history, the IDE\'s state, node_modules and the kind\'s build output, which never are.'),
     respectGitignore: about(withDefault(bool, true), 'Whether what the project\'s .gitignore files ignore is left out of a submission too, as git would leave it out of a commit.'),
-    target: about(withDefault(z.string({ error: 'must be a submission target' }), 'cloud'),
+    target: about(withDefault(z.string(), 'cloud'),
       'Where the IDE sends a submission: cloud, the registry, or file, an archive the student saves. The CLI always sends to the registry.'),
-    filename: about(withDefault(z.string({ error: 'must be a file name, without a directory' }).check(
+    filename: about(withDefault(z.string().check(
       z.refine((name: string) => name !== '' && !/[/\\]/.test(name), 'must be a file name, without a directory'),
     ), DEFAULT_FILENAME), 'What yukibana pack calls the archive it writes. The bytes are always a gzipped tar, whatever the name says.'),
-    maxBytes: about(withDefault(z.number({ error: 'must be a positive integer' }).check(
-      z.int({ error: 'must be a positive integer' }), z.positive({ error: 'must be a positive integer' }),
+    maxBytes: about(withDefault(z.number().check(
+      z.int(), z.positive(),
     ), DEFAULT_MAX_BYTES), 'The largest submission this project expects, in bytes. The registry has its own cap above which this cannot go.'),
-  }, { error: 'must be an object' }), {}), 'What a submission from this folder holds, and where the IDE sends it.'),
-  projectId: about(withDefault(z.nullable(z.string({ error: 'must be a project id' }).check(z.minLength(1, 'must be a project id'))), null),
+  }), {}), 'What a submission from this folder holds, and where the IDE sends it.'),
+  projectId: about(withDefault(z.nullable(z.string().check(z.minLength(1))), null),
     'Written by yukibana build and publish into the starter\'s copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.'),
 };
 
@@ -237,12 +238,12 @@ export const settingsSchema = z.object(settingsShape);
 
 /** The whole file: `settingsSchema` plus what a release is built from. */
 export const configSchema = z.object({
-  version: about(z.literal(1, { error: 'must be 1' }), 'The shape of this file. Always 1; a future shape gets a new number.'),
-  kind: about(z.enum(KINDS, { error: `must be one of ${KINDS.join(', ')}` }),
+  version: about(z.literal(1), 'The shape of this file. Always 1; a future shape gets a new number.'),
+  kind: about(z.enum(KINDS),
     'The build system. Chooses the build output no archive carries and the manifest checks the build makes.'),
   hidden: about(withDefault(globs, []),
     'Globs of files the student never receives: removed from the starter, and from the starter\'s copy of this file. When a teacher assembles a submission they are put back from the teacher\'s version, like readOnly. A pattern naming a directory covers everything under it; * stays within a path segment, ** crosses segments, ? is one character.'),
-  releaseId: about(withDefault(z.nullable(z.string({ error: 'must be a release id, a uuid' }).check(z.refine(isUuid, 'must be a release id, a uuid'))), null),
+  releaseId: about(withDefault(z.nullable(z.string().check(z.refine(isUuid, 'must be a release id, a uuid'))), null),
     'Written by yukibana build and publish into the starter\'s copy of this file: the release this starter is, chosen before the upload so the release row has the same id. A submission sends it, so a teacher can tell which release it started from. A course repository leaves it out.'),
   ...settingsShape,
 });
@@ -276,9 +277,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
  *  the teacher reads it and fixes the file. */
 function sentence(issues: readonly z.core.$ZodIssue[]): string {
   const issue = issues[0];
-  const field = issue?.path.filter((p) => typeof p === 'string').join('.') ?? '';
-  const what = issue?.message ?? 'is not valid';
-  return field === '' ? `${CONFIG_FILE} ${what}` : `${CONFIG_FILE}: "${field}" ${what}`;
+  if (issue === undefined) return `${CONFIG_FILE} is not valid`;
+  const field = fieldOf(issue.path);
+  return field === '' ? `${CONFIG_FILE} ${expectation(issue)}` : `${CONFIG_FILE}: "${field}" ${expectation(issue)}`;
 }
 
 /** Returns `text` as a JSON object, or why it is not one. */

@@ -11,6 +11,7 @@
 import * as z from 'zod/mini';
 // zod/mini spells it _default, since default is a keyword.
 import { _default as withDefault } from 'zod/mini';
+import { fieldOf, nameOf } from './issues.js';
 
 export type EditionRole = 'student' | 'assistant' | 'owner';
 
@@ -168,9 +169,6 @@ const archive = z.object({ size: count, sha256: text });
 const published = z.object({ releaseId: text, starter: archive, teacher: archive });
 const authConfig = z.object({ supabaseUrl: text, publishableKey: text, oauthClientId: maybeText, siteUrl: maybeText });
 
-/** What a value of each JSON type is called in a sentence. */
-const NAMES: Readonly<Record<string, string>> = { string: 'text', number: 'a number', boolean: 'true or false', object: 'an object', array: 'a list' };
-
 /** Returns `v` as `schema` says, or throws `Unexpected` with a sentence
  *  naming the field, from `where` down, and what came instead: "the
  *  registry answered submissions[0].byteSize as string, not a number". */
@@ -179,11 +177,11 @@ function decode<T>(schema: z.ZodMiniType<T>, v: unknown, where: string): T {
   if (parsed.success) return parsed.data;
   const issue = parsed.error.issues[0];
   const path = issue?.path ?? [];
-  const field = [where, ...path].map((p) => (typeof p === 'number' ? `[${p}]` : `.${String(p)}`)).join('').slice(1);
+  const field = fieldOf(path, where);
   const got = path.reduce<unknown>((o, k) => (typeof o === 'object' && o !== null ? (o as Record<PropertyKey, unknown>)[k] : undefined), v);
   if (issue?.code === 'invalid_value') throw new Unexpected(`the registry answered ${field} as ${JSON.stringify(got)}, not a role`);
   const expected = issue?.code === 'invalid_type' ? issue.expected : 'value';
-  const name = NAMES[expected] ?? expected;
+  const name = nameOf(expected);
   throw new Unexpected(expected === 'object' || expected === 'array'
     ? `the registry answered ${field} as something other than ${name}`
     : `the registry answered ${field} as ${typeof got}, not ${name}`);

@@ -31,7 +31,7 @@ test('every rejection names the field the teacher has to fix', () => {
   assert.match(bad('{"version":1,"kind":"rust-cargo","readOnly":"README.md"}'), /"readOnly" must be a list/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","features":{"ai":"no"}}'), /"features.ai" must be true or false/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","layout":{"widgets":{"files":1}}}'), /"layout.widgets.files" must be true or false/);
-  assert.match(bad('{"version":1,"kind":"rust-cargo","openFiles":[1]}'), /"openFiles" must be a list of paths/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","openFiles":[1]}'), /"openFiles\[0\]" must be text/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"exclude":["/abs"]}}'), /"submission.exclude" paths are relative/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"filename":"a/b.tar.gz"}}'), /"submission.filename"/);
 });
@@ -168,13 +168,14 @@ test('every IDE setting defaults to on, the assignment to ASSIGNMENT.md and subm
   assert.equal(DEFAULT_SETTINGS.submission.respectGitignore, true);
   assert.equal(DEFAULT_SETTINGS.projectId, null);
 });
-
+
+
 
 test('the config module runs in a browser: it and what it imports use nothing from Node', async () => {
   const { readFile } = await import('node:fs/promises');
-  for (const file of ['../src/lib/yukibana.ts', '../src/lib/glob.ts']) {
+  for (const file of ['../src/lib/yukibana.ts', '../src/lib/glob.ts', '../src/lib/issues.ts']) {
     const source = await readFile(new URL(file, import.meta.url), 'utf8');
     const imports = [...source.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
-    assert.deepEqual(imports.filter((i) => i !== 'zod/mini' && i !== './glob.js'), [], `${file} imports only zod and the glob matcher`);
+    assert.deepEqual(imports.filter((i) => !['zod/mini', './glob.js', './issues.js'].includes(i ?? '')), [], `${file} imports only zod and its own modules`);
   }
 });
