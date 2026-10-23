@@ -26,12 +26,14 @@ CLI, for what a student must never receive and what a submission holds.
 | --- | --- | --- |
 | `version` | yes | Always `1` for now. A future shape gets a new number, not a silent reinterpretation. |
 | `kind` | yes | `rust-cargo` or `scala-sbt`. Chooses the build output no archive carries (`target/`, `project/target/`, `.bsp`, `.metals`, …) and the manifest checks below. |
-| `features`, `layout`, `openFiles` | no | For the IDE. Checked for their types and copied into the starter as they are. |
+| `assignmentFile` | no | The file the IDE opens as the assignment. Default `ASSIGNMENT.md`. |
+| `features`, `layout`, `openFiles` | no | For the IDE: which helpers are on, which views show, which files open. Everything is on unless set `false`. Checked, and copied into the starter as written. |
 | `readOnly` | no | Globs of files the student receives and may not change. The IDE stops them being edited; an assembly replaces whatever a submission holds under them with the teacher's version, and reports every change. |
 | `hidden` | no | Globs of files the student never receives. Removed from the starter and from the starter's copy of this file; put back by an assembly. |
 | `submission.include` | no | When present, only matching paths are submitted (and `yukibana.json`, always). |
 | `submission.exclude` | no | Globs never submitted. |
 | `submission.respectGitignore` | no | Whether what the project's `.gitignore` files ignore is left out of a submission too, as git would leave it out of a commit. Default `true`. |
+| `submission.target` | no | Where the IDE sends a submission: `cloud`, the registry (the default), or `file`, an archive the student saves. The CLI always sends to the registry. |
 | `submission.filename` | no | What `yukibana pack` calls the archive it writes (into a fresh folder under the system's temporary directory, unless told `--out`). Default `submission.tar.gz`. The bytes are always a gzipped tar, whatever the name. |
 | `submission.maxBytes` | no | The largest submission this project expects. Default 32 MiB; the registry has its own cap above which this cannot go. |
 | `projectId` | no | Written by `publish` (or `build --project`) into the starter's copy, so `yukibana submit` and the IDE know where a submission from that folder goes without the student choosing. A course repository leaves it out; a starter built without a project has none, and its students name the project when they submit. The registry does not trust it: a submission is accepted only where the student's enrolment allows. |
