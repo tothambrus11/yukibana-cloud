@@ -2,48 +2,76 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cloud.yukibana.dev/schema/yukibana.json",
   "title": "yukibana.json",
-  "description": "A project's configuration: its build system, what the student's IDE shows, which files the student may not change, what the student never receives, and what a submission contains. Lives at the project root. docs/yukibana-json.md is the prose.",
+  "description": "A project's configuration: its build system, what the student's IDE shows, which files the student may not change, what the student never receives, and what a submission holds. Lives at the project root. docs/yukibana-json.md in yukibana-cloud is the prose.",
   "type": "object",
   "properties": {
+    "$schema": {
+      "description": "The URL of this schema, for an editor to check the file with. The IDE and the CLI ignore it.",
+      "type": "string"
+    },
     "version": {
-      "description": "The shape of this file. Always 1; a future shape gets a new number.",
-      "const": 1
+      "type": "number",
+      "const": 1,
+      "description": "The shape of this file. Always 1; a future shape gets a new number."
     },
     "kind": {
-      "description": "The build system. Chooses the build output no archive carries and the manifest checks the build makes.",
+      "type": "string",
       "enum": [
         "rust-cargo",
         "scala-sbt"
+      ],
+      "description": "The build system. Chooses the build output no archive carries and the manifest checks the build makes."
+    },
+    "hidden": {
+      "default": [],
+      "description": "Globs of files the student never receives: removed from the starter, and from the starter's copy of this file. When a teacher assembles a submission they are put back from the teacher's version, like readOnly. A pattern naming a directory covers everything under it; * stays within a path segment, ** crosses segments, ? is one character.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "releaseId": {
+      "default": null,
+      "description": "Written by yukibana build and publish into the starter's copy of this file: the release this starter is, chosen before the upload so the release row has the same id. A submission sends it, so a teacher can tell which release it started from. A course repository leaves it out.",
+      "type": [
+        "string",
+        "null"
       ]
     },
     "assignmentFile": {
-      "description": "The file the IDE opens as the assignment, relative to the project root.",
       "default": "ASSIGNMENT.md",
+      "description": "The file the IDE opens as the assignment, relative to the project root.",
       "type": "string"
     },
     "features": {
+      "description": "Which of the IDE's helpers are on; each is on unless set false.",
       "default": {},
       "type": "object",
       "properties": {
         "codeSuggestions": {
           "default": true,
+          "description": "Code completion in the editor.",
           "type": "boolean"
         },
         "squiggles": {
           "default": true,
+          "description": "Error and warning underlines in the editor.",
           "type": "boolean"
         },
         "ai": {
           "default": true,
+          "description": "The IDE's AI features.",
           "type": "boolean"
         }
       }
     },
     "layout": {
+      "description": "How the IDE lays out the project's window.",
       "default": {},
       "type": "object",
       "properties": {
         "widgets": {
+          "description": "Which of the IDE's views show; each shows unless set false.",
           "default": {},
           "type": "object",
           "properties": {
@@ -79,6 +107,7 @@
         },
         "containers": {
           "default": {},
+          "description": "View containers by id, shown if true and hidden if false; one not named is left as it is.",
           "type": "object",
           "propertyNames": {
             "type": "string"
@@ -89,6 +118,7 @@
         },
         "views": {
           "default": {},
+          "description": "Views by id, shown if true and hidden if false; one not named is left as it is.",
           "type": "object",
           "propertyNames": {
             "type": "string"
@@ -101,78 +131,84 @@
     },
     "openFiles": {
       "default": [],
+      "description": "Files the IDE opens when the project opens, relative to the project root.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
     "readOnly": {
-      "description": "Globs of files the student receives but may not change. When a teacher assembles a submission, whatever the student sent under these paths is replaced by the teacher's version, and every change is reported.",
       "default": [],
+      "description": "Globs of files the student receives but may not change. When a teacher assembles a submission, whatever the student sent under these paths is replaced by the teacher's version, and every change is reported.",
       "type": "array",
       "items": {
         "type": "string"
       }
     },
-    "hidden": {
-      "description": "Globs of files the student never receives: removed from the starter, and from the starter's copy of this file. When a teacher assembles a submission they are put back from the teacher's version, like readOnly. A pattern naming a directory covers everything under it; * stays within a path segment, ** crosses segments, ? is one character.",
-      "default": [],
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "projectId": {
-      "description": "Written by `yukibana build` into the starter's copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.",
-      "type": "string",
-      "format": "uuid"
-    },
-    "releaseId": {
-      "description": "Written by `yukibana build` and `publish` into the starter's copy of this file: the release this starter is, chosen before the upload so the release row has the same id. A submission sends it, so a teacher can tell which release it started from. A course repository leaves it out.",
-      "type": "string",
-      "format": "uuid"
-    },
     "submission": {
+      "description": "What a submission from this folder holds, and where the IDE sends it.",
       "default": {},
       "type": "object",
       "properties": {
         "include": {
-          "description": "When present, only paths matching these globs are submitted.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+          "default": null,
+          "description": "When present, only paths matching these globs are submitted, and yukibana.json always.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "exclude": {
-          "description": "Globs never submitted: build output, editor state.",
+          "default": [],
+          "description": "Globs never submitted, on top of the history, the IDE's state, node_modules and the kind's build output, which never are.",
           "type": "array",
           "items": {
             "type": "string"
           }
         },
         "respectGitignore": {
-          "description": "Whether what the project's .gitignore files ignore is left out of a submission too.",
-          "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "Whether what the project's .gitignore files ignore is left out of a submission too, as git would leave it out of a commit.",
+          "type": "boolean"
         },
         "target": {
-          "description": "Where the IDE sends a submission: cloud, the registry, or file, an archive the student saves. The CLI always sends to the registry.",
           "default": "cloud",
+          "description": "Where the IDE sends a submission: cloud, the registry, or file, an archive the student saves. The CLI always sends to the registry.",
           "type": "string"
         },
         "filename": {
-          "description": "What a packed submission is called on disk. The registry accepts a gzipped tar, whatever the name says.",
           "default": "submission.tar.gz",
+          "description": "What yukibana pack calls the archive it writes. The bytes are always a gzipped tar, whatever the name says.",
           "type": "string"
         },
         "maxBytes": {
-          "description": "The largest submission this project expects, in bytes. The registry has its own cap above which this cannot go.",
           "default": 33554432,
+          "description": "The largest submission this project expects, in bytes. The registry has its own cap above which this cannot go.",
           "type": "integer",
-          "minimum": 1
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       }
+    },
+    "projectId": {
+      "default": null,
+      "description": "Written by yukibana build and publish into the starter's copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.",
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

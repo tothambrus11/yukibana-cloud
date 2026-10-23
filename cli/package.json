@@ -38,7 +38,8 @@
     "prepack": "npm run build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint --type-aware --deny-warnings"
+    "lint": "oxlint --type-aware --deny-warnings",
+    "schema": "vitest run tests/schema.test.ts --update"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
