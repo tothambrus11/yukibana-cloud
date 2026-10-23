@@ -39,7 +39,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --type-aware --deny-warnings",
-    "schema": "tsc -p tsconfig.build.json && node scripts/write-schema.mjs"
+    "schema": "vitest run tests/schema.test.ts --update"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",

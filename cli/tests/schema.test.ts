@@ -1,12 +1,12 @@
-import { test } from 'vitest';
+import { expect, test } from 'vitest';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { configJSONSchema, parseConfig, SCHEMA_URL } from '../src/lib/yukibana.js';
 
 test('the published JSON schema is the one the parser checks with, generated from it', async () => {
-  const committed = await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8');
-  // A Windows checkout may have turned the newlines round.
-  assert.equal(committed.replaceAll('\r\n', '\n'), `${JSON.stringify(configJSONSchema(), null, 2)}\n`, 'docs/yukibana.schema.json is stale: run `npm run schema` in cli/');
+  // `npm run schema` writes the file (vitest --update); anywhere else, and in
+  // CI, a committed file that is not exactly this fails.
+  await expect(`${JSON.stringify(configJSONSchema(), null, 2)}
+`).toMatchFileSnapshot('../../docs/yukibana.schema.json');
 });
 
 test('the schema says where it lives and what a file must have', () => {
