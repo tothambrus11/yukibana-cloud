@@ -11,6 +11,10 @@
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"
     },
+    "./config": {
+      "types": "./dist/lib/yukibana.d.ts",
+      "default": "./dist/lib/yukibana.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

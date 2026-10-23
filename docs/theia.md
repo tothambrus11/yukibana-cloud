@@ -145,6 +145,13 @@ in `demo/electron/src/view.ts`; they are an example, not part of the library.
 
 ## The workspace
 
+`@yukibana/cli/config` is the part that runs in a browser: `parseSettings`
+reads a folder's `yukibana.json` with the defaults the IDE needs (a file
+without `version` or `kind` is fine, so any folder opens), and
+`DEFAULT_SETTINGS` is what a folder without one gets. It is the same
+schema `parseConfig` checks a release with, so the IDE and the CLI read
+every field the same way.
+
 `client.downloadStarter(projectId)` returns the starter archive, and
 `unpackStarter(archive, folder)` unpacks it into `folder`, which must be
 missing or empty. The host names that folder: the project's slug, or what

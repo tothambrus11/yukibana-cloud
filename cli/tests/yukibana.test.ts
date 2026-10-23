@@ -177,3 +177,12 @@ test('the published JSON schema names every field the parser knows', async () =>
   assert.deepEqual(Object.keys(published.properties).toSorted(), Object.keys(configSchema.shape).toSorted());
   assert.deepEqual(Object.keys(published.properties['submission']?.properties ?? {}).toSorted(), Object.keys(configSchema.shape.submission.def.innerType.shape).toSorted());
 });
+
+test('the config module runs in a browser: it and what it imports use nothing from Node', async () => {
+  const { readFile } = await import('node:fs/promises');
+  for (const file of ['../src/lib/yukibana.ts', '../src/lib/glob.ts']) {
+    const source = await readFile(new URL(file, import.meta.url), 'utf8');
+    const imports = [...source.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
+    assert.deepEqual(imports.filter((i) => i !== 'zod/mini' && i !== './glob.js'), [], `${file} imports only zod and the glob matcher`);
+  }
+});
