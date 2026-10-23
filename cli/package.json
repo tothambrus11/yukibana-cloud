@@ -39,6 +39,7 @@
   "dependencies": {
     "ignore": "^7.0.13",
     "modern-tar": "^0.8.6",
-    "uuid": "^14.0.3"
+    "uuid": "^14.0.3",
+    "zod": "^4.6.7"
   }
 }

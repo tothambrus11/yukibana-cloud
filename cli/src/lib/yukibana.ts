@@ -17,10 +17,18 @@
  *  }
  *  ```
  *
- *  What the IDE alone reads (`features`, `layout`, `openFiles`) is checked
- *  for its type and passed through untouched into the starter's copy.
+ *  One zod schema (`configSchema`) checks the whole file, the IDE's fields
+ *  with the IDE's defaults included, and the IDE parses the file with it
+ *  (`settingsSchema`, the part it reads), so the two cannot disagree about
+ *  what a field means. It is `zod/mini`, about 7 KB in a bundle, where
+ *  `zod` would be 90 KB, in every IDE and app that bundles the library.
+ *  The starter's copy is the file as written, so a
+ *  field this version does not know passes through untouched.
  */
 
+import * as z from 'zod/mini';
+// zod/mini spells it _default, since default is a keyword.
+import { _default as withDefault } from 'zod/mini';
 import { matcher } from './glob.js';
 
 /** The file's name, at the project root, in the repository and in every
@@ -39,6 +47,9 @@ export interface SubmissionRules {
   /** `true` iff what the project's `.gitignore` files ignore is not
    *  submitted either, as git would leave it out of a commit. */
   readonly respectGitignore: boolean;
+  /** Where the IDE sends a submission: `cloud`, the registry, or `file`, an
+   *  archive the student saves. The CLI always sends to the registry. */
+  readonly target: string;
   /** What a packed submission is called on disk. Only a name: the bytes are
    *  always a gzipped tar, because that is what the registry accepts. */
   readonly filename: string;
@@ -47,11 +58,43 @@ export interface SubmissionRules {
   readonly maxBytes: number;
 }
 
-export interface Config {
-  readonly version: 1;
-  readonly kind: Kind;
-  /** Paths a student must never receive, as globs relative to the root. */
-  readonly hidden: readonly string[];
+/** Which of the IDE's helpers a project has on. */
+export interface Features {
+  readonly codeSuggestions: boolean;
+  /** Error and warning underlines in the editor. */
+  readonly squiggles: boolean;
+  readonly ai: boolean;
+}
+
+/** Which of the IDE's views a project shows; each is shown unless set false. */
+export interface Widgets {
+  readonly files: boolean;
+  readonly search: boolean;
+  readonly vcs: boolean;
+  readonly debug: boolean;
+  readonly testing: boolean;
+  readonly outline: boolean;
+  readonly aiChat: boolean;
+}
+
+/** How the IDE lays out a project's window. */
+export interface Layout {
+  readonly widgets: Widgets;
+  /** View containers by id, shown iff true; one not named is left as it is. */
+  readonly containers: Readonly<Record<string, boolean>>;
+  /** Views by id, shown iff true; one not named is left as it is. */
+  readonly views: Readonly<Record<string, boolean>>;
+}
+
+/** What a student's folder is set up with: the fields the IDE reads, each
+ *  with its default when the file leaves it out. */
+export interface Settings {
+  /** The file the IDE opens as the assignment, relative to the root. */
+  readonly assignmentFile: string;
+  readonly features: Features;
+  readonly layout: Layout;
+  /** Files the IDE opens when the project opens. */
+  readonly openFiles: readonly string[];
   /** Paths a student receives and may not change. An assembly replaces what
    *  a submission holds under them with the teacher's version, and says so
    *  when the two differ. */
@@ -60,6 +103,14 @@ export interface Config {
   /** The registry project this folder submits to. Only a starter's copy has
    *  one (`starterConfig` writes it); in a course repository it is null. */
   readonly projectId: string | null;
+}
+
+/** The whole file, as a course repository and a starter carry it. */
+export interface Config extends Settings {
+  readonly version: 1;
+  readonly kind: Kind;
+  /** Paths a student must never receive, as globs relative to the root. */
+  readonly hidden: readonly string[];
   /** The release this folder's starter was, as `yukibana build` and
    *  `publish` wrote it before uploading, so it is the release row's own id.
    *  A submission sends it, and grading compares the student's read-only
@@ -126,108 +177,112 @@ export type Parsed =
   | { ok: true; config: Config; warnings: readonly string[] }
   | { ok: false; error: string };
 
+/** `true` iff `s` is a uuid, in any case. Release ids are the database's
+ *  uuids, so this is the whole check the CLI can make of one. */
+export function isUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+}
+
+const bool = z.boolean({ error: 'must be true or false' });
+const on = withDefault(bool, true);
+const flags = z.record(z.string(), bool, { error: 'must be an object of true and false' });
+const paths = z.array(z.string({ error: 'must be a list of paths' }), { error: 'must be a list of paths' });
+/** A list of globs relative to the project root. */
+const globs = paths.check(
+  z.refine((list: string[]) => list.every((s) => s !== ''), 'must be a list of paths'),
+  z.refine((list: string[]) => !list.some((s) => s.startsWith('/') || s.split('/').includes('..')), 'paths are relative to the project root'),
+);
+
+/** The fields of `Settings`, as the file spells them, with their defaults. */
+const settingsShape = {
+  assignmentFile: withDefault(z.string({ error: 'must be a path' }), 'ASSIGNMENT.md'),
+  features: z.prefault(z.object({ codeSuggestions: on, squiggles: on, ai: on }, { error: 'must be an object of true and false' }), {}),
+  layout: z.prefault(z.object({
+    widgets: z.prefault(z.object({ files: on, search: on, vcs: on, debug: on, testing: on, outline: on, aiChat: on }, { error: 'must be an object of true and false' }), {}),
+    containers: withDefault(flags, {}),
+    views: withDefault(flags, {}),
+  }, { error: 'must be an object' }), {}),
+  openFiles: withDefault(paths, []),
+  readOnly: withDefault(globs, []),
+  submission: z.prefault(z.object({
+    include: withDefault(z.nullable(globs), null),
+    exclude: withDefault(globs, []),
+    respectGitignore: withDefault(bool, true),
+    target: withDefault(z.string({ error: 'must be a submission target' }), 'cloud'),
+    filename: withDefault(z.string({ error: 'must be a file name, without a directory' }).check(
+      z.refine((name: string) => name !== '' && !/[/\\]/.test(name), 'must be a file name, without a directory'),
+    ), DEFAULT_FILENAME),
+    maxBytes: withDefault(z.number({ error: 'must be a positive integer' }).check(
+      z.refine((n: number) => Number.isInteger(n) && n > 0, 'must be a positive integer'),
+    ), DEFAULT_MAX_BYTES),
+  }, { error: 'must be an object' }), {}),
+  projectId: withDefault(z.nullable(z.string({ error: 'must be a project id' }).check(z.minLength(1, 'must be a project id'))), null),
+};
+
+/** What the IDE reads from the file: every field optional, so a folder whose
+ *  file says nothing, or that has none, still opens with defaults. */
+export const settingsSchema = z.object(settingsShape);
+
+/** The whole file: `settingsSchema` plus what a release is built from. */
+export const configSchema = z.object({
+  version: z.literal(1, { error: 'must be 1' }),
+  kind: z.enum(KINDS, { error: `must be one of ${KINDS.join(', ')}` }),
+  hidden: withDefault(globs, []),
+  releaseId: withDefault(z.nullable(z.string({ error: 'must be a release id, a uuid' }).check(z.refine(isUuid, 'must be a release id, a uuid'))), null),
+  ...settingsShape,
+});
+
 /** The top-level fields this version knows. Anything else is passed through
  *  to the starter with a warning: the IDE may know a field the CLI does not,
  *  and a typo like "hiden" should not pass in silence. */
-const KNOWN = new Set(['version', 'kind', 'features', 'layout', 'openFiles', 'readOnly', 'hidden', 'projectId', 'releaseId', 'submission']);
+const KNOWN = new Set(Object.keys(configSchema.shape));
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-/** Reads and checks the file. The error is a sentence for the terminal,
- *  naming the field, because the teacher reads it and fixes the file. */
-export function parseConfig(text: string): Parsed {
+/** Returns the first of `issues` as a sentence naming the field, because
+ *  the teacher reads it and fixes the file. */
+function sentence(issues: readonly z.core.$ZodIssue[]): string {
+  const issue = issues[0];
+  const field = issue?.path.filter((p) => typeof p === 'string').join('.') ?? '';
+  const what = issue?.message ?? 'is not valid';
+  return field === '' ? `${CONFIG_FILE} ${what}` : `${CONFIG_FILE}: "${field}" ${what}`;
+}
+
+/** Returns `text` as a JSON object, or why it is not one. */
+function objectOf(text: string): { ok: true; raw: Record<string, unknown> } | { ok: false; error: string } {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch (e) {
     return { ok: false, error: `${CONFIG_FILE} is not JSON: ${e instanceof Error ? e.message : String(e)}` };
   }
-  if (!isObject(raw)) return { ok: false, error: `${CONFIG_FILE} must be an object` };
-  const bad = (what: string): Parsed => ({ ok: false, error: `${CONFIG_FILE}: ${what}` });
-  const warnings = Object.keys(raw).filter((k) => !KNOWN.has(k)).map((k) => `${CONFIG_FILE}: unknown field "${k}" is passed through as it is`);
-
-  if (raw['version'] !== 1) return bad('"version" must be 1');
-  const kind = raw['kind'];
-  if (typeof kind !== 'string' || !(KINDS as readonly string[]).includes(kind)) return bad(`"kind" must be one of ${KINDS.join(', ')}`);
-
-  const features = raw['features'] ?? {};
-  if (!isObject(features) || !Object.values(features).every((v) => typeof v === 'boolean')) {
-    return bad('"features" must be an object of true and false');
-  }
-  const layout = raw['layout'] ?? {};
-  if (!isObject(layout)) return bad('"layout" must be an object');
-  for (const part of ['widgets', 'containers', 'views'] as const) {
-    const v = layout[part] ?? {};
-    if (!isObject(v) || !Object.values(v).every((b) => typeof b === 'boolean')) {
-      return bad(`"layout.${part}" must be an object of true and false`);
-    }
-  }
-
-  if (strings(raw['openFiles'] ?? []) === null) return bad('"openFiles" must be a list of paths');
-  const lists: Record<'readOnly' | 'hidden', readonly string[]> = { readOnly: [], hidden: [] };
-  for (const name of ['readOnly', 'hidden'] as const) {
-    const list = globs(raw[name] ?? []);
-    if (typeof list === 'string') return bad(`"${name}" ${list}`);
-    lists[name] = list;
-  }
-
-  const projectId = raw['projectId'] ?? null;
-  if (projectId !== null && (typeof projectId !== 'string' || projectId === '')) return bad('"projectId" must be a project id');
-  const releaseId = raw['releaseId'] ?? null;
-  if (releaseId !== null && (typeof releaseId !== 'string' || !isUuid(releaseId))) return bad('"releaseId" must be a release id, a uuid');
-
-  const submission = raw['submission'] ?? {};
-  if (!isObject(submission)) return bad('"submission" must be an object');
-  let include: readonly string[] | null = null;
-  if (submission['include'] !== undefined) {
-    const list = globs(submission['include']);
-    if (typeof list === 'string') return bad(`"submission.include" ${list}`);
-    include = list;
-  }
-  const exclude = globs(submission['exclude'] ?? []);
-  if (typeof exclude === 'string') return bad(`"submission.exclude" ${exclude}`);
-  const filename = submission['filename'] ?? DEFAULT_FILENAME;
-  if (typeof filename !== 'string' || filename === '' || /[/\\]/.test(filename)) {
-    return bad('"submission.filename" must be a file name, without a directory');
-  }
-  const respectGitignore = submission['respectGitignore'] ?? true;
-  if (typeof respectGitignore !== 'boolean') return bad('"submission.respectGitignore" must be true or false');
-  const maxBytes = submission['maxBytes'] ?? DEFAULT_MAX_BYTES;
-  if (typeof maxBytes !== 'number' || !Number.isInteger(maxBytes) || maxBytes <= 0) {
-    return bad('"submission.maxBytes" must be a positive integer');
-  }
-
-  return {
-    ok: true,
-    warnings,
-    config: {
-      version: 1,
-      kind: kind as Kind,
-      hidden: lists.hidden,
-      readOnly: lists.readOnly,
-      submission: { include, exclude, respectGitignore, filename, maxBytes },
-      projectId,
-      releaseId: releaseId === null ? null : releaseId.toLowerCase(),
-      raw,
-    },
-  };
+  return isObject(raw) ? { ok: true, raw } : { ok: false, error: `${CONFIG_FILE} must be an object` };
 }
 
-function strings(v: unknown): string[] | null {
-  return Array.isArray(v) && v.every((s) => typeof s === 'string') ? v : null;
+/** Returns the file `text` checked, with its defaults, or why it is not
+ *  valid, as a sentence naming the field. */
+export function parseConfig(text: string): Parsed {
+  const read = objectOf(text);
+  if (!read.ok) return read;
+  const parsed = configSchema.safeParse(read.raw);
+  if (!parsed.success) return { ok: false, error: sentence(parsed.error.issues) };
+  const warnings = Object.keys(read.raw).filter((k) => !KNOWN.has(k)).map((k) => `${CONFIG_FILE}: unknown field "${k}" is passed through as it is`);
+  const config: Config = { ...parsed.data, releaseId: parsed.data.releaseId?.toLowerCase() ?? null, raw: read.raw };
+  return { ok: true, config, warnings };
 }
 
-/** A list of globs, or what is wrong with it as the end of a sentence. */
-function globs(v: unknown): string[] | string {
-  const list = strings(v);
-  if (list === null || list.some((s) => s === '')) return 'must be a list of paths';
-  if (list.some((s) => s.startsWith('/') || s.split('/').includes('..'))) return 'paths are relative to the project root';
-  return list;
+/** Returns what the IDE reads from `text`, a `yukibana.json`, or why it
+ *  cannot. Unlike `parseConfig`, a file without `version` or `kind` is
+ *  fine: the IDE opens any folder. */
+export function parseSettings(text: string): { ok: true; settings: Settings } | { ok: false; error: string } {
+  const read = objectOf(text);
+  if (!read.ok) return read;
+  const parsed = settingsSchema.safeParse(read.raw);
+  return parsed.success ? { ok: true, settings: parsed.data } : { ok: false, error: sentence(parsed.error.issues) };
 }
 
-/** Whether `s` is a uuid, in any case. Release ids are the database's
- *  uuids, so this is the whole check the CLI can make of one. */
-export const isUuid = (s: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+/** What the IDE is set up with in a folder without a `yukibana.json`. */
+export const DEFAULT_SETTINGS: Settings = settingsSchema.parse({});
 
 /** The fields of the starter's copy: the file minus `hidden` (which would
  *  name what it hides) and minus any `projectId` or `releaseId` the

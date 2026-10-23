@@ -52,7 +52,10 @@ export { readArchive, unpackStarter, writeEntries } from './extract.js';
 export { publish, type PublishInput } from './publish.js';
 export { assemble, submissionRoot, teacherRoot, tampered, type Assembled, type Assembly, type Tampering } from './lib/assemble.js';
 export { planSubmission, type Packing } from './lib/pack.js';
-export { parseConfig, protectedPaths, CONFIG_FILE, KINDS, type Config, type Kind, type SubmissionRules } from './lib/yukibana.js';
+export {
+  parseConfig, parseSettings, protectedPaths, configSchema, settingsSchema, CONFIG_FILE, DEFAULT_SETTINGS, KINDS,
+  type Config, type Features, type Kind, type Layout, type Settings, type SubmissionRules, type Widgets,
+} from './lib/yukibana.js';
 export { matcher } from './lib/glob.js';
 export { readTar, writeTar, type Entry, type EntryType } from './lib/tar.js';
 export type { Accepted, Author, Edition, EditionRole, Me, Member, Project, Published, Release, Submission } from './lib/wire.js';
