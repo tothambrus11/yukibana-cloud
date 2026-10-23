@@ -34,10 +34,14 @@ export function unwrap(entries: readonly Entry[]): Entry[] {
   return out;
 }
 
-/** The starter for a snapshot whose paths are already relative to the
- *  repository root. `folder` is the directory the archive unpacks into;
- *  `projectId` and `releaseId` are written into the starter's copy of
- *  yukibana.json (see `starterConfig`). */
+/** Returns the starter for `snapshot`, whose paths are relative to the
+ *  repository root.
+ *
+ *  Every entry is inside one folder named `folder`, so `tar -x` creates a
+ *  single folder. Clients unpack that folder's contents and ignore its
+ *  name, which therefore promises nothing, not even the project's slug.
+ *  `projectId` and `releaseId` are written into the starter's
+ *  `yukibana.json`. */
 export function planStarter(snapshot: readonly Entry[], folder: string, projectId: string, releaseId: string | null): Plan {
   const byPath = new Map(snapshot.map((e) => [e.path, e] as const));
   const configEntry = byPath.get(CONFIG_FILE);
