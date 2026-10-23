@@ -100,11 +100,11 @@ const handlers: { [K in keyof Bridge]: (event: IpcMainInvokeEvent, ...args: Para
   submissions: async (_event, projectId) => (await client()).submissions(projectId),
   async downloadStarter(event, projectId) {
     const folder = await pickFolder(event, 'Where should the project folder be created?', true);
-    if (folder === null) return null;
+    if (folder === null) return { kind: 'cancelled' };
     const api = await client();
     const [project, starter] = await Promise.all([api.project(projectId), api.downloadStarter(projectId)]);
     const target = join(folder, project.slug);
-    return { folder: target, refused: await unpackStarter(starter, target) };
+    return { kind: 'unpacked', folder: target, leftOut: await unpackStarter(starter, target) };
   },
   async chooseFolder(event) {
     const folder = await pickFolder(event, 'Which folder do you want to submit?', false);
