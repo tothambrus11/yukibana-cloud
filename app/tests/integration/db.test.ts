@@ -37,7 +37,7 @@ test('the publisher can turn a token into a project and read nothing at all', as
 });
 
 test('a submission inserted as a student is theirs, and a classmate cannot see it', async () => {
-  const key = `submissions/test-${Date.now()}.tar.zst`;
+  const key = `submissions/test-${Date.now()}.tar.gz`;
   const [row] = await asUser(sql, claimsOf(ALICE), (tx) => tx<{ submission_id: string; author_id: string }[]>`
     insert into submission (edition_id, project_id, author_id, object_key, byte_size, sha256)
     select p.edition_id, p.project_id, ${claimsOf(BOB).sub}, ${key}, 3, decode(repeat('ab', 32), 'hex')

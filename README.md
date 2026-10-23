@@ -6,7 +6,7 @@ archives built from the course repository by the CLI (on their machine, or
 in the repository's own CI through the GitHub Action): the starter with the
 hidden tests removed, and the whole project for staff. Students download the
 starter while the project's window is open and submit their solution as a
-`.tar.zst`, late if after the deadline; staff read the submissions. `docs/architecture.md` is what the parts are and how they connect,
+`.tar.gz`, late if after the deadline; staff read the submissions. `docs/architecture.md` is what the parts are and how they connect,
 `docs/design.md` says why it is shaped the way it is,
 `docs/yukibana-json.md` is the contract a course repository follows,
 `docs/cli.md` is the CLI and the library the IDE extension uses,

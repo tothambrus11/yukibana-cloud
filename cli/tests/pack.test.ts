@@ -31,7 +31,7 @@ test('packing leaves the project folder as it was, so the next submission does n
   const out = await packed(dir);
   assert.deepEqual((await readdir(dir)).toSorted(), ['Main.scala', 'yukibana.json']);
   assert.ok(out.startsWith(tmpdir()), `${out} is under the temporary directory`);
-  assert.equal(out, join(dirname(out), 'submission.tar.zst'));
+  assert.equal(out, join(dirname(out), 'submission.tar.gz'));
   const entries = await readArchive(new Uint8Array(await readFile(out)));
   assert.deepEqual(entries.map((e) => e.path), ['Main.scala', 'yukibana.json']);
 });
@@ -45,6 +45,6 @@ test('two packs never write over each other', async () => {
 
 test('a pack told where to write writes there', async () => {
   const dir = await project();
-  const out = join(await mkdtemp(join(tmpdir(), 'yukibana-out-')), 'nested', 'mine.tar.zst');
+  const out = join(await mkdtemp(join(tmpdir(), 'yukibana-out-')), 'nested', 'mine.tar.gz');
   assert.equal(await packed(dir, out), out);
 });

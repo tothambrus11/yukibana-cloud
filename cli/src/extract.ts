@@ -11,13 +11,12 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { escapes } from './lib/starter.js';
 import { readTar, type Entry } from './lib/tar.js';
 import { gunzip } from './lib/gzip.js';
-import { unzstd } from './lib/zstd.js';
 
-/** Entries of a `.tar.gz` or a `.tar.zst`, told apart by their first bytes. */
+/** Returns the entries of `bytes`, a `.tar.gz`, the one format every
+ *  archive is in. */
 export async function readArchive(bytes: Uint8Array): Promise<Entry[]> {
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return readTar(await gunzip(bytes));
-  if (bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) return readTar(await unzstd(bytes));
-  throw new Error('not a .tar.gz or a .tar.zst');
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) throw new Error('not a .tar.gz');
+  return readTar(await gunzip(bytes));
 }
 
 /** Whether `dir` is missing or empty: the only places this writes into. */

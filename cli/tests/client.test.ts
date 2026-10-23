@@ -48,19 +48,19 @@ test('a download follows the redirect itself and does not hand the person\'s tok
   assert.equal(seen[1]?.headers.get('authorization'), null);
 });
 
-test('a bundle is sent as a zstd body with an origin; one with problems is not sent at all', async () => {
+test('a bundle is sent as a gzip body with an origin; one with problems is not sent at all', async () => {
   const file = (path: string, body: string): Entry => ({ path, type: 'file', mode: 0o644, mtime: 1, data: new TextEncoder().encode(body) });
   const made = bundleOf([file('yukibana.json', '{"version":1,"kind":"rust-cargo","projectId":"p-1"}'), file('src/lib.rs', '')]);
   assert.ok(made.ok);
   const { seen, client } = recording(() => json({ submissionId: 's-9', byteSize: 3, sha256: 'cd' }, 201));
   assert.equal((await client.submit(made.bundle)).submissionId, 's-9');
   assert.equal(seen[0]?.url, 'https://cloud.example/api/projects/p-1/submissions');
-  assert.equal(seen[0]?.headers.get('content-type'), 'application/zstd');
+  assert.equal(seen[0]?.headers.get('content-type'), 'application/gzip');
   assert.equal(seen[0]?.headers.get('origin'), 'https://cloud.example');
   const sent = seen[0];
   assert.ok(sent);
   const body = new Uint8Array(await sent.arrayBuffer());
-  assert.deepEqual([...body.subarray(0, 4)], [0x28, 0xb5, 0x2f, 0xfd]);
+  assert.deepEqual([...body.subarray(0, 2)], [0x1f, 0x8b]);
 
   const broken = bundleOf([file('yukibana.json', '{"version":1,"kind":"rust-cargo","submission":{"maxBytes":1}}'), file('a', 'too big')]);
   assert.ok(broken.ok);
