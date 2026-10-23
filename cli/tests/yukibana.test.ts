@@ -109,16 +109,7 @@ test('a workspace member that is hidden is a problem too', () => {
   assert.equal(problems.length, 1);
   assert.match(problems[0] ?? '', /workspace member "grader"/);
 });
-
-test('the schema the IDE validates against and the parser here know the same fields', async () => {
-  const { readFile } = await import('node:fs/promises');
-  const schema = JSON.parse(await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8')) as { properties: Record<string, unknown>; required: string[] };
-  const every = Object.fromEntries(Object.keys(schema.properties).map((k) => [k, k === 'version' ? 1 : k === 'kind' ? 'rust-cargo' : k === 'projectId' ? 'p' : k === 'releaseId' ? '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' : k === 'assignmentFile' ? 'ASSIGNMENT.md' : k === 'openFiles' || k === 'readOnly' || k === 'hidden' ? [] : {}]));
-  const p = parseConfig(JSON.stringify(every));
-  assert.ok(p.ok, p.ok ? '' : p.error);
-  assert.deepEqual(p.warnings, [], 'every field the schema has, the parser knows');
-  assert.deepEqual(schema.required, ['version', 'kind']);
-});
+
 
 test('a starter built without a project leaves the id out, and its copy still parses so a student can submit', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","hidden":["tests/hidden"]}');

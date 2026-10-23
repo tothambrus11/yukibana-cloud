@@ -5,6 +5,10 @@
   "description": "A project's configuration: its build system, what the student's IDE shows, which files the student may not change, what the student never receives, and what a submission holds. Lives at the project root. docs/yukibana-json.md in yukibana-cloud is the prose.",
   "type": "object",
   "properties": {
+    "$schema": {
+      "description": "The URL of this schema, for an editor to check the file with. The IDE and the CLI ignore it.",
+      "type": "string"
+    },
     "version": {
       "type": "number",
       "const": 1,
