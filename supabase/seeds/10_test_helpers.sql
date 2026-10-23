@@ -13,7 +13,7 @@ create schema if not exists tests;
 -- A test switches role mid-transaction and keeps calling these.
 -- Tests use example.com addresses; the local fixtures use yukibana.local, so
 -- a test's derived ids never collide with a seeded account.
-grant usage on schema tests to anon, authenticated, yukibana_publisher;
+grant usage on schema tests to anon, authenticated, yukibana_publisher, yukibana_lti;
 
 -- The account id that `tests.create_user(addr)` gives that address.
 create or replace function tests.uid(addr text)
@@ -139,5 +139,25 @@ as $$
 begin
   perform set_config('request.jwt.claims', '', true);
   perform set_config('role', 'yukibana_publisher', true);
+end
+$$;
+
+-- The same for the LTI role (see the lti_roster migration), for the same
+-- reason as the publisher above.
+do $$
+begin
+  execute format('grant yukibana_lti to %I with set true', current_user);
+end
+$$;
+
+-- Run the rest of the transaction as the LTI role, the way a launch, a
+-- roster fetch or a change hint does.
+create or replace function tests.as_lti()
+returns void
+language plpgsql
+as $$
+begin
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('role', 'yukibana_lti', true);
 end
 $$;

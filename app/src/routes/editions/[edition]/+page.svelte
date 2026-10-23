@@ -54,6 +54,25 @@
     </section>
   {/if}
 {:else if tab === 'roster'}
+  {#if data.moodle}
+    <section>
+      <h2>Moodle</h2>
+      <p>
+        Follows the Moodle course <strong>{data.moodle.title}</strong> (id {data.moodle.contextId}).
+        {#if data.moodle.lastRun}Last synced {data.moodle.lastRun.toLocaleString()}: {data.moodle.lastChange}.{:else}Not synced yet.{/if}
+      </p>
+      <div class="row">
+        <form method="POST" action={actionIn('roster', 'syncMoodle')} class="inline"><button>Sync now</button></form>
+        {#if data.owner}
+          <form method="POST" action={actionIn('roster', 'unlinkMoodle')} class="inline"><button class="quiet">Unlink</button></form>
+        {/if}
+      </div>
+      <p class="note">
+        Enrolments marked <span class="chip">sis</span> follow Moodle: its teachers are assistants here, everyone else a
+        student. Nobody enrolled by hand, and no owner, is changed by a sync.
+      </p>
+    </section>
+  {/if}
   <section>
     <h2>Roster</h2>
     {#if data.roster.length === 0}

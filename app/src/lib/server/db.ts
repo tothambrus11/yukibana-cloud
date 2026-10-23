@@ -80,6 +80,20 @@ export async function asPublisher<T>(sql: Sql, run: (tx: Tx) => Promise<T>): Pro
   return result;
 }
 
+/** Runs `run` in one transaction as the LTI role: what a launch from
+ *  Moodle, a roster sync and a change hint get, which can look up a
+ *  platform and a linked course, make a link grant, and apply a member list
+ *  through the functions of the lti_roster migration, and read no table.
+ *  PROTOTYPE (2026-10), see docs/moodle-sync.md. */
+export async function asLti<T>(sql: Sql, run: (tx: Tx) => Promise<T>): Promise<T> {
+  let result!: T;
+  await sql.begin(async (tx) => {
+    await become(tx, 'yukibana_lti', '');
+    result = await run(tx);
+  });
+  return result;
+}
+
 /** The HTTP status a database error deserves, for a route to answer with.
  *  A policy or a permission says 403; a function that raised P0002 says 404;
  *  a unique or check violation says 409; anything else is the server's

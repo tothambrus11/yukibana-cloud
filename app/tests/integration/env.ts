@@ -31,6 +31,7 @@ export const config: Config = {
   },
   submissionMaxBytes: 1024 * 1024,
   releaseMaxBytes: 1024 * 1024,
+  lti: null,
 };
 
 /** The local stack's mail catcher (`[local_smtp]` in supabase/config.toml),

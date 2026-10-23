@@ -6,6 +6,8 @@ import { asUser, clashOf, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { studentProjects } from '#lib/server/student.ts';
+import { linkOf, sync, targetForEdition } from '#lib/server/lti.ts';
+import { report } from '#lib/report.ts';
 
 interface ProjectRow {
   project_id: ProjectId;
@@ -65,10 +67,13 @@ export const load: PageServerLoad = async (event) => {
             where en.edition_id = ${edition}
             order by en.role desc, en.email`
         : [];
+      // PROTOTYPE (docs/moodle-sync.md): the Moodle course this edition
+      // follows, which the link's policy shows staff alone.
+      const moodle = staff ? await linkOf(tx, edition) : null;
       // `canEdit` is the database's answer, the same function its policies
       // ask: the page draws the reorder handles and the new-project form only
       // when they would be accepted.
-      return { edition: head, role: head.role, staff, owner: head.role === 'owner', canEdit: head.can_edit, projects, mine, roster, kinds: KINDS };
+      return { edition: head, role: head.role, staff, owner: head.role === 'owner', canEdit: head.can_edit, projects, mine, roster, moodle, kinds: KINDS };
     }),
   );
 };
@@ -224,6 +229,33 @@ export const actions: Actions = {
       );
     } catch (e) {
       return clashing(e, label, code);
+    }
+    return { ok: true };
+  },
+  /** Fetches the Moodle member list now (PROTOTYPE, docs/moodle-sync.md).
+   *  Any staff member may: it changes nothing Moodle does not already say. */
+  syncMoodle: async (event) => {
+    const claims = requireClaims(event);
+    const edition = editionOf(event.params.edition);
+    try {
+      const done = await withContext(async (ctx) => {
+        const target = await targetForEdition(ctx, claims, edition);
+        return target === null ? null : sync(ctx, target, 'manual');
+      });
+      if (done === null) return fail(404, { error: 'This edition does not follow a Moodle course.' });
+      return { synced: done };
+    } catch (e) {
+      if (statusOf(e).status === 500) report('editions/syncMoodle', statusOf(e).message);
+      return failing(e);
+    }
+  },
+  unlinkMoodle: async (event) => {
+    const claims = requireClaims(event);
+    const edition = editionOf(event.params.edition);
+    try {
+      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.unlink_edition_from_lti(${edition})`));
+    } catch (e) {
+      return failing(e);
     }
     return { ok: true };
   },

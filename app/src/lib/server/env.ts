@@ -40,6 +40,19 @@ export interface Config {
   /** The largest archive a release may carry, each. Two of them must fit in
    *  one request under the platform's body limit. */
   readonly releaseMaxBytes: number;
+  /** The registry as an LTI 1.3 tool (PROTOTYPE, docs/moodle-sync.md), or
+   *  null where it is not one: every /lti route then answers 404. */
+  readonly lti: LtiConfig | null;
+}
+
+export interface LtiConfig {
+  /** The tool's RSA private key, PKCS#8 PEM. It signs the assertion with
+   *  which the Worker asks a platform for a service token; its public half
+   *  is served at /lti/jwks and pasted into (or fetched by) Moodle. */
+  readonly privateKey: string;
+  /** The bearer a scheduler sends to /api/lti/sync. Null: no scheduled
+   *  sync, only launches, hints and the edition page's button. */
+  readonly cronSecret: string | null;
 }
 
 function text(env: Record<string, unknown>, name: string): string {
@@ -73,5 +86,13 @@ export function configOf(env: Cloudflare.Env): Config {
     },
     submissionMaxBytes: Number.parseInt(text(env, 'SUBMISSION_MAX_BYTES'), 10),
     releaseMaxBytes: Number.parseInt(text(env, 'RELEASE_MAX_BYTES'), 10),
+    lti: ltiOf(env),
   };
+}
+
+function ltiOf(env: Cloudflare.Env): LtiConfig | null {
+  const privateKey = optional(env, 'LTI_PRIVATE_KEY');
+  if (privateKey === null) return null;
+  // A secret set from a one-line shell variable arrives with literal \n.
+  return { privateKey: privateKey.replaceAll('\\n', '\n'), cronSecret: optional(env, 'LTI_CRON_SECRET') };
 }

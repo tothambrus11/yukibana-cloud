@@ -17,6 +17,8 @@ export type ProjectId = string & { readonly [TABLE]: 'project' };
 export type ReleaseId = string & { readonly [TABLE]: 'project_release' };
 export type TokenId = string & { readonly [TABLE]: 'project_token' };
 export type SubmissionId = string & { readonly [TABLE]: 'submission' };
+export type PlatformId = string & { readonly [TABLE]: 'lti_platform' };
+export type LtiLinkId = string & { readonly [TABLE]: 'lti_link' };
 
 /** Where bytes live in the bucket. Never a URL: see the submission table. */
 export type ObjectKey = string & { readonly [TABLE]: 'object' };
