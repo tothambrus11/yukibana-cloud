@@ -6,22 +6,23 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { createSubmissionBundle, type SubmissionBundle } from '../bundle.js';
-import { isEmptyDir, readArchive, writeEntries } from '../extract.js';
+import { unpackStarter } from '../extract.js';
 import { sha256Hex } from '../lib/bytes.js';
 import { bytes, clientFor, fail, projectOf, type Invocation } from './common.js';
 
-/** `starter <project> [--out dir]`: the starter, unpacked into `dir` (by
- *  default here), where it makes its own folder. */
+/** Runs `starter <project> [--out dir]`: unpacks the project's starter into
+ *  `dir/<project slug>`, `dir` defaulting to the working directory.
+ *
+ *  Exits non-zero, having written nothing, when that folder exists and is
+ *  not empty. Warns about each entry left out. */
 export async function starter(inv: Invocation): Promise<void> {
   const id = await projectOf(inv, inv.args[0]);
   const client = await clientFor(inv);
-  const entries = await readArchive(await client.downloadStarter(id));
-  const top = entries[0]?.path.split('/')[0];
-  const out = resolve(inv.options.out ?? '.');
-  if (top !== undefined && !(await isEmptyDir(join(out, top)))) fail(`${join(out, top)} already has files in it; move them or choose --out`);
-  const refused = await writeEntries(out, entries);
+  const [project, archive] = await Promise.all([client.project(id), client.downloadStarter(id)]);
+  const folder = join(resolve(inv.options.out ?? '.'), project.slug);
+  const refused = await unpackStarter(archive, folder).catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
   for (const r of refused) console.error(`warning: not unpacked: ${r}`);
-  console.log(`unpacked the starter into ${join(out, top ?? '')}`);
+  console.log(`unpacked the starter into ${folder}`);
 }
 
 async function bundleIn(dir: string): Promise<SubmissionBundle> {

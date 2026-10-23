@@ -47,6 +47,13 @@ export interface Status {
 
 /** Every call either answers or rejects with an Error whose message is a
  *  sentence for the screen. */
+/** What became of a starter download: the person cancelled the folder
+ *  dialog, or the starter is unpacked into `folder`, with the entries left
+ *  out (each `path: reason`, such as a link out of the folder). */
+export type StarterDownload =
+  | { readonly kind: 'cancelled' }
+  | { readonly kind: 'unpacked'; readonly folder: string; readonly leftOut: readonly string[] };
+
 export interface Bridge {
   status(): Promise<Status>;
   login(registry: string): Promise<Status>;
@@ -57,8 +64,10 @@ export interface Bridge {
   exercises(): Promise<Project[]>;
   /** The person's submissions to one project (all of them, for staff). */
   submissions(projectId: string): Promise<Submission[]>;
-  /** Asks for a folder and unpacks the starter into it. Null: cancelled. */
-  downloadStarter(projectId: string): Promise<string | null>;
+  /** Asks for a parent folder, unpacks the project's starter into a new
+   *  folder in it named after the project's slug, and returns what became
+   *  of it. */
+  downloadStarter(projectId: string): Promise<StarterDownload>;
   /** Asks for a folder and makes a bundle of it. Null: cancelled. */
   chooseFolder(): Promise<BundlePreview | null>;
   previewFile(bundleId: string, path: string): Promise<FilePreview>;

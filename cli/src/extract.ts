@@ -6,8 +6,9 @@
  *  written, so no write can pass through a link the archive made.
  */
 
-import { mkdir, readdir, symlink, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve, sep } from 'node:path';
+import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { dirname, join, posix, resolve, sep } from 'node:path';
+import { submissionRoot } from './lib/assemble.js';
 import { escapes } from './lib/starter.js';
 import { readTar, type Entry } from './lib/tar.js';
 import { gunzip } from './lib/gzip.js';
@@ -72,4 +73,57 @@ export async function writeEntries(dir: string, entries: readonly Entry[]): Prom
     }
   }
   return refused;
+}
+
+/** Unpacks `archive`, a starter as the registry serves it (a `.tar.gz`),
+ *  into `folder`, creating it, and returns the entries left out, each as
+ *  `path: reason`.
+ *
+ *  When the archive is a single folder containing a `yukibana.json`, that
+ *  folder's contents are unpacked, whatever its name; otherwise the
+ *  archive's contents are unpacked as they are. Entries left out are those
+ *  that would land outside `folder` and links that point out of it or
+ *  could not be made.
+ *
+ *  Throws, having written nothing, when `archive` is not a whole
+ *  `.tar.gz`, or when `folder` exists and is not an empty folder (a file
+ *  or a link is not). Throws when a write fails, after removing what was
+ *  written: the folders created, or, when `folder` already existed, the
+ *  starter's top-level entries in it and nothing else. When that removal
+ *  fails too, the error names what remains.
+ *
+ *  Holds the whole archive and its contents in memory.
+ *
+ *  Writing straight into `folder` replaces the IDE's staging folder and
+ *  copy, which was a second way to fail and once deleted the system's
+ *  temporary directory. */
+export async function unpackStarter(archive: Uint8Array, folder: string): Promise<string[]> {
+  const entries = submissionRoot(await readArchive(archive));
+  const root = resolve(folder);
+  // lstat, not stat: a link to a folder elsewhere would unpack there.
+  const found = await lstat(root).catch((e: unknown) => {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw e;
+  });
+  if (found !== null && !found.isDirectory()) throw new Error(`${root} is not a folder; nothing was unpacked`);
+  if (found !== null && !(await isEmptyDir(root))) throw new Error(`${root} already has files in it; nothing was unpacked`);
+  // The first folder this had to create, or undefined when `root` was there.
+  const created = await mkdir(root, { recursive: true });
+  try {
+    return await writeEntries(root, entries);
+  } catch (e) {
+    const written = created !== undefined ? [created] : [...new Set(entries.map((x) => join(root, topLevel(x.path))))];
+    const left: string[] = [];
+    for (const path of written) await rm(path, { recursive: true, force: true }).catch(() => left.push(path));
+    const why = e instanceof Error ? e.message : String(e);
+    throw new Error(left.length === 0 ? why : `${why}; and could not remove what was written: ${left.join(', ')}`, { cause: e });
+  }
+}
+
+/** Returns the first segment of `path`, an archive path: `src` for
+ *  `src/main.rs`, and `README.md` for itself. */
+function topLevel(path: string): string {
+  let top = path;
+  while (posix.dirname(top) !== '.') top = posix.dirname(top);
+  return top;
 }

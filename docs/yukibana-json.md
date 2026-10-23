@@ -50,7 +50,9 @@ Never in any archive or submission, whatever the file says: `.git/`, and
 
 `yukibana build` (or the GitHub Action, or `publish`) reads the checkout and
 produces two archives, each unpacking into one folder (`--folder`, by
-default the directory's name; make it the project's slug):
+default the directory's name). Only a plain `tar -x` uses that name; the
+IDE and `yukibana starter` put the folder's contents into a folder the
+student chooses. The two archives are:
 
 * **the teacher archive**: the project as it is, hidden tests and this file
   included, minus `.git/`, `.theia/` and the build output. Staff download it

@@ -4,7 +4,7 @@
  *  Everything Yukibana-specific is a call into `@yukibana/cli`:
  *  `loginWithLoopback` for the login, `tokenProvider` over a `SessionStore`
  *  for credentials, `YukibanaClient` for the API, `createSubmissionBundle`
- *  for the preview, `readArchive` and `writeEntries` for the starter.
+ *  for the preview, `unpackStarter` for the starter.
  *
  *  Two environment variables exist for running without a person:
  *  `YUKIBANA_ACCESS_TOKEN` stands in for a login (with `YUKIBANA_URL`), and
@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrowserWindow, app, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import {
-  YukibanaClient, createSubmissionBundle, loginWithLoopback, logout, readArchive, tokenProvider, writeEntries,
+  YukibanaClient, createSubmissionBundle, loginWithLoopback, logout, tokenProvider, unpackStarter,
   type CallbackOutcome, type SubmissionBundle,
 } from '@yukibana/cli';
 import type { Bridge, BundlePreview, FilePreview, Status } from './bridge.js';
@@ -99,12 +99,12 @@ const handlers: { [K in keyof Bridge]: (event: IpcMainInvokeEvent, ...args: Para
   exercises: async () => (await client()).projects(),
   submissions: async (_event, projectId) => (await client()).submissions(projectId),
   async downloadStarter(event, projectId) {
-    const folder = await pickFolder(event, 'Where should the starter go?', true);
-    if (folder === null) return null;
-    const entries = await readArchive(await (await client()).downloadStarter(projectId));
-    await writeEntries(folder, entries);
-    const top = entries[0]?.path.split('/')[0] ?? '';
-    return join(folder, top);
+    const folder = await pickFolder(event, 'Where should the project folder be created?', true);
+    if (folder === null) return { kind: 'cancelled' };
+    const api = await client();
+    const [project, starter] = await Promise.all([api.project(projectId), api.downloadStarter(projectId)]);
+    const target = join(folder, project.slug);
+    return { kind: 'unpacked', folder: target, leftOut: await unpackStarter(starter, target) };
   },
   async chooseFolder(event) {
     const folder = await pickFolder(event, 'Which folder do you want to submit?', false);
