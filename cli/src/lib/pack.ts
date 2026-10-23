@@ -12,6 +12,7 @@
  *  kind's build output, so it sent `target/` when no `.gitignore` named it.
  */
 
+import { posix } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
 import { matcher } from './glob.js';
 import { escapes } from './starter.js';
@@ -34,6 +35,20 @@ export interface Packing {
 /** The name of the file whose patterns git, and a submission, ignore. */
 export const GITIGNORE = '.gitignore';
 
+/** Returns the folder holding `path`, an archive path: `''` for the root. */
+function folderOf(path: string): string {
+  const folder = posix.dirname(path);
+  return folder === '.' ? '' : folder;
+}
+
+/** Returns the folders that hold `path`, an archive path, outermost first
+ *  and the root (`''`) included: `['', 'a', 'a/b']` for `a/b/c`. */
+function foldersAbove(path: string): string[] {
+  const folders: string[] = [];
+  for (let folder = folderOf(path); folder !== ''; folder = folderOf(folder)) folders.unshift(folder);
+  return ['', ...folders];
+}
+
 /** Returns a predicate that is `true` iff `path` (a folder iff `folder`) is
  *  left out of a submission under `config`, whatever `submission.include`
  *  says: never-submitted paths, the kind's build output,
@@ -50,15 +65,14 @@ export function submissionExcluder(config: Config, gitignores: ReadonlyMap<strin
   const excluded = matcher([...NEVER_SUBMITTED, ...buildOutput(config.kind), ...config.submission.exclude]);
   const compiled = new Map<string, Ignore>();
   const ignoredByGit = (path: string, folder: boolean): boolean => {
-    const parts = path.split('/');
     let ignored = false;
-    for (let depth = 0; depth < parts.length; depth++) {
-      const at = parts.slice(0, depth).join('/');
+    for (const at of foldersAbove(path)) {
       const patterns = gitignores.get(at);
       if (patterns === undefined) continue;
       let rules = compiled.get(at);
       if (rules === undefined) compiled.set(at, (rules = ignore().add(patterns)));
-      const below = parts.slice(depth).join('/');
+      const below = at === '' ? path : posix.relative(at, path);
+      // `ignore` takes a trailing slash as the mark of a folder, so `build/` matches one.
       const verdict = rules.test(folder ? `${below}/` : below);
       if (verdict.ignored) ignored = true;
       else if (verdict.unignored) ignored = false;
@@ -74,8 +88,8 @@ export function submissionExcluder(config: Config, gitignores: ReadonlyMap<strin
 export function gitignoresOf(tree: readonly Entry[]): Map<string, string> {
   const found = new Map<string, string>();
   for (const e of tree) {
-    if (e.type !== 'file' || (e.path !== GITIGNORE && !e.path.endsWith(`/${GITIGNORE}`))) continue;
-    found.set(e.path.slice(0, -GITIGNORE.length).replace(/\/$/, ''), new TextDecoder().decode(e.data));
+    if (e.type !== 'file' || posix.basename(e.path) !== GITIGNORE) continue;
+    found.set(folderOf(e.path), new TextDecoder().decode(e.data));
   }
   return found;
 }
@@ -93,8 +107,7 @@ export function planSubmission(tree: readonly Entry[], config: Config): Packing 
   const skipped: string[] = [];
   const problems: string[] = [];
   const leftOutFolders = new Set<string>();
-  const inLeftOutFolder = (path: string): boolean =>
-    path.split('/').slice(0, -1).some((_, i, parts) => leftOutFolders.has(parts.slice(0, i + 1).join('/')));
+  const inLeftOutFolder = (path: string): boolean => foldersAbove(path).some((folder) => leftOutFolders.has(folder));
   for (const e of tree) {
     if (inLeftOutFolder(e.path)) continue;
     if (excluded(e.path, e.type === 'dir')) {
