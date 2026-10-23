@@ -10,7 +10,7 @@ import { folderNames, stampOf } from '../lib/names.js';
 import type { Entry } from '../lib/tar.js';
 import type { Release, Submission } from '../lib/wire.js';
 import { CONFIG_FILE, parseConfig } from '../lib/yukibana.js';
-import { isEmptyDir, readArchive, writeEntries } from '../extract.js';
+import { archiveExtension, isEmptyDir, readArchive, writeEntries } from '../extract.js';
 import { readTree } from '../tree.js';
 import { select } from './browse.js';
 import { clientFor, fail, projectOf, studentsOf, type Invocation } from './common.js';
@@ -48,7 +48,8 @@ interface Downloaded {
  *  students (by name, GitHub login, address or id). `--assemble` overlays a
  *  release's read-only and hidden files and says what the student had
  *  changed of the release they started from; `--archive` keeps each
- *  `.tar.zst` as sent instead of unpacking. A student sees only their own
+ *  archive as sent (a `.tar.gz`, or a `.tar.zst` from an older client)
+ *  instead of unpacking. A student sees only their own
  *  submissions, so the same command is how a student gets back what they
  *  sent.
  *
@@ -116,14 +117,20 @@ export async function download(inv: Invocation): Promise<void> {
     const name = folders.get(s.author.userId) ?? s.author.userId;
     const folder = versions ? join(name, versionFolders.get(s.submissionId) ?? s.submissionId) : name;
     try {
-      const target = join(out, o.archive === true ? `${folder}.tar.zst` : folder);
-      if (!(await vacant(target, o.force === true))) {
-        problems.push(`${target} already exists; --force replaces it`);
+      // An archive is named after its format, known only once downloaded.
+      const unpacked = join(out, folder);
+      if (o.archive !== true && !(await vacant(unpacked, o.force === true))) {
+        problems.push(`${unpacked} already exists; --force replaces it`);
         continue;
       }
       const archive = await client.downloadSubmission(s.submissionId);
       if (sha256Hex(archive) !== s.sha256) {
         problems.push(`${folder}: the download does not match the recorded sha256; not written`);
+        continue;
+      }
+      const target = o.archive === true ? `${unpacked}.${archiveExtension(archive) ?? 'tar.gz'}` : unpacked;
+      if (o.archive === true && !(await vacant(target, o.force === true))) {
+        problems.push(`${target} already exists; --force replaces it`);
         continue;
       }
       let tampering: Tampering | null = null;
@@ -194,7 +201,7 @@ export async function download(inv: Invocation): Promise<void> {
  *  `download --assemble`, from files already here. Each of the two may be
  *  an archive or a folder. */
 export async function assembleCommand(inv: Invocation): Promise<void> {
-  const from = inv.args[0] ?? fail('usage: yukibana assemble <submission.tar.zst|dir> --teacher <teacher.tar.gz|dir> --out <dir>');
+  const from = inv.args[0] ?? fail('usage: yukibana assemble <submission.tar.gz|dir> --teacher <teacher.tar.gz|dir> --out <dir>');
   const teacherPath = inv.options.teacher ?? fail('--teacher names the teacher archive (or the course repository)');
   const out = resolve(inv.options.out ?? fail('--out names the folder to write'));
   if (!(await vacant(out, inv.options.force === true))) fail(`${out} already exists; --force replaces it`);

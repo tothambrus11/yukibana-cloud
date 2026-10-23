@@ -114,12 +114,12 @@ export class YukibanaClient {
     return this.submitArchive(project, await bundle.archive(), bundle.releaseId);
   }
 
-  /** Sends an archive made elsewhere (a `.tar.zst`) as a new submission.
+  /** Sends an archive made elsewhere (a `.tar.gz`) as a new submission.
    *  `release` is the release the work started from, as the folder's
    *  yukibana.json says; null when it says none. */
   submitArchive(project: string, archive: Uint8Array, release: string | null = null): Promise<Accepted> {
     const q = release === null ? '' : `?release=${encodeURIComponent(release)}`;
-    return this.#json('POST', `/api/projects/${seg(project)}/submissions${q}`, decodeAccepted, { bytes: archive, contentType: 'application/zstd' });
+    return this.#json('POST', `/api/projects/${seg(project)}/submissions${q}`, decodeAccepted, { bytes: archive, contentType: 'application/gzip' });
   }
 
   /** Publishes a release as the person (owners and assistants). CI uses a project
@@ -129,7 +129,8 @@ export class YukibanaClient {
     return publish({ url: this.origin, token: await this.#token(), projectId: project, releaseId: release, starter, teacher, label, commit }, this.#fetch);
   }
 
-  /** A submission's archive, as sent (a `.tar.zst`). */
+  /** A submission's archive, as sent: a `.tar.gz`, or a `.tar.zst` from an
+   *  older client. */
   downloadSubmission(submission: string): Promise<Uint8Array> {
     return this.#download(`/api/submissions/${seg(submission)}`);
   }

@@ -15,7 +15,9 @@ const sql = connect(config.databaseUrl);
 const ctx: Context = { config, sql, bucket: s3Bucket(config.s3) };
 afterAll(() => sql.end({ timeout: 5 }));
 
-// The registry checks the zstd magic number and nothing else.
+// The registry checks the first bytes and nothing else: a gzip member, or a
+// zstandard frame from an older client.
+const gz = (n: number) => new Uint8Array([0x1f, 0x8b, n]);
 const zstd = (n: number) => new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, n]);
 
 async function warmup(): Promise<ProjectId> {
@@ -37,6 +39,17 @@ const outcome = async (p: Promise<unknown>): Promise<{ status: number; message: 
 };
 const status = async (p: Promise<unknown>): Promise<number> => (await outcome(p)).status;
 
+test('a submission is stored as a .tar.gz, and one an older client sent as a .tar.zst keeps that name', async () => {
+  const id = await warmup();
+  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(60), null);
+  const older = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(61), null);
+  const keys = await asUser(sql, claimsOf(ALICE), (tx) => tx<{ submission_id: string; object_key: string }[]>`
+    select submission_id, object_key from submission where submission_id in (${sent.submissionId}, ${older.submissionId})`);
+  expect(keys.find((k) => k.submission_id === sent.submissionId)?.object_key).toMatch(/\.tar\.gz$/);
+  expect(keys.find((k) => k.submission_id === older.submissionId)?.object_key).toMatch(/\.tar\.zst$/);
+  expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, new Uint8Array([0x50, 0x4b, 3, 4]), null))).toBe(415);
+});
+
 test('a student\'s open exercises are the published projects of their editions, with what they may do in each', async () => {
   const [p] = await projects(ctx, claimsOf(BOB), null);
   expect(p).toMatchObject({ slug: 'warmup', role: 'student', canSubmit: true, courseCode: 'CS-101' });
@@ -46,9 +59,9 @@ test('a student\'s open exercises are the published projects of their editions, 
 
 test('a teacher sees every version and, by default in the CLI, the latest of each student; a student sees only their own', async () => {
   const id = await warmup();
-  const first = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(1), null);
-  const second = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(2), null);
-  const bobs = await acceptSubmission(ctx, claimsOf(BOB), id, zstd(3), null);
+  const first = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(1), null);
+  const second = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(2), null);
+  const bobs = await acceptSubmission(ctx, claimsOf(BOB), id, gz(3), null);
 
   const all = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: null });
   const ids = all.map((s) => s.submissionId);
@@ -108,7 +121,7 @@ test('after the deadline a student still submits, and it reads as late; once the
 
   const open = await project(ctx, claimsOf(ALICE), id);
   expect(open).toMatchObject({ canSubmit: true, late: true });
-  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(9), null);
+  const sent = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(9), null);
   const [mine] = await submissions(ctx, claimsOf(ALICE), id, { latest: true, author: null });
   expect(mine).toMatchObject({ submissionId: sent.submissionId, late: true });
 
@@ -119,7 +132,7 @@ test('after the deadline a student still submits, and it reads as late; once the
   await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
   expect((await projects(ctx, claimsOf(ALICE), null)).some((p) => p.projectId === id)).toBe(false);
   expect(await status(project(ctx, claimsOf(ALICE), id))).toBe(404);
-  const late = await outcome(acceptSubmission(ctx, claimsOf(ALICE), id, zstd(10), null));
+  const late = await outcome(acceptSubmission(ctx, claimsOf(ALICE), id, gz(10), null));
   expect(late.status).toBe(403);
   expect(late.message).toMatch(/^This project closed on \d{4}-\d\d-\d\d \d\d:\d\d(:\d\d)? UTC and no longer accepts submissions\.$/);
   const [still] = await submissions(ctx, claimsOf(ALICE), id, { latest: false, author: null });
@@ -129,7 +142,7 @@ test('after the deadline a student still submits, and it reads as late; once the
 
 test('a student\'s project list says what they handed in and when; staff of an edition have no student list there', async () => {
   const id = await warmup();
-  await acceptSubmission(ctx, claimsOf(BOB), id, zstd(42), null);
+  await acceptSubmission(ctx, claimsOf(BOB), id, gz(42), null);
   const mine = await asUser(sql, claimsOf(BOB), (tx) => studentProjects(tx, claimsOf(BOB), null));
   const warm = mine.find((p) => p.project_id === id);
   expect(warm).toMatchObject({ slug: 'warmup', can_submit: true, course_code: 'CS-101' });
@@ -147,13 +160,13 @@ test('a submission records the release it started from only when that release is
     values (${e?.editionId ?? ''}, ${`elsewhere-${Date.now()}`}, 'Elsewhere, a draft', 'rust-cargo')
     returning project_id`);
   const elsewhere = trustId<ProjectId>(made?.project_id ?? '');
-  const gz = new Uint8Array([0x1f, 0x8b, 8, 0]);
-  const ours = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, id, gz, gz, 'ours', null, trustId<ReleaseId>(crypto.randomUUID()));
-  const theirs = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, elsewhere, gz, gz, 'theirs', null, trustId<ReleaseId>(crypto.randomUUID()));
+  const release = gz(0);
+  const ours = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, id, release, release, 'ours', null, trustId<ReleaseId>(crypto.randomUUID()));
+  const theirs = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, elsewhere, release, release, 'theirs', null, trustId<ReleaseId>(crypto.randomUUID()));
 
-  const based = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(20), ours.releaseId);
-  const misplaced = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(21), theirs.releaseId);
-  const invented = await acceptSubmission(ctx, claimsOf(ALICE), id, zstd(22), trustId<ReleaseId>(crypto.randomUUID()));
+  const based = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(20), ours.releaseId);
+  const misplaced = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(21), theirs.releaseId);
+  const invented = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(22), trustId<ReleaseId>(crypto.randomUUID()));
   const all = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: uid(ALICE) });
   const base = (s: { submissionId: string }) => all.find((x) => x.submissionId === s.submissionId)?.baseReleaseId;
   expect(base(based)).toBe(ours.releaseId);
@@ -170,12 +183,12 @@ test('a refused submission says why to the people in the edition, and nothing ne
   const draft = trustId<ProjectId>(made?.project_id ?? '');
   const open = await warmup();
 
-  expect(await outcome(acceptSubmission(ctx, claimsOf(TEACHER), draft, zstd(30), null))).toEqual({
+  expect(await outcome(acceptSubmission(ctx, claimsOf(TEACHER), draft, gz(30), null))).toEqual({
     status: 403,
     message: 'You are an owner of Introduction to Programming (2026 autumn); only its students can submit to this project.',
   });
-  expect((await outcome(acceptSubmission(ctx, claimsOf(ASSISTANT), open, zstd(31), null))).message).toMatch(/^You are an assistant of Introduction to Programming \(2026 autumn\);/);
-  expect(await outcome(acceptSubmission(ctx, claimsOf(ALICE), draft, zstd(32), null))).toEqual({
+  expect((await outcome(acceptSubmission(ctx, claimsOf(ASSISTANT), open, gz(31), null))).message).toMatch(/^You are an assistant of Introduction to Programming \(2026 autumn\);/);
+  expect(await outcome(acceptSubmission(ctx, claimsOf(ALICE), draft, gz(32), null))).toEqual({
     status: 403,
     message: 'This project is not open for submissions yet; it has no opening date.',
   });
@@ -183,8 +196,8 @@ test('a refused submission says why to the people in the edition, and nothing ne
   const stranger = claimsOf('stranger@yukibana.local'); // no account, no enrolment
   const nowhere = trustId<ProjectId>('00000000-0000-4000-8000-000000000000');
   const generic = { status: 403, message: 'This project is not accepting submissions from you now.' };
-  expect(await outcome(acceptSubmission(ctx, stranger, draft, zstd(33), null))).toEqual(generic);
-  expect(await outcome(acceptSubmission(ctx, claimsOf(ALICE), nowhere, zstd(34), null))).toEqual(generic);
+  expect(await outcome(acceptSubmission(ctx, stranger, draft, gz(33), null))).toEqual(generic);
+  expect(await outcome(acceptSubmission(ctx, claimsOf(ALICE), nowhere, gz(34), null))).toEqual(generic);
 });
 
 test('a window that closes between the check and the insert stores nothing: no row, no object, and a 403 that says it closed', async () => {
@@ -204,7 +217,7 @@ test('a window that closes between the check and the insert stores nothing: no r
   };
 
   // Straight to the insert, as if the check had passed a moment earlier.
-  const raced = await outcome(recordSubmission({ ...ctx, bucket }, claimsOf(ALICE), id, zstd(50), null));
+  const raced = await outcome(recordSubmission({ ...ctx, bucket }, claimsOf(ALICE), id, gz(50), null));
   expect(raced.status).toBe(403);
   expect(raced.message).toMatch(/^This project closed on /);
   expect(deleted).toEqual(put);

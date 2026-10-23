@@ -13,11 +13,20 @@ import { readTar, type Entry } from './lib/tar.js';
 import { gunzip } from './lib/gzip.js';
 import { unzstd } from './lib/zstd.js';
 
-/** Entries of a `.tar.gz` or a `.tar.zst`, told apart by their first bytes. */
+/** Returns the extension for `bytes`, told by their first bytes: `tar.gz`,
+ *  or `tar.zst` for a submission an older client compressed with zstd;
+ *  null if neither. */
+export function archiveExtension(bytes: Uint8Array): 'tar.gz' | 'tar.zst' | null {
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return 'tar.gz';
+  if (bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) return 'tar.zst';
+  return null;
+}
+
+/** Returns the entries of `bytes`, a `.tar.gz` or a `.tar.zst`. */
 export async function readArchive(bytes: Uint8Array): Promise<Entry[]> {
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) return readTar(await gunzip(bytes));
-  if (bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd) return readTar(await unzstd(bytes));
-  throw new Error('not a .tar.gz or a .tar.zst');
+  const extension = archiveExtension(bytes);
+  if (extension === null) throw new Error('not a .tar.gz or a .tar.zst');
+  return readTar(await (extension === 'tar.gz' ? gunzip(bytes) : unzstd(bytes)));
 }
 
 /** Whether `dir` is missing or empty: the only places this writes into. */

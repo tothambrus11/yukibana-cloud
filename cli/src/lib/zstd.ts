@@ -1,14 +1,11 @@
-/** zstandard in and out, for submissions. Node has it in `zlib` from 22.15;
- *  the Worker does not, which is why the registry only checks the magic
- *  number and the CLI is where a submission is opened. */
+/** zstandard decompression, for submissions the CLI and the IDE compressed
+ *  with it until October 2026; everything is gzip now. Node has it in
+ *  `zlib` from 22.15. */
 
 import { promisify } from 'node:util';
-import { zstdCompress, zstdDecompress } from 'node:zlib';
+import { zstdDecompress } from 'node:zlib';
 
-export async function zstd(bytes: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await promisify(zstdCompress)(bytes));
-}
-
+/** Returns `bytes`, a zstandard frame, decompressed. */
 export async function unzstd(bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await promisify(zstdDecompress)(bytes));
 }

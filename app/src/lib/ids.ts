@@ -36,10 +36,18 @@ export const trustId = <T extends string>(value: string): T => value as T;
 /** An object key the database returned, likewise. */
 export const trustKey = (value: string): ObjectKey => value as ObjectKey;
 
-/** A key for a submission body. One prefix per kind of object, so a bucket
- *  listing sorts by what things are, and a lifecycle rule can tell them apart. */
-export const submissionKey = (submission: SubmissionId): ObjectKey =>
-  `submissions/${submission}.tar.zst` as ObjectKey;
+/** How a submission body is compressed: gzip, or zstd as older clients
+ *  sent it (see `isZstd`). */
+export type Compression = 'gzip' | 'zstd';
+
+/** Returns the key for a submission body compressed with `compression`.
+ *
+ *  One prefix per kind of object, so a bucket listing sorts by what things
+ *  are, and a lifecycle rule can tell them apart. The extension says how the
+ *  body is compressed, so a download is named correctly (see
+ *  `submissionUrl`). */
+export const submissionKey = (submission: SubmissionId, compression: Compression): ObjectKey =>
+  `submissions/${submission}.${compression === 'gzip' ? 'tar.gz' : 'tar.zst'}` as ObjectKey;
 
 /** A key for a release's starter: what students download. `object` is a
  *  fresh random id, not the release id: the object is stored before the row

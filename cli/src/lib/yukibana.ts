@@ -37,8 +37,7 @@ export interface SubmissionRules {
    *  (`NEVER_SUBMITTED`) and what the kind's build leaves (`buildOutput`). */
   readonly exclude: readonly string[];
   /** What a packed submission is called on disk. Only a name: the bytes are
-   *  always a zstandard-compressed tar, because that is what the registry
-   *  accepts. */
+   *  always a gzipped tar, because that is what the registry accepts. */
   readonly filename: string;
   /** The largest submission this project expects, in bytes. The registry
    *  has its own cap above which this cannot go. */
@@ -77,7 +76,7 @@ export interface Config {
 export const DEFAULT_MAX_BYTES = 32 * 1024 * 1024;
 
 /** What `submission.filename` is when the file does not say. */
-export const DEFAULT_FILENAME = 'submission.tar.zst';
+export const DEFAULT_FILENAME = 'submission.tar.gz';
 
 /** The IDE's own state. Everything the IDE is set up with is declared in
  *  this file and read by the Theia fork, so a `.theia` folder is only ever

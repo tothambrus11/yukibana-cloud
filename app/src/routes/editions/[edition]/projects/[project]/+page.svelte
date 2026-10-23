@@ -120,8 +120,8 @@
       {#if p.can_submit}
         {#if pastDeadline}<p class="error">The deadline has passed: a submission now is recorded as late.</p>{/if}
         <form method="POST" action={actionIn('overview', 'submit')} enctype="multipart/form-data" class="stack">
-          <label>Your solution as .tar.zst
-            <input type="file" name="archive" accept=".zst,application/zstd" required />
+          <label>Your solution as .tar.gz
+            <input type="file" name="archive" accept=".gz,.tgz,application/gzip" required />
           </label>
           <button>Submit</button>
         </form>
