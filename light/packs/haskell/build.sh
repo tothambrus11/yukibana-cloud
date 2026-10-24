@@ -18,7 +18,7 @@
 #   server.js         ours: the language server worker
 #   runner.js         ours: the Run and Test worker
 #   tools.js          ours: running ormolu and hlint for the server
-#   ormolu.wasm, hlint.wasm, hlint-data.json   ormolu 0.8.0.2 and hlint 3.10
+#   ormolu.wasm, hlint.wasm, hlint-data.json   ormolu 0.9.0.0 and hlint 3.10
 #                     as WASI commands, and hlint's hint files (ghc/build-tools.sh)
 #   manifest.json     versions, GHC's paths, and the files with their sizes
 #   LICENSE-*.txt     GHC's and its libraries', the packages', the shim's,

@@ -11,7 +11,11 @@
 // .hie file: GHC's record of every name in it, where it is bound and its
 // type. Hover, definition, references, highlights and rename read the .hie
 // files; completion asks GHC's renamer what is in scope. Quick fixes come
-// from GHC's messages and hints, as ghcide's code actions do.
+// from GHC's messages and hints, as ghcide's code actions do, and so do
+// HLS's import and export actions (add an import, make an import list
+// explicit, remove what an import list has too much, export a binding);
+// the call hierarchy is HLS's call-hierarchy plugin's, from the same .hie
+// files.
 
 import { checkGroups, manifestOf, ROOT, sourceRoots, startGhc } from './ghc.js';
 import { hlint, ormolu } from './tools.js';
@@ -198,7 +202,7 @@ async function check() {
         if (path === null) continue;
         // `text` is what GHC's .hie file is of (null without one): the
         // positions the queries answer are in it.
-        if (m.hie || !analyses.has(path)) analyses.set(path, { module: m.module, tops: m.tops, generation, text: m.hie ? (files[path] ?? null) : null, tokens: null, sigs: new Map() });
+        if (m.hie || !analyses.has(path)) analyses.set(path, { module: m.module, tops: m.tops, generation, text: m.hie ? (files[path] ?? null) : null, tokens: null, sigs: new Map(), imports: null, calls: new Map() });
     }
     for (const [path, list] of byPath) {
         ghcDiagnostics.set(path, list);
@@ -710,12 +714,245 @@ function documentSymbols(doc, analysis) {
     return symbols.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
 }
 
+// ---- Call hierarchy (HLS's call-hierarchy plugin, from the same .hie files)
+
+/**
+ * The call hierarchy at a GHC position of a file ('calls' in Yuki.hs),
+ * asked once per position and check: prepare, then incoming and outgoing
+ * calls of the item it answered, all ask the same.
+ */
+async function callsAt(path, line, col) {
+    const analysis = analyses.get(path);
+    if (!analysis) return { item: null };
+    const key = `${line}:${col}`;
+    let answer = analysis.calls.get(key);
+    if (!answer) {
+        answer = await ghc.request(['calls', `${ROOT}/${path}`, String(line), String(col)]);
+        analysis.calls.set(key, answer);
+    }
+    return answer;
+}
+
+/**
+ * An LSP CallHierarchyItem from one of Yuki.hs's items: the whole binding
+ * as its range, the name at the binding as its selection, its type as the
+ * detail. `data` says where the name is (GHC's line and column), which is
+ * what incoming and outgoing calls ask about. Null for a binding in a file
+ * that is not open (the project's files all are).
+ */
+function callItem(i) {
+    const path = projectPath(i.span.file);
+    const doc = path !== null ? docs.get(path) : null;
+    if (!doc) return null;
+    return {
+        name: i.name,
+        kind: /->/.test(i.type) ? SymbolKind.Function : SymbolKind.Variable,
+        detail: i.type,
+        uri: uriOf(path),
+        range: rangeOf(doc, i.span),
+        selectionRange: rangeOf(doc, i.sel),
+        data: { path, line: i.sel.sl, col: i.sel.sc },
+    };
+}
+
+/** The calls on one side of an item: [{ item, fromRanges }], `fromRanges` in the file `rangesIn` names (the caller's). */
+async function callsOf(item, side) {
+    const d = item?.data;
+    if (!d || typeof d.path !== 'string' || !docs.has(d.path)) throw new RequestError(InvalidParams, 'expected a call hierarchy item this server made');
+    const answer = await callsAt(d.path, d.line, d.col);
+    const out = [];
+    for (const c of answer[side] ?? []) {
+        const other = callItem(side === 'incoming' ? c.from : c.to);
+        // Incoming: the uses are in the caller's file; outgoing: in the item's.
+        const doc = docs.get(side === 'incoming' ? pathOf(other?.uri ?? '') : d.path);
+        if (!other || !doc) continue;
+        out.push({ [side === 'incoming' ? 'from' : 'to']: other, fromRanges: c.ranges.map((r) => rangeOf(doc, r)) });
+    }
+    return out;
+}
+
+// ---- Imports and exports (HLS's: add an import, explicit import lists, export a binding)
+
+const isOperator = (name) => !/^[A-Za-z_]/.test(name);
+/** A name as an import or export list writes it. */
+const listItem = (name) => (isOperator(name) ? `(${name})` : name);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The offset of the bracket that closes the one at `open`, or -1 (strings and comments are not looked into: an import or export list has neither). */
+function closing(text, open) {
+    let depth = 0;
+    for (let i = open; i < text.length; i++) {
+        if (text[i] === '(') depth++;
+        else if (text[i] === ')' && --depth === 0) return i;
+    }
+    return -1;
+}
+
+/** An edit inserting `text` at an offset of a document. */
+function insertAt(doc, offset, text) {
+    const line = Math.max(0, doc.lines.findLastIndex((s) => s <= offset));
+    const pos = { line, character: offset - doc.lines[line] };
+    return { range: { start: pos, end: pos }, newText: text };
+}
+
+/**
+ * The edit adding `item` to the list in parentheses that opens at `open`:
+ * after its last item, in the list's style (`(a, b)` on one line, or one
+ * item a line with leading commas, as ormolu and the sample write an
+ * export list).
+ */
+function addToList(doc, open, item) {
+    const close = closing(doc.text, open);
+    if (close < 0) return null;
+    const inside = doc.text.slice(open + 1, close);
+    if (!inside.trim()) return insertAt(doc, open + 1, item);
+    const own = /\n([ \t]*)$/.exec(inside);
+    if (own) {
+        // `)` on a line of its own: the item goes on a line before it, as
+        // the other items' lines start (`  , x`).
+        const lead = /\n([ \t]*),/.exec(inside)?.[1] ?? own[1];
+        return insertAt(doc, close - own[1].length, `${lead}, ${item}\n`);
+    }
+    const end = open + 1 + inside.trimEnd().length;
+    return insertAt(doc, end, `, ${item}`);
+}
+
+/**
+ * Where a new import goes: after the last import (and the lines its list
+ * continues on), else after the module header, else at the top. `prefix`
+ * says whether the line needs a blank line before it.
+ */
+function importInsertion(doc) {
+    const n = doc.lines.length;
+    let last = -1;
+    for (let l = 0; l < n; l++) if (/^import\b/.test(lineText(doc, l))) last = l;
+    if (last >= 0) {
+        let l = last + 1;
+        while (l < n && /^[ \t]+\S/.test(lineText(doc, l))) l++;
+        return { line: l, prefix: '' };
+    }
+    const header = (() => {
+        for (let l = 0; l < n; l++) if (/^module\b/.test(lineText(doc, l))) return l;
+        return -1;
+    })();
+    if (header >= 0) {
+        for (let l = header; l < n; l++) if (/\bwhere\b/.test(lineText(doc, l))) return { line: l + 1, prefix: '\n' };
+    }
+    let l = 0;
+    while (l < n && /^\s*(\{-#|--|$)/.test(lineText(doc, l))) l++;
+    return { line: l, prefix: '' };
+}
+
+/** The not-in-scope name of a GHC diagnostic, as written (`sort`, `Map.insert`, `Map`), or null. */
+function notInScope(doc, d, written) {
+    const message = d.data?.message ?? '';
+    if (!/not in scope/i.test(message) || !written) return null;
+    const m = /^((?:[A-Z][\w']*\.)*)([\w']+|[!#$%&*+./<=>?@\\^|~:-]+)$/.exec(written.replace(/^\((.*)\)$/, '$1').replace(/^`(.*)`$/, '$1'));
+    if (!m) return null;
+    // A capitalised name is a constructor unless GHC says it is a type or class.
+    return { qual: m[1] ? m[1].slice(0, -1) : null, name: m[2], constructor: !/type constructor or class|Not in scope: type/i.test(message) };
+}
+
+/** The modules exporting a name, most likely first: the project's, then those named like the qualifier, then the public before GHC's internals, then the shortest. */
+async function exporters(name, qual, constructor) {
+    // `Down` is a type and a constructor: the message says which is missing.
+    const found = (await ghc.request(['exports', name])).filter((e) => !/^[A-Z:]/.test(name) || (e.kind === 'constructor') === constructor);
+    const seen = new Set();
+    const rank = (e) => [e.home ? 0 : 1, qual && (e.module === qual || e.module.endsWith(`.${qual}`)) ? 0 : 1, /^GHC\.|\.Internal\b|^Data\.OldList$/.test(e.module) ? 1 : 0, e.module.split('.').length, e.module.length];
+    const cmp = (a, b) => {
+        const x = rank(a);
+        const y = rank(b);
+        for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
+        return a.module < b.module ? -1 : 1;
+    };
+    return found.filter((e) => !seen.has(e.module) && seen.add(e.module)).sort(cmp);
+}
+
+/**
+ * "Add import" for a name GHC says is not in scope, as ghcide offers it:
+ * for a qualified name an `import qualified M as Q`, otherwise the name
+ * added to an import list the module already has, or a new `import M
+ * (name)`; a data constructor is imported with its type (`Maybe (Just)`).
+ */
+async function importActions(doc, missing, add) {
+    let list;
+    try {
+        list = await exporters(missing.name, missing.qual, missing.constructor);
+    } catch (e) {
+        log(`exports of ${missing.name}: ${e?.message ?? e}`, 2);
+        return;
+    }
+    const at = importInsertion(doc);
+    const newImport = (title, line) => add(title, [{ range: { start: { line: at.line, character: 0 }, end: { line: at.line, character: 0 } }, newText: `${at.prefix}${line}\n` }]);
+    for (const e of list.slice(0, 5)) {
+        if (e.kind === 'module') continue;
+        if (missing.qual) {
+            newImport(e.module === missing.qual ? `Add import qualified ${e.module}` : `Add import qualified ${e.module} as ${missing.qual}`, e.module === missing.qual ? `import qualified ${e.module}` : `import qualified ${e.module} as ${missing.qual}`);
+            continue;
+        }
+        const item = e.parent ? `${e.parent} (${listItem(missing.name)})` : listItem(missing.name);
+        const existing = new RegExp(`^import[ \\t]+(?:qualified[ \\t]+)?${escapeRe(e.module)}(?:[ \\t]+qualified)?(?:[ \\t]+as[ \\t]+[\\w.]+)?[ \\t]*\\(`, 'm').exec(doc.text);
+        const edit = existing && !/\bqualified\b/.test(existing[0]) ? addToList(doc, existing.index + existing[0].length - 1, item) : null;
+        if (edit) add(`Add ${item} to the import list of ${e.module}`, [edit]);
+        else newImport(`Add import ${e.module} (${item})`, `import ${e.module} (${item})`);
+    }
+}
+
+/**
+ * The edit removing names from an import list ("The import of ‘sort, nub’
+ * from module ‘Data.List’ is redundant"): the import declaration from its
+ * line, its list's items split at the top level, those GHC named dropped.
+ */
+function removeFromImport(doc, line, module, names) {
+    const start = doc.lines[line];
+    // The list may start on a line the declaration continues on (indented).
+    const decl = new RegExp(`^import[ \\t]+(?:qualified[ \\t]+)?${escapeRe(module)}(?![\\w.])(?:[^(\\n]|\\n[ \\t])*\\(`, 'm');
+    const m = decl.exec(doc.text.slice(start));
+    if (!m || m.index !== 0) return null;
+    const open = start + m[0].length - 1;
+    const close = closing(doc.text, open);
+    if (close < 0) return null;
+    const items = [];
+    let depth = 0;
+    let from = open + 1;
+    for (let i = open + 1; i <= close; i++) {
+        const ch = doc.text[i];
+        if (ch === '(') depth++;
+        else if (ch === ')' && depth > 0) depth--;
+        else if ((ch === ',' && depth === 0) || i === close) {
+            items.push(doc.text.slice(from, i).trim());
+            from = i + 1;
+        }
+    }
+    const norm = (s) => s.replace(/\s+/g, '');
+    const drop = new Set(names.map(norm));
+    const kept = items.filter((it) => it && !drop.has(norm(it)) && !drop.has(norm(it).replace(/^\((.*)\)$/, '$1')));
+    if (kept.length === items.filter(Boolean).length) return null;
+    const a = insertAt(doc, open, '').range.start;
+    const b = insertAt(doc, close + 1, '').range.start;
+    return { range: { start: a, end: b }, newText: `(${kept.join(', ')})` };
+}
+
+/** The edit adding a name to the module's export list, or null when it has none (everything is exported). */
+function exportEdit(doc, name) {
+    const m = /^module[ \t]+[\w.]+\s*\(/m.exec(doc.text);
+    return m ? addToList(doc, m.index + m[0].length - 1, listItem(name)) : null;
+}
+
+/** The import lists GHC would write for the implicit imports of a file, at its last check ('imports' in Yuki.hs). */
+async function explicitImports(path) {
+    const analysis = analyses.get(path);
+    if (!analysis?.text) return [];
+    analysis.imports ??= ghc.request(['imports', `${ROOT}/${path}`]);
+    return analysis.imports;
+}
+
 // ---- Quick fixes from GHC's messages and hints (as ghcide's code actions)
 
 /** The names a message or hint quotes, in GHC's ‘quotes’. */
 const quoted = (s) => [...s.matchAll(/‘([^’]+)’/g)].map((m) => m[1]);
 
-function codeActions(doc, uri, diagnostics) {
+async function codeActions(doc, path, uri, diagnostics, range) {
     const actions = [];
     const edit = (title, d, edits, preferred = false) =>
         actions.push({ title, kind: 'quickfix', diagnostics: [d], isPreferred: preferred, edit: { changes: { [uri]: edits } } });
@@ -762,13 +999,49 @@ function codeActions(doc, uri, diagnostics) {
                 edit('Remove redundant import', d, [{ range: { start: { line: r.start.line, character: 0 }, end: { line: end, character: 0 } }, newText: '' }], true);
             }
         }
+        // -Wunused-imports: "The import of ‘sort, nub’ from module ‘Data.List’ is redundant": those names out of its list.
+        if (flags.includes('unused-imports')) {
+            const some = /^The (?:qualified )?import of ‘([^’]+)’\s+from module ‘([^’]+)’ is redundant/.exec(message);
+            const e = some ? removeFromImport(doc, r.start.line, some[2], some[1].split(/,\s*/)) : null;
+            if (e) edit(`Remove ‘${some[1]}’ from the import of ${some[2]}`, d, [e], true);
+        }
+        // -Wunused-top-binds in a module with an export list: export it (HLS's "Export ‘f’").
+        if (/Defined but not used/.test(message) && flags.includes('unused-top-binds')) {
+            const [name] = quoted(message);
+            const e = name && /^[a-z_]/.test(name) && written === name ? exportEdit(doc, name) : null;
+            if (e) edit(`Export ‘${name}’`, d, [e]);
+        }
+        // Not in scope: an import that brings it in.
+        const missing = notInScope(doc, d, written);
+        if (missing) await importActions(doc, missing, (title, edits) => edit(title, d, edits));
         // Typed holes: "Valid hole fits include x :: Int (bound at ...)"
         const fits = /Valid (?:hole fits|refinement hole fits) include\s*([\s\S]*)$/.exec(message);
         if (fits && /^_/.test(written)) {
             for (const m of fits[1].matchAll(/^\s+([a-z_][\w'.]*|\([^)]+\))\s*::/gm)) edit(`Replace ${written} with ${m[1]}`, d, [{ range: r, newText: m[1] }]);
         }
     }
+    // On an import without an import list: the list it needs (HLS's
+    // explicit-imports "Make this import explicit", and "Make all imports
+    // explicit" when there are more).
+    // Its positions are of the text the last check saw: only offered on that text.
+    if (range && importAt(doc, range.start.line) && analyses.get(path)?.text === doc.text) {
+        const all = (await explicitImports(path)).filter((i) => i.items.length);
+        const insert = (i) => insertAt(doc, doc.lines[Math.max(0, i.span.el - 1)] + characterOf(lineText(doc, i.span.el - 1), i.span.ec), ` (${i.items.join(', ')})`);
+        const here = all.find((i) => i.span.sl - 1 <= range.start.line && range.start.line <= i.span.el - 1);
+        if (here) actions.push({ title: 'Make this import explicit', kind: 'refactor.rewrite', edit: { changes: { [uri]: [insert(here)] } } });
+        if (all.length > 1) actions.push({ title: 'Make all imports explicit', kind: 'refactor.rewrite', edit: { changes: { [uri]: all.map(insert) } } });
+    }
     return actions;
+}
+
+/** Whether a line is part of an import declaration (its first line, or a line its list continues on). */
+function importAt(doc, line) {
+    for (let l = line; l >= 0; l--) {
+        const t = lineText(doc, l);
+        if (/^import\b/.test(t)) return true;
+        if (!/^[ \t]+\S/.test(t)) return false;
+    }
+    return false;
 }
 
 // ---- Requests
@@ -788,7 +1061,8 @@ const requests = {
                 documentSymbolProvider: true,
                 renameProvider: { prepareProvider: true },
                 completionProvider: { triggerCharacters: ['.'] },
-                codeActionProvider: { codeActionKinds: ['quickfix'] },
+                codeActionProvider: { codeActionKinds: ['quickfix', 'refactor.rewrite'] },
+                callHierarchyProvider: true,
                 // HLS's: a space or a bracket starts an argument.
                 signatureHelpProvider: { triggerCharacters: [' ', '('], retriggerCharacters: [')', ','] },
                 semanticTokensProvider: { legend: { tokenTypes: TOKEN_TYPES, tokenModifiers: [] }, full: true },
@@ -892,11 +1166,20 @@ const requests = {
         analysis.tokens ??= await ghc.request(['tokens', `${ROOT}/${path}`]);
         return { data: encodeTokens(doc, analysis) };
     },
+    'textDocument/prepareCallHierarchy': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const answer = await callsAt(here.path, here.line, here.col);
+        const item = answer.item ? callItem(answer.item) : null;
+        return item ? [item] : null;
+    },
+    'callHierarchy/incomingCalls': (p) => callsOf(p?.item, 'incoming'),
+    'callHierarchy/outgoingCalls': (p) => callsOf(p?.item, 'outgoing'),
     'textDocument/codeAction': (p) => {
         const path = pathOf(p?.textDocument?.uri ?? '');
         const doc = path !== null ? docs.get(path) : null;
         if (!doc) return [];
-        return codeActions(doc, p.textDocument.uri, p.context?.diagnostics ?? []);
+        return codeActions(doc, path, p.textDocument.uri, p.context?.diagnostics ?? [], p.range ?? null);
     },
 };
 

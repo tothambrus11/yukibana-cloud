@@ -12,10 +12,12 @@ dynamic linker (`dyld.mjs`). A small GHC API program of ours,
   (`-fdiagnostics-as-json`) and every name GHC resolved, from the modules'
   `.hie` files (the files HLS reads). Diagnostics, hover, definition,
   references, highlights, rename, completion, symbols, quick fixes,
-  signature help and semantic tokens come from that. Template Haskell
-  splices run while checking, in GHC's interpreter, as in a build. **hlint** 3.10 adds its hints, and **ormolu** 0.8.0.2 formats:
-  each is its own WASI command (`ghc/build-tools.sh`), started only when
-  wanted.
+  HLS's import and export actions, call hierarchy, signature help and
+  semantic tokens come from that. Template Haskell splices run while
+  checking, in GHC's interpreter, as in a build. **hlint** 3.10 adds its
+  hints, and **ormolu** 0.9.0.0 formats, both parsing as GHC 9.14 does
+  (ghc-lib-parser 9.14): each is its own WASI command
+  (`ghc/build-tools.sh`), started only when wanted.
 * `runner.js` loads the project into GHC's bytecode interpreter and runs
   `main`, as `runghc` and GHCi do. **Test** does the same with
   `tests/Spec.hs`, an hspec suite with QuickCheck. One runner runs program
@@ -72,8 +74,10 @@ formatter. Options compared (measured where marked):
 | Completion | in-scope names with types, qualified, modules after `import` | the same, from GHC's renamer (270 items in the sample, 460 modules) | 3 checks |
 | Document symbols | yes | yes | 1 check |
 | Quick fixes | HLS: suggestions, signatures, unused, imports, holes, extensions | from GHC's hints: replace a misspelt name, add the inferred signature, prefix unused with `_`, remove a redundant import, hole fits, add a LANGUAGE pragma | 4 checks |
-| hlint | hints as warnings, apply or ignore | hlint 3.10's hints (default rules) as `hlint` diagnostics; "Apply hint" and "Ignore hint in this module" | 2 checks |
-| Formatting | ormolu or fourmolu | ormolu 0.8.0.2; a module that does not parse is refused with ormolu's message | 3 checks |
+| Imports and exports | HLS: add an import for a name not in scope, make an import list explicit (lens and action), remove a redundant import or the names an import list has too much, export an unused binding | the same, as code actions: "Add import Data.List (sort)", "Add sort to the import list of Data.List", `import qualified Data.Map as Map` for `Map.insert`, a constructor with its type (`Data.Ord (Down (Down))`), from the project's modules and every module of the packages (an index of their exports, made on the first request); "Make this import explicit" / "Make all imports explicit" (the list from GHC's renamer and the .hie file); "Remove ‘nub’ from the import of Data.List"; "Export ‘helper’" in the export list's own style | 9 checks |
+| Call hierarchy | HLS's plugin: prepare, incoming and outgoing calls from `.hie` files | the same (`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `…/outgoingCalls`): every value binding of the project, top-level and local, its callers grouped with where they call it, across modules; a library function has none | 5 checks (the app's editor has no call hierarchy view yet: Monaco has none) |
+| hlint | hints as warnings, apply or ignore | hlint 3.10's hints (default rules) as `hlint` diagnostics; "Apply hint" and "Ignore hint in this module"; parses GHC 9.14's syntax | 2 checks |
+| Formatting | ormolu or fourmolu | ormolu 0.9.0.0, GHC 9.14's syntax; a module that does not parse is refused with ormolu's message | 3 checks |
 | Run | `runghc` / GHCi | GHC's bytecode interpreter: stdout unbuffered, stdin from the terminal (`getLine`, `getContents` to Ctrl-D), `exitWith`, uncaught exceptions with GHC's message and call stack, compile errors in colour, many runs in one session | 11 checks |
 | Test | `cabal test` with hspec + QuickCheck | hspec 2.11's report, coloured, QuickCheck properties | 3 checks |
 | Signature help | HLS's: the function's type, the argument at the cursor highlighted | the same: the call found in the text as typed (a space or `(` starts an argument), the type GHC declared or inferred, split by GHC into context, arguments and result, with Haddock; locals, qualified names, constructors, class methods | 8 checks |
@@ -141,11 +145,11 @@ and by the sha256 of its `SHA256SUMS` (which holds every file's):
    `.br`/`.gz`, and smoke-tests check, hover and run in Node
    (`ghc/smoke.mjs`). About 12 minutes with its cache.
 2. `ghc/build-tools.sh` (`.github/workflows/light-haskell-ghc-tools.yml`):
-   ormolu and hlint from their Hackage tarballs (sha256-checked), with
-   GHC 9.12's wasm toolchain, because hlint 3.10 (and its master) parses
-   with ghc-lib-parser 9.12, whose `base` stops before 9.14's; ormolu is
-   taken at its last release on the same parser so one ghc-lib-parser
-   serves both. Smoke-tested with wasmtime.
+   ormolu and hlint from their Hackage tarballs (sha256-checked), with the
+   same GHC 9.14 wasm toolchain as the root file system, both on
+   ghc-lib-parser 9.14 (ormolu since 0.8.2; hlint by
+   `ghc/hlint-3.10-ghc-9.14.patch`, below). Smoke-tested with wasmtime,
+   GHC 9.14 syntax (explicit level imports) included.
 
 Download an artifact (`haskell-ghc-rootfs`, `haskell-ghc-tools`) of the
 pinned run and pass it as `HASKELL_GHC_ROOTFS=…zip` / `HASKELL_GHC_TOOLS=…zip`;
@@ -168,8 +172,16 @@ toolchain installed.
   `..` in paths in the browser's file system (GHC loads boot libraries as
   `lib/../lib/…`); keeps fds 0 to 2 open when a program closes them (one
   runner runs many programs).
-* ormolu's and hlint's `.cabal` files: `-threaded` and `-with-rtsopts=-N`
-  removed (the wasm RTS is not threaded).
+* hlint 3.10 (`ghc/hlint-3.10-ghc-9.14.patch`): moved from ghc-lib-parser
+  9.12 to 9.14 and ghc-lib-parser-ex 9.14, the `.cabal` bounds and the
+  source changes 9.14's syntax tree asks for (right-hand sides are a
+  `NonEmpty`, holes are `HsHole`, `PrefixCon` lost its type arguments,
+  record fields are `HsConDeclRecField`, exact-print annotations). It is
+  hlint's open pull request #1673 (against master) carried back to the
+  3.10 tarball, two hunks redone by hand; to be dropped once a release
+  has it. Built with `-f-threaded` (the wasm RTS is not threaded).
+* ormolu's `.cabal` file: `-threaded` and `-with-rtsopts=-N` removed (it
+  has no flag for them).
 
 ## Limits
 
@@ -196,8 +208,12 @@ toolchain installed.
   deferred in the editor, as HLS does), and a hover on a name inside a
   splice shows where it is defined but not its type (the `.hie` file has
   none there).
-* **hlint and ormolu parse as GHC 9.12**: syntax new in 9.14 is not
-  understood by them (GHC's own diagnostics are unaffected).
+* **Call hierarchy has no view in the app**: the server answers it as
+  HLS does, but Monaco has no call hierarchy widget and the app's client
+  registers none yet.
+* **"Add import" reads every library module's interface once** (the first
+  time a name is not in scope), as HLS builds its export index; later
+  ones answer at once.
 * **Runtime errors' call stacks** point into the project's files and into
   `ghc-internal`'s, as on a desktop.
 * **Memory**: two workers of about 250 MB each.

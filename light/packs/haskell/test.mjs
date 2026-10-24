@@ -279,9 +279,16 @@ async function serverTests(page) {
             if (n !== count) {
                 count = n;
                 since = Date.now();
-            } else if (n > 0 && Date.now() - since > 600) return;
+            } else if (n > 0 && Date.now() - since > 600) break;
             await page.waitForTimeout(50);
         }
+        // A check that takes longer than the quiet time may still be
+        // running (a test then saw the check before it, and completion
+        // answered from the text before the edit). The server handles
+        // messages one at a time, a check among them once its debounce has
+        // fired: a request sent after the debounce is answered after it.
+        await page.waitForTimeout(300);
+        await lsp.request('textDocument/documentSymbol', { textDocument: { uri: uri('Main.hs') } });
     }
     const at = (name, line, character) => ({ textDocument: { uri: uri(name) }, position: { line, character } });
     const show = (d) => JSON.stringify(d?.map((x) => `${x.range.start.line}:${x.range.start.character}-${x.range.end.character} ${x.message}`));
@@ -358,14 +365,14 @@ async function serverTests(page) {
     // Quick fixes, from GHC's hints and -Wall's warnings (as ghcide offers
     // them) and from hlint's ideas. Each case edits Main.hs, waits for the
     // diagnostic, asks for the actions on it and applies the one named.
-    const fix = async (what, text, which, title, ok) => {
+    const fix = async (what, text, which, title, ok, file = 'Main.hs') => {
         mark = (await lsp.log()).length;
-        await change('Main.hs', text);
-        const all = await diagnostics('Main.hs', (x) => x.some(which), mark);
+        await change(file, text);
+        const all = await diagnostics(file, (x) => x.some(which), mark);
         const target = all?.find(which);
-        const actions = target ? (await lsp.request('textDocument/codeAction', { textDocument: { uri: uri('Main.hs') }, range: target.range, context: { diagnostics: [target] } })).result ?? [] : [];
+        const actions = target ? (await lsp.request('textDocument/codeAction', { textDocument: { uri: uri(file) }, range: target.range, context: { diagnostics: [target] } })).result ?? [] : [];
         const action = actions.find((a) => title.test(a.title));
-        const edits = action?.edit?.changes?.[uri('Main.hs')] ?? [];
+        const edits = action?.edit?.changes?.[uri(file)] ?? [];
         const fixed = edits.length ? applyEdits(text, edits) : null;
         check(what, !!action && ok(fixed), `${JSON.stringify(actions.map((a) => a.title))} ${JSON.stringify(fixed?.split('\n').slice(10))}`);
     };
@@ -385,6 +392,61 @@ async function serverTests(page) {
     await change('Main.hs', MAIN);
     d = await diagnostics('Main.hs', (x) => x.length === 0, mark);
     check('the sample has no hints, and with its fixes undone no diagnostics', d?.length === 0, show(d));
+    // HLS's import and export actions.
+    const tImport = Date.now();
+    await fix('a name not in scope can be imported from the module that exports it', append(MAIN, '\nsorted :: [Int]\nsorted = sort [3, 1, 2]\n'),
+        (x) => /Variable not in scope: sort/.test(x.message), /^Add import Data\.List \(sort\)$/, (t) => t?.includes('import Geometry\nimport Data.List (sort)\n'));
+    console.log(`      (first "add import", reading every library module's exports: ${Date.now() - tImport} ms)`);
+    const WITH_NUB = MAIN.replace('import Geometry\n', 'import Geometry\nimport Data.List (nub)\n');
+    await fix('or added to the import list the module already has', append(WITH_NUB, '\nsorted :: [Int]\nsorted = nub (sort [3, 1, 2])\n'),
+        (x) => /Variable not in scope: sort/.test(x.message), /^Add sort to the import list of Data\.List$/, (t) => t?.includes('import Data.List (nub, sort)\n'));
+    await fix('a qualified name gets a qualified import', append(MAIN, '\nsquares :: [(Int, Int)]\nsquares = Map.toList (Map.fromList [(1, 1)])\n'),
+        (x) => /Map\.toList/.test(x.message) && /not in scope/i.test(x.message), /^Add import qualified Data\.Map as Map$/, (t) => t?.includes('import qualified Data.Map as Map\n'));
+    await fix('a data constructor is imported with its type', append(MAIN, '\nlargest :: [Int] -> [Int]\nlargest = map getDown . sortOn Down . map Down\n'),
+        (x) => /not in scope: Down/i.test(x.message), /^Add import Data\.Ord \(Down \(Down\)\)$/, (t) => t?.includes('import Data.Ord (Down (Down))\n'));
+    await fix('a name an import list has too much can be removed from it', append(MAIN.replace('import Geometry\n', 'import Geometry\nimport Data.List (nub, sort)\n'), '\nsorted :: [Int]\nsorted = sort [3, 1, 2]\n'),
+        (x) => /The import of ‘nub’ from module ‘Data\.List’ is redundant/.test(x.message), /^Remove ‘nub’ from the import of Data\.List$/, (t) => t?.includes('import Data.List (sort)\n'));
+    await fix('an unused binding can be exported, in the export list\'s style (one line)', append(MAIN, '\nhelper :: Int\nhelper = 1\n'),
+        (x) => /Defined but not used: ‘helper’/.test(x.message), /^Export ‘helper’$/, (t) => t?.startsWith('module Main (main, helper) where\n'));
+    await fix('… or one item a line, with leading commas', append(GEOMETRY, '\nhelper :: Int\nhelper = 1\n'),
+        (x) => /Defined but not used: ‘helper’/.test(x.message), /^Export ‘helper’$/, (t) => t?.includes('  , area\n  , helper\n  ) where\n'), 'Geometry.hs');
+    mark = (await lsp.log()).length;
+    await change('Geometry.hs', GEOMETRY);
+    await change('Main.hs', MAIN);
+    await diagnostics('Main.hs', (x) => x.length === 0, mark);
+    await checked(mark);
+    {
+        const actions = (await lsp.request('textDocument/codeAction', { textDocument: { uri: uri('Main.hs') }, range: { start: { line: 2, character: 3 }, end: { line: 2, character: 3 } }, context: { diagnostics: [] } })).result ?? [];
+        const action = actions.find((a) => a.title === 'Make this import explicit');
+        const explicit = action ? applyEdits(MAIN, action.edit.changes[uri('Main.hs')]) : null;
+        check('an import without a list can be made explicit, with what the module uses from it', action?.kind === 'refactor.rewrite' && explicit?.includes('import Geometry (Point (Point), Shape (Circle, Square), area, distance, norm)\n'), JSON.stringify([actions.map((a) => a.title), explicit?.split('\n')[2]]));
+        mark = (await lsp.log()).length;
+        await change('Main.hs', explicit ?? MAIN);
+        await checked(mark);
+        // No diagnostics before, none after: nothing is published, the last list stands.
+        d = await diagnostics('Main.hs', () => true);
+        check('and the module still compiles without a warning', d?.length === 0, show(d));
+    }
+
+    // Call hierarchy (HLS's plugin: prepare, incoming, outgoing).
+    check('the server has a call hierarchy', init.result?.capabilities?.callHierarchyProvider === true);
+    const [nl, nc] = find(GEOMETRY, 'norm (Point x y)');
+    const prepared = (await lsp.request('textDocument/prepareCallHierarchy', at('Geometry.hs', nl, nc + 1))).result;
+    const normItem = prepared?.[0];
+    check('preparing on `norm` gives its binding, typed', normItem?.name === 'norm' && normItem.detail === 'Point -> Double' && normItem.selectionRange.start.line === nl && normItem.range.start.line === nl, JSON.stringify(prepared));
+    const incoming = normItem ? (await lsp.request('callHierarchy/incomingCalls', { item: normItem })).result ?? [] : [];
+    const callers = incoming.map((x) => `${x.from.uri.replace('file:///workspace/', '')}:${x.from.name}:${x.fromRanges.length}`).sort();
+    check('its callers: distance, Main.main and the test suite\'s main, with where they call it', JSON.stringify(callers) === JSON.stringify(['Geometry.hs:distance:1', 'Main.hs:main:1', 'tests/Spec.hs:main:1']), JSON.stringify(callers));
+    const [cl, cc] = find(GEOMETRY, 'distance a b =');
+    const distanceItem = (await lsp.request('textDocument/prepareCallHierarchy', at('Geometry.hs', cl, cc + 1))).result?.[0];
+    const outgoing = distanceItem ? (await lsp.request('callHierarchy/outgoingCalls', { item: distanceItem })).result ?? [] : [];
+    check('the functions `distance` calls: norm, at its call', outgoing.length === 1 && outgoing[0].to.name === 'norm' && outgoing[0].fromRanges[0]?.start.line === cl, JSON.stringify(outgoing));
+    const [pl, pc] = find(MAIN, 'putStrLn');
+    const library = (await lsp.request('textDocument/prepareCallHierarchy', at('Main.hs', pl, pc + 1))).result;
+    check('a library function has no call hierarchy here', library === null, JSON.stringify(library));
+    mark = (await lsp.log()).length;
+    await change('Main.hs', MAIN);
+    await checked(mark);
 
     // Formatting, with ormolu.
     check('the server formats documents', init.result?.capabilities?.documentFormattingProvider === true);
