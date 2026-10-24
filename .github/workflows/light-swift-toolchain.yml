@@ -10,6 +10,10 @@ name: Build wasm toolchain
 # therefore *resumable*. Every stage caches its build tree, and each job stops a little
 # before the limit, saves the cache, and reports whether it finished. Re-running the
 # workflow continues from where it stopped instead of starting over.
+#
+# It runs only by hand. In swift-toolchain-wasm a v* tag also built and published;
+# in this repository tags belong to other things, so publishing is the
+# publish_release input and nothing else.
 
 on:
   workflow_dispatch:
@@ -35,8 +39,6 @@ on:
           swift-6.3.3-wasm-2, leaves the assets of an existing release in place for
           consumers that pin them by SHA-256.
         default: ""
-  push:
-    tags: ["v*"]
 
 concurrency:
   # Never two builds writing the same cache.
@@ -53,6 +55,10 @@ env:
   # save over the default build's keys, and the default's restore-keys prefix
   # (build-<version>-) must not match a macros key, hence a different start.
   BUILD_CACHE: ${{ (github.event_name != 'workflow_dispatch' || inputs.macros) && 'macros-build' || 'build' }}
+
+defaults:
+  run:
+    working-directory: light/toolchains/swift
 
 jobs:
   build:
@@ -119,8 +125,8 @@ jobs:
       - name: Restore sources
         uses: actions/cache/restore@v4
         with:
-          path: src
-          key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('patches/**') }}
+          path: light/toolchains/swift/src
+          key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
           restore-keys: |
             src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-
             src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}
@@ -132,12 +138,12 @@ jobs:
         id: build-cache
         uses: actions/cache/restore@v4
         with:
-          path: build
-          key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('patches/**', 'scripts/**', 'env.sh') }}-${{ github.run_id }}
+          path: light/toolchains/swift/build
+          key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
           # A first macros build starts from the default build's trees: LLVM is the
           # same, and only the Swift frontend has to be rebuilt.
           restore-keys: |
-            ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('patches/**', 'scripts/**', 'env.sh') }}-
+            ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-
             ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-
             build-${{ env.SWIFT_VERSION }}-
 
@@ -164,16 +170,16 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: src
-          key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('patches/**') }}
+          path: light/toolchains/swift/src
+          key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
         continue-on-error: true
 
       - name: Save build trees
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: build
-          key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('patches/**', 'scripts/**', 'env.sh') }}-${{ github.run_id }}
+          path: light/toolchains/swift/build
+          key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
 
       - name: Smoke-test the toolchain
         if: steps.pipeline.outputs.complete == 'true'
@@ -229,7 +235,7 @@ jobs:
         if: steps.pipeline.outputs.complete == 'true'
         with:
           name: swift-toolchain-wasm-${{ env.SWIFT_VERSION }}${{ env.SWIFT_MACROS != '1' && '-nomacros' || '' }}
-          path: out/
+          path: light/toolchains/swift/out/
           retention-days: 30
 
       - name: Fail if the sourcekitd smoke test failed
@@ -246,7 +252,7 @@ jobs:
 
       # Only the default (macros) build publishes: a release is one toolchain.
       - name: Publish release
-        if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_MACROS == '1' && (startsWith(github.ref, 'refs/tags/') || inputs.publish_release)
+        if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_MACROS == '1' && inputs.publish_release
         uses: softprops/action-gh-release@v2
         with:
           # A workflow_dispatch run has no tag of its own, and the action refuses to
@@ -255,10 +261,10 @@ jobs:
           # so consumers pointing at releases/latest/download keep working across
           # rebuilds. That breaks consumers that pin an asset by SHA-256, so the
           # release_tag input publishes under a new tag instead.
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.release_tag || format('swift-{0}-wasm', env.SWIFT_VERSION) }}
+          tag_name: ${{ inputs.release_tag || format('swift-{0}-wasm', env.SWIFT_VERSION) }}
           name: Swift ${{ env.SWIFT_VERSION }} toolchain for WebAssembly hosts
           make_latest: true
-          files: out/*
+          files: light/toolchains/swift/out/*
           fail_on_unmatched_files: true
           body: |
             WebAssembly-hosted Swift toolchain, built from Swift ${{ env.SWIFT_VERSION }}.

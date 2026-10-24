@@ -1111,7 +1111,7 @@ downloads, checksum-verifies (SHA-256 pinned in the script) and caches in
   `swift-testing.tar`; deleted once that is made.
 
 To try an unreleased toolchain, unpack the `swift-toolchain-wasm-6.3.3`
-artifact of a `build-toolchain.yml` run somewhere and build with
+artifact of a `light-swift-toolchain.yml` run somewhere and build with
 
 ```sh
 SWIFT_TOOLCHAIN_DIR=/path/to/unpacked/artifact ./build.sh

@@ -14,7 +14,7 @@
 #
 # It needs GHC's wasm toolchain (ghc-wasm-meta, ~3 GB installed), which is
 # why the pack's build.sh does not run it: CI does
-# (.github/workflows/haskell-ghc.yml) and build.sh takes its artifact. The
+# (.github/workflows/light-haskell-ghc.yml) and build.sh takes its artifact. The
 # toolchain is installed into $GHC_WASM_PREFIX (default ~/.ghc-wasm) from
 # ghc-wasm-meta at a pinned commit, whose autogen.json pins each bindist by
 # URL and hash.

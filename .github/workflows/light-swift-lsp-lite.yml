@@ -1,23 +1,23 @@
 name: sourcekit-lsp-lite
 
-# The native build of tools/sourcekit-lsp-lite against the official Swift
+# The native build of light/toolchains/swift/tools/sourcekit-lsp-lite against the official Swift
 # toolchain's libsourcekitdInProc.so: warnings as errors on clang and GCC,
 # clang-tidy, cppcheck and clang-format, unit and LSP integration tests, all of
 # them again under AddressSanitizer + LeakSanitizer + UBSan, and a compile of
 # the same sources for wasm32-wasip1 with the WASI SDK. Minutes, not the hours
-# of build-toolchain.yml, which links the wasm module itself (Stage 36).
+# of light-swift-toolchain.yml, which links the wasm module itself (Stage 36).
 
 on:
   push:
     paths:
-      - "tools/sourcekit-lsp-lite/**"
-      - "scripts/36-sourcekit-lsp-lite-wasm.sh"
-      - ".github/workflows/lsp-lite.yml"
+      - "light/toolchains/swift/tools/sourcekit-lsp-lite/**"
+      - "light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh"
+      - ".github/workflows/light-swift-lsp-lite.yml"
   pull_request:
     paths:
-      - "tools/sourcekit-lsp-lite/**"
-      - "scripts/36-sourcekit-lsp-lite-wasm.sh"
-      - ".github/workflows/lsp-lite.yml"
+      - "light/toolchains/swift/tools/sourcekit-lsp-lite/**"
+      - "light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh"
+      - ".github/workflows/light-swift-lsp-lite.yml"
   workflow_dispatch:
 
 concurrency:
@@ -35,7 +35,7 @@ env:
 
 defaults:
   run:
-    working-directory: tools/sourcekit-lsp-lite
+    working-directory: light/toolchains/swift/tools/sourcekit-lsp-lite
 
 jobs:
   test:
@@ -51,13 +51,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        working-directory: .
+        working-directory: light/toolchains/swift
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build clang-18 libclang-rt-18-dev g++ python3 \
             binutils libcurl4-openssl-dev libxml2-dev libncurses-dev libsqlite3-0 zlib1g-dev tzdata
       - name: Install Swift ${{ env.SWIFT_VERSION }}
-        uses: ./.github/actions/swift-toolchain
+        uses: ./.github/actions/light-swift-toolchain
         with:
           version: ${{ env.SWIFT_VERSION }}
       - name: Configure
@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        working-directory: .
+        working-directory: light/toolchains/swift
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build clang-18 clang-tidy-18 clang-format-18 cppcheck \
@@ -87,7 +87,7 @@ jobs:
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100
           sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-18 100
       - name: Install Swift ${{ env.SWIFT_VERSION }}
-        uses: ./.github/actions/swift-toolchain
+        uses: ./.github/actions/light-swift-toolchain
         with:
           version: ${{ env.SWIFT_VERSION }}
       - name: clang-format
@@ -104,21 +104,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Fetch the WASI SDK
-        working-directory: .
+        working-directory: light/toolchains/swift
         run: |
           major="${WASI_SDK_VERSION%%.*}"
           curl -fsSL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${major}/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux.tar.gz" |
             tar -xz -C "$RUNNER_TEMP"
       - name: Fetch sourcekitd.h at swift-${{ env.SWIFT_VERSION }}-RELEASE
-        working-directory: .
+        working-directory: light/toolchains/swift
         run: |
           mkdir -p "$RUNNER_TEMP/sourcekitd"
           curl -fsSL -o "$RUNNER_TEMP/sourcekitd/sourcekitd.h" \
             "https://raw.githubusercontent.com/swiftlang/swift/swift-${SWIFT_VERSION}-RELEASE/tools/SourceKit/tools/sourcekitd/include/sourcekitd/sourcekitd.h"
       # The server's own sources only: linking needs Stage 35's static
-      # sourcekitd, which build-toolchain.yml builds.
+      # sourcekitd, which light-swift-toolchain.yml builds.
       - name: Compile (Stage 36, LITE_COMPILE_ONLY)
-        working-directory: .
+        working-directory: light/toolchains/swift
         run: |
           WASI_SDK_PATH="$RUNNER_TEMP/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux" \
           SOURCEKITD_INCLUDE="$RUNNER_TEMP/sourcekitd" LITE_COMPILE_ONLY=1 \

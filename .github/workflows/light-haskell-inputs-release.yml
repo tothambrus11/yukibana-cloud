@@ -1,7 +1,7 @@
 # Keeps the Haskell pack's two CI inputs after their artifacts expire: the
-# "haskell-ghc-rootfs" artifact of the haskell-ghc.yml run that
-# prototypes/monaco-lsp/packs/haskell/build.sh pins (ROOTFS_RUN) and the
-# "haskell-ghc-tools" artifact of the haskell-ghc-tools.yml run it pins
+# "haskell-ghc-rootfs" artifact of the light-haskell-ghc.yml run that
+# light/packs/haskell/build.sh pins (ROOTFS_RUN) and the
+# "haskell-ghc-tools" artifact of the light-haskell-ghc-tools.yml run it pins
 # (TOOLS_RUN) are checked against build.sh's sha256 pins, zipped and
 # attached to a GitHub release named as build.sh's INPUTS_RELEASE says.
 # build.sh downloads them from there when it is given no artifact, so the
@@ -36,7 +36,7 @@ jobs:
 
       - name: Pins
         id: pins
-        working-directory: prototypes/monaco-lsp/packs/haskell
+        working-directory: light/packs/haskell
         run: |
           pin() { sed -n "s/^$1=\([0-9a-f]*\)$/\1/p" build.sh; }
           rootfs=$(pin ROOTFS_RUN) tools=$(pin TOOLS_RUN)
@@ -98,10 +98,10 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           cat > notes.md <<EOF
-          Inputs of the Haskell pack of Yukibana Light (prototypes/monaco-lsp/packs/haskell), kept past the 90 days of their CI artifacts:
+          Inputs of the Haskell pack of Yukibana Light (light/packs/haskell), kept past the 90 days of their CI artifacts:
 
-          * \`haskell-ghc-rootfs.zip\`: the "haskell-ghc-rootfs" artifact of [run $ROOTFS_RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$ROOTFS_RUN) (haskell-ghc.yml): GHC's root file system for WebAssembly and libyuki.so.
-          * \`haskell-ghc-tools.zip\`: the "haskell-ghc-tools" artifact of [run $TOOLS_RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$TOOLS_RUN) (haskell-ghc-tools.yml): ormolu and hlint.
+          * \`haskell-ghc-rootfs.zip\`: the "haskell-ghc-rootfs" artifact of [run $ROOTFS_RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$ROOTFS_RUN) (light-haskell-ghc.yml): GHC's root file system for WebAssembly and libyuki.so.
+          * \`haskell-ghc-tools.zip\`: the "haskell-ghc-tools" artifact of [run $TOOLS_RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$TOOLS_RUN) (light-haskell-ghc-tools.yml): ormolu and hlint.
 
           build.sh checks each file against the sha256 it pins. The licences of everything in them are inside (LICENSE-*.txt).
           EOF

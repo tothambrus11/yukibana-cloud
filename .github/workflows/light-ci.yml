@@ -1,4 +1,4 @@
-# Checks Yukibana Light (prototypes/monaco-lsp) on every push to a pull
+# Checks Yukibana Light (light) on every push to a pull
 # request and to main, in a few minutes:
 #
 # - app: type-check (svelte-check, the service worker), the unit tests, and
@@ -19,12 +19,12 @@ on:
     branches:
       - main
     paths:
-      - prototypes/monaco-lsp/**
-      - .github/workflows/prototype-ci.yml
+      - light/**
+      - .github/workflows/light-ci.yml
   pull_request:
     paths:
-      - prototypes/monaco-lsp/**
-      - .github/workflows/prototype-ci.yml
+      - light/**
+      - .github/workflows/light-ci.yml
   workflow_dispatch:
 
 concurrency:
@@ -44,7 +44,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
-        working-directory: prototypes/monaco-lsp/app
+        working-directory: light/app
     steps:
       - uses: actions/checkout@v6
 
@@ -52,7 +52,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: prototypes/monaco-lsp/app/package-lock.json
+          cache-dependency-path: light/app/package-lock.json
 
       - name: Install
         run: npm ci --no-audit --no-fund
@@ -72,7 +72,7 @@ jobs:
     timeout-minutes: 25
     defaults:
       run:
-        working-directory: prototypes/monaco-lsp
+        working-directory: light
     steps:
       - uses: actions/checkout@v6
 
@@ -88,7 +88,7 @@ jobs:
       # The app's playwright-core installs the Chromium that the pack's tests
       # and the e2e both launch (as $CHROMIUM).
       - name: Install the app and Chromium
-        working-directory: prototypes/monaco-lsp/app
+        working-directory: light/app
         run: |
           npm ci --no-audit --no-fund
           npx playwright-core install --with-deps chromium
@@ -98,25 +98,25 @@ jobs:
       - uses: actions/cache@v5
         with:
           path: ${{ env.PACK_CACHE }}/javascript
-          key: ci-javascript-${{ hashFiles('prototypes/monaco-lsp/packs/javascript/package-lock.json') }}
+          key: ci-javascript-${{ hashFiles('light/packs/javascript/package-lock.json') }}
           restore-keys: ci-javascript-
 
       - name: Build the pack
-        working-directory: prototypes/monaco-lsp/packs/javascript
+        working-directory: light/packs/javascript
         run: ./build.sh
 
       - name: Type-check the pack
-        working-directory: prototypes/monaco-lsp/packs/javascript
+        working-directory: light/packs/javascript
         run: npm run typecheck
 
       - name: Pack tests
-        working-directory: prototypes/monaco-lsp/packs/javascript
+        working-directory: light/packs/javascript
         run: npm test
 
       - name: Build the app
-        working-directory: prototypes/monaco-lsp/app
+        working-directory: light/app
         run: npm run build
 
       - name: End-to-end (JavaScript, TypeScript, web, p5.js)
-        working-directory: prototypes/monaco-lsp/app
+        working-directory: light/app
         run: node tests/e2e.mjs javascript typescript web p5

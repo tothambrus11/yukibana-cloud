@@ -1,6 +1,6 @@
 name: Swift toolchain for sourcekit-lsp-lite
 description: >
-  Installs a Swift release with swiftly, the way build-toolchain.yml does, and
+  Installs a Swift release with swiftly, the way light-swift-toolchain.yml does, and
   exports SOURCEKITD_PREFIX (the toolchain's usr directory, with
   lib/libsourcekitdInProc.so) for tools/sourcekit-lsp-lite's CMake presets.
   Linux toolchains do not always ship sourcekitd.h; when this one does not, the

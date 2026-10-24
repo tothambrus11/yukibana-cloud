@@ -17,7 +17,7 @@
 # build machine's alex and happy (the workflow installs them).
 #
 # Like build-rootfs.sh it needs GHC's wasm toolchain, so it runs in CI
-# (.github/workflows/haskell-ghc-tools.yml), which installs it the same way,
+# (.github/workflows/light-haskell-ghc-tools.yml), which installs it the same way,
 # but GHC 9.12's, not the pack's 9.14: hlint's latest release (3.10, and
 # its master) parses with ghc-lib-parser 9.12, whose base stops before
 # GHC 9.14's, and the tools are commands of their own, linked with nothing

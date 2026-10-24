@@ -26,11 +26,11 @@
 #   *.gz, *.br        compressed siblings
 #
 # GHC's wasm toolchain (ghc-wasm-meta) takes some 3 GB installed, so
-# ghc/build-rootfs.sh runs in CI (.github/workflows/haskell-ghc.yml) and
+# ghc/build-rootfs.sh runs in CI (.github/workflows/light-haskell-ghc.yml) and
 # this script takes what it uploads, the "haskell-ghc-rootfs" artifact, from
 # $HASKELL_GHC_ROOTFS (a directory or the artifact's zip), checking each file
 # by the sha256 below (of its SHA256SUMS); ormolu and hlint likewise, the
-# "haskell-ghc-tools" artifact of .github/workflows/haskell-ghc-tools.yml,
+# "haskell-ghc-tools" artifact of .github/workflows/light-haskell-ghc-tools.yml,
 # from $HASKELL_GHC_TOOLS. Given neither, it downloads both from the GitHub
 # release that keeps them past the artifacts' 90 days ($INPUTS_RELEASE
 # below). With the toolchain installed ($GHC_WASM_PREFIX or
@@ -45,12 +45,12 @@ GHC_VERSION=9.14.1.20260731
 # SHA256SUMS, which holds every other file's.
 ROOTFS_RUN=40133827035
 SUMS_SHA256=d477a850694988ff7d9d7e50590535234b0f20d7fd80250d9ba717bf6931285a
-# ormolu and hlint (ghc/build-tools.sh, .github/workflows/haskell-ghc-tools.yml):
+# ormolu and hlint (ghc/build-tools.sh, .github/workflows/light-haskell-ghc-tools.yml):
 # the CI build, and the sha256 of its SHA256SUMS.
 TOOLS_RUN=40098246483
 TOOLS_SUMS_SHA256=fb197fb0215b158f615519407882ee084c54ea371eeed06a76d3f2c19277fdd1
 # Where the two are kept once their artifacts expire (90 days): a GitHub
-# release of both, made by hand with .github/workflows/haskell-inputs-release.yml
+# release of both, made by hand with .github/workflows/light-haskell-inputs-release.yml
 # from the runs pinned here. Used when no artifact is given and the cache
 # has none; the same sha256 pins check what it holds.
 INPUTS_RELEASE=haskell-inputs-$ROOTFS_RUN-$TOOLS_RUN

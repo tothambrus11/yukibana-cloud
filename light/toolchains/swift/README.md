@@ -31,7 +31,7 @@ BUILD_UNTIL=20-llvm-wasm ./scripts/build-all.sh   # stop early
 ```
 
 Every stage is idempotent and caches into `build/`, so an interrupted build continues
-instead of restarting. That is what makes the [CI workflow](.github/workflows/build-toolchain.yml)
+instead of restarting. That is what makes the [CI workflow](../../../.github/workflows/light-swift-toolchain.yml)
 possible at all: the LLVM and clang cross-build does not fit in one six-hour job, so the
 workflow saves its build trees and resumes on the next run.
 
@@ -57,7 +57,7 @@ compiler without it. [docs/status.md](docs/status.md#macros) says what it costs 
 embedder has to provide.
 
 [`tools/sourcekit-lsp-lite`](tools/sourcekit-lsp-lite) is the LSP server's C++ source, with
-its own native build, presets, tests and [workflow](.github/workflows/lsp-lite.yml): it builds
+its own native build, presets, tests and [workflow](../../../.github/workflows/light-swift-lsp-lite.yml): it builds
 and tests in minutes against an official Swift toolchain, without any of the stages above.
 
 Requirements: Linux x86_64, ~40 GB disk, cmake, ninja, a host C++ compiler, and a Swift

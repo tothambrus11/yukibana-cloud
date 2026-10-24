@@ -133,14 +133,14 @@ GHC's wasm toolchain takes some 3 GB installed, so the two heavy parts are
 built in CI and `build.sh` takes their artifacts, each pinned by its run
 and by the sha256 of its `SHA256SUMS` (which holds every file's):
 
-1. `ghc/build-rootfs.sh` (`.github/workflows/haskell-ghc.yml`): installs
+1. `ghc/build-rootfs.sh` (`.github/workflows/light-haskell-ghc.yml`): installs
    ghc-wasm-meta at a pinned commit (FLAVOUR 9.14), builds the Hackage
    packages with `wasm32-wasi-cabal` (at a pinned Hackage index state), builds
    `libyuki.so` from `ghc/Yuki.hs`, strips the shared libraries, drops what
    no program uses (Cabal, haddock, haskeline), writes `rootfs.tar` and its
    `.br`/`.gz`, and smoke-tests check, hover and run in Node
    (`ghc/smoke.mjs`). About 12 minutes with its cache.
-2. `ghc/build-tools.sh` (`.github/workflows/haskell-ghc-tools.yml`):
+2. `ghc/build-tools.sh` (`.github/workflows/light-haskell-ghc-tools.yml`):
    ormolu and hlint from their Hackage tarballs (sha256-checked), with
    GHC 9.12's wasm toolchain, because hlint 3.10 (and its master) parses
    with ghc-lib-parser 9.12, whose `base` stops before 9.14's; ormolu is
@@ -150,7 +150,7 @@ and by the sha256 of its `SHA256SUMS` (which holds every file's):
 Download an artifact (`haskell-ghc-rootfs`, `haskell-ghc-tools`) of the
 pinned run and pass it as `HASKELL_GHC_ROOTFS=…zip` / `HASKELL_GHC_TOOLS=…zip`;
 the release workflow does that itself. Artifacts are kept 90 days. To keep
-the pinned inputs past that, `.github/workflows/haskell-inputs-release.yml`
+the pinned inputs past that, `.github/workflows/light-haskell-inputs-release.yml`
 (run by hand, a draft by default) checks both artifacts against the pins
 and attaches them to a GitHub release named `haskell-inputs-<rootfs
 run>-<tools run>` (`INPUTS_RELEASE`); once that release is published,

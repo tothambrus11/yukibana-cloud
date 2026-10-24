@@ -188,7 +188,7 @@ What single-threaded costs, and what an embedder has to know:
 ## sourcekit-lsp-lite
 
 **Status: passes natively against Swift 6.4.1's `libsourcekitdInProc.so`, and linked for
-`wasm32-wasip1` and smoke-tested under wasmtime and Node by build-toolchain.yml (Stage 53).** [`tools/sourcekit-lsp-lite`](../tools/sourcekit-lsp-lite)
+`wasm32-wasip1` and smoke-tested under wasmtime and Node by light-swift-toolchain.yml (Stage 53).** [`tools/sourcekit-lsp-lite`](../tools/sourcekit-lsp-lite)
 is a small LSP server in C++20 over sourcekitd's public C API (`sourcekitd.h`, synchronous
 `sourcekitd_send_request_sync` only: no blocks, no notification handler). It exists because
 SourceKit-LSP is a Swift program with threads, an index store and a build-system layer,
@@ -300,7 +300,7 @@ Leak and UndefinedBehavior sanitizers), `tidy` (clang-tidy as errors during the 
 `.clang-tidy`), `cppcheck`, and `release`. ctest runs the doctest unit tests (JSON, text
 and position conversion, framing, options, request building, and translation of recorded
 sourcekitd responses in `tests/fixtures`), the reactor driven in process, and sixteen LSP
-scenarios over stdio against `tests/project`. [`lsp-lite.yml`](../.github/workflows/lsp-lite.yml)
+scenarios over stdio against `tests/project`. [`light-swift-lsp-lite.yml`](../../../../.github/workflows/light-swift-lsp-lite.yml)
 runs all of it, plus a wasm compile with the same warnings.
 
 ## Known limits

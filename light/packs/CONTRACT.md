@@ -1,6 +1,6 @@
 # Language pack contract
 
-The app (`prototypes/monaco-lsp/app/`, SvelteKit, static, PWA) is a Monaco
+The app (`light/app/`, SvelteKit, static, PWA) is a Monaco
 editor with a small hand-written LSP client. It knows nothing about any
 language server. Each language is a **pack**: a directory of static files
 that the app downloads only when the user selects that language.

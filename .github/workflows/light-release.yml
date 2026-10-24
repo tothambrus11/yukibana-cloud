@@ -1,4 +1,4 @@
-# Builds Yukibana Light (prototypes/monaco-lsp) with every language pack and
+# Builds Yukibana Light (light) with every language pack and
 # uploads the release archive as a workflow artifact,
 # yukibana-light-preview-<run number>: yukibana-light/{build/, serve.py,
 # README.md, RUN.txt}, the layout of the previews shared so far. Download it
@@ -89,7 +89,7 @@ jobs:
               tzdata unzip zlib1g-dev
     defaults:
       run:
-        working-directory: prototypes/monaco-lsp/packs/${{ matrix.pack }}
+        working-directory: light/packs/${{ matrix.pack }}
     steps:
       - uses: actions/checkout@v6
 
@@ -130,16 +130,16 @@ jobs:
           path: |
             ${{ env.PACK_CACHE }}
             !${{ env.PACK_CACHE }}/swift/toolchain
-          key: light-${{ matrix.pack }}-${{ hashFiles(format('prototypes/monaco-lsp/packs/{0}/**', matrix.pack)) }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: light-${{ matrix.pack }}-${{ hashFiles(format('light/packs/{0}/**', matrix.pack)) }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            light-${{ matrix.pack }}-${{ hashFiles(format('prototypes/monaco-lsp/packs/{0}/**', matrix.pack)) }}-
+            light-${{ matrix.pack }}-${{ hashFiles(format('light/packs/{0}/**', matrix.pack)) }}-
             light-${{ matrix.pack }}-
 
       # The Haskell pack's inputs, for either of its build.sh:
       # - on GHC, it takes the "haskell-ghc-rootfs" artifact of the
-      #   haskell-ghc.yml run it pins (ROOTFS_RUN) from $HASKELL_GHC_ROOTFS,
+      #   light-haskell-ghc.yml run it pins (ROOTFS_RUN) from $HASKELL_GHC_ROOTFS,
       #   and ormolu and hlint, the "haskell-ghc-tools" artifact of the
-      #   haskell-ghc-tools.yml run it pins (TOOLS_RUN), from $HASKELL_GHC_TOOLS;
+      #   light-haskell-ghc-tools.yml run it pins (TOOLS_RUN), from $HASKELL_GHC_TOOLS;
       # - on MicroHs, it uses the C++ pack's Emscripten when that is there,
       #   and its own fallback fetch passes its fetch() the arguments in the
       #   C++ pack's order (url, sha256, file; its own takes url, file,
@@ -171,7 +171,7 @@ jobs:
 
       # An artifact that has expired (90 days) is not an error: build.sh
       # then downloads the same files from the release that keeps them
-      # (INPUTS_RELEASE in build.sh, .github/workflows/haskell-inputs-release.yml).
+      # (INPUTS_RELEASE in build.sh, .github/workflows/light-haskell-inputs-release.yml).
       - uses: actions/download-artifact@v7
         id: rootfs-artifact
         if: steps.haskell.outputs.rootfs-run
@@ -182,7 +182,7 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/haskell-ghc-rootfs
 
-      # ormolu and hlint, built by haskell-ghc-tools.yml.
+      # ormolu and hlint, built by light-haskell-ghc-tools.yml.
       - uses: actions/download-artifact@v7
         id: tools-artifact
         if: steps.haskell.outputs.tools-run
@@ -214,14 +214,14 @@ jobs:
           path: |
             ${{ env.PACK_CACHE }}
             !${{ env.PACK_CACHE }}/swift/toolchain
-          key: light-${{ matrix.pack }}-${{ hashFiles(format('prototypes/monaco-lsp/packs/{0}/**', matrix.pack)) }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: light-${{ matrix.pack }}-${{ hashFiles(format('light/packs/{0}/**', matrix.pack)) }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The artifact's root is static/packs, so it holds <pack>/ and the
       # assemble job can merge every pack into one static/packs.
       - uses: actions/upload-artifact@v6
         with:
           name: pack-${{ matrix.pack }}
-          path: prototypes/monaco-lsp/app/static/packs/
+          path: light/app/static/packs/
           if-no-files-found: error
           include-hidden-files: true
           compression-level: 1
@@ -234,7 +234,7 @@ jobs:
     timeout-minutes: 45
     defaults:
       run:
-        working-directory: prototypes/monaco-lsp/app
+        working-directory: light/app
     steps:
       - uses: actions/checkout@v6
 
@@ -244,7 +244,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: prototypes/monaco-lsp/app/package-lock.json
+          cache-dependency-path: light/app/package-lock.json
 
       - name: Install the app's dependencies
         run: npm ci --no-audit --no-fund
@@ -253,7 +253,7 @@ jobs:
         with:
           pattern: pack-*
           merge-multiple: true
-          path: prototypes/monaco-lsp/app/static/packs
+          path: light/app/static/packs
 
       - name: Packs
         run: |

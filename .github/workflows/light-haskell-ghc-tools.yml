@@ -1,7 +1,7 @@
 # Builds the Haskell pack's formatter and linter, ormolu and hlint, as
 # WebAssembly commands with
-# prototypes/monaco-lsp/packs/haskell/ghc/build-tools.sh, and uploads them
-# as an artifact for the pack's build.sh. Apart from haskell-ghc.yml:
+# light/packs/haskell/ghc/build-tools.sh, and uploads them
+# as an artifact for the pack's build.sh. Apart from light-haskell-ghc.yml:
 # ghc-lib-parser takes most of an hour to build, and only a change to
 # build-tools.sh needs it built again.
 name: Haskell pack formatter and linter
@@ -11,8 +11,8 @@ on:
     branches:
       - claude/project-thread-3ei4fl
     paths:
-      - prototypes/monaco-lsp/packs/haskell/ghc/build-tools.sh
-      - .github/workflows/haskell-ghc-tools.yml
+      - light/packs/haskell/ghc/build-tools.sh
+      - .github/workflows/light-haskell-ghc-tools.yml
   workflow_dispatch:
 
 permissions:
@@ -41,7 +41,7 @@ jobs:
         run: sudo apt-get install -y --no-install-recommends alex happy
 
       - name: Build
-        run: prototypes/monaco-lsp/packs/haskell/ghc/build-tools.sh "$RUNNER_TEMP/tools"
+        run: light/packs/haskell/ghc/build-tools.sh "$RUNNER_TEMP/tools"
 
       - name: Save GHC's wasm toolchain and the tools' package store
         if: always()

@@ -12,6 +12,8 @@ starter while the project's window is open and submit their solution as a
 `docs/cli.md` is the CLI and the library the IDE extension uses,
 `docs/theia.md` is how to embed it in Theia or any frontend (`demo/electron`
 is a working desktop client), and `CLAUDE.md` is how the code is written.
+Yukibana Light, the browser IDE with its language packs and the wasm Swift
+toolchain, lives in `light/` with its own build: `light/README.md`.
 
 | | |
 | --- | --- |
