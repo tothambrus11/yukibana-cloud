@@ -564,6 +564,12 @@ async function serverTests(page) {
     await checked(mark);
     comp = (await typing(append(QUALIFIED, '  print (Map.'), 12, 13)).result?.items ?? [];
     check('completion after `Map.` (import qualified Data.Map as Map) offers Data.Map\'s functions', ['insert', 'fromList', 'toList', 'lookup'].every((x) => comp.some((i) => i.label === x)), JSON.stringify(comp.slice(0, 8).map((i) => i.label)));
+    // Left a moment, the unfinished line is checked, and does not parse: completion still offers what was in scope.
+    mark = (await lsp.log()).length;
+    await change('Main.hs', append(QUALIFIED, '  print (Map.'));
+    await checked(mark);
+    comp = (await lsp.request('textDocument/completion', at('Main.hs', 12, 13))).result?.items ?? [];
+    check('and still once the unfinished line has been checked (it does not parse)', ['insert', 'fromList', 'toList', 'lookup'].every((x) => comp.some((i) => i.label === x)), JSON.stringify(comp.slice(0, 8).map((i) => i.label)));
     comp = (await typing(MAIN.replace('import Geometry\n', 'import Geometry\nimport Data.\n'), 3, 12)).result?.items ?? [];
     check('completion after `import Data.` offers the modules there are', ['Data.Map', 'Data.Map.Strict', 'Data.Char', 'Data.List', 'Data.Set'].every((x) => comp.some((i) => i.label === x)), `${comp.length} modules`);
 
@@ -838,6 +844,21 @@ main = do
         `${JSON.stringify(r.stdout.slice(-300))} ${r.stderr} (${r.ms} ms)`);
     r = await run({ ...SAMPLE, 'tests/Spec.hs': SPEC.replace('`shouldBe` 9', '`shouldBe` 10') }, [], 'test');
     check('a failing example fails Test with code 1, saying what was expected', r.code === 1 && /4 examples, 1 failure/.test(plain(r.stdout)) && /expected: 10\.0[\s\S]*but got: 9\.0/.test(plain(r.stdout)), `${JSON.stringify(plain(r.stdout).slice(-400))} ${r.stderr}`);
+    // QuickCheck under hspec, as `cabal test` runs it: a property that holds passes, one that does not fails with its shrunk counterexample.
+    const PROPS = `module Main (main) where
+
+import Test.Hspec
+import Test.QuickCheck
+
+main :: IO ()
+main = hspec $
+  describe "reverse" $ do
+    it "is its own inverse" $ property $ \\xs -> reverse (reverse xs) == (xs :: [Int])
+    it "keeps a list as it is" $ property $ \\xs -> reverse xs == (xs :: [Int])
+`;
+    r = await run({ ...SAMPLE, 'tests/Spec.hs': PROPS }, [], 'test');
+    const qc = plain(r.stdout);
+    check('QuickCheck properties run under hspec: one holds, the other fails with a shrunk counterexample', r.code === 1 && /2 examples, 1 failure/.test(qc) && /Falsified \(after \d+ tests?(?: and \d+ shrinks?)?\):\s*\[-?\d+(?:,-?\d+)+\]/.test(qc), `${JSON.stringify(qc.slice(-500))} ${r.stderr}`);
     r = await run({ 'Main.hs': MAIN }, [], 'test');
     check('Test without tests says so', r.code === 1 && /No tests/.test(r.stderr), JSON.stringify(r.stderr));
 }

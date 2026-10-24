@@ -419,9 +419,20 @@ function kindOf(n) {
 /** A name's type from its declaration (`name :: type`), as completion's detail shows it. */
 const detailOf = (n) => (n.type ? n.type.replace(/^\(?[^\s]+?\)?\s*::\s*/, '').replace(/\s+/g, ' ') : undefined);
 
+/**
+ * Per project path, the names in scope at the last completion that had
+ * any. Yuki's `scope` parses the module as the last check saw it, so once a
+ * check has seen text that does not parse (`print (Map.`, typed and left a
+ * moment) it has no names at all, and completion offered nothing: these
+ * stand in, as HLS answers from the last module that type checked.
+ */
+const lastNames = new Map();
+
 async function completions(doc, path, line, character) {
     const text = lineText(doc, line).slice(0, character);
     const scope = await ghc.request(['scope', `${ROOT}/${path}`, String(line + 1), String(columnOf(lineText(doc, line), character))]);
+    if (scope.names?.length) lastNames.set(path, scope.names);
+    else scope.names = lastNames.get(path) ?? [];
     const items = [];
     const seen = new Set();
     const add = (item) => {
@@ -1360,6 +1371,7 @@ const notifications = {
         analyses.delete(path);
         ghcDiagnostics.delete(path);
         hlintDiagnostics.delete(path);
+        lastNames.delete(path);
         ghc.remove(path);
         published.delete(path);
         send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri: p.textDocument.uri, diagnostics: [] } });
