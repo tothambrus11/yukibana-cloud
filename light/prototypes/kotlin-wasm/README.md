@@ -7,7 +7,7 @@ and compiles for three targets: JVM class files, JavaScript, and Kotlin/Wasm
 for WASI. The last of these gives a runner with no server and no JVM: kotlinc
 writes a small WASI module that runs in the browser with stdin.
 
-This is a prototype next to the Kotlin pack (`../monaco-lsp/packs/kotlin`),
+This is a prototype next to the Kotlin pack (`../../packs/kotlin`),
 which is still syntax-only. That pack's README says kotlinc cannot run in a
 browser. It can, and this directory shows how.
 
