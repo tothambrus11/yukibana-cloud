@@ -42,6 +42,8 @@ const projectPath = (file) => (typeof file === 'string' && file.startsWith(`${RO
 let ghc = null;
 /** Whether the client re-asks for semantic tokens when told to (workspace/semanticTokens/refresh). */
 let clientRefreshesTokens = false;
+/** Whether the client re-asks for code lenses when told to (workspace/codeLens/refresh). */
+let clientRefreshesLenses = false;
 const ready = (async () => {
     const t0 = performance.now();
     const report = (p) => send({ jsonrpc: '2.0', method: 'yukibana/loading', params: p });
@@ -211,6 +213,8 @@ async function check() {
     log(`checked ${byPath.size} file(s) in ${Math.round(performance.now() - t0)} ms`);
     // The names' colours are of the last check: the client asks again.
     if (clientRefreshesTokens) send({ jsonrpc: '2.0', id: `refresh-${generation}`, method: 'workspace/semanticTokens/refresh' });
+    // The type lenses are of the last check's warnings.
+    if (clientRefreshesLenses) send({ jsonrpc: '2.0', id: `lenses-${generation}`, method: 'workspace/codeLens/refresh' });
     void lint();
 }
 
@@ -949,6 +953,130 @@ async function explicitImports(path) {
 
 // ---- Quick fixes from GHC's messages and hints (as ghcide's code actions)
 
+/**
+ * The signature GHC inferred for a top-level binding that has none, from
+ * its -Wmissing-signatures warning ("Top-level binding with no type
+ * signature: f :: Int -> Int"): the signature on one line, and the edit
+ * that writes it above the binding, indented as the binding is. Null for
+ * any other diagnostic. The quick fix and the type lens both use it.
+ */
+function missingSignature(doc, d) {
+    const m = /Top-level binding with no type signature:\s*([\s\S]+)$/.exec(d.data?.message ?? d.message ?? '');
+    if (!m) return null;
+    const line = d.range.start.line;
+    const indent = /^\s*/.exec(lineText(doc, line))[0];
+    const text = m[1].trim();
+    return {
+        signature: text.replace(/\s+/g, ' '),
+        edit: { range: { start: { line, character: 0 }, end: { line, character: 0 } }, newText: `${indent}${text.replace(/\n\s*/g, '\n' + indent + '  ')}\n` },
+    };
+}
+
+/**
+ * HLS's type lenses: above each top-level binding without a signature,
+ * the signature GHC inferred, which writes it when clicked (the command
+ * `haskell.addSignature`, carrying its edit). From the last check's
+ * warnings, so a binding is lensed once the check that saw it is done,
+ * and only while the warning is on (-Wall has it).
+ */
+function typeLenses(doc, path) {
+    const lenses = [];
+    for (const d of ghcDiagnostics.get(path) ?? []) {
+        const sig = missingSignature(doc, d);
+        if (!sig) continue;
+        const edit = { changes: { [doc.uri]: [sig.edit] } };
+        lenses.push({ range: d.range, command: { title: sig.signature, command: 'haskell.addSignature', arguments: [edit] } });
+    }
+    return lenses;
+}
+
+// ---- Folding (HLS's: declarations, imports, comments, and what is indented under a line)
+
+/**
+ * Folding ranges of a Haskell module from its text alone, so they are
+ * there before (and without) a check: the import block, `{- -}` comments
+ * and runs of `--` lines, each top-level declaration with its signature
+ * and every equation of the same name, and every line with lines indented
+ * under it (a `do` block, a `where`, guards, a long expression). Monaco
+ * folds whole lines and cannot fold two ranges from one line, so for one
+ * start line only the longest range is kept.
+ */
+function foldingRanges(doc) {
+    const lines = [];
+    for (let i = 0; i < doc.lines.length; i++) lines.push(lineText(doc, i));
+    const blank = (t) => /^\s*$/.test(t);
+    const indentOf = (t) => /^\s*/.exec(t)[0].length;
+    const isLineComment = (t) => /^\s*--(?![!#$%&*+./<=>?@\\^|~:])/.test(t);
+    const ranges = new Map();
+    const add = (start, end, kind) => {
+        if (end <= start) return;
+        const had = ranges.get(start);
+        if (!had || had.endLine < end) ranges.set(start, { startLine: start, endLine: end, ...(kind && { kind }) });
+    };
+    /** The last line of what starts at `i`: the lines after it indented deeper, blank lines between them included but not after. */
+    const blockEnd = (i) => {
+        const indent = indentOf(lines[i]);
+        let end = i;
+        for (let j = i + 1; j < lines.length; j++) {
+            if (blank(lines[j])) continue;
+            if (indentOf(lines[j]) <= indent) break;
+            end = j;
+        }
+        return end;
+    };
+    const inComment = new Set();
+    for (let i = 0; i < lines.length; i++) {
+        const t = lines[i];
+        // A block comment (or pragma) from its `{-` to its `-}`.
+        if (/^\s*\{-/.test(t) && !/-\}/.test(t.slice(t.indexOf('{-') + 2))) {
+            let j = i + 1;
+            while (j < lines.length && !/-\}/.test(lines[j])) j++;
+            add(i, Math.min(j, lines.length - 1), 'comment');
+            for (let k = i; k <= j; k++) inComment.add(k);
+            i = j;
+            continue;
+        }
+        if (isLineComment(t)) {
+            let j = i;
+            while (j + 1 < lines.length && isLineComment(lines[j + 1])) j++;
+            add(i, j, 'comment');
+            for (let k = i; k <= j; k++) inComment.add(k);
+            i = j;
+        }
+    }
+    const code = (i) => !blank(lines[i]) && !inComment.has(i);
+    // The imports, from the first to the end of the last (an import list may go on over lines).
+    const imports = lines.map((t, i) => (/^import\b/.test(t) && code(i) ? i : -1)).filter((i) => i >= 0);
+    if (imports.length) add(imports[0], blockEnd(imports.at(-1)), 'imports');
+    // Top-level declarations: a binding's signature and equations are one group.
+    const nameOf = (t) => {
+        const m = /^(?:\(([^)\s]+)\)|([a-z_][\w']*))/.exec(t);
+        return m && !/^(?:import|module|data|newtype|type|class|instance|deriving|infix[lr]?|foreign|where|let|in|if|then|else|case|of|do)$/.test(m[2] ?? '') ? (m[1] ?? m[2]) : null;
+    };
+    let group = null;
+    const close = () => {
+        if (group) add(group.start, group.end);
+        group = null;
+    };
+    for (let i = 0; i < lines.length; i++) {
+        if (!code(i) || indentOf(lines[i]) > 0) continue;
+        if (/^(?:import|module)\b/.test(lines[i])) {
+            close();
+            continue;
+        }
+        const name = nameOf(lines[i]);
+        if (!group || name === null || group.name !== name) {
+            close();
+            group = { name, start: i, end: blockEnd(i) };
+        } else group.end = blockEnd(i);
+        if (name === null) close();
+    }
+    close();
+    // Whatever is indented under a line.
+    for (let i = 0; i < lines.length; i++) if (code(i)) add(i, blockEnd(i));
+    return [...ranges.values()].sort((a, b) => a.startLine - b.startLine);
+}
+
 /** The names a message or hint quotes, in GHC's ‘quotes’. */
 const quoted = (s) => [...s.matchAll(/‘([^’]+)’/g)].map((m) => m[1]);
 
@@ -981,12 +1109,8 @@ async function codeActions(doc, path, uri, diagnostics, range) {
             }
         }
         // -Wmissing-signatures: "Top-level binding with no type signature: f :: Int -> Int"
-        const sig = /Top-level binding with no type signature:\s*([\s\S]+)$/.exec(message);
-        if (sig) {
-            const line = r.start.line;
-            const indent = /^\s*/.exec(lineText(doc, line))[0];
-            edit(`Add type signature: ${sig[1].trim().replace(/\s+/g, ' ')}`, d, [{ range: { start: { line, character: 0 }, end: { line, character: 0 } }, newText: `${indent}${sig[1].trim().replace(/\n\s*/g, '\n' + indent + '  ')}\n` }], true);
-        }
+        const sig = missingSignature(doc, d);
+        if (sig) edit(`Add type signature: ${sig.signature}`, d, [sig.edit], true);
         // -Wunused-matches / -Wunused-local-binds / -Wunused-top-binds: "Defined but not used: ‘x’"
         if (/Defined but not used/.test(message) && flags.some((f) => /^unused-/.test(f))) {
             const [name] = quoted(message);
@@ -1049,6 +1173,7 @@ function importAt(doc, line) {
 const requests = {
     initialize: async (p) => {
         clientRefreshesTokens = p?.capabilities?.workspace?.semanticTokens?.refreshSupport === true;
+        clientRefreshesLenses = p?.capabilities?.workspace?.codeLens?.refreshSupport === true;
         return {
             capabilities: {
                 documentFormattingProvider: (await toolsReady).ormolu,
@@ -1063,6 +1188,9 @@ const requests = {
                 completionProvider: { triggerCharacters: ['.'] },
                 codeActionProvider: { codeActionKinds: ['quickfix', 'refactor.rewrite'] },
                 callHierarchyProvider: true,
+                foldingRangeProvider: true,
+                codeLensProvider: { resolveProvider: false },
+                executeCommandProvider: { commands: ['haskell.addSignature'] },
                 // HLS's: a space or a bracket starts an argument.
                 signatureHelpProvider: { triggerCharacters: [' ', '('], retriggerCharacters: [')', ','] },
                 semanticTokensProvider: { legend: { tokenTypes: TOKEN_TYPES, tokenModifiers: [] }, full: true },
@@ -1173,6 +1301,22 @@ const requests = {
         const item = answer.item ? callItem(answer.item) : null;
         return item ? [item] : null;
     },
+    'textDocument/foldingRange': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        return doc && isHaskell(doc.uri) ? foldingRanges(doc) : null;
+    },
+    'textDocument/codeLens': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        return doc ? typeLenses(doc, path) : [];
+    },
+    // The type lens's command: its argument is the edit, which the client applies.
+    'workspace/executeCommand': (p) => {
+        if (p?.command !== 'haskell.addSignature' || typeof p.arguments?.[0] !== 'object') throw new RequestError(InvalidParams, `unknown command ${p?.command}`);
+        send({ jsonrpc: '2.0', id: `edit-${++edits}`, method: 'workspace/applyEdit', params: { label: 'Add type signature', edit: p.arguments[0] } });
+        return null;
+    },
     'callHierarchy/incomingCalls': (p) => callsOf(p?.item, 'incoming'),
     'callHierarchy/outgoingCalls': (p) => callsOf(p?.item, 'outgoing'),
     'textDocument/codeAction': (p) => {
@@ -1224,6 +1368,8 @@ const notifications = {
     'workspace/didChangeWatchedFiles': () => {},
 };
 
+/** Numbers the edits the server asks the client to apply (workspace/applyEdit). */
+let edits = 0;
 let chain = Promise.resolve();
 let shutDown = false;
 self.onmessage = ({ data: msg }) => {

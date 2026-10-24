@@ -380,6 +380,21 @@ async function serverTests(page) {
         (x) => /Variable not in scope: lenght/.test(x.message), /^Replace with ‘length’$/, (t) => t?.includes('broken = length [1, 2]'));
     await fix('a binding without a signature gets the signature GHC inferred', append(MAIN, '\nhelper x = x + 1\n'),
         (x) => /Top-level binding with no type signature/.test(x.message), /^Add type signature: helper :: Num a => a -> a$/, (t) => t?.includes('\nhelper :: Num a => a -> a\nhelper x = x + 1\n'));
+    {
+        // HLS's type lens: the same signature above the binding, written when clicked.
+        const text = append(MAIN, '\nhelper x = x + 1\n');
+        mark = (await lsp.log()).length;
+        await change('Main.hs', text);
+        await diagnostics('Main.hs', (x) => x.some((y) => /Top-level binding with no type signature/.test(y.message)), mark);
+        const lenses = (await lsp.request('textDocument/codeLens', { textDocument: { uri: uri('Main.hs') } })).result ?? [];
+        const lens = lenses.find((l) => l.command?.title === 'helper :: Num a => a -> a');
+        check('a binding without a signature has a type lens, the signature GHC inferred', lenses.length === 1 && lens?.range.start.line === find(text, 'helper x')[0], JSON.stringify(lenses));
+        const before = (await lsp.log()).length;
+        await lsp.request('workspace/executeCommand', { command: lens?.command.command, arguments: lens?.command.arguments });
+        const asked = (await lsp.log()).slice(before).find((m) => m.method === 'workspace/applyEdit');
+        const written = asked ? applyEdits(text, asked.params.edit.changes[uri('Main.hs')]) : null;
+        check('clicking the lens has the client write the signature above the binding', !!written?.includes('\nhelper :: Num a => a -> a\nhelper x = x + 1\n'), JSON.stringify(asked));
+    }
     await fix('an unused binding can be prefixed with _', append(MAIN, '\nbroken :: Int\nbroken = 1\n'),
         (x) => /Defined but not used: ‘broken’/.test(x.message), /^Prefix ‘broken’ with _$/, (t) => t?.includes('\nbroken :: Int\n_broken = 1\n'));
     await fix('a redundant import can be removed', MAIN.replace('import Geometry\n', 'import Geometry\nimport Data.List (sort)\n'),
@@ -519,6 +534,22 @@ async function serverTests(page) {
     const symbols = (await lsp.request('textDocument/documentSymbol', { textDocument: { uri: uri('Geometry.hs') } })).result ?? [];
     const names = symbols.map((s) => s.name);
     check('document symbols list the types and the functions of Geometry.hs', ['Point', 'norm', 'distance', 'Shape', 'area'].every((n) => names.includes(n)), JSON.stringify(names));
+
+    // Folding (HLS's: declarations with their signatures, imports, what is indented under a line).
+    const foldsOf = async (name) => (await lsp.request('textDocument/foldingRange', { textDocument: { uri: uri(name) } })).result ?? [];
+    const folds = await foldsOf('Geometry.hs');
+    const folded = (list, from, to, kind) => list.some((f) => f.startLine === from && f.endLine === to && f.kind === kind);
+    const line = (text, s) => find(text, s)[0];
+    check('a declaration folds with its signature and every equation, a data type with its deriving, the export list',
+        folded(folds, line(GEOMETRY, 'area ::'), line(GEOMETRY, 'area (Square'), undefined) && folded(folds, line(GEOMETRY, 'norm ::'), line(GEOMETRY, 'norm (Point'), undefined) &&
+        folded(folds, line(GEOMETRY, 'data Point'), line(GEOMETRY, 'deriving (Eq)'), undefined) && folded(folds, line(GEOMETRY, 'instance Show'), line(GEOMETRY, '  show (Point'), undefined) &&
+        folded(folds, line(GEOMETRY, 'module Geometry'), line(GEOMETRY, ') where'), undefined),
+        JSON.stringify(folds));
+    const specFolds = await foldsOf('tests/Spec.hs');
+    check('the imports fold as imports, and a do block under the line that opens it',
+        folded(specFolds, line(SPEC, 'import Geometry'), line(SPEC, 'import Test.Hspec'), 'imports') && folded(specFolds, line(SPEC, 'it "is symmetric"'), line(SPEC, 'distance a b'), undefined) &&
+        folded(specFolds, line(SPEC, 'main = hspec'), line(SPEC, 'area (Square 3)'), undefined),
+        JSON.stringify(specFolds));
 
     // Completion.
     const typing = (text, line, character) => change('Main.hs', text).then(() => lsp.request('textDocument/completion', at('Main.hs', line, character)));

@@ -12,8 +12,9 @@ dynamic linker (`dyld.mjs`). A small GHC API program of ours,
   (`-fdiagnostics-as-json`) and every name GHC resolved, from the modules'
   `.hie` files (the files HLS reads). Diagnostics, hover, definition,
   references, highlights, rename, completion, symbols, quick fixes,
-  HLS's import and export actions, call hierarchy, signature help and
-  semantic tokens come from that. Template Haskell splices run while
+  HLS's import and export actions, call hierarchy, signature help,
+  semantic tokens and type lenses come from that; folding ranges from the
+  text. Template Haskell splices run while
   checking, in GHC's interpreter, as in a build. **hlint** 3.10 adds its
   hints, and **ormolu** 0.9.0.0 formats, both parsing as GHC 9.14 does
   (ghc-lib-parser 9.14): each is its own WASI command
@@ -72,10 +73,12 @@ formatter. Options compared (measured where marked):
 | Definition, references, highlights | across the project | across the project; library names have no source in the pack | 4 checks |
 | Rename | project-wide, refuses library names | the same, and refuses a name of the wrong kind | 3 checks |
 | Completion | in-scope names with types, qualified, modules after `import` | the same, from GHC's renamer (270 items in the sample, 460 modules) | 3 checks |
-| Document symbols | yes | yes | 1 check |
+| Document symbols | yes, nested (constructors under their type, methods under their class) | flat: every top-level declaration, constructor and type, each with its type | 1 check |
+| Folding | HLS's: declarations, imports, comments, nested blocks | declarations with their signature and every equation, the export list, the import block (as imports), `{- -}` comments and runs of `--` lines, everything indented under a line; from the text, so before a check too | 2 checks |
+| Type lenses | HLS's: the inferred signature above a binding without one, written when clicked | the same, from `-Wmissing-signatures`; clicking runs `haskell.addSignature`, which has the client apply the edit (inlay hints for local bindings: not offered) | 2 checks, and 2 in the app's e2e |
 | Quick fixes | HLS: suggestions, signatures, unused, imports, holes, extensions | from GHC's hints: replace a misspelt name, add the inferred signature, prefix unused with `_`, remove a redundant import, hole fits, add a LANGUAGE pragma | 4 checks |
 | Imports and exports | HLS: add an import for a name not in scope, make an import list explicit (lens and action), remove a redundant import or the names an import list has too much, export an unused binding | the same, as code actions: "Add import Data.List (sort)", "Add sort to the import list of Data.List", `import qualified Data.Map as Map` for `Map.insert`, a constructor with its type (`Data.Ord (Down (Down))`), from the project's modules and every module of the packages (an index of their exports, made on the first request); "Make this import explicit" / "Make all imports explicit" (the list from GHC's renamer and the .hie file); "Remove ‘nub’ from the import of Data.List"; "Export ‘helper’" in the export list's own style | 9 checks |
-| Call hierarchy | HLS's plugin: prepare, incoming and outgoing calls from `.hie` files | the same (`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `…/outgoingCalls`): every value binding of the project, top-level and local, its callers grouped with where they call it, across modules; a library function has none | 5 checks (the app's editor has no call hierarchy view yet: Monaco has none) |
+| Call hierarchy | HLS's plugin: prepare, incoming and outgoing calls from `.hie` files | the same (`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `…/outgoingCalls`): every value binding of the project, top-level and local, its callers grouped with where they call it, across modules; a library function has none | 5 checks; in the app, Show Call Hierarchy (Shift+Alt+H, or the context menu) opens a Call Hierarchy panel of callers and callees (app e2e: 6 checks) |
 | hlint | hints as warnings, apply or ignore | hlint 3.10's hints (default rules) as `hlint` diagnostics; "Apply hint" and "Ignore hint in this module"; parses GHC 9.14's syntax | 3 checks |
 | Formatting | ormolu or fourmolu | ormolu 0.9.0.0, GHC 9.14's syntax; a module that does not parse is refused with ormolu's message | 4 checks |
 | Run | `runghc` / GHCi | GHC's bytecode interpreter: stdout unbuffered, stdin from the terminal (`getLine`, `getContents` to Ctrl-D), `exitWith`, uncaught exceptions with GHC's message and call stack, compile errors in colour, many runs in one session | 11 checks |
@@ -208,9 +211,6 @@ toolchain installed.
   deferred in the editor, as HLS does), and a hover on a name inside a
   splice shows where it is defined but not its type (the `.hie` file has
   none there).
-* **Call hierarchy has no view in the app**: the server answers it as
-  HLS does, but Monaco has no call hierarchy widget and the app's client
-  registers none yet.
 * **"Add import" reads every library module's interface once** (the first
   time a name is not in scope), as HLS builds its export index; later
   ones answer at once.
