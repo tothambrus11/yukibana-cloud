@@ -219,6 +219,22 @@ layout: the same four-line program crashed or compiled depending on its identifi
 names. The patch computes the size the way `TrailingObjects` lays it out. `main` has
 the same sum, moved into `getDebugVarTrailingDataSize`.
 
+**4. `ResolvedCursorInfo` has no virtual destructor (`patches/swift/0005`, found
+2026-10-24).** In `include/swift/IDE/Utils.h` it is the base of
+`ResolvedValueRefCursorInfo` and three more, all made with `new` in
+`CursorInfoResolver` and owned as `IntrusiveRefCntPtr<ResolvedCursorInfo>`, whose
+`RefCountedBase<ResolvedCursorInfo>::Release` deletes through the base. That is
+undefined behaviour, leaves the subclass's `SmallVector`s undestroyed and gives the
+sized `operator delete` the wrong size. sourcekit-lsp-lite's `asan` preset found
+it: against the official 6.3.3 and 6.4 `libsourcekitdInProc.so`, the rename test
+aborts with `new-delete-type-mismatch` when the evaluator's `CursorInfoRequest`
+cache is freed, so `tools/sourcekit-lsp-lite/tests/CMakeLists.txt` turns that one
+check off for the tests that load sourcekitd. The hierarchy came from
+[swift#63612], which made it a class hierarchy on purpose; `main` is unchanged.
+Not reported; a PR with the patch is the plan.
+
+[swift#63612]: https://github.com/swiftlang/swift/pull/63612
+
 ## LLVM/clang patches (19 files)
 
 ### Fixed upstream

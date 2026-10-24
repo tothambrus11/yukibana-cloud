@@ -23,6 +23,16 @@ set(LITE_TEST_ENVIRONMENT
   "UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
   "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
 
+# The tests that load sourcekitd also turn off new-delete-type-mismatch, which
+# no suppression file can name. The official libsourcekitdInProc.so (6.3.3, 6.4)
+# deletes ResolvedCursorInfo subclasses through the base, which has no virtual
+# destructor (patches/swift/0005 fixes it for the wasm build), and rename hits
+# it. Turn it back on once the toolchain the tests use carries that fix. The
+# unit tests do not load sourcekitd and keep the check.
+set(LITE_SOURCEKITD_TEST_ENVIRONMENT ${LITE_TEST_ENVIRONMENT})
+list(TRANSFORM LITE_SOURCEKITD_TEST_ENVIRONMENT APPEND ":new_delete_type_mismatch=0"
+  REGEX "^ASAN_OPTIONS=")
+
 add_executable(lite_unit_tests
   unit/main.cpp
   unit/json_test.cpp
@@ -56,8 +66,9 @@ foreach(scenario IN LISTS LITE_SCENARIOS)
       --only ${scenario})
 endforeach()
 
-set_tests_properties(unit reactor PROPERTIES ENVIRONMENT "${LITE_TEST_ENVIRONMENT}" TIMEOUT 120)
+set_tests_properties(unit PROPERTIES ENVIRONMENT "${LITE_TEST_ENVIRONMENT}" TIMEOUT 120)
+set_tests_properties(reactor PROPERTIES ENVIRONMENT "${LITE_SOURCEKITD_TEST_ENVIRONMENT}" TIMEOUT 120)
 foreach(scenario IN LISTS LITE_SCENARIOS)
   set_tests_properties(lsp.${scenario} PROPERTIES
-    ENVIRONMENT "${LITE_TEST_ENVIRONMENT}" TIMEOUT 180 LABELS integration)
+    ENVIRONMENT "${LITE_SOURCEKITD_TEST_ENVIRONMENT}" TIMEOUT 180 LABELS integration)
 endforeach()

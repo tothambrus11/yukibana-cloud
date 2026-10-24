@@ -1,0 +1,46 @@
+Give ResolvedCursorInfo a virtual destructor.
+
+ResolvedCursorInfo is the base of a hierarchy (ResolvedValueRefCursorInfo,
+ResolvedModuleRefCursorInfo, ResolvedExprStartCursorInfo,
+ResolvedStmtStartCursorInfo) whose objects are made with new in
+CursorInfoResolver and owned as ResolvedCursorInfoPtr, an
+llvm::IntrusiveRefCntPtr<ResolvedCursorInfo>. Its refcount is
+llvm::RefCountedBase<ResolvedCursorInfo>, whose Release() does
+`delete static_cast<const ResolvedCursorInfo *>(this)`. Without a virtual
+destructor that deletes a subclass through the base: undefined behaviour,
+the subclass's members (ResolvedValueRefCursorInfo's two SmallVectors) are
+never destroyed, and the sized operator delete is passed the base's size,
+not the 232 bytes that were allocated. Allocators that use the size
+(tcmalloc, jemalloc, mimalloc with sized deallocation) can put the block back
+into the wrong size class.
+
+Symptom: sourcekit-lsp-lite's asan preset, run against the official
+Swift 6.3.3 libsourcekitdInProc.so, aborts in the rename test with
+"AddressSanitizer: new-delete-type-mismatch", allocated in
+CursorInfoResolver::tryResolve and freed from ~ASTUnit as the cached
+CursorInfoRequest results go (the evaluator's
+PerRequestCache::makeEmpty<CursorInfoRequest> deleter). The 6.4 release's
+library does the same. A reduced copy of the hierarchy under
+-fsanitize=address reports the same mismatch, and runs clean with the
+destructor virtual.
+
+Upstream: the same on main (include/swift/IDE/Utils.h, from PR #63612,
+"Pass ResolvedCursorInfo as shared pointer instead of by value", which
+made it a class hierarchy); not reported.
+
+diff --git a/include/swift/IDE/Utils.h b/include/swift/IDE/Utils.h
+index e7ff7fb..02bd0a5 100644
+--- a/include/swift/IDE/Utils.h
++++ b/include/swift/IDE/Utils.h
+@@ -149,6 +149,11 @@ public:
+   ResolvedCursorInfo() = default;
+   ResolvedCursorInfo(SourceFile *SF) : SF(SF) {}
+ 
++  /// Virtual because the subclasses are owned as \c ResolvedCursorInfoPtr,
++  /// whose \c llvm::RefCountedBase<ResolvedCursorInfo> deletes them through a
++  /// \c ResolvedCursorInfo pointer when the last reference goes.
++  virtual ~ResolvedCursorInfo() = default;
++
+   CursorInfoKind getKind() const { return Kind; }
+ 
+   SourceFile *getSourceFile() const { return SF; }
