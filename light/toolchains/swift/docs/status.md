@@ -121,7 +121,9 @@ A third 32-bit bug was a heap overflow, not an alignment contract: `AllocStackIn
 `DebugValueInst` were allocated without the padding `llvm::TrailingObjects` puts before
 their 8-byte-aligned debug-expression elements, so `-O` and `-Osize` compiles trapped in
 `free` (out of bounds) whenever the heap's layout put a block header in the missing four
-bytes. Patch `0004`; [upstream-status.md](upstream-status.md) has the details.
+bytes. Patch `0004`; [upstream-status.md](upstream-status.md) has the details. With it
+(CI run 40119018177), programs that trapped compile and run at both levels, and XCTest
+compiles at `-O` and `-Osize`.
 
 ## sourcekitd
 
