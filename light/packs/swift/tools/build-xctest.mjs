@@ -13,13 +13,11 @@
 // The archive is made by llvm-ar (from PATH: build.sh puts the Swift
 // toolchain there) because wasm-ld wants an archive symbol index.
 //
-// -Onone, not -O: swift-toolchain-wasm's macro-enabled compiler (since
-// swift-6.3.3-wasm-3) runs SwiftCompilerSources' optimizer passes, and with
-// -O or -Osize it traps compiling this module (out-of-bounds in free(),
-// from SILModule::flushDeletedInsts after a function pass): a heap
-// corruption in a Swift-implemented pass on wasm32. Earlier toolchains
-// built it with -O. The unoptimised module is 0.35 MB instead of 0.23 MB, and the
-// tests it runs are the student's, whose code is -Onone anyway.
+// -Onone, not -O: swift-6.3.3-wasm-3 trapped compiling this module at -O
+// and -Osize (a heap overrun on wasm32, fixed by swift-toolchain-wasm's
+// patch 0004 in swift-6.3.3-wasm-4; README "Optimization"). Kept at -Onone
+// since: the unoptimised module is 0.35 MB instead of 0.23 MB, and the tests
+// it runs are the student's, whose code is -Onone by default.
 //
 // One whole-module `-c` with `-emit-module-path`, as the driver does it, and
 // `-module-link-name XCTest`, so that `import XCTest` adds `-lXCTest` to the

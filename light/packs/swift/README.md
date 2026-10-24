@@ -113,9 +113,9 @@ saved with the project, sent with Run and Test as `options.optimization`
 `swiftSettings: [.unsafeFlags(["-O"])]` on the executable and test targets.
 The runner refuses any other value before downloading anything.
 
-**`-O` and `-Osize` are listed but disabled** for now, because the pinned
-compiler (swift-toolchain-wasm `swift-6.3.3-wasm-3`) crashes at those
-levels on ordinary programs. Four lines are enough:
+**`-O` and `-Osize` need `swift-6.3.3-wasm-4`** or later, the release
+`build.sh` pins. The compiler before it (`swift-6.3.3-wasm-3`) crashed at
+those levels on ordinary programs. Four lines were enough:
 
 ```swift
 func runTest(_ blocks: [Int]) {
@@ -124,8 +124,8 @@ func runTest(_ blocks: [Int]) {
 runTest([])
 ```
 
-compiles at `-Onone` and traps in `free()` at `-O`. Renaming a variable
-can make it compile, because the crash depends on the heap's layout. The
+compiled at `-Onone` and trapped in `free()` at `-O`. Renaming a variable
+could make it compile, because the crash depends on the heap's layout. The
 cause, found by instrumenting the compiler's allocator: when SILCombine
 salvages debug info, it creates `debug_value` instructions whose trailing
 objects include a `SILDIExprElement`, which holds a `uint64_t` and so is
@@ -142,14 +142,10 @@ sum, in `getDebugVarTrailingDataSize`.
 
 `test-run.mjs` has the cases: the program above, XCTest's own teardown
 loop (where the crash was first seen) and XCTest tests, at both levels.
-They run with `SWIFT_OPTIMIZED=1`, and `SWIFT_FRONTEND=<path>` tries a
-compiler that is not in the pack yet. With the pinned compiler the first
-two fail at both levels. With a build that has the patch
-(swift-toolchain-wasm CI run 40119018177, not released), all of
-`test-run.mjs` passes, these cases included, and XCTest compiles at `-O`
-and `-Osize`. The levels become available once a toolchain release with
-the patch is pinned in `build.sh` and `optimization.ts` stops marking
-them unavailable.
+They run with `SWIFT_OPTIMIZED=1` (`SWIFT_FRONTEND=<path>` tries a
+compiler that is not in the pack yet). With `swift-6.3.3-wasm-3` the first
+two fail at both levels; with `swift-6.3.3-wasm-4` all of `test-run.mjs`
+passes, these cases included, and XCTest compiles at `-O` and `-Osize`.
 
 ## Macros
 
@@ -549,11 +545,6 @@ gone.
   swift-testing's and `StringifyMacros`. A project cannot build a macro of
   its own (that needs a plugin compiled from its source), and SwiftUI's
   `#Preview` and the like have no module here.
-* **`-O` and `-Osize` crash the pinned compiler** on ordinary programs (a
-  heap overrun on 32-bit hosts when SILCombine salvages debug info, first
-  seen building XCTest; "Optimization" has the cause and the fix), so the
-  Optimization select offers only `-Onone` for now, and the browser's XCTest
-  is built at `-Onone`.
 * **No Foundation**: the core sysroot has no Foundation module, so `import
   Foundation` is an error ("no such module"). The standard library,
   `_Concurrency`, `_StringProcessing` (Regex), `Synchronization`,
@@ -601,7 +592,7 @@ What the browser downloads for Swift, raw, gzip -9 and brotli -q11
 | `swift-ls.wasm` | | 6.38 MB / 2.33 MB / 1.53 MB | formatting and semantic tokens only |
 | `server.js` | | 51 KB / 16.5 KB / 14.6 KB | includes `lite.js` and the plugin host |
 | `runner.js` | | 51 KB / 16.8 KB / 15.0 KB | includes test discovery (src/xctest.js) and the plugin host |
-| `swift-xctest.tar` | | 354 KB / 138 KB / 104 KB | fetched only by projects that import XCTest; built at `-Onone` (see "Limits") |
+| `swift-xctest.tar` | | 354 KB / 138 KB / 104 KB | fetched only by projects that import XCTest; built at `-Onone` (`tools/build-xctest.mjs`) |
 
 **What macro support cost** (`swift-6.3.3-wasm-2`, the same compiler
 without macros, against `swift-6.3.3-wasm-3`, both stripped): the module
@@ -1096,8 +1087,9 @@ downloads, checksum-verifies (SHA-256 pinned in the script) and caches in
   Downloaded only when the unpacked toolchain is missing, and deleted once
   unpacked; the same for the Wasm SDK below once installed.
 * `swift-6.4.1-RELEASE_wasm.artifactbundle.tar.gz` (official Wasm SDK).
-* from swift-toolchain-wasm release `swift-6.3.3-wasm-3` (the first with
-  macros; published 2026-10-24 by CI run 30 of `build-toolchain.yml`):
+* from swift-toolchain-wasm release `swift-6.3.3-wasm-4` (`swift-6.3.3-wasm-3`,
+  the first with macros, plus patch 0004, the `-O` fix; published
+  2026-10-24 by run 40132776995 of `build-toolchain.yml`):
   `swift-frontend-lsp.wasm`, `wasm-ld.wasm`, `swift-sysroot-core.tar` and
   `SwiftMacroPlugins.wasm`, as `.gz` release assets whose SHA-256, and that
   of each decompressed file, the script pins. A tag can be rebuilt in place
@@ -1173,7 +1165,8 @@ swift-syntax.
   system, tar, WASI, downloads, autolink and the libraries to link, the
   macro plugin host).
 * `src/vendor/swift-plugin-host.mjs`: swift-toolchain-wasm's plugin host,
-  as released with `swift-6.3.3-wasm-3` (checked by `build.sh`).
+  as released with `swift-6.3.3-wasm-4`, unchanged since `-wasm-3`
+  (checked by `build.sh`).
 * `src/xctest.js`: test discovery, the generated test main (XCTest and
   swift-testing), the module-name
   rule for `@testable import`, the warning it causes.

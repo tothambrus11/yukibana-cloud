@@ -60,24 +60,17 @@ export const CPP_LEVELS: readonly OptimizationLevel[] = [
 ];
 
 /**
- * Why Swift's optimising levels are not offered yet: the pinned compiler
- * (swift-toolchain-wasm swift-6.3.3-wasm-3) corrupts its heap at -O and
- * -Osize (an AllocStackInst or DebugValueInst allocated without the padding
- * its debug expression needs on a 32-bit host) and traps in free() on
- * ordinary programs. The fix is that project's patch 0004; packs/swift
- * README, "Optimization", says what is left.
- */
-const SWIFT_O_UNAVAILABLE = 'Not available yet: the browser\'s Swift compiler crashes at this level (a heap corruption, fixed in the next toolchain release). See the Swift pack\'s README, "Optimization".';
-
-/**
  * swift-frontend's levels. `-Onone` is the default, what `swift build`
  * uses in its debug configuration and what Run used before the level could
- * be chosen.
+ * be chosen. `-O` and `-Osize` need swift-toolchain-wasm swift-6.3.3-wasm-4
+ * or later: earlier compilers overran their heap at those levels on 32-bit
+ * hosts and trapped in free() on ordinary programs (packs/swift README,
+ * "Optimization").
  */
 export const SWIFT_LEVELS: readonly OptimizationLevel[] = [
 	{ flag: '-Onone', label: '-Onone', default: true },
-	{ flag: '-O', label: '-O', unavailable: SWIFT_O_UNAVAILABLE },
-	{ flag: '-Osize', label: '-Osize', unavailable: SWIFT_O_UNAVAILABLE },
+	{ flag: '-O', label: '-O' },
+	{ flag: '-Osize', label: '-Osize' },
 ];
 
 /**

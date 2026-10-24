@@ -61,19 +61,21 @@ SDK_ID="swift-$SWIFT_VERSION-RELEASE_wasm"
 # assets are downloaded (a quarter of the size) and both their checksum and
 # that of the decompressed file are verified.
 #
-# Everything is from swift-6.3.3-wasm-3, the first release built with macro
-# support (published 2026-10-24 by build-toolchain.yml): every compiler
-# module imports swift_plugin_host.*, which src/vendor/swift-plugin-host.mjs
-# answers (its SHA-256 is that release's swift-plugin-host.mjs, checked
-# below). Its wasm-ld.wasm is byte for byte swift-6.3.3-wasm's.
+# Everything is from swift-6.3.3-wasm-4 (published 2026-10-24 by
+# build-toolchain.yml): wasm-3, the first release built with macro support,
+# plus patch 0004, which fixes the heap overrun that crashed -O and -Osize
+# compiles (README, "Optimization"). Every compiler module imports
+# swift_plugin_host.*, which src/vendor/swift-plugin-host.mjs answers (its
+# SHA-256 is that release's swift-plugin-host.mjs, checked below). Its
+# wasm-ld.wasm is byte for byte swift-6.3.3-wasm's.
 TC_DOWNLOADS=https://github.com/tothambrus11/swift-toolchain-wasm/releases/download
-TC_RELEASE=swift-6.3.3-wasm-3
+TC_RELEASE=swift-6.3.3-wasm-4
 TC_ARTIFACTS=(
   # name                    sha256 of name.gz                                                  sha256 of name
-  "swift-frontend-lsp.wasm  bc15eef10acd209ca86c7418ea66d77cfc262f23dad029ca608f597aab4626e1 83ed6dbb5b6fc5623b2c2c4f3e18e172435086f3c1286bedd0eeb947756aaba4"
-  "wasm-ld.wasm             94b6857d0a7db57a9e0201aec9da4f594fa908f85370356c00c43bd1a253cae5 00a8d674564664c694dbdc958b915744862a7751a9b1ed48fd68ac2b3c41ec12"
-  "swift-sysroot-core.tar   4d1d621c89b6311241b888184a235e37c1beec202f17ae99771bfc19f352644b 21484c6bbd9fae498673001ae8b268b7b83e6a3cdfc80016f5c04b1d5208b06c"
-  "SwiftMacroPlugins.wasm   3550aab0000a84f90a3a53a7e931612c7fc89be7a5e4492d6482e7a87e43849d 2435499031881c60a2034849ee8f6b5645b879fbfd757b27281ed9325ea6ad33"
+  "swift-frontend-lsp.wasm  cf83817346e5f74655f82b917a49741e4a086d9199b74ca5dd94d8ac8441c9e5 052959f2742549b5f78cac5ed1c0594d0b172650e11d00558bae305d55003e67"
+  "wasm-ld.wasm             5d72014322378554c0b063c11cc4897025d054d56e42b955b3345d3c74dc6a17 00a8d674564664c694dbdc958b915744862a7751a9b1ed48fd68ac2b3c41ec12"
+  "swift-sysroot-core.tar   4cdb582ec83872c7af75408860d4a40ada2a4af50088a790bf3749a1bb358d1b d2e53f66e32b4e35f43ecfaefa6319b31149711407bf85d828e2724b5541dc4f"
+  "SwiftMacroPlugins.wasm   9d3476d0109e35c2c7bd2a6bcf84fe9b0d735ba485895bf195fcc2a4b95c1679 dd9be7c4aeb9f50705c2260408fd184c7549ed5856c48cb1ae74b0678fcadfcb"
 )
 PLUGIN_HOST_SHA256=ae445e4a0f98f55b5bcebe7acaa14ca93908625ca04e36b38b9f4d2767f087c4
 
