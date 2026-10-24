@@ -9,7 +9,7 @@ name: Haskell pack GHC root file system
 on:
   push:
     branches:
-      - claude/project-thread-3ei4fl
+      - yukibana-light
     paths:
       - light/packs/haskell/ghc/**
       - '!light/packs/haskell/ghc/build-tools.sh'

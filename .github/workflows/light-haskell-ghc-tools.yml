@@ -9,7 +9,7 @@ name: Haskell pack formatter and linter
 on:
   push:
     branches:
-      - claude/project-thread-3ei4fl
+      - yukibana-light
     paths:
       - light/packs/haskell/ghc/build-tools.sh
       - light/packs/haskell/ghc/*.patch
