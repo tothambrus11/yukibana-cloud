@@ -231,7 +231,10 @@ aborts with `new-delete-type-mismatch` when the evaluator's `CursorInfoRequest`
 cache is freed, so `tools/sourcekit-lsp-lite/tests/CMakeLists.txt` turns that one
 check off for the tests that load sourcekitd. The hierarchy came from
 [swift#63612], which made it a class hierarchy on purpose; `main` is unchanged.
-Not reported; a PR with the patch is the plan.
+Not reported; a PR with the patch is the plan. The non-atomic `RefCountedBase` count
+is not a second bug: every retain and release happens on the owning AST's serial
+consumer queue or while that AST is destroyed. Draft PR, unit test, history and open
+questions: [upstream-todo-resolvedcursorinfo.md](upstream-todo-resolvedcursorinfo.md).
 
 [swift#63612]: https://github.com/swiftlang/swift/pull/63612
 

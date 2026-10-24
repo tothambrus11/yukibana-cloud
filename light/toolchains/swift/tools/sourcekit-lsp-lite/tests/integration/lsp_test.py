@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import shlex
 import subprocess
 import sys
@@ -36,6 +37,48 @@ TIMEOUT = float(os.environ.get("LITE_TEST_TIMEOUT", "60"))
 
 class Failure(Exception):
     pass
+
+
+# The first line of a sanitizer report in the server's stderr. ASan, LSan and
+# TSan open theirs with "==<pid>==ERROR:" (TSan with "WARNING:"), after a line of
+# '=' that belongs to the report too; UBSan writes "<file>:<line>:<col>: runtime
+# error:" with no banner.
+SANITIZER_REPORT = re.compile(
+    r"^(?:=+\n)?==\d+==(?:ERROR|WARNING): \w+Sanitizer|^.*: runtime error: ", re.M)
+# Where an ASan/LSan/TSan report ends.
+SANITIZER_SUMMARY = re.compile(r"^SUMMARY: \w+Sanitizer.*$", re.M)
+
+
+def server_log_excerpt(log: str, tail: int = 4000, report_limit: int = 24000) -> str:
+    """What of the server's stderr to print for a failed scenario.
+
+    The last `tail` characters, as before, unless a sanitizer reported something:
+    then the first report from its first line through its SUMMARY line (the error,
+    the sizes, and the allocation and free stacks), up to `report_limit`
+    characters, and the tail after it. A sanitizer that aborts the server writes
+    the report and then nothing, so the tail alone usually showed only the end of
+    the last stack and never what went wrong.
+    """
+    match = SANITIZER_REPORT.search(log)
+    if not match:
+        return log[-tail:]
+    start = match.start()
+    summary = SANITIZER_SUMMARY.search(log, start)
+    end = summary.end() if summary else len(log)
+    report = log[start:end]
+    if len(report) > report_limit:
+        report = report[:report_limit] + f"\n... ({len(report) - report_limit} characters of the report omitted)"
+    parts = []
+    if start:
+        parts.append(f"... ({start} characters before the sanitizer report omitted)")
+    parts.append(report)
+    rest = log[end:]
+    if rest.strip():
+        if len(rest) > tail:
+            parts.append(f"... ({len(rest) - tail} characters omitted)")
+            rest = rest[-tail:]
+        parts.append(rest)
+    return "\n".join(parts)
 
 
 def check(condition: bool, what: str, detail: Any = "") -> None:
@@ -645,12 +688,17 @@ def main() -> int:
             try:
                 SCENARIOS[name](args, Path(tmp))
                 print(f"PASS  {name}  ({time.monotonic() - start:.1f} s)")
-            except Failure as e:
+            except Exception as e:
+                # Not only a Failure: a server that a sanitizer aborted can also
+                # surface as a broken pipe on the next request, and its log is
+                # the only place that says why.
                 failed += 1
-                print(f"FAIL  {name}: {e}")
+                what = str(e) if isinstance(e, Failure) else f"{type(e).__name__}: {e}"
+                print(f"FAIL  {name}: {what}")
                 log = Path(tmp) / "server.log"
                 if log.exists() and log.stat().st_size:
-                    print("  server stderr:\n    " + log.read_text(errors="replace")[-4000:].replace("\n", "\n    "))
+                    excerpt = server_log_excerpt(log.read_text(errors="replace"))
+                    print("  server stderr:\n    " + excerpt.replace("\n", "\n    "))
     if args.report:
         print("\nlatency (ms, client-measured, request sent to answer received):")
         for label, ms in timings:
