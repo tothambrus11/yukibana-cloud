@@ -13,6 +13,7 @@ on:
     paths:
       - light/packs/haskell/ghc/**
       - '!light/packs/haskell/ghc/build-tools.sh'
+      - '!light/packs/haskell/ghc/*.patch'
       - .github/workflows/light-haskell-ghc.yml
   workflow_dispatch:
 
