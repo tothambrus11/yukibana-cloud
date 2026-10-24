@@ -1,0 +1,1230 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f91dfeac..960104cc 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -887,7 +887,12 @@ if(SWIFT_BUILD_REGEX_PARSER_IN_COMPILER AND NOT SWIFT_BUILD_SWIFT_SYNTAX)
+ endif()
+ 
+ set(SWIFT_BUILD_HOST_DISPATCH FALSE)
+-if(SWIFT_ENABLE_DISPATCH AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++# A WASI host has no threads for libdispatch to run on, and libdispatch has no
++# WASI port. SourceKit runs its work queues cooperatively there instead (see
++# tools/SourceKit/lib/Support/Concurrency-cooperative.cpp), so no host
++# libdispatch is built.
++if(SWIFT_ENABLE_DISPATCH AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin"
++   AND NOT CMAKE_SYSTEM_NAME STREQUAL "WASI")
+   # Only build libdispatch for the host if the host tools are being built and
+   # specifically if these two libraries that depend on it are built.
+   if(SWIFT_INCLUDE_TOOLS AND SWIFT_BUILD_SOURCEKIT)
+diff --git a/SwiftCompilerSources/CMakeLists.txt b/SwiftCompilerSources/CMakeLists.txt
+index f5596388..d0ec7701 100644
+--- a/SwiftCompilerSources/CMakeLists.txt
++++ b/SwiftCompilerSources/CMakeLists.txt
+@@ -295,7 +295,14 @@ function(add_swift_compiler_modules_library name)
+       COMMENT "Building swift module ${module}")
+ 
+     if(BOOTSTRAPPING_MODE STREQUAL "CROSSCOMPILE")
+-      add_dependencies(${dep_target} swift-stdlib-${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_LIB_SUBDIR}-${SWIFT_HOST_VARIANT_ARCH})
++      # When cross-compiling, the host stdlib may come prebuilt from an SDK rather than
++      # being built in this tree (SWIFT_BUILD_STDLIB=OFF), in which case there is no
++      # target to depend on.
++      set(_host_stdlib_target
++        swift-stdlib-${SWIFT_SDK_${SWIFT_HOST_VARIANT_SDK}_LIB_SUBDIR}-${SWIFT_HOST_VARIANT_ARCH})
++      if(TARGET ${_host_stdlib_target})
++        add_dependencies(${dep_target} ${_host_stdlib_target})
++      endif()
+     endif()
+     set("${module}_dep_target" ${dep_target})
+     set(all_module_targets ${all_module_targets} ${dep_target})
+diff --git a/include/swift/AST/Identifier.h b/include/swift/AST/Identifier.h
+index db0b0afc..0e3cd7bf 100644
+--- a/include/swift/AST/Identifier.h
++++ b/include/swift/AST/Identifier.h
+@@ -506,7 +506,15 @@ class DeclName {
+   friend class ASTContext;
+ 
+   /// Represents a compound declaration name.
+-  struct alignas(Identifier) CompoundDeclName final : llvm::FoldingSetNode,
++  ///
++  /// The alignment is Identifier::RequiredAlignment, not alignof(Identifier):
++  /// PointerLikeTypeTraits<DeclName> promises
++  /// PointerLikeTypeTraits<DeclBaseName>::NumLowBitsAvailable - 1 == 2 spare low bits
++  /// on top of the union's own tag bit, so this needs three bits — eight-byte
++  /// alignment. alignof(Identifier) is the alignment of a `const char *`, which is
++  /// eight only on a 64-bit host; on a 32-bit one it is four, and the promise breaks.
++  struct alignas(Identifier::RequiredAlignment) CompoundDeclName final
++      : llvm::FoldingSetNode,
+       private llvm::TrailingObjects<CompoundDeclName, Identifier> {
+     friend TrailingObjects;
+     friend class DeclName;
+@@ -742,7 +750,10 @@ class DeclNameRef {
+   friend struct llvm::PointerLikeTypeTraits<DeclNameRef>;
+ 
+   /// Contains the name and module for a DeclNameRef with a module selector.
+-  struct alignas(Identifier) SelectiveDeclNameRef : llvm::FoldingSetNode {
++  // Same reasoning as CompoundDeclName above: the promised spare bits need eight-byte
++  // alignment, which alignof(Identifier) only supplies on a 64-bit host.
++  struct alignas(Identifier::RequiredAlignment) SelectiveDeclNameRef
++      : llvm::FoldingSetNode {
+     Identifier moduleSelector;   // Note: currently can never be empty().
+     DeclName fullName;
+ 
+diff --git a/lib/AST/AbstractConformance.h b/lib/AST/AbstractConformance.h
+index e305d7c0..42828b6c 100644
+--- a/lib/AST/AbstractConformance.h
++++ b/lib/AST/AbstractConformance.h
+@@ -22,7 +22,14 @@
+ #include "llvm/ADT/FoldingSet.h"
+ 
+ namespace swift {
+-class AbstractConformance final : public llvm::FoldingSetNode {
++/// PointerLikeTypeTraits<AbstractConformance *> promises TypeAlignInBits (3) spare low
++/// bits, and this type is allocated with alignof(AbstractConformance). Those agree only
++/// by accident on a 64-bit host, where two pointers and a FoldingSetNode give natural
++/// alignment 8. On a 32-bit host — wasm32 among them — natural alignment is 4, so the
++/// promise is broken and anything packing three bits into such a pointer corrupts it.
++/// State the alignment the traits already claim.
++class alignas(1 << TypeAlignInBits) AbstractConformance final
++    : public llvm::FoldingSetNode {
+   Type conformingType;
+   ProtocolDecl *requirement;
+ 
+diff --git a/lib/AST/PluginRegistry.cpp b/lib/AST/PluginRegistry.cpp
+index 9495d91c..d526957f 100644
+--- a/lib/AST/PluginRegistry.cpp
++++ b/lib/AST/PluginRegistry.cpp
+@@ -220,6 +220,11 @@ LoadedExecutablePlugin::PluginProcess::~PluginProcess() {
+ #if defined(_WIN32)
+   _close(input);
+   _close(output);
++#elif defined(__wasi__)
++  // WASI has no signals to send, and no process to send them to: launching the
++  // plugin failed in the first place (see llvm/lib/Support/WASI/Program.inc).
++  close(input);
++  close(output);
+ #else
+   close(input);
+   close(output);
+diff --git a/lib/Basic/CMakeLists.txt b/lib/Basic/CMakeLists.txt
+index b75e0c83..7849785b 100644
+--- a/lib/Basic/CMakeLists.txt
++++ b/lib/Basic/CMakeLists.txt
+@@ -6,6 +6,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+ elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+   set(UUID_INCLUDE "")
+   set(UUID_LIBRARIES "rpcrt4.lib")
++elseif(CMAKE_SYSTEM_NAME STREQUAL "WASI")
++  # There is no libuuid for wasm; UUID.cpp implements the operations directly.
++  # Searching for one finds the *host* library, whose headers then shadow the
++  # wasi sysroot's and break every translation unit that includes <cassert>.
++  set(UUID_INCLUDE "")
++  set(UUID_LIBRARIES "")
+ else()
+   find_package(UUID REQUIRED)
+   set(UUID_INCLUDE "${UUID_INCLUDE_DIRS}")
+diff --git a/lib/Basic/Default/TaskQueue.inc b/lib/Basic/Default/TaskQueue.inc
+index fd590e81..08a29cb3 100644
+--- a/lib/Basic/Default/TaskQueue.inc
++++ b/lib/Basic/Default/TaskQueue.inc
+@@ -55,7 +55,7 @@ unsigned TaskQueue::getNumberOfParallelTasks() const {
+ void TaskQueue::addTask(const char *ExecPath, ArrayRef<const char *> Args,
+                         ArrayRef<const char *> Env, void *Context,
+                         bool SeparateErrors) {
+-  auto T = make_unique<Task>(ExecPath, Args, Env, Context, SeparateErrors);
++  auto T = std::make_unique<Task>(ExecPath, Args, Env, Context, SeparateErrors);
+   QueuedTasks.push(std::move(T));
+ }
+ 
+@@ -81,7 +81,7 @@ bool TaskQueue::execute(TaskBeganCallback Began, TaskFinishedCallback Finished,
+     }
+ 
+     std::string ErrMsg;
+-    T->PI = Wait(T->PI, 0, true, &ErrMsg);
++    T->PI = Wait(T->PI, /*SecondsToWait=*/std::nullopt, &ErrMsg);
+     int ReturnCode = T->PI.ReturnCode;
+ 
+     auto StdoutBuffer = llvm::MemoryBuffer::getFile(T->StdoutPath);
+diff --git a/lib/Basic/Program.cpp b/lib/Basic/Program.cpp
+index 473b41a8..f616f804 100644
+--- a/lib/Basic/Program.cpp
++++ b/lib/Basic/Program.cpp
+@@ -43,7 +43,9 @@ using namespace swift;
+ 
+ int swift::ExecuteInPlace(const char *Program, const char **args,
+                           const char **env) {
+-#if LLVM_ON_UNIX
++// WASI has no exec; the fallback below reports the failure through
++// llvm::sys::ExecuteAndWait, which says so on WASI (see WASI/Program.inc).
++#if LLVM_ON_UNIX && !defined(__wasi__)
+   int result;
+   if (env)
+     result = execve(Program, const_cast<char **>(args),
+@@ -76,7 +78,9 @@ toNullTerminatedCStringArray(ArrayRef<StringRef> array,
+   return result;
+ }
+ 
+-#if HAVE_UNISTD_H
++// WASI provides unistd.h but neither fork nor posix_spawn, so it takes the
++// "not supported" path at the bottom of this file.
++#if HAVE_UNISTD_H && !defined(__wasi__)
+ 
+ namespace {
+ struct Pipe {
+diff --git a/lib/Basic/Statistic.cpp b/lib/Basic/Statistic.cpp
+index d99bb7db..e2da5ae2 100644
+--- a/lib/Basic/Statistic.cpp
++++ b/lib/Basic/Statistic.cpp
+@@ -380,7 +380,7 @@ void UnifiedStatsReporter::recordJobMaxRSS(long rss) {
+ }
+ 
+ int64_t UnifiedStatsReporter::getChildrenMaxResidentSetSize() {
+-#if HAVE_GETRUSAGE && !defined(__HAIKU__)
++#if HAVE_GETRUSAGE && !defined(__HAIKU__) && !defined(__wasi__)
+   struct rusage RU;
+   ::getrusage(RUSAGE_CHILDREN, &RU);
+   int64_t M = static_cast<int64_t>(RU.ru_maxrss);
+diff --git a/lib/Basic/TaskQueue.cpp b/lib/Basic/TaskQueue.cpp
+index b26751ab..886c1f37 100644
+--- a/lib/Basic/TaskQueue.cpp
++++ b/lib/Basic/TaskQueue.cpp
+@@ -23,7 +23,8 @@ using namespace swift;
+ using namespace swift::sys;
+ 
+ // Include the correct TaskQueue implementation.
+-#if LLVM_ON_UNIX && !defined(__CYGWIN__) && !defined(__HAIKU__)
++// WASI cannot spawn processes, so it uses the Default queue, which runs nothing.
++#if LLVM_ON_UNIX && !defined(__CYGWIN__) && !defined(__HAIKU__) && !defined(__wasi__)
+ #include "Unix/TaskQueue.inc"
+ #elif defined(_WIN32)
+ #include "Windows/TaskQueue.inc"
+diff --git a/lib/Basic/UUID.cpp b/lib/Basic/UUID.cpp
+index 7aa78e83..f551363c 100644
+--- a/lib/Basic/UUID.cpp
++++ b/lib/Basic/UUID.cpp
+@@ -27,6 +27,30 @@
+ #include <objbase.h>
+ #include <string>
+ #include <algorithm>
++#elif defined(__wasi__)
++// WASI has no libuuid. The operations are small enough to implement directly: 16
++// random bytes from getentropy(), the RFC 4122 version and variant bits, and hex
++// formatting. wasm has no MAC address and no stable clock sequence, so time-based
++// UUIDs are generated randomly here too — they remain unique, just not sortable.
++#include <cstdio>
++#include <cstring>
++#include <unistd.h>
++
++namespace {
++void wasiRandomUUID(unsigned char (&value)[swift::UUID::Size]) {
++  if (getentropy(value, swift::UUID::Size) != 0)
++    memset(value, 0, swift::UUID::Size);
++  value[6] = (value[6] & 0x0F) | 0x40; // version 4
++  value[8] = (value[8] & 0x3F) | 0x80; // RFC 4122 variant
++}
++
++int wasiHexDigit(char c) {
++  if (c >= '0' && c <= '9') return c - '0';
++  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
++  return -1;
++}
++} // end anonymous namespace
+ #else
+ #include <uuid/uuid.h>
+ #endif
+@@ -39,6 +63,8 @@ swift::UUID::UUID(FromRandom_t) {
+   ::CoCreateGuid(&uuid);
+ 
+   memcpy(Value, &uuid, Size);
++#elif defined(__wasi__)
++  wasiRandomUUID(Value);
+ #else
+   uuid_generate_random(Value);
+ #endif
+@@ -50,6 +76,8 @@ swift::UUID::UUID(FromTime_t) {
+   ::CoCreateGuid(&uuid);
+ 
+   memcpy(Value, &uuid, Size);
++#elif defined(__wasi__)
++  wasiRandomUUID(Value);
+ #else
+   uuid_generate_time(Value);
+ #endif
+@@ -61,6 +89,8 @@ swift::UUID::UUID() {
+   UuidCreateNil(&uuid);
+ 
+   memcpy(Value, &uuid, Size);
++#elif defined(__wasi__)
++  memset(Value, 0, Size);
+ #else
+   uuid_clear(Value);
+ #endif
+@@ -79,6 +109,28 @@ std::optional<swift::UUID> swift::UUID::fromString(const char *s) {
+   swift::UUID result = UUID();
+   memcpy(result.Value, &uuid, Size);
+   return result;
++#elif defined(__wasi__)
++  // 8-4-4-4-12 hex digits with dashes, exactly 36 characters.
++  static const int groups[] = {4, 2, 2, 2, 6};
++  swift::UUID result;
++  unsigned byte = 0;
++  const char *p = s;
++  for (unsigned group = 0; group != 5; ++group) {
++    if (group != 0) {
++      if (*p++ != '-')
++        return std::nullopt;
++    }
++    for (int i = 0; i != groups[group]; ++i) {
++      int hi = wasiHexDigit(*p++);
++      int lo = wasiHexDigit(*p++);
++      if (hi < 0 || lo < 0)
++        return std::nullopt;
++      result.Value[byte++] = (unsigned char)((hi << 4) | lo);
++    }
++  }
++  if (*p != '\0')
++    return std::nullopt;
++  return result;
+ #else
+   swift::UUID result;
+   if (uuid_parse(s, result.Value))
+@@ -99,6 +151,12 @@ void swift::UUID::toString(llvm::SmallVectorImpl<char> &out) const {
+   char* signedStr = reinterpret_cast<char*>(str);
+   memcpy(out.data(), signedStr, StringBufferSize);
+   llvm::transform(out, std::begin(out), toupper);
++#elif defined(__wasi__)
++  snprintf(out.data(), StringBufferSize,
++           "%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X",
++           Value[0], Value[1], Value[2], Value[3], Value[4], Value[5], Value[6],
++           Value[7], Value[8], Value[9], Value[10], Value[11], Value[12],
++           Value[13], Value[14], Value[15]);
+ #else
+   uuid_unparse_upper(Value, out.data());
+ #endif
+@@ -117,6 +175,8 @@ int swift::UUID::compare(UUID y) const {
+   memcpy(&uuid2, y.Value, Size);
+ 
+   return UuidCompare(&uuid1, &uuid2, &s);
++#elif defined(__wasi__)
++  return memcmp(Value, y.Value, Size);
+ #else
+   return uuid_compare(Value, y.Value);
+ #endif
+diff --git a/lib/Driver/ToolChains.cpp b/lib/Driver/ToolChains.cpp
+index 06c88506..8f7a225f 100644
+--- a/lib/Driver/ToolChains.cpp
++++ b/lib/Driver/ToolChains.cpp
+@@ -1551,7 +1551,7 @@ static void appendInProcPluginServerPath(StringRef PluginPathRoot,
+   llvm::sys::path::append(InProcPluginServerPath, "bin", "SwiftInProcPluginServer.dll");
+ #elif defined(__APPLE__)
+   llvm::sys::path::append(InProcPluginServerPath, "lib", "swift", "host", "libSwiftInProcPluginServer.dylib");
+-#elif defined(__unix__)
++#elif defined(__unix__) || defined(__wasi__)
+   llvm::sys::path::append(InProcPluginServerPath, "lib", "swift", "host", "libSwiftInProcPluginServer.so");
+ #else
+ #error Unknown compiler host
+@@ -1563,14 +1563,14 @@ static void appendPluginsPath(StringRef PluginPathRoot,
+   PluginsPath.append(PluginPathRoot.begin(), PluginPathRoot.end());
+ #if defined(_WIN32)
+   llvm::sys::path::append(PluginsPath, "bin");
+-#elif defined(__APPLE__) || defined(__unix__)
++#elif defined(__APPLE__) || defined(__unix__) || defined(__wasi__)
+   llvm::sys::path::append(PluginsPath, "lib", "swift", "host", "plugins");
+ #else
+ #error Unknown compiler host
+ #endif
+ }
+ 
+-#if defined(__APPLE__) || defined(__unix__)
++#if defined(__APPLE__) || defined(__unix__) || defined(__wasi__)
+ static void appendLocalPluginsPath(StringRef PluginPathRoot,
+                                    llvm::SmallVectorImpl<char> &LocalPluginsPath) {
+   SmallString<261> localPluginPathRoot = PluginPathRoot;
+@@ -1598,7 +1598,7 @@ void ToolChain::addPluginArguments(const ArgList &Args,
+   Arguments.push_back(Args.MakeArgString(defaultPluginPath));
+ 
+   // Local plugin path.
+-#if defined(__APPLE__) || defined(__unix__)
++#if defined(__APPLE__) || defined(__unix__) || defined(__wasi__)
+   SmallString<261> localPluginPath;
+   appendLocalPluginsPath(pluginPathRoot, localPluginPath);
+   Arguments.push_back("-plugin-path");
+diff --git a/lib/IRGen/Address.h b/lib/IRGen/Address.h
+index ce609060..56b588da 100644
+--- a/lib/IRGen/Address.h
++++ b/lib/IRGen/Address.h
+@@ -173,7 +173,30 @@ public:
+   /// The address of an object of type T.
+   Address Addr;
+ 
++#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ < 8
++  /// Kind needs three bits, and a 32-bit host (wasm32 among them) leaves only two
++  /// spare low bits in an `llvm::Value *`. Store the two separately there rather
++  /// than over-packing the pointer; the interface is the part that matters.
++  class ExtraInfoAndKindStorage {
++    llvm::Value *Pointer;
++    Kind Int;
++
++  public:
++    ExtraInfoAndKindStorage(llvm::Value *Pointer, Kind Int)
++      : Pointer(Pointer), Int(Int) {}
++
++    llvm::Value *getPointer() const { return Pointer; }
++    Kind getInt() const { return Int; }
++
++    bool operator==(const ExtraInfoAndKindStorage &RHS) const {
++      return Pointer == RHS.Pointer && Int == RHS.Int;
++    }
++  };
++
++  ExtraInfoAndKindStorage ExtraInfoAndKind;
++#else
+   llvm::PointerIntPair<llvm::Value*, 3, Kind> ExtraInfoAndKind;
++#endif
+ 
+ public:
+   StackAddress() : ExtraInfoAndKind(nullptr, StaticAlloca) {}
+diff --git a/lib/IRGen/IRGen.cpp b/lib/IRGen/IRGen.cpp
+index 96d8d608..49714140 100644
+--- a/lib/IRGen/IRGen.cpp
++++ b/lib/IRGen/IRGen.cpp
+@@ -1570,9 +1570,15 @@ GeneratedModule IRGenRequest::evaluate(Evaluator &evaluator,
+   auto SILModuleRelease = [&SILMod]() {
+     SILMod.reset(nullptr);
+   };
++#if defined(__wasi__)
++  // WASI cannot create threads. Releasing the SILModule inline costs the overlap with
++  // bitcode embedding, not the work itself.
++  SILModuleRelease();
++#else
+   auto Thread = std::thread(SILModuleRelease);
+   // Wait for the thread to terminate.
+   SWIFT_DEFER { Thread.join(); };
++#endif
+ 
+   embedBitcode(IGM.getModule(), Opts);
+ 
+@@ -1931,6 +1937,13 @@ static void performParallelIRGeneration(IRGenDescriptor desc) {
+   auto SILModuleRelease = [&SILMod]() {
+     SILMod.reset(nullptr);
+   };
++#if defined(__wasi__)
++  // As above: no threads on WASI, so release inline before running codegen.
++  SILModuleRelease();
++
++  codeGenThreads.runMainThread();
++  codeGenThreads.join();
++#else
+   auto releaseModuleThread = std::thread(SILModuleRelease);
+ 
+   codeGenThreads.runMainThread();
+@@ -1938,6 +1951,7 @@ static void performParallelIRGeneration(IRGenDescriptor desc) {
+   // Wait for all threads.
+   releaseModuleThread.join();
+   codeGenThreads.join();
++#endif
+ }
+ 
+ GeneratedModule swift::performIRGeneration(
+diff --git a/lib/SILOptimizer/Utils/StackNesting.cpp b/lib/SILOptimizer/Utils/StackNesting.cpp
+index 4589f518..647c7c91 100644
+--- a/lib/SILOptimizer/Utils/StackNesting.cpp
++++ b/lib/SILOptimizer/Utils/StackNesting.cpp
+@@ -285,8 +285,37 @@ static StringRef getNameForStatus(AllocationStatus status) {
+   llvm_unreachable("bad kind");
+ }
+ 
++#if defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ < 8
++/// AllocationStatus needs three bits, and a 32-bit host (wasm32 among them) leaves
++/// only two spare low bits in a `SILInstruction *`. Keep the interface and drop the
++/// packing there.
++class PointerAndAllocationStatus {
++  SILInstruction *Pointer;
++  AllocationStatus Status;
++
++public:
++  PointerAndAllocationStatus(SILInstruction *Pointer, AllocationStatus Status)
++    : Pointer(Pointer), Status(Status) {}
++
++  SILInstruction *getPointer() const { return Pointer; }
++  AllocationStatus getInt() const { return Status; }
++  void setInt(AllocationStatus NewStatus) { Status = NewStatus; }
++
++  bool operator==(const PointerAndAllocationStatus &RHS) const {
++    return Pointer == RHS.Pointer && Status == RHS.Status;
++  }
++  // C++17 does not synthesise != from ==, and callers use both.
++  bool operator!=(const PointerAndAllocationStatus &RHS) const {
++    return !(*this == RHS);
++  }
++};
++#else
++using PointerAndAllocationStatus =
++    llvm::PointerIntPair<SILInstruction *, 3, AllocationStatus>;
++#endif
++
+ class ActiveAllocation {
+-  llvm::PointerIntPair<SILInstruction*, 3, AllocationStatus> valueAndStatus;
++  PointerAndAllocationStatus valueAndStatus;
+ 
+ public:
+   explicit ActiveAllocation(SILInstruction *value)
+diff --git a/tools/SourceKit/CMakeLists.txt b/tools/SourceKit/CMakeLists.txt
+index 73b79d13..9c445cf5 100644
+--- a/tools/SourceKit/CMakeLists.txt
++++ b/tools/SourceKit/CMakeLists.txt
+@@ -91,6 +91,31 @@ if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+   string(TOUPPER "${CMAKE_SYSTEM_NAME}" SOURCEKIT_DEFAULT_TARGET_SDK)
+ endif()
+ 
++if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
++  # WASI has no libdispatch (see the top-level CMakeLists.txt), but the
++  # sourcekitd C API still takes blocks for its callbacks. Build the Blocks
++  # runtime alone from libdispatch's sources: it is two portable C files.
++  set(SOURCEKIT_BLOCKS_RUNTIME_SOURCE
++      "${SWIFT_PATH_TO_LIBDISPATCH_SOURCE}/src/BlocksRuntime")
++  if(NOT EXISTS "${SOURCEKIT_BLOCKS_RUNTIME_SOURCE}/runtime.c")
++    message(SEND_ERROR "SourceKit on WASI builds the Blocks runtime from libdispatch's sources.  Please specify SWIFT_PATH_TO_LIBDISPATCH_SOURCE")
++  endif()
++  add_library(BlocksRuntime STATIC
++    "${SOURCEKIT_BLOCKS_RUNTIME_SOURCE}/data.c"
++    "${SOURCEKIT_BLOCKS_RUNTIME_SOURCE}/runtime.c")
++  target_include_directories(BlocksRuntime PUBLIC
++    "${SOURCEKIT_BLOCKS_RUNTIME_SOURCE}")
++  # Its own sources cast const away throughout; that is not ours to fix.
++  target_compile_options(BlocksRuntime PRIVATE -Wno-cast-qual)
++  # SourceKitSupport links it publicly and is exported from the build tree,
++  # so it has to be exported alongside.
++  set_property(GLOBAL APPEND PROPERTY SWIFT_BUILDTREE_EXPORTS BlocksRuntime)
++  # Most of SourceKit includes <Block.h> without linking SourceKitSupport
++  # directly. Elsewhere Libdispatch.cmake puts the headers on every include
++  # path; here they go on SourceKit's alone.
++  include_directories(AFTER "${SOURCEKIT_BLOCKS_RUNTIME_SOURCE}")
++endif()
++
+ if(SWIFT_BUILD_HOST_DISPATCH)
+   if(SWIFT_HOST_VARIANT_SDK STREQUAL "WINDOWS")
+     set(SOURCEKIT_RUNTIME_DIR bin)
+diff --git a/tools/SourceKit/include/SourceKit/Support/Concurrency.h b/tools/SourceKit/include/SourceKit/Support/Concurrency.h
+index 48b2d445..432257d2 100644
+--- a/tools/SourceKit/include/SourceKit/Support/Concurrency.h
++++ b/tools/SourceKit/include/SourceKit/Support/Concurrency.h
+@@ -167,6 +167,18 @@ public:
+     Impl::setPriority(ImplObj, Prio);
+   }
+ 
++#if defined(__wasi__)
++  /// Runs queued work until nothing more can start, and returns how many
++  /// items ran.
++  ///
++  /// A WASI host has one thread and no libdispatch, so asynchronously
++  /// dispatched work runs only while somebody waits for it (a semaphore, or a
++  /// synchronous dispatch). An embedder that expects work nobody waits for,
++  /// such as notifications, calls this when it is idle. Defined in
++  /// Concurrency-cooperative.cpp, which is only built for WASI.
++  static unsigned runPendingWork();
++#endif
++
+   WorkQueue(const WorkQueue &Other) {
+     ImplObj = Other.ImplObj;
+     if (ImplObj)
+diff --git a/tools/SourceKit/lib/Support/CMakeLists.txt b/tools/SourceKit/lib/Support/CMakeLists.txt
+index a47b2347..0906fb88 100644
+--- a/tools/SourceKit/lib/Support/CMakeLists.txt
++++ b/tools/SourceKit/lib/Support/CMakeLists.txt
+@@ -1,5 +1,16 @@
+-add_sourcekit_library(SourceKitSupport
++# Without threads (WASI) there is no libdispatch, and the work queues run
++# cooperatively on the one thread there is.
++set(LLVM_OPTIONAL_SOURCES
+   Concurrency-libdispatch.cpp
++  Concurrency-cooperative.cpp)
++if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
++  set(SOURCEKIT_CONCURRENCY_SOURCE Concurrency-cooperative.cpp)
++else()
++  set(SOURCEKIT_CONCURRENCY_SOURCE Concurrency-libdispatch.cpp)
++endif()
++
++add_sourcekit_library(SourceKitSupport
++  ${SOURCEKIT_CONCURRENCY_SOURCE}
+   Logging.cpp
+   ImmutableTextBuffer.cpp
+   ThreadSafeRefCntPtr.cpp
+@@ -9,7 +20,10 @@ target_link_libraries(SourceKitSupport PRIVATE
+   swiftBasic
+   clangBasic
+   clangRewrite)
+-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
++  target_link_libraries(SourceKitSupport PUBLIC
++    BlocksRuntime)
++elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+   target_link_libraries(SourceKitSupport INTERFACE
+     dispatch
+     BlocksRuntime)
+diff --git a/tools/SourceKit/lib/Support/Concurrency-cooperative.cpp b/tools/SourceKit/lib/Support/Concurrency-cooperative.cpp
+new file mode 100644
+index 00000000..9180f1fe
+--- /dev/null
++++ b/tools/SourceKit/lib/Support/Concurrency-cooperative.cpp
+@@ -0,0 +1,303 @@
++//===--- Concurrency-cooperative.cpp --------------------------------------===//
++//
++// This source file is part of the Swift.org open source project
++//
++// Copyright (c) 2014 - 2026 Apple Inc. and the Swift project authors
++// Licensed under Apache License v2.0 with Runtime Library Exception
++//
++// See https://swift.org/LICENSE.txt for license information
++// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
++//
++//===----------------------------------------------------------------------===//
++//
++// SourceKit's work queues and semaphores for a host with one thread and no
++// libdispatch (WASI). Concurrency-libdispatch.cpp is the implementation
++// everywhere else; this one keeps the same contract with nothing to run on but
++// the caller's own thread:
++//
++//  * dispatch, dispatchBarrier, dispatchConcurrent and dispatchOnMain only
++//    enqueue. Nothing runs at the point of submission, so a caller that holds
++//    a lock while it dispatches never has the work run underneath it.
++//  * Queued work runs when somebody waits for it: Semaphore::wait,
++//    dispatchSync, dispatchBarrierSync, or WorkQueue::runPendingWork.
++//  * Serial queues and barriers keep their meaning. An item does not start
++//    while an item of the same serial queue, or a barrier of the same
++//    concurrent queue, is still on the stack, and items submitted after a
++//    barrier wait for it. Suspended queues run nothing until resumed.
++//  * A wait that nothing can satisfy is a deadlock that libdispatch would hit
++//    as well; here it is reported, instead of hanging a single-threaded host
++//    forever. A timed wait that nothing can satisfy times out at once, since
++//    no other thread exists to signal it later.
++//  * isStackDeep has no larger thread to move to. The work runs on the
++//    caller's stack, so the module must be linked with a large stack
++//    (-z stack-size); libdispatch's path uses 8 MiB.
++//
++// Priorities are accepted and ignored: everything runs in submission order.
++//
++//===----------------------------------------------------------------------===//
++
++#include "SourceKit/Support/Concurrency.h"
++#include "llvm/ADT/Twine.h"
++#include "llvm/Support/ErrorHandling.h"
++#include <algorithm>
++#include <deque>
++#include <string>
++#include <vector>
++
++using namespace SourceKit;
++
++namespace {
++
++struct QueueState {
++  std::string Label;
++  bool IsSerial;
++  unsigned RefCount = 1;
++  unsigned SuspendCount = 0;
++  /// Items of this queue currently executing, i.e. somewhere on the stack.
++  unsigned Running = 0;
++  /// Of those, how many are barriers.
++  unsigned RunningBarriers = 0;
++
++  QueueState(llvm::StringRef Label, bool IsSerial)
++      : Label(Label.str()), IsSerial(IsSerial) {}
++};
++
++struct WorkItem {
++  QueueState *Queue;
++  void *Context;
++  WorkQueue::DispatchFn Fn;
++  bool IsBarrier;
++};
++
++struct SemaphoreState {
++  long Count;
++  unsigned RefCount = 1;
++
++  explicit SemaphoreState(long Count) : Count(Count) {}
++};
++
++// Both are created on first use, never at static initialization: other
++// translation units dispatch from their own static initializers.
++
++/// The main queue, which libdispatch drains on the main thread. Here it is a
++/// serial queue like any other, and never released.
++QueueState *mainQueue() {
++  static QueueState *Q = new QueueState("main", /*IsSerial=*/true);
++  return Q;
++}
++
++/// The global concurrent queues, one for every priority, merged into one.
++QueueState *globalQueue() {
++  static QueueState *Q = new QueueState("global", /*IsSerial=*/false);
++  return Q;
++}
++
++std::deque<WorkItem> &pending() {
++  static std::deque<WorkItem> *Pending = new std::deque<WorkItem>();
++  return *Pending;
++}
++
++bool isImmortal(const QueueState *Q) {
++  return Q == mainQueue() || Q == globalQueue();
++}
++
++void retainQueue(QueueState *Q) {
++  if (!isImmortal(Q))
++    ++Q->RefCount;
++}
++
++void releaseQueue(QueueState *Q) {
++  if (isImmortal(Q))
++    return;
++  if (--Q->RefCount == 0)
++    delete Q;
++}
++
++/// Whether an item may start now, given what is already on the stack.
++bool mayStart(const QueueState &Q, bool IsBarrier) {
++  if (Q.SuspendCount > 0)
++    return false;
++  if (Q.IsSerial || IsBarrier)
++    return Q.Running == 0;
++  return Q.RunningBarriers == 0;
++}
++
++void execute(QueueState *Q, bool IsBarrier, void *Context,
++             WorkQueue::DispatchFn Fn) {
++  ++Q->Running;
++  if (IsBarrier)
++    ++Q->RunningBarriers;
++  Fn(Context);
++  if (IsBarrier)
++    --Q->RunningBarriers;
++  --Q->Running;
++}
++
++/// Runs the oldest item that may start, if there is one.
++bool runOne() {
++  auto &Pending = pending();
++  // A queue whose oldest pending item cannot start yet holds back everything
++  // queued after it, which is what keeps serial queues in order and makes
++  // later items wait for a barrier.
++  std::vector<const QueueState *> HeldBack;
++  for (auto It = Pending.begin(); It != Pending.end(); ++It) {
++    QueueState *Q = It->Queue;
++    if (std::find(HeldBack.begin(), HeldBack.end(), Q) != HeldBack.end())
++      continue;
++    bool StartsSerially = Q->IsSerial || It->IsBarrier;
++    if (!mayStart(*Q, It->IsBarrier)) {
++      if (StartsSerially || Q->SuspendCount > 0)
++        HeldBack.push_back(Q);
++      continue;
++    }
++    WorkItem Item = *It;
++    Pending.erase(It);
++    execute(Item.Queue, Item.IsBarrier, Item.Context, Item.Fn);
++    releaseQueue(Item.Queue);
++    return true;
++  }
++  return false;
++}
++
++/// Whether anything queued on \p Q must finish before a synchronous item of
++/// that queue may run.
++bool hasPendingPredecessor(const QueueState *Q, bool IsBarrier) {
++  bool WaitsForAll = Q->IsSerial || IsBarrier;
++  for (const WorkItem &Item : pending())
++    if (Item.Queue == Q && (WaitsForAll || Item.IsBarrier))
++      return true;
++  return false;
++}
++
++void enqueue(QueueState *Q, void *Context, WorkQueue::DispatchFn Fn,
++             bool IsBarrier) {
++  retainQueue(Q);
++  pending().push_back(WorkItem{Q, Context, Fn, IsBarrier});
++}
++
++void runSync(QueueState *Q, void *Context, WorkQueue::DispatchFn Fn,
++             bool IsBarrier) {
++  while (hasPendingPredecessor(Q, IsBarrier) || !mayStart(*Q, IsBarrier)) {
++    if (!runOne())
++      llvm::report_fatal_error(
++          "SourceKit: synchronous dispatch onto '" + llvm::Twine(Q->Label) +
++          "' would wait forever: its queue is suspended or already running "
++          "on this, the only, thread");
++  }
++  execute(Q, IsBarrier, Context, Fn);
++}
++
++QueueState *toQueue(void *Obj) { return static_cast<QueueState *>(Obj); }
++SemaphoreState *toSemaphore(void *Obj) {
++  return static_cast<SemaphoreState *>(Obj);
++}
++
++} // end anonymous namespace
++
++//===----------------------------------------------------------------------===//
++// Semaphore
++//===----------------------------------------------------------------------===//
++
++void *Semaphore::Impl::create(long count) { return new SemaphoreState(count); }
++
++void Semaphore::Impl::signal(Ty Obj) { ++toSemaphore(Obj)->Count; }
++
++bool Semaphore::Impl::wait(Ty Obj) {
++  SemaphoreState *S = toSemaphore(Obj);
++  while (S->Count <= 0) {
++    if (!runOne())
++      llvm::report_fatal_error(
++          "SourceKit: Semaphore::wait would block forever: no queued work "
++          "can run, and there is no other thread to signal it");
++  }
++  --S->Count;
++  return false;
++}
++
++bool Semaphore::Impl::wait(Ty Obj, long milliseconds) {
++  (void)milliseconds;
++  SemaphoreState *S = toSemaphore(Obj);
++  while (S->Count <= 0) {
++    if (!runOne())
++      return true; // Nothing left that could signal it: timed out.
++  }
++  --S->Count;
++  return false;
++}
++
++void Semaphore::Impl::retain(Ty Obj) { ++toSemaphore(Obj)->RefCount; }
++
++void Semaphore::Impl::release(Ty Obj) {
++  SemaphoreState *S = toSemaphore(Obj);
++  if (--S->RefCount == 0)
++    delete S;
++}
++
++//===----------------------------------------------------------------------===//
++// WorkQueue
++//===----------------------------------------------------------------------===//
++
++void *WorkQueue::Impl::create(Dequeuing DeqKind, Priority Prio,
++                              llvm::StringRef Label) {
++  (void)Prio;
++  return new QueueState(Label, DeqKind == Dequeuing::Serial);
++}
++
++void WorkQueue::Impl::dispatch(Ty Obj, const DispatchData &Fn) {
++  enqueue(toQueue(Obj), Fn.getContext(), Fn.getFunction(),
++          /*IsBarrier=*/false);
++}
++
++void WorkQueue::Impl::dispatchSync(Ty Obj, const DispatchData &Fn) {
++  runSync(toQueue(Obj), Fn.getContext(), Fn.getFunction(),
++          /*IsBarrier=*/false);
++}
++
++void WorkQueue::Impl::dispatchBarrier(Ty Obj, const DispatchData &Fn) {
++  enqueue(toQueue(Obj), Fn.getContext(), Fn.getFunction(), /*IsBarrier=*/true);
++}
++
++void WorkQueue::Impl::dispatchBarrierSync(Ty Obj, const DispatchData &Fn) {
++  runSync(toQueue(Obj), Fn.getContext(), Fn.getFunction(), /*IsBarrier=*/true);
++}
++
++void WorkQueue::Impl::dispatchOnMain(const DispatchData &Fn) {
++  enqueue(mainQueue(), Fn.getContext(), Fn.getFunction(), /*IsBarrier=*/false);
++}
++
++void WorkQueue::Impl::dispatchConcurrent(Priority Prio,
++                                         const DispatchData &Fn) {
++  (void)Prio;
++  enqueue(globalQueue(), Fn.getContext(), Fn.getFunction(),
++          /*IsBarrier=*/false);
++}
++
++void WorkQueue::Impl::suspend(Ty Obj) { ++toQueue(Obj)->SuspendCount; }
++
++void WorkQueue::Impl::resume(Ty Obj) {
++  QueueState *Q = toQueue(Obj);
++  if (Q->SuspendCount == 0)
++    llvm::report_fatal_error("SourceKit: WorkQueue resumed more often than "
++                             "it was suspended");
++  --Q->SuspendCount;
++}
++
++void WorkQueue::Impl::setPriority(Ty Obj, Priority Prio) {
++  (void)Obj;
++  (void)Prio;
++}
++
++llvm::StringRef WorkQueue::Impl::getLabel(const Ty Obj) {
++  return toQueue(Obj)->Label;
++}
++
++void WorkQueue::Impl::retain(Ty Obj) { retainQueue(toQueue(Obj)); }
++
++void WorkQueue::Impl::release(Ty Obj) { releaseQueue(toQueue(Obj)); }
++
++unsigned WorkQueue::runPendingWork() {
++  unsigned Ran = 0;
++  while (runOne())
++    ++Ran;
++  return Ran;
++}
+diff --git a/tools/SourceKit/lib/SwiftLang/SwiftSourceDocInfo.cpp b/tools/SourceKit/lib/SwiftLang/SwiftSourceDocInfo.cpp
+index 34caf4b5..4b57e8af 100644
+--- a/tools/SourceKit/lib/SwiftLang/SwiftSourceDocInfo.cpp
++++ b/tools/SourceKit/lib/SwiftLang/SwiftSourceDocInfo.cpp
+@@ -2590,7 +2590,6 @@ void SwiftLangSupport::findRelatedIdentifiersInFile(
+ 
+     bool requiresDeepStack() override { return true; }
+ 
+-#if SWIFT_BUILD_SWIFT_SYNTAX
+     // FIXME: Don't silently eat errors here.
+     RelatedIdentsResult getRelatedIdents(SourceFile *SrcFile,
+                                          CompilerInstance &CompInst) {
+@@ -2642,6 +2641,8 @@ void SwiftLangSupport::findRelatedIdentifiersInFile(
+       }
+ #endif
+ 
++      SmallVector<RelatedIdentInfo, 8> Ranges;
++#if SWIFT_BUILD_SWIFT_SYNTAX
+       // Ignore any errors produced by `resolveRenameLocations` since, if some
+       // symbol failed to resolve, we still want to return all the other
+       // symbols. This makes related idents more fault-tolerant.
+@@ -2651,7 +2652,6 @@ void SwiftLangSupport::findRelatedIdentifiersInFile(
+           resolveRenameLocations(Locs.getLocations(), /*NewName=*/StringRef(),
+                                  *SrcFile, Diags);
+ 
+-      SmallVector<RelatedIdentInfo, 8> Ranges;
+       for (auto Loc : ResolvedAndRenameLocs) {
+         if (Loc.resolved.range.isInvalid()) {
+           continue;
+@@ -2661,10 +2661,25 @@ void SwiftLangSupport::findRelatedIdentifiersInFile(
+         Ranges.push_back(
+             {Offset, Loc.resolved.range.getByteLength(), Loc.renameLoc.Usage});
+       }
++#else
++      // Without swift-syntax there is no name matcher to find argument labels,
++      // but the base name is all a related identifier is: the token at the
++      // location the indexer reported.
++      for (const RenameLoc &Loc : Locs.getLocations()) {
++        SourceLoc Start =
++            SrcMgr.getLocForLineCol(BufferID, Loc.Line, Loc.Column);
++        if (Start.isInvalid()) {
++          continue;
++        }
++        CharSourceRange Range =
++            Lexer::getCharSourceRangeFromSourceRange(SrcMgr, Start);
++        Ranges.push_back({SrcMgr.getLocOffsetInBuffer(Start, BufferID),
++                          Range.getByteLength(), Loc.Usage});
++      }
++#endif
+ 
+       return RelatedIdentsResult(Ranges, OldName);
+     }
+-#endif
+ 
+   public:
+     RelatedIdConsumer(
+@@ -2678,12 +2693,6 @@ void SwiftLangSupport::findRelatedIdentifiersInFile(
+ 
+     void handlePrimaryAST(ASTUnitRef AstUnit) override {
+       using ResultType = RequestResult<RelatedIdentsResult>;
+-#if !SWIFT_BUILD_SWIFT_SYNTAX
+-      ResultType::fromError(
+-          "relatedidents is not supported because sourcekitd was built without "
+-          "swift-syntax");
+-      return;
+-#else
+       auto &CompInst = AstUnit->getCompilerInstance();
+ 
+       auto *SrcFile = retrieveInputFile(InputFile, CompInst);
+@@ -2695,7 +2704,6 @@ void SwiftLangSupport::findRelatedIdentifiersInFile(
+ 
+       RelatedIdentsResult Result = getRelatedIdents(SrcFile, CompInst);
+       Receiver(ResultType::fromResult(Result));
+-#endif
+     }
+ 
+     void cancelled() override {
+diff --git a/tools/SourceKit/tools/CMakeLists.txt b/tools/SourceKit/tools/CMakeLists.txt
+index 86881a56..77ca0410 100644
+--- a/tools/SourceKit/tools/CMakeLists.txt
++++ b/tools/SourceKit/tools/CMakeLists.txt
+@@ -5,6 +5,12 @@ include_directories(
+ )
+ 
+ add_swift_lib_subdirectory(sourcekitd)
++# sourcekitd-test spawns processes, waits on a notification thread and parks in
++# dispatch_main; a WASI host has none of those. sourcekitd-request is the
++# smallest client of the in-process library, and the one that runs there.
++if(CMAKE_SYSTEM_NAME STREQUAL "WASI")
++  add_swift_tool_subdirectory(sourcekitd-request)
++endif()
+ if(LibEdit_FOUND AND LibEdit_HAS_UNICODE)
+   add_swift_tool_subdirectory(sourcekitd-repl)
+ endif()
+diff --git a/tools/SourceKit/tools/sourcekitd-request/CMakeLists.txt b/tools/SourceKit/tools/sourcekitd-request/CMakeLists.txt
+new file mode 100644
+index 00000000..ee4398c3
+--- /dev/null
++++ b/tools/SourceKit/tools/sourcekitd-request/CMakeLists.txt
+@@ -0,0 +1,11 @@
++add_sourcekit_executable(sourcekitd-request
++  sourcekitd-request.cpp
++  LLVM_LINK_COMPONENTS support
++)
++target_link_libraries(sourcekitd-request PRIVATE
++  sourcekitdInProc
++  SourceKitSupport)
++
++add_dependencies(tools sourcekitd-request)
++swift_install_in_component(TARGETS sourcekitd-request
++  RUNTIME DESTINATION bin COMPONENT tools)
+diff --git a/tools/SourceKit/tools/sourcekitd-request/sourcekitd-request.cpp b/tools/SourceKit/tools/sourcekitd-request/sourcekitd-request.cpp
+new file mode 100644
+index 00000000..46985a16
+--- /dev/null
++++ b/tools/SourceKit/tools/sourcekitd-request/sourcekitd-request.cpp
+@@ -0,0 +1,124 @@
++//===--- sourcekitd-request.cpp - Send requests to in-process sourcekitd --===//
++//
++// This source file is part of the Swift.org open source project
++//
++// Copyright (c) 2014 - 2026 Apple Inc. and the Swift project authors
++// Licensed under Apache License v2.0 with Runtime Library Exception
++//
++// See https://swift.org/LICENSE.txt for license information
++// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
++//
++//===----------------------------------------------------------------------===//
++//
++// Sends requests, written in sourcekitd's YAML form, to the in-process
++// sourcekitd, one at a time and synchronously, and prints each response.
++//
++//   sourcekitd-request [-json] <request.yaml | ->...
++//
++// It is the smallest client of the C API, and the one a host without processes
++// or threads can run: no XPC service, no spawned tools, no notification thread
++// and no dispatch_main, which is everything sourcekitd-test needs and a WASI
++// host lacks. A request names its source file and compiler arguments itself,
++// for example:
++//
++//   {
++//     key.request: source.request.codecomplete,
++//     key.sourcefile: "/work/main.swift",
++//     key.offset: 42,
++//     key.compilerargs: ["/work/main.swift", "-target",
++//                        "wasm32-unknown-wasip1", ...]
++//   }
++//
++// Exit status: 0 when every response succeeded, 1 when any response was an
++// error, 2 when a request could not be read or parsed.
++//
++//===----------------------------------------------------------------------===//
++
++#include "sourcekitd/sourcekitd.h"
++#include "SourceKit/Support/Concurrency.h"
++
++#include "llvm/Support/MemoryBuffer.h"
++#include "llvm/Support/raw_ostream.h"
++
++#include <cstdlib>
++#include <cstring>
++#include <string>
++#include <unistd.h>
++#include <vector>
++
++static void runPendingWork() {
++#if defined(__wasi__)
++  // Without threads, work nobody waits for (notifications, releasing ASTs)
++  // runs only when asked to. Finish it before the next request, so a request
++  // never observes half of the previous one.
++  SourceKit::WorkQueue::runPendingWork();
++#endif
++}
++
++static void printResponse(sourcekitd_response_t Resp, bool AsJSON) {
++  if (!AsJSON) {
++    sourcekitd_response_description_dump_filedesc(Resp, STDOUT_FILENO);
++    return;
++  }
++  char *JSON =
++      sourcekitd_variant_json_description_copy(sourcekitd_response_get_value(Resp));
++  llvm::outs() << JSON << '\n';
++  llvm::outs().flush();
++  free(JSON);
++}
++
++int main(int argc, const char **argv) {
++  bool AsJSON = false;
++  std::vector<std::string> Inputs;
++  for (int I = 1; I < argc; ++I) {
++    if (std::strcmp(argv[I], "-json") == 0)
++      AsJSON = true;
++    else
++      Inputs.push_back(argv[I]);
++  }
++  if (Inputs.empty()) {
++    llvm::errs() << "usage: " << argv[0]
++                 << " [-json] <request.yaml | ->...\n"
++                    "Sends each request to the in-process sourcekitd and "
++                    "prints the response; - reads one request from stdin.\n";
++    return 2;
++  }
++
++  sourcekitd_initialize();
++  int Status = 0;
++  for (const std::string &Input : Inputs) {
++    auto Buffer = llvm::MemoryBuffer::getFileOrSTDIN(Input);
++    if (!Buffer) {
++      llvm::errs() << "error: cannot read " << Input << ": "
++                   << Buffer.getError().message() << '\n';
++      Status = 2;
++      break;
++    }
++
++    char *Error = nullptr;
++    sourcekitd_object_t Req = sourcekitd_request_create_from_yaml(
++        (*Buffer)->getBuffer().str().c_str(), &Error);
++    if (!Req) {
++      llvm::errs() << "error: cannot parse " << Input << ": "
++                   << (Error ? Error : "unknown error") << '\n';
++      free(Error);
++      Status = 2;
++      break;
++    }
++
++    sourcekitd_response_t Resp = sourcekitd_send_request_sync(Req);
++    sourcekitd_request_release(Req);
++    if (sourcekitd_response_is_error(Resp)) {
++      llvm::errs() << "error: " << Input << ": "
++                   << sourcekitd_response_error_get_description(Resp) << '\n';
++      Status = 1;
++    } else {
++      printResponse(Resp, AsJSON);
++    }
++    sourcekitd_response_dispose(Resp);
++    runPendingWork();
++  }
++  sourcekitd_shutdown();
++  runPendingWork();
++  return Status;
++}
+diff --git a/tools/SourceKit/tools/sourcekitd/bin/InProc/CMakeLists.txt b/tools/SourceKit/tools/sourcekitd/bin/InProc/CMakeLists.txt
+index 6d70803a..9e64bb2a 100644
+--- a/tools/SourceKit/tools/sourcekitd/bin/InProc/CMakeLists.txt
++++ b/tools/SourceKit/tools/sourcekitd/bin/InProc/CMakeLists.txt
+@@ -15,6 +15,14 @@ set(sourcekitdInProc_args
+   LLVM_LINK_COMPONENTS support coverage
+ )
+ 
++# WASI has no dynamic linking: the library is static, and whoever embeds it
++# links it into their own module.
++if("${CMAKE_SYSTEM_NAME}" STREQUAL "WASI")
++  set(sourcekitdInProc_kind)
++else()
++  set(sourcekitdInProc_kind SHARED)
++endif()
++
+ if (SOURCEKIT_INSTALLING_INPROC)
+   if("${CMAKE_SYSTEM_NAME}" STREQUAL "Darwin")
+     add_sourcekit_framework(sourcekitdInProc
+@@ -38,7 +46,7 @@ if (SOURCEKIT_INSTALLING_INPROC)
+       HEADERS
+         ${SOURCEKITD_SOURCE_DIR}/include/sourcekitd/sourcekitd.h
+       INSTALL_IN_COMPONENT sourcekit-inproc
+-      SHARED
++      ${sourcekitdInProc_kind}
+       HAS_SWIFT_MODULES
+     )
+   endif()
+@@ -48,7 +56,7 @@ else()
+     HEADERS
+       ${SOURCEKITD_SOURCE_DIR}/include/sourcekitd/sourcekitd.h
+     INSTALL_IN_COMPONENT sourcekit-inproc
+-    SHARED
++    ${sourcekitdInProc_kind}
+     HAS_SWIFT_MODULES
+   )
+ endif()
+diff --git a/tools/SourceKit/tools/sourcekitd/bin/InProc/sourcekitdInProc.cpp b/tools/SourceKit/tools/sourcekitd/bin/InProc/sourcekitdInProc.cpp
+index f1d97495..6f2e3fef 100644
+--- a/tools/SourceKit/tools/sourcekitd/bin/InProc/sourcekitdInProc.cpp
++++ b/tools/SourceKit/tools/sourcekitd/bin/InProc/sourcekitdInProc.cpp
+@@ -47,6 +47,14 @@ static bool RequestBarriersEnabled = false;
+ static void postNotification(sourcekitd_response_t Notification);
+ 
+ static void getToolchainPrefixPath(llvm::SmallVectorImpl<char> &Path) {
++#if defined(__wasi__)
++  // A WASI module cannot ask where it was loaded from: wasi-libc declares
++  // dladdr but does not implement it, and there is no /proc. The embedder
++  // says where the toolchain's "usr" directory is mounted instead.
++  const char *Prefix = ::getenv("SOURCEKITD_TOOLCHAIN_PREFIX");
++  llvm::StringRef PrefixRef = Prefix ? Prefix : "/usr";
++  Path.append(PrefixRef.begin(), PrefixRef.end());
++#else
+ #if defined(_WIN32)
+   MEMORY_BASIC_INFORMATION mbi;
+   char path[MAX_PATH + 1];
+@@ -82,6 +90,7 @@ static void getToolchainPrefixPath(llvm::SmallVectorImpl<char> &Path) {
+   // Get it to "usr"
+   for (unsigned i = 0; i < NestingLevel; ++i)
+     llvm::sys::path::remove_filename(Path);
++#endif // defined(__wasi__)
+ }
+ 
+ std::string sourcekitdInProc::getRuntimeLibPath() {
+diff --git a/tools/SourceKit/tools/sourcekitd/lib/API/sourcekitdAPI-Common.cpp b/tools/SourceKit/tools/sourcekitd/lib/API/sourcekitdAPI-Common.cpp
+index de3d85ec..5ed5c12c 100644
+--- a/tools/SourceKit/tools/sourcekitd/lib/API/sourcekitdAPI-Common.cpp
++++ b/tools/SourceKit/tools/sourcekitd/lib/API/sourcekitdAPI-Common.cpp
+@@ -295,6 +295,10 @@ static void withCurrentLibraryPath(llvm::function_ref<void(const char *)> body)
+       return body(nullptr);
+   }
+   return body(path);
++#elif defined(__wasi__)
++  // wasi-libc declares dladdr but does not implement it, and a WASI module
++  // has no path of its own to report; nor can it load a plugin to tell.
++  return body(nullptr);
+ #else
+   Dl_info dlinfo;
+   dladdr(__dso_handle, &dlinfo);
+diff --git a/tools/SourceKit/tools/sourcekitd/lib/Service/Requests.cpp b/tools/SourceKit/tools/sourcekitd/lib/Service/Requests.cpp
+index 3138558d..20d209d3 100644
+--- a/tools/SourceKit/tools/sourcekitd/lib/Service/Requests.cpp
++++ b/tools/SourceKit/tools/sourcekitd/lib/Service/Requests.cpp
+@@ -55,7 +55,9 @@
+ 
+ // FIXME: Portability.
+ #include <Block.h>
++#if !defined(__wasi__)
+ #include <dispatch/dispatch.h>
++#endif
+ 
+ using namespace sourcekitd;
+ using namespace SourceKit;
+@@ -4486,6 +4488,14 @@ static bool isSemanticEditorDisabled() {
+       if (StringRef(EnvOpt).getAsInteger(10, Seconds))
+         return;
+ 
++#if defined(__wasi__)
++      // There is no libdispatch, and so no timer to turn semantic info back
++      // on with. A single-threaded host does not survive the crash this
++      // protects against anyway, so keep semantic info enabled.
++      LOG_WARN_FUNC("ignoring SOURCEKIT_DELAY_SEMA_EDITOR: no timers on WASI");
++      (void)Seconds;
++      return;
++#else
+       // A crash occurred previously. Disable semantic info in the editor for
+       // the given amount, to avoid repeated crashers.
+       LOG_WARN_FUNC("delaying semantic editor for " << Seconds << " seconds");
+@@ -4498,6 +4508,7 @@ static bool isSemanticEditorDisabled() {
+             .getNotificationCenter()
+             ->postSemaEnabledNotification();
+       });
++#endif
+     });
+   }
+ 
