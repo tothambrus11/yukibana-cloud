@@ -43,18 +43,18 @@ set -euo pipefail
 GHC_VERSION=9.14.1.20260731
 # The CI build the pack is made of: its run, and the sha256 of its
 # SHA256SUMS, which holds every other file's.
-ROOTFS_RUN=40133827035
-SUMS_SHA256=d477a850694988ff7d9d7e50590535234b0f20d7fd80250d9ba717bf6931285a
+ROOTFS_RUN=40139769351
+SUMS_SHA256=c7da383439018fa96492a6c9b90c739c14fbc207e8962b5cbe9e3962d8f534e9
 # ormolu and hlint (ghc/build-tools.sh, .github/workflows/light-haskell-ghc-tools.yml):
 # the CI build, and the sha256 of its SHA256SUMS.
-TOOLS_RUN=40098246483
-TOOLS_SUMS_SHA256=fb197fb0215b158f615519407882ee084c54ea371eeed06a76d3f2c19277fdd1
+TOOLS_RUN=40139769338
+TOOLS_SUMS_SHA256=99e8fa456444b6cea710a843fa1554249a869377a6e41a73892cd96be090b019
 # Where the two are kept once their artifacts expire (90 days): a GitHub
 # release of both, made by hand with .github/workflows/light-haskell-inputs-release.yml
 # from the runs pinned here. Used when no artifact is given and the cache
 # has none; the same sha256 pins check what it holds.
 INPUTS_RELEASE=haskell-inputs-$ROOTFS_RUN-$TOOLS_RUN
-RELEASES=https://github.com/tothambrus11/Yukibana/releases/download
+RELEASES=https://github.com/tothambrus11/yukibana-cloud/releases/download
 # browser_wasi_shim: the haskell-wasm fork at the commit GHC's browser tests
 # use (ghc-in-browser loads it from esm.sh at this commit).
 SHIM_REPO=https://github.com/haskell-wasm/browser_wasi_shim
@@ -102,7 +102,7 @@ if [ ! -f "$ART/rootfs.tar" ]; then
     cat >&2 <<EOF
 No GHC root file system in $ART.
 Download the "haskell-ghc-rootfs" artifact of
-https://github.com/tothambrus11/Yukibana/actions/runs/$ROOTFS_RUN
+https://github.com/tothambrus11/yukibana-cloud/actions/runs/$ROOTFS_RUN
 (or haskell-ghc-rootfs.zip of the release $INPUTS_RELEASE)
 and run HASKELL_GHC_ROOTFS=path/to/haskell-ghc-rootfs.zip $0
 (or HASKELL_GHC_ROOTFS=build with GHC's wasm toolchain installed).
@@ -125,7 +125,7 @@ if [ -n "$TOOLS_RUN" ] && [ ! -f "$TOOLS/SHA256SUMS" ]; then
     cat >&2 <<EOF
 No ormolu and hlint in $TOOLS.
 Download the "haskell-ghc-tools" artifact of
-https://github.com/tothambrus11/Yukibana/actions/runs/$TOOLS_RUN
+https://github.com/tothambrus11/yukibana-cloud/actions/runs/$TOOLS_RUN
 (or haskell-ghc-tools.zip of the release $INPUTS_RELEASE)
 and run HASKELL_GHC_TOOLS=path/to/haskell-ghc-tools.zip $0
 EOF
