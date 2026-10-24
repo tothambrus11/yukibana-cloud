@@ -2,7 +2,7 @@
  * The window layout, made with dockview: the explorer on the left, editor
  * tabs in the middle (one Monaco editor per open file), problems and output
  * on the right, and, when asked for, the compiler output views (LLVM IR,
- * assembly) right of the editors. Every panel can be dragged, split and
+ * assembly) right of the editors and the call hierarchy beside problems. Every panel can be dragged, split and
  * resized; editor and view tabs close, the fixed panels do not.
  */
 import {
@@ -30,6 +30,7 @@ import Explorer from './components/Explorer.svelte';
 import Problems from './components/Problems.svelte';
 import Output from './components/Output.svelte';
 import Terminal from './components/Terminal.svelte';
+import CallHierarchy from './components/CallHierarchy.svelte';
 
 const EDITOR_PREFIX = 'file:';
 const editorId = (path: string) => EDITOR_PREFIX + path;
@@ -319,6 +320,8 @@ export function createDock(element: HTMLElement, workspace: Workspace): EditorHo
 					return new SvelteRenderer(Terminal, workspace);
 				case 'preview':
 					return new PreviewRenderer(workspace);
+				case 'call-hierarchy':
+					return new SvelteRenderer(CallHierarchy, workspace);
 				case VIEWS['llvm-ir'].component:
 					return new CompilerViewRenderer('llvm-ir', workspace, () => viewHost);
 				case VIEWS.asm.component:
@@ -489,6 +492,23 @@ export function createDock(element: HTMLElement, workspace: Workspace): EditorHo
 		},
 		hideViews(): void {
 			for (const kind of VIEW_KINDS) dock.getPanel(VIEWS[kind].id)?.api.close();
+		},
+		showCallHierarchy(): void {
+			const panel = dock.getPanel('call-hierarchy');
+			if (panel) {
+				reveal(panel);
+				return;
+			}
+			// A tab of the problems' group, where VS Code puts its view's
+			// results too; closable, since it is opened by asking for it.
+			const problems = dock.getPanel('problems');
+			dock.addPanel({
+				id: 'call-hierarchy',
+				component: 'call-hierarchy',
+				tabComponent: 'view',
+				title: 'Call Hierarchy',
+				...(problems ? { position: { referencePanel: problems, direction: 'within' as const } } : { position: { referenceGroup: editorGroup(), direction: 'right' as const } }),
+			});
 		},
 		setProblemCount(n: number): void {
 			dock.getPanel('problems')?.api.setTitle(n ? `Problems ${n}` : 'Problems');

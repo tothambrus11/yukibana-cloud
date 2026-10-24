@@ -41,8 +41,9 @@ Projects have several files and folders, are kept in `localStorage`, and the
 language selector switches between one project per language. The editor has
 diagnostics, completion, hover, go to definition (Alt+Left and Alt+Right
 to go back and forward), references, rename (F2), quick fixes, signature help,
-formatting and semantic highlighting, as far as each language server offers
-them. Run (Ctrl+Enter) compiles and runs the project in a worker, with a
+formatting, semantic highlighting, code lenses and a call hierarchy (Show
+Call Hierarchy, Shift+Alt+H: a panel of a function's callers and callees),
+as far as each language server offers them. Run (Ctrl+Enter) compiles and runs the project in a worker, with a
 terminal that can read input. Test (Ctrl+Shift+Enter) runs the project's
 tests in `tests/` (`Tests/` for Swift): pytest (with Hypothesis for
 property-based tests), `node:test` (with fast-check), Rust's `#[test]`

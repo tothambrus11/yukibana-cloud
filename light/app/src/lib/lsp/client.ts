@@ -5,11 +5,12 @@
  * selected language.
  */
 import type * as lsp from 'vscode-languageserver-protocol';
-import { monaco } from '../monaco';
+import { monaco, showEditorMessage } from '../monaco';
 import { applyWorkspaceEdit } from '../workspace-edits';
 import { Connection, REQUEST_CANCELLED, ResponseError } from './connection';
 import * as c from './convert';
 import { reasonOf, toFolds, toSelectionChain } from './plain';
+import { whenLanguage, type CallDirection } from './call-hierarchy';
 
 /** What a pack reports while it downloads, from the `yukibana/loading` notification. */
 export interface LoadingProgress {
@@ -37,6 +38,11 @@ export interface ClientEvents {
 	log(level: LogLevel, text: string): void;
 	/** A server asked to show a document, or Monaco to open one: switch the editor to it. */
 	open(uri: monaco.Uri, selection: monaco.IRange | undefined): void;
+	/**
+	 * Show Call Hierarchy found a function at the caret: show its calls
+	 * (asked with `calls`). Only for a server with `callHierarchyProvider`.
+	 */
+	callHierarchy(item: lsp.CallHierarchyItem): void;
 }
 
 /** How a client is set up; all of it fixed for the client's life. */
@@ -66,8 +72,11 @@ export class LanguageClient {
 	private capabilities: lsp.ServerCapabilities = {};
 	private syncKind: lsp.TextDocumentSyncKind = 0;
 	private ready = false;
+	/** The code lens provider, once registered: `workspace/codeLens/refresh` names it to Monaco. */
+	private codeLenses: monaco.languages.CodeLensProvider | null = null;
 	private stopping = false;
 	private readonly semanticTokensChanged = new monaco.Emitter<void>();
+	private readonly codeLensesChanged = new monaco.Emitter<monaco.languages.CodeLensProvider>();
 	/**
 	 * Listeners for the errors a server shows (`window/showMessage` of type
 	 * Error) while a request that wants them is pending: Phpactor reports a
@@ -180,6 +189,7 @@ export class LanguageClient {
 					workspaceEdit: { documentChanges: true },
 					didChangeWatchedFiles: { dynamicRegistration: false },
 					semanticTokens: { refreshSupport: true },
+					codeLens: { refreshSupport: true },
 				},
 				textDocument: {
 					synchronization: { dynamicRegistration: false, didSave: false, willSave: false, willSaveWaitUntil: false },
@@ -234,6 +244,7 @@ export class LanguageClient {
 						overlappingTokenSupport: false,
 					},
 					inlayHint: {},
+					codeLens: {},
 				},
 			},
 		};
@@ -295,7 +306,11 @@ export class LanguageClient {
 			return { applied: await this.applyEdit(params.edit, params.label) };
 		});
 		conn.onRequest('workspace/semanticTokens/refresh', () => this.semanticTokensChanged.fire());
-		for (const m of ['workspace/inlayHint/refresh', 'workspace/codeLens/refresh', 'workspace/diagnostic/refresh']) conn.onRequest(m, () => null);
+		conn.onRequest('workspace/codeLens/refresh', () => {
+			if (this.codeLenses) this.codeLensesChanged.fire(this.codeLenses);
+			return null;
+		});
+		for (const m of ['workspace/inlayHint/refresh', 'workspace/diagnostic/refresh']) conn.onRequest(m, () => null);
 	}
 
 	private closed(error: Error | null): void {
@@ -307,6 +322,7 @@ export class LanguageClient {
 		this.models.clear();
 		for (const d of this.disposables.splice(0)) d.dispose();
 		this.semanticTokensChanged.dispose();
+		this.codeLensesChanged.dispose();
 		this.options.events.loading(null);
 		if (error && !this.stopping) {
 			this.options.events.log('error', error.message);
@@ -373,6 +389,40 @@ export class LanguageClient {
 		const params = { textDocument: { uri: model.uri.toString() }, positions: positions.map(c.toPosition) };
 		const ranges = await this.ask<lsp.SelectionRange[]>(model, 'textDocument/selectionRange', params, new monaco.CancellationTokenSource().token);
 		return ranges && ranges.length === positions.length ? ranges : null;
+	}
+
+	/**
+	 * One level of a call hierarchy: the calls on `direction`'s side of
+	 * `item`, an item this server made (`events.callHierarchy`'s, or one of
+	 * these calls'). Null when the server cannot answer: it failed (logged,
+	 * as `ask` does), stopped, or no longer has a file to ask from.
+	 */
+	async calls(direction: CallDirection, item: lsp.CallHierarchyItem): Promise<(lsp.CallHierarchyIncomingCall | lsp.CallHierarchyOutgoingCall)[] | null> {
+		const model = this.models.get(c.uriKey(item.uri))?.model ?? this.models.values().next().value?.model;
+		if (!model || !this.capabilities.callHierarchyProvider) return null;
+		const method = direction === 'incoming' ? 'callHierarchy/incomingCalls' : 'callHierarchy/outgoingCalls';
+		return this.ask(model, method, { item }, new monaco.CancellationTokenSource().token);
+	}
+
+	/**
+	 * Show Call Hierarchy at `editor`'s caret: asks the server which
+	 * function is there and hands the first to `events.callHierarchy`. Where
+	 * there is none, the editor says so at the caret, as a refused rename
+	 * does, rather than showing an empty panel.
+	 */
+	private async showCallHierarchy(editor: monaco.editor.ICodeEditor): Promise<void> {
+		const model = editor.getModel();
+		const position = editor.getPosition();
+		if (!model || !position) return;
+		const items = await this.ask<lsp.CallHierarchyItem[]>(
+			model,
+			'textDocument/prepareCallHierarchy',
+			{ textDocument: { uri: model.uri.toString() }, position: c.toPosition(position) },
+			new monaco.CancellationTokenSource().token,
+		);
+		const item = items?.[0];
+		if (item) this.options.events.callHierarchy(item);
+		else if (!this.stopping) showEditorMessage(editor, 'No function to show the call hierarchy of here.', position);
 	}
 
 	/**
@@ -705,7 +755,38 @@ export class LanguageClient {
 			);
 		}
 
-		if (caps.codeActionProvider) this.registerCodeActions(selector, typeof caps.codeActionProvider === 'object' && !!caps.codeActionProvider.resolveProvider);
+		const toCommand = this.registerServerCommand();
+		if (caps.codeActionProvider) this.registerCodeActions(selector, typeof caps.codeActionProvider === 'object' && !!caps.codeActionProvider.resolveProvider, toCommand);
+
+		// Code lenses: HLS's type lenses (a missing signature, written when
+		// clicked), and any other server's. A lens without a command is
+		// resolved when shown, if the server resolves them.
+		if (caps.codeLensProvider) {
+			const resolve = !!caps.codeLensProvider.resolveProvider;
+			const original = new WeakMap<monaco.languages.CodeLens, lsp.CodeLens>();
+			const toLens = (l: lsp.CodeLens): monaco.languages.CodeLens => {
+				const lens = { range: c.toRange(l.range), ...(l.command && { command: toCommand(l.command) }) };
+				original.set(lens, l);
+				return lens;
+			};
+			const provider: monaco.languages.CodeLensProvider = {
+				onDidChange: this.codeLensesChanged.event,
+				provideCodeLenses: async (model, token) => {
+					const lenses = await this.ask<lsp.CodeLens[]>(model, 'textDocument/codeLens', { textDocument: doc(model) }, token);
+					return { lenses: (lenses ?? []).map(toLens), dispose: () => {} };
+				},
+				...(resolve && {
+					resolveCodeLens: async (model, lens, token) => {
+						const l = original.get(lens);
+						if (!l || l.command) return lens;
+						const resolved = await this.ask<lsp.CodeLens>(model, 'codeLens/resolve', l, token);
+						return resolved ? toLens(resolved) : lens;
+					},
+				}),
+			};
+			this.codeLenses = provider;
+			add(L.registerCodeLensProvider(selector, provider));
+		}
 
 		const legend = caps.semanticTokensProvider?.legend;
 		if (legend && caps.semanticTokensProvider?.full) {
@@ -718,6 +799,23 @@ export class LanguageClient {
 						return tokens ? { data: new Uint32Array(tokens.data), ...(tokens.resultId !== undefined && { resultId: tokens.resultId }) } : null;
 					},
 					releaseDocumentSemanticTokens: () => {},
+				}),
+			);
+		}
+
+		// Monaco has no call hierarchy view: the action asks the server and
+		// the app's Call Hierarchy panel shows the tree. VS Code's key and
+		// place in the context menu (after Go to References).
+		if (caps.callHierarchyProvider) {
+			add(
+				monaco.editor.addEditorAction({
+					id: 'yukibana.showCallHierarchy',
+					label: 'Show Call Hierarchy',
+					keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyH],
+					precondition: whenLanguage(selector),
+					contextMenuGroupId: 'navigation',
+					contextMenuOrder: 1.5,
+					run: (editor) => this.showCallHierarchy(editor),
 				}),
 			);
 		}
@@ -743,7 +841,13 @@ export class LanguageClient {
 		}
 	}
 
-	private registerCodeActions(selector: string[], resolve: boolean): void {
+	/**
+	 * Registers the Monaco command that runs a server's command
+	 * (`workspace/executeCommand`; a failure is logged), and returns how an
+	 * LSP command becomes a Monaco one that runs it: for code actions and
+	 * code lenses, whose commands are the server's.
+	 */
+	private registerServerCommand(): (cmd: lsp.Command) => monaco.languages.Command {
 		const commandId = `yukibana.lsp.command.${crypto.randomUUID()}`;
 		this.disposables.push(
 			monaco.editor.registerCommand(commandId, (_accessor, command: lsp.Command) => {
@@ -752,7 +856,10 @@ export class LanguageClient {
 				});
 			}),
 		);
-		const toCommand = (cmd: lsp.Command): monaco.languages.Command => ({ id: commandId, title: cmd.title, arguments: [cmd] });
+		return (cmd) => ({ id: commandId, title: cmd.title, arguments: [cmd] });
+	}
+
+	private registerCodeActions(selector: string[], resolve: boolean, toCommand: (cmd: lsp.Command) => monaco.languages.Command): void {
 		const original = new WeakMap<monaco.languages.CodeAction, lsp.CodeAction>();
 		const convert = (a: lsp.CodeAction): monaco.languages.CodeAction => {
 			const action: monaco.languages.CodeAction = {

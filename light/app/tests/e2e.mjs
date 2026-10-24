@@ -43,7 +43,19 @@ const CASES = {
 	// Haskell has no member access: the completion is of a name Main imports.
 	// A constructor to jump from, as the grammar gives names applied in
 	// brackets no span of their own.
-	haskell: { output: '(0.0, 0.0) to (3.0, 4.0): 5.0', testOutput: '4 examples, 0 failures', file: 'Main.hs', error: '\nbroken :: Int\nbroken = True\n', access: '\nprobe = dis', member: 'distance', definition: 'Circle', definitionFile: 'Geometry.hs', hover: 'Point' },
+	haskell: {
+		output: '(0.0, 0.0) to (3.0, 4.0): 5.0',
+		testOutput: '4 examples, 0 failures',
+		file: 'Main.hs',
+		error: '\nbroken :: Int\nbroken = True\n',
+		access: '\nprobe = dis',
+		member: 'distance',
+		definition: 'Circle',
+		definitionFile: 'Geometry.hs',
+		hover: 'Point',
+		// norm is called by distance, Main's main and the test suite's main; distance calls norm.
+		callHierarchy: { file: 'Geometry.hs', root: 'norm (Point x y)', name: 'norm', callers: ['distance', 'main', 'main'], callerFile: 'Main.hs', callSite: 'print (norm b)', other: 'distance a b =', otherName: 'distance', callees: ['norm'], none: 'putStrLn' },
+	},
 };
 
 const only = process.argv.slice(2);
@@ -195,6 +207,8 @@ async function run(language, c) {
 	if (language === 'web') check(!requests.some((u) => /\/(p5-|packages-p5-)[\d.]+\.js(on)?$/.test(u)), 'a web project that does not import p5 downloads nothing of p5.js');
 	if (language === 'p5') await sketching(page, check, requests);
 	if (language === 'python') await peek(page, check);
+	if (c.callHierarchy) await callHierarchy(page, check, c.callHierarchy);
+	if (language === 'haskell') await typeLens(page, check);
 	if (language === 'cpp') await cppBridge(page, check, lspLog);
 	if (language === 'typescript') await renameFromUse(page, check);
 	if (language === 'python') await undoRename(page, check, { file: 'main.py', needle: 'distance(a, b)', from: 'distance', name: 'dist3', declarationFile: 'geometry.py', declaration: 'def dist3(', edit: '\n# edited\n' });
@@ -598,6 +612,115 @@ int main() {
 	await page.locator('header button', { hasText: 'Reset project' }).click();
 	const reset = await page.waitForFunction(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue().startsWith('-std='), null, { timeout: 15_000 }).then(() => true, () => false);
 	check(reset && (await picker.inputValue()) === 'wasm32-wasi', `Reset project restores the sample on WebAssembly (${await picker.inputValue()})`);
+}
+
+/**
+ * Show Call Hierarchy (client.ts, components/CallHierarchy.svelte): from
+ * the editor's context menu on `root` the panel lists its callers; a caller
+ * in `callerFile` goes to its call (`callSite`); Shift+Alt+H on `other`
+ * keeps the direction last chosen, Callees lists what it calls, and a
+ * callee expands; where there is no function of the project the editor
+ * says so instead.
+ */
+async function callHierarchy(page, check, h) {
+	const panel = page.locator('.call-hierarchy');
+	const names = (depth) => panel.locator(`.line[data-depth="${depth}"] .name`).allTextContents();
+	const waitRows = (depth, n) => panel.locator(`.line[data-depth="${depth}"]`).nth(n - 1).waitFor({ timeout: 30_000 }).then(() => true, () => false);
+
+	await openFile(page, h.file);
+	await place(page, h.root);
+	const where = await page.evaluate(() => {
+		const e = globalThis.monaco.editor.getEditors().find((x) => x.hasTextFocus());
+		// The editor may be scrolled sideways (a narrow column after Run widened the terminal).
+		e?.setScrollLeft(0);
+		e?.revealPosition(e.getPosition());
+		const p = e?.getScrolledVisiblePosition(e.getPosition());
+		const r = e?.getDomNode()?.getBoundingClientRect();
+		return p && r ? { x: r.left + p.left + 4, y: r.top + p.top + p.height / 2 } : null;
+	});
+	if (!where) {
+		check(false, 'call hierarchy: the caret is in an editor');
+		return;
+	}
+	await page.mouse.click(where.x, where.y, { button: 'right' });
+	// Monaco's menu is in a shadow root, which locators look into.
+	const item = page.locator('.monaco-menu .action-label', { hasText: /^Show Call Hierarchy$/ });
+	const offered = await item.first().waitFor({ timeout: 10_000 }).then(() => true, () => false);
+	const keys = offered ? ((await page.locator('.monaco-menu .action-item', { has: page.locator('.action-label', { hasText: /^Show Call Hierarchy$/ }) }).first().textContent()) ?? '') : '';
+	check(offered && /Shift\+Alt\+H/.test(keys), `the editor's context menu offers Show Call Hierarchy (${JSON.stringify(keys)})`);
+	if (!offered) {
+		await page.keyboard.press('Escape');
+		return;
+	}
+	// Monaco's menu ignores a click that comes right after it opened (the right button's own release).
+	await page.waitForTimeout(500);
+	await item.first().click();
+	const shown = await page.locator('.dv-tab.dv-active-tab .dock-tab', { hasText: 'Call Hierarchy' }).first().waitFor({ timeout: 10_000 }).then(() => true, () => false);
+	const listed = shown && (await waitRows(1, h.callers.length));
+	const top = shown ? await names(0) : [];
+	const callers = listed ? await names(1) : [];
+	check(listed && top[0] === h.name && JSON.stringify(callers) === JSON.stringify(h.callers), `the Call Hierarchy panel opens on ${top[0]} with its callers ${JSON.stringify(callers)}`);
+
+	// The caller in callerFile goes to where it calls.
+	const row = panel.locator('.row', { has: page.locator('.where', { hasText: h.callerFile + ':' }) }).first();
+	if (listed) {
+		await row.click();
+		const opened = await page.locator('.dv-tab.dv-active-tab .dock-tab', { hasText: h.callerFile }).first().waitFor({ timeout: 10_000 }).then(() => true, () => false);
+		const at = await page.evaluate(() => {
+			const e = globalThis.monaco.editor.getEditors().find((x) => x.hasTextFocus());
+			const s = e?.getSelection();
+			return s ? { selected: e.getModel().getValueInRange(s), line: e.getModel().getLineContent(s.startLineNumber) } : null;
+		});
+		check(opened && at?.selected === h.name && at.line.includes(h.callSite), `a caller's row goes to its call in ${h.callerFile}: ${JSON.stringify(at)}`);
+	}
+
+	// Callees, chosen once, stay chosen for the next Show Call Hierarchy, which Shift+Alt+H asks for.
+	await panel.locator('.toolbar button', { hasText: 'Callees' }).click();
+	await openFile(page, h.file);
+	await place(page, h.other);
+	await page.keyboard.press('Shift+Alt+H');
+	const rooted = await page.waitForFunction((n) => document.querySelector('.call-hierarchy .line .name')?.textContent === n, h.otherName, { timeout: 15_000 }).then(() => true, () => false);
+	const calleesListed = rooted && (await waitRows(1, h.callees.length));
+	const callees = calleesListed ? await names(1) : [];
+	const direction = await panel.locator('.toolbar button.on').textContent();
+	check(calleesListed && direction === 'Callees' && JSON.stringify(callees) === JSON.stringify(h.callees), `Shift+Alt+H on ${h.otherName} shows what it calls, ${JSON.stringify(callees)} (${direction})`);
+
+	// A callee expands to what it calls in turn: the sample's norm calls only library functions.
+	if (calleesListed) {
+		await panel.locator('li li .twisty').first().click();
+		const note = await panel.locator('li li .note').first().waitFor({ timeout: 15_000 }).then(async () => (await panel.locator('li li .note').first().textContent())?.trim(), () => null);
+		check(note === 'Calls no function of the project.', `expanding a callee asks the server for the next level (${JSON.stringify(note)})`);
+	}
+
+	// No function of the project at the caret: the editor says so, the panel keeps its tree.
+	await openFile(page, 'Main.hs');
+	await place(page, h.none);
+	await page.keyboard.press('Shift+Alt+H');
+	const message = await page.locator('.monaco-editor-overlaymessage').first().waitFor({ timeout: 15_000 }).then(async () => (await page.locator('.monaco-editor-overlaymessage').first().textContent())?.trim(), () => null);
+	const kept = await page.locator('.call-hierarchy .line .name').first().textContent();
+	check(message === 'No function to show the call hierarchy of here.' && kept === h.otherName, `on ${h.none}, a library function, the editor says ${JSON.stringify(message)} and the panel keeps ${kept}`);
+}
+
+/**
+ * HLS's type lens (packs/haskell, client.ts's code lenses): a binding
+ * without a signature gets the signature GHC inferred above it, and
+ * clicking the lens writes it there.
+ */
+async function typeLens(page, check) {
+	await openFile(page, 'Main.hs');
+	const text = await page.evaluate(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/Main.hs')?.getValue() ?? '');
+	await setText(page, 'Main.hs', text + '\nhelper x = x + 1\n');
+	const lens = page.locator('.codelens-decoration a', { hasText: 'helper :: Num a => a -> a' }).first();
+	const shown = await lens.waitFor({ timeout: 60_000 }).then(() => true, () => false);
+	check(shown, 'a binding without a signature has a type lens with the inferred signature');
+	if (shown) {
+		await lens.click();
+		const written = await page
+			.waitForFunction(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/Main.hs')?.getValue().includes('\nhelper :: Num a => a -> a\nhelper x = x + 1\n'), null, { timeout: 15_000 })
+			.then(() => true, () => false);
+		check(written, 'clicking the type lens writes the signature above the binding');
+	}
+	await setText(page, 'Main.hs', text);
 }
 
 /** Opens a project file from the explorer and waits for its tab. */

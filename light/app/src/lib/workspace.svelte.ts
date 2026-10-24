@@ -17,6 +17,7 @@ import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId
 import { describeSanitizers, sanitizersOf, withSanitizers, type SanitizerChoice } from './cpp-sanitizers';
 import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } from './optimization';
 import type { Explorer } from './explorer.svelte';
+import { CallHierarchy } from './call-hierarchy.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { baseName, loadLanguage, loadProject, parentOf, pathOf, pathProblem, ROOT_URI, sampleProject, saveLanguage, saveProject, type Project } from './project';
 
@@ -60,6 +61,8 @@ export interface EditorHost {
 	showView(kind: ExploreKind): void;
 	/** Closes the compiler output views, if open: the language or project changed. */
 	hideViews(): void;
+	/** Opens the Call Hierarchy panel beside Problems, or brings it to the front. */
+	showCallHierarchy(): void;
 }
 
 /** The file that holds a C++ project's flags, its target among them (cpp-targets.ts). */
@@ -124,6 +127,13 @@ export class Workspace {
 	private explorerLoad: Promise<Explorer> | null = null;
 	/** A web project's page, shown in the Preview panel; its console goes to the terminal. */
 	readonly preview = new Preview(this.runner);
+	/**
+	 * The call hierarchy the Call Hierarchy panel shows: of the function
+	 * last asked about (Show Call Hierarchy), null before that and once the
+	 * server that answered it has stopped (its items mean nothing to the
+	 * next one).
+	 */
+	callHierarchy = $state.raw<CallHierarchy | null>(null);
 
 	private client: LanguageClient | null = null;
 	private readonly models = new Map<string, monaco.editor.ITextModel>();
@@ -428,6 +438,15 @@ export class Workspace {
 		this.host?.open(path, selection);
 	}
 
+	/**
+	 * Shows the place `range` of the file a language server named by `uri`
+	 * (a call hierarchy's call site); nothing when it is not a project file.
+	 */
+	showSite(uri: string, range: monaco.IRange): void {
+		const path = pathOf(monaco.Uri.parse(uri));
+		if (path !== null && this.models.has(path)) this.host?.open(path, range);
+	}
+
 	/** The model of a project file. */
 	model(path: string): monaco.editor.ITextModel | undefined {
 		return this.models.get(path);
@@ -635,6 +654,12 @@ export class Workspace {
 					const path = pathOf(uri);
 					if (path && this.models.has(path)) this.host?.open(path, selection);
 				},
+				callHierarchy: (item) => {
+					if (this.client !== client) return;
+					// In the direction chosen last, as VS Code's view keeps it.
+					this.callHierarchy = new CallHierarchy(item, (direction, it) => client.calls(direction, it), this.callHierarchy?.direction);
+					this.host?.showCallHierarchy();
+				},
 			},
 		});
 		this.client = client;
@@ -660,6 +685,7 @@ export class Workspace {
 		const client = this.client;
 		this.client = null;
 		this.progress = null;
+		this.callHierarchy = null;
 		this.clientState = { kind: 'stopped' };
 		await client?.stop();
 	}

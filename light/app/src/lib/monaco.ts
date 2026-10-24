@@ -100,6 +100,8 @@ import 'monaco-editor/editor/contrib/caretOperations/browser/caretOperations';
 import 'monaco-editor/editor/contrib/caretOperations/browser/transpose';
 import 'monaco-editor/editor/contrib/clipboard/browser/clipboard';
 import 'monaco-editor/editor/contrib/codeAction/browser/codeActionContributions';
+// Code lenses: HLS's type lenses (a missing signature, above its binding).
+import 'monaco-editor/editor/contrib/codelens/browser/codelensController';
 // Colour swatches and the colour picker, for the CSS service's colours.
 import 'monaco-editor/editor/contrib/colorPicker/browser/colorPickerContribution';
 import 'monaco-editor/editor/contrib/comment/browser/comment';
@@ -240,6 +242,15 @@ window.addEventListener(
 // text uses JetBrains Mono: the cursor drifts away from what was typed.
 document.fonts.addEventListener('loadingdone', () => monaco.editor.remeasureFonts());
 void document.fonts.load(`13.5px ${EDITOR_FONT.split(',')[0]}`).then(() => monaco.editor.remeasureFonts());
+
+/**
+ * Shows `text` in `editor` under `position`, as the inline message a
+ * refused rename shows; it closes when the caret moves or the editor loses
+ * focus. For a command that found nothing to do at the caret.
+ */
+export function showEditorMessage(editor: monaco.editor.ICodeEditor, text: string, position: monaco.IPosition): void {
+	MessageController.get(editor)?.showMessage(text, position);
+}
 
 export { monaco };
 
