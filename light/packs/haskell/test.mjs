@@ -459,6 +459,16 @@ async function serverTests(page) {
     await change('Main.hs', append(MAIN, '\nbroken = (1 +\n'));
     f = await lsp.request('textDocument/formatting', { textDocument: { uri: uri('Main.hs') }, options: { tabSize: 2, insertSpaces: true } });
     check('a module that does not parse is not formatted, and the answer says why', !f.result && /parse error|Parse error/i.test(f.error?.message ?? ''), JSON.stringify(f));
+    // GHC 9.14's syntax (explicit level imports are new in 9.14): ormolu and
+    // hlint parse with ghc-lib-parser 9.14, as the pack's GHC does.
+    const LEVEL = '{-# LANGUAGE ExplicitLevelImports #-}\nmodule Main (main) where\nimport  splice Data.List (sort)\nimport Data.Char\n\nmain :: IO ()\nmain = print (concat (map (map toUpper) ["b", "a"]))\n';
+    mark = (await lsp.log()).length;
+    await change('Main.hs', LEVEL);
+    f = await lsp.request('textDocument/formatting', { textDocument: { uri: uri('Main.hs') }, options: { tabSize: 2, insertSpaces: true } });
+    const levelFormatted = f.result?.length ? applyEdits(LEVEL, f.result) : null;
+    check('ormolu formats a module with GHC 9.14\'s explicit level imports', /\nimport splice Data\.List \(sort\)\n/.test(levelFormatted ?? ''), JSON.stringify(f.error ?? levelFormatted));
+    d = await diagnostics('Main.hs', (x) => x.some((y) => y.source === 'hlint'), mark);
+    check('hlint reads it too, and hints', d?.some((y) => y.source === 'hlint' && y.code === 'Use concatMap'), show(d));
     mark = (await lsp.log()).length;
     await change('Main.hs', MAIN);
     await diagnostics('Main.hs', (x) => x.length === 0, mark);

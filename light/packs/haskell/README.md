@@ -76,8 +76,8 @@ formatter. Options compared (measured where marked):
 | Quick fixes | HLS: suggestions, signatures, unused, imports, holes, extensions | from GHC's hints: replace a misspelt name, add the inferred signature, prefix unused with `_`, remove a redundant import, hole fits, add a LANGUAGE pragma | 4 checks |
 | Imports and exports | HLS: add an import for a name not in scope, make an import list explicit (lens and action), remove a redundant import or the names an import list has too much, export an unused binding | the same, as code actions: "Add import Data.List (sort)", "Add sort to the import list of Data.List", `import qualified Data.Map as Map` for `Map.insert`, a constructor with its type (`Data.Ord (Down (Down))`), from the project's modules and every module of the packages (an index of their exports, made on the first request); "Make this import explicit" / "Make all imports explicit" (the list from GHC's renamer and the .hie file); "Remove ‘nub’ from the import of Data.List"; "Export ‘helper’" in the export list's own style | 9 checks |
 | Call hierarchy | HLS's plugin: prepare, incoming and outgoing calls from `.hie` files | the same (`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `…/outgoingCalls`): every value binding of the project, top-level and local, its callers grouped with where they call it, across modules; a library function has none | 5 checks (the app's editor has no call hierarchy view yet: Monaco has none) |
-| hlint | hints as warnings, apply or ignore | hlint 3.10's hints (default rules) as `hlint` diagnostics; "Apply hint" and "Ignore hint in this module"; parses GHC 9.14's syntax | 2 checks |
-| Formatting | ormolu or fourmolu | ormolu 0.9.0.0, GHC 9.14's syntax; a module that does not parse is refused with ormolu's message | 3 checks |
+| hlint | hints as warnings, apply or ignore | hlint 3.10's hints (default rules) as `hlint` diagnostics; "Apply hint" and "Ignore hint in this module"; parses GHC 9.14's syntax | 3 checks |
+| Formatting | ormolu or fourmolu | ormolu 0.9.0.0, GHC 9.14's syntax; a module that does not parse is refused with ormolu's message | 4 checks |
 | Run | `runghc` / GHCi | GHC's bytecode interpreter: stdout unbuffered, stdin from the terminal (`getLine`, `getContents` to Ctrl-D), `exitWith`, uncaught exceptions with GHC's message and call stack, compile errors in colour, many runs in one session | 11 checks |
 | Test | `cabal test` with hspec + QuickCheck | hspec 2.11's report, coloured, QuickCheck properties | 3 checks |
 | Signature help | HLS's: the function's type, the argument at the cursor highlighted | the same: the call found in the text as typed (a space or `(` starts an argument), the type GHC declared or inferred, split by GHC into context, arguments and result, with Haddock; locals, qualified names, constructors, class methods | 8 checks |
@@ -108,9 +108,9 @@ included; a script drives both workers, as test.mjs does):
 | `rootfs.tar` | 268.9 MB | 53.9 MB | 36.2 MB | GHC's libdir, the packages and libyuki.so, unpacked by each worker into memory |
 | `dyld.mjs`, `prelude.mjs`, `post-link.mjs` | 57 KB | 19 KB | 17 KB | GHC's wasm dynamic linker (patched, `scripts/patch-dyld.mjs`) |
 | `wasi.js` | 32 KB | 9 KB | 8 KB | browser_wasi_shim (the haskell-wasm fork), bundled |
-| `ghc.js`, `server.js`, `runner.js`, `tools.js` | 57 KB | 20 KB | 18 KB | ours |
-| `ormolu.wasm` | 15.9 MB | 4.7 MB | 3.3 MB | ormolu 0.8.0.2, a WASI command |
-| `hlint.wasm`, `hlint-data.json` | 16.7 MB | 5.1 MB | 3.6 MB | hlint 3.10 and its hint files |
+| `ghc.js`, `server.js`, `runner.js`, `tools.js` | 84 KB | 28 KB | 24 KB | ours |
+| `ormolu.wasm` | 16.5 MB | 4.9 MB | 3.4 MB | ormolu 0.9.0.0, a WASI command |
+| `hlint.wasm`, `hlint-data.json` | 15.7 MB | 4.8 MB | 3.4 MB | hlint 3.10 (on ghc-lib-parser 9.14) and its hint files |
 | `LICENSE-*.txt`, `manifest.json` | | | | licences; versions and sizes |
 
 Downloads (brotli), by what the person does:
@@ -118,8 +118,8 @@ Downloads (brotli), by what the person does:
 | | |
 | --- | --- |
 | open a Haskell project (editor) | **36.2 MB** (rootfs) + 0.04 MB |
-| hints, after the first check | + 3.6 MB |
-| first Format | + 3.3 MB |
+| hints, after the first check | + 3.4 MB |
+| first Format | + 3.4 MB |
 | Run and Test | + 3 KB (`runner.js`): the runner fetches the same `rootfs.tar`, from the browser's cache or the service worker |
 
 In memory each worker holds the unpacked file system and GHC: about
