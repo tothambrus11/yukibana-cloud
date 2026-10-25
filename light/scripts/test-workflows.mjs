@@ -1,15 +1,27 @@
 // Tests of the rules light-packs.yml (and light-toolchain-unit.yml, which
-// only it calls) must keep, which no run of it checks until a release, hours
-// in, does the wrong thing: a release never builds or publishes a toolchain,
-// never skips a pack, and every script a toolchain's key reads starts the
-// workflow; the units build in waves, each with a cache of its own.
+// only it calls), light-caches.yml and light-release.yml must keep, which no
+// run checks until a release, hours in, or a pull request, unnoticed, does
+// the wrong thing: a release never builds or publishes a toolchain and
+// never skips a pack; the units build in waves, each with a cache of its
+// own; only main writes a store or deletes a cache, and never another ref's;
+// every toolchain fetched is verified; every third-party action is pinned by
+// commit.
+//
+// Most of these rules are hygiene, not the control: a same-repository pull
+// request runs its own copy of the workflows and of this file, so it can
+// break any of them on its own branch. The control is that a toolchain is
+// used only when its attestation, which carries the ref from the run's
+// OIDC token, says main built it (pack-store.sh, Provenance). These rules
+// keep main's own workflows from drifting away from that.
 //
 //   node --test scripts/test-workflows.mjs   (from light/; needs only node)
 //
-// The workflow is read with readYaml below, a reader of the subset of YAML
-// the repository's workflows use, so this runs on a runner with nothing
-// installed. Anything outside that subset is an error naming the line, never
-// a guess: a misread workflow would make these tests pass on nothing.
+// The workflows are read with readYaml below, a reader of the subset of
+// YAML the repository's workflows use, so this runs on a runner with
+// nothing installed. Anything outside that subset is an error naming the
+// line, never a guess: a misread workflow would make these tests pass on
+// nothing. (A `yq` would not do instead: the runners ship one yq, many
+// machines another whose YAML 1.1 reads the key `on` as `true`.)
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -185,47 +197,108 @@ export function readYaml(text) {
     return doc;
 }
 
-const read = (file) => /** @type {any} */ (readYaml(fs.readFileSync(path.join(ROOT, file), 'utf8')));
-const workflow = read('.github/workflows/light-packs.yml');
+/**
+ * One step of a job, as far as these tests read it.
+ * @typedef {{ name?: string, id?: string, uses?: string, if?: string, run?: string, env?: Record<string, string>, with?: Record<string, string> }} Step
+ */
+/**
+ * One job, a step list or a call of a reusable workflow.
+ * @typedef {{ name?: string, if?: string, needs?: string[], uses?: string, 'runs-on'?: string, permissions?: Record<string, string>, env?: Record<string, string>, strategy?: { matrix: Record<string, unknown> }, steps?: Step[], with?: Record<string, string> }} Job
+ */
+/**
+ * A workflow file.
+ * @typedef {{ name?: string, on: Record<string, { paths?: string[] } | null>, permissions?: Record<string, string>, env?: Record<string, string>, jobs: Record<string, Job> }} Workflow
+ */
+
+/**
+ * Reads the workflow at repository path `file`, refusing one without the
+ * `on` and `jobs` mappings every workflow has; the rest of its shape is the
+ * typedef's promise, which each test checks as far as it reads.
+ * @param {string} file
+ * @returns {Workflow}
+ */
+function readWorkflow(file) {
+    const doc = readYaml(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+    const isMap = (/** @type {unknown} */ v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+    if (!isMap(doc)) throw new Error(`${file}: not a mapping`);
+    const map = /** @type {Record<string, unknown>} */ (doc);
+    if (!isMap(map.on) || !isMap(map.jobs)) throw new Error(`${file}: no on: or jobs: mapping`);
+    return /** @type {Workflow} */ (/** @type {unknown} */ (doc));
+}
+
+const WORKFLOWS = '.github/workflows';
+const workflow = readWorkflow(`${WORKFLOWS}/light-packs.yml`);
 const UNIT_WORKFLOW = './.github/workflows/light-toolchain-unit.yml';
-const unitWorkflow = read(UNIT_WORKFLOW);
-const jobs = /** @type {Record<string, Record<string, any>>} */ (workflow.jobs);
-const stepsOf = (job) => /** @type {Array<Record<string, any>>} */ (job.steps ?? []);
+const unitWorkflow = readWorkflow(UNIT_WORKFLOW);
+const cachesWorkflow = readWorkflow(`${WORKFLOWS}/light-caches.yml`);
+const releaseWorkflow = readWorkflow(`${WORKFLOWS}/light-release.yml`);
+const jobs = workflow.jobs;
+/** @param {Job} job */
+const stepsOf = (job) => job.steps ?? [];
 const allSteps = Object.values(jobs).flatMap(stepsOf);
-const unitSteps = stepsOf(unitWorkflow.jobs.unit);
+const unitJob = /** @type {Job} */ (unitWorkflow.jobs.unit);
+const unitSteps = stepsOf(unitJob);
 const waves = Object.entries(jobs).filter(([, job]) => job.uses === UNIT_WORKFLOW);
+/** @param {Step[]} steps */
 const uploads = (steps) => steps.filter((s) => String(s.uses ?? '').startsWith('actions/upload-artifact@')).map((s) => String(s.with?.name));
-// A step that can build a toolchain: ensure without --fetch-only, or a
-// publish.
+/** @param {Step[]} steps @param {string} id */
+const stepById = (steps, id) => {
+    const step = steps.find((s) => s.id === id);
+    assert.ok(step, `a step with id ${id}`);
+    return step;
+};
+// A step that can build a toolchain, or write one to the store: ensure
+// without --fetch-only, or a publish.
+/** @param {Step} s */
 const builds = (s) => typeof s.run === 'string' && (/toolchain-publish/.test(s.run) || (/pack-toolchain\.sh ensure/.test(s.run) && !/--fetch-only/.test(s.run)));
+/** @param {Step} s */
+const writesAStore = (s) => typeof s.run === 'string' && /pack-store\.sh (toolchain-)?publish|gh release (upload|create|delete-asset|edit)/.test(s.run);
+/** The condition a step runs under: its job's and its own. @param {Job} job @param {Step} step */
+const conditionOf = (job, step) => `${job.if ?? ''} && ${step.if ?? ''}`;
+const ON_MAIN = /github\.ref == 'refs\/heads\/main'/;
+const ON_TAG = /startsWith\(github\.ref, 'refs\/tags\/light-v'\)/;
+/** The scopes a job may ask to write without being main's: signing its own work for its own ref. */
+const SIGNING = new Set(['id-token', 'attestations']);
+/** The split packs, by their toolchains/ directory. */
+const SPLIT = fs.readdirSync(path.join(ROOT, 'light/packs')).filter((p) => fs.existsSync(path.join(ROOT, 'light/packs', p, 'toolchains')));
+/** The repository's workflow files and local actions that pin actions, by path. */
+const PINNED = [
+    `${WORKFLOWS}/light-packs.yml`,
+    `${WORKFLOWS}/light-toolchain-unit.yml`,
+    `${WORKFLOWS}/light-caches.yml`,
+    `${WORKFLOWS}/light-release.yml`,
+    '.github/actions/once/action.yml',
+];
 
 test('a release run of the pack workflow cannot reach a step that builds or publishes a toolchain', () => {
     // The pack workflow itself builds nothing outside a release's reach...
-    for (const step of allSteps.filter(builds)) {
-        assert.match(String(step.if ?? ''), /!inputs\.upload/, `step "${step.name}" runs in a release`);
+    for (const [name, job] of Object.entries(jobs)) {
+        for (const step of stepsOf(job).filter(builds)) {
+            assert.match(conditionOf(job, step), /!inputs\.upload/, `step "${step.name}" of job ${name} runs in a release`);
+        }
     }
     // ...and the unit workflow, which does, is reached only by the wave
     // jobs, each of which a release skips, and from no event of its own.
-    assert.ok(unitSteps.filter(builds).length >= 2, 'the unit workflow has a step that builds a unit and one that publishes it');
+    assert.ok(unitSteps.filter(builds).length >= 1, 'the unit workflow has a step that builds its unit');
     assert.deepEqual(Object.keys(unitWorkflow.on), ['workflow_call']);
     assert.ok(waves.length > 0, 'the pack workflow calls the unit workflow');
     for (const [name, job] of waves) assert.match(String(job.if), /!inputs\.upload/, `job ${name} runs in a release`);
-    for (const file of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
+    for (const file of fs.readdirSync(path.join(ROOT, WORKFLOWS))) {
         if (file === 'light-packs.yml') continue;
-        const text = fs.readFileSync(path.join(ROOT, '.github/workflows', file), 'utf8');
+        const text = fs.readFileSync(path.join(ROOT, WORKFLOWS, file), 'utf8');
         assert.doesNotMatch(text, /uses:\s*\S*light-toolchain-unit\.yml/, `${file} calls the unit workflow`);
     }
 });
 
 test('a release run fails by name when a unit of a split pack is not in the store', () => {
-    const step = stepsOf(jobs.assemble).find((s) => s.name === 'A release never builds a compiler');
+    const assemble = stepsOf(/** @type {Job} */ (jobs.assemble));
+    const step = assemble.find((s) => s.name === 'A release never builds a compiler');
     assert.ok(step, 'the assemble job has the step');
     assert.match(String(step.if), /inputs\.upload && steps\.units\.outputs\.missing != ''/);
-    assert.match(step.run, /::error title=.*a release never builds a compiler/);
-    assert.match(step.run, /exit 1/);
+    assert.match(String(step.run), /::error title=.*a release never builds a compiler/);
+    assert.match(String(step.run), /exit 1/);
     // and the units it looks for are fetched, never built
-    const units = stepsOf(jobs.assemble).find((s) => s.id === 'units');
-    assert.match(units.run, /ensure "\$unit" --fetch-only/);
+    assert.match(String(stepById(assemble, 'units').run), /ensure "\$unit" --fetch-only/);
 });
 
 test('a release run never skips a pack', () => {
@@ -234,15 +307,20 @@ test('a release run never skips a pack', () => {
         .flatMap(([, job]) => stepsOf(job))
         .filter((s) => s.uses === './.github/actions/once' && s.with?.paths !== undefined);
     assert.equal(gates.length, 1, 'one once gate outside the plan job: the assemble job');
-    assert.ok(stepsOf(jobs.assemble).includes(gates[0]));
-    assert.match(String(gates[0].if), /!inputs\.upload/);
+    assert.ok(stepsOf(/** @type {Job} */ (jobs.assemble)).includes(/** @type {Step} */ (gates[0])));
+    assert.match(String(gates[0]?.if), /!inputs\.upload/);
 });
 
-test('every script the toolchain key reads starts the pack workflow', () => {
-    const scripts = ['toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'pack-store.sh', 'pack-toolchain.sh'];
-    const files = [...scripts.map((name) => `light/scripts/${name}`), '.github/workflows/light-toolchain-unit.yml'];
+test('every script that keys, fetches, verifies, builds or assembles a toolchain starts the pack workflow', () => {
+    // toolchain-key.sh and toolchain-build-env.sh are the key; pack-lib.sh
+    // their helpers; pack-store.sh fetches and verifies; pack-toolchain.sh
+    // and toolchain-manifest.mjs build, check and assemble. Not all are key
+    // inputs, but a change to any can break a pack, and only this workflow
+    // would show it.
+    const scripts = ['toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'pack-store.sh', 'pack-toolchain.sh', 'toolchain-manifest.mjs', 'cache-prune.mjs'];
+    const files = [...scripts.map((name) => `light/scripts/${name}`), '.github/workflows/light-toolchain-unit.yml', '.github/workflows/light-caches.yml'];
     for (const event of ['push', 'pull_request']) {
-        const paths = workflow.on[event].paths;
+        const paths = workflow.on[event]?.paths ?? [];
         for (const file of files) assert.ok(paths.includes(file), `${file} is not in on.${event}.paths`);
     }
 });
@@ -253,7 +331,7 @@ test('what a pack was made from is uploaded beside it under a name no pack-* pat
     // was made from is toolchain-key-<pack>, and a unit's toolchain
     // toolchain-<pack>-<unit>-<key>.
     for (const job of ['pack', 'assemble']) {
-        const names = uploads(stepsOf(jobs[job]));
+        const names = uploads(stepsOf(/** @type {Job} */ (jobs[job])));
         assert.deepEqual(names.filter((n) => n.startsWith('pack-')), ['pack-${{ matrix.pack }}'], job);
         assert.ok(names.includes('toolchain-key-${{ matrix.pack }}'), `${job}: ${names.join(' ')}`);
     }
@@ -270,33 +348,33 @@ test('the units build in three waves, each after the one before, and the packs a
         ],
     );
     for (const [name, job] of waves) {
-        assert.equal(job.strategy.matrix.include, `\${{ fromJSON(needs.plan.outputs.${name}) }}`);
+        assert.equal(job.strategy?.matrix.include, `\${{ fromJSON(needs.plan.outputs.${name}) }}`);
         assert.match(String(job.if), new RegExp(`needs\\.plan\\.outputs\\.${name} != '\\[\\]'`));
         // A wave runs whatever the one before it did, so a unit that does
         // not need the failed one still builds.
         assert.match(String(job.if), /!cancelled\(\)/);
     }
-    assert.deepEqual(jobs.assemble.needs, ['plan', 'store', 'wave-1', 'wave-2', 'wave-3']);
+    assert.deepEqual(jobs.assemble?.needs, ['plan', 'store', 'wave-1', 'wave-2', 'wave-3']);
     // The plan refuses a unit deeper than the waves there are.
-    const plan = stepsOf(jobs.plan).find((s) => s.id === 'units');
-    for (const m of plan.run.matchAll(/toolchain-plan[^\n]*--waves (\d+)/g)) assert.equal(Number(m[1]), waves.length);
-    assert.match(plan.run, /for wave in 1 2 3;/);
+    const plan = String(stepById(stepsOf(/** @type {Job} */ (jobs.plan)), 'units').run);
+    for (const m of plan.matchAll(/toolchain-plan[^\n]*--waves (\d+)/g)) assert.equal(Number(m[1]), waves.length);
+    assert.match(plan, /for wave in 1 2 3;/);
 });
 
 test('a unit job builds the unit its plan found missing, even when another run stores it meanwhile', () => {
     // Fetched instead, its toolchain.json would name the other run's
-    // commit, and publish and archive (clean_toolchain_key) would fail the
-    // job though the right toolchain is in the store. The units it needs
-    // are still fetched: --no-build-deps keeps --no-fetch to the unit.
-    const build = unitSteps.find((s) => s.id === 'build');
-    assert.match(build.run, /pack-toolchain\.sh ensure "\$UNIT"[^\n]*--no-build-deps/);
-    assert.match(build.run, /pack-toolchain\.sh ensure "\$UNIT"[^\n]*--no-fetch/);
+    // commit, and archive and store-units (clean_toolchain_key) would fail
+    // though the right toolchain is in the store. The units it needs are
+    // still fetched: --no-build-deps keeps --no-fetch to the unit.
+    const build = String(stepById(unitSteps, 'build').run);
+    assert.match(build, /pack-toolchain\.sh ensure "\$UNIT"[^\n]*--no-build-deps/);
+    assert.match(build, /pack-toolchain\.sh ensure "\$UNIT"[^\n]*--no-fetch/);
 });
 
 test('a unit job installs only the system packages in its own key', () => {
     const install = unitSteps.find((s) => s.name === 'Install build dependencies');
     assert.ok(install, 'the unit workflow has the step');
-    for (const text of [String(install.if), install.run]) {
+    for (const text of [String(install.if), String(install.run)]) {
         assert.match(text, /UNIT_DIR/);
         assert.doesNotMatch(text, /light\/packs\/(\{0\}|\$PACK)\/deps\.apt/, 'a pack-level deps.apt is in no unit\'s key');
     }
@@ -305,25 +383,156 @@ test('a unit job installs only the system packages in its own key', () => {
 test('each unit has its own build cache, under a prefix no other unit or pack starts with', () => {
     const restore = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/cache/restore@'));
     const save = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/cache/save@'));
+    assert.ok(restore?.with && save?.with);
     const prefix = 'light/${{ inputs.unit }}/';
-    assert.ok(restore.with.key.startsWith(prefix), restore.with.key);
+    assert.ok(String(restore.with.key).startsWith(prefix), restore.with.key);
     assert.equal(save.with.key, restore.with.key);
-    for (const key of restore.with['restore-keys'].trim().split('\n')) {
+    for (const key of String(restore.with['restore-keys']).trim().split('\n')) {
         assert.ok(key.startsWith(prefix) && key.endsWith('/'), `restore key ${key}`);
     }
-    const prune = unitSteps.find((s) => /gh cache delete/.test(String(s.run ?? '')));
-    assert.match(prune.run, /--key "light\/\$UNIT\/"/);
 });
 
 test('the pack workflow names no split pack', () => {
-    const named = allSteps.filter((s) => /matrix\.pack == '(cpp|stub)'/.test(String(s.if ?? '')));
-    assert.deepEqual(named.map((s) => s.name), []);
+    // Which packs are split is data (toolchains/). A job that named one
+    // would go on treating it as split, or as whole, after that changed.
+    // The store job alone names the stub, to lint its scripts.
+    for (const [name, job] of Object.entries(jobs)) {
+        for (const step of stepsOf(job)) {
+            for (const pack of SPLIT) {
+                assert.doesNotMatch(String(step.if ?? ''), new RegExp(`'${pack}'`), `step "${step.name}" of ${name} names ${pack}`);
+                if (name !== 'store') assert.doesNotMatch(String(step.run ?? ''), new RegExp(`packs/${pack}\\b|\\b${pack}/[a-z]`), `step "${step.name}" of ${name} names ${pack}`);
+            }
+        }
+    }
     // The pack job builds unsplit packs whole; a split one is the assemble
     // job's, from the plan, never listed.
-    const listed = jobs.pack.strategy.matrix.include.map((/** @type {{ pack: string }} */ e) => e.pack);
-    const split = listed.filter((p) => fs.existsSync(path.join(ROOT, 'light/packs', p, 'toolchains')));
-    assert.deepEqual(split, []);
-    assert.equal(jobs.assemble.strategy.matrix.pack, '${{ fromJSON(needs.plan.outputs.split) }}');
+    const include = /** @type {Array<{ pack: string }>} */ (jobs.pack?.strategy?.matrix.include);
+    assert.deepEqual(include.map((e) => e.pack).filter((p) => SPLIT.includes(p)), []);
+    assert.equal(jobs.assemble?.strategy?.matrix.pack, '${{ fromJSON(needs.plan.outputs.split) }}');
+});
+
+test('workflow-level permissions are read only, and only jobs gated on main or a light-v tag ask to write', () => {
+    // Hygiene, not the control (the header says why), so that main's own
+    // workflows hand a pull request's run nothing to write with.
+    for (const [file, wf] of [
+        ['light-packs.yml', workflow],
+        ['light-toolchain-unit.yml', unitWorkflow],
+        ['light-caches.yml', cachesWorkflow],
+        ['light-release.yml', releaseWorkflow],
+    ]) {
+        const own = /** @type {Workflow} */ (wf);
+        // The unit workflow's own block bounds its one job, which signs.
+        for (const [scope, level] of Object.entries(own.permissions ?? {})) {
+            if (file === 'light-toolchain-unit.yml' && SIGNING.has(scope)) continue;
+            assert.notEqual(level, 'write', `${file}: permissions.${scope} is write at the workflow's level`);
+        }
+        assert.ok(own.permissions, `${file} says what it is granted`);
+        for (const [name, job] of Object.entries(own.jobs)) {
+            // A call of light-packs.yml must grant what its jobs may ask.
+            if (job.uses === './.github/workflows/light-packs.yml') continue;
+            const writes = Object.entries(job.permissions ?? {}).filter(([scope, level]) => level === 'write' && !SIGNING.has(scope));
+            if (writes.length === 0) continue;
+            assert.ok(ON_MAIN.test(String(job.if)) || ON_TAG.test(String(job.if)), `${file}: job ${name} asks to write ${writes.map(([s]) => s).join(', ')} and runs off main`);
+        }
+    }
+    // The unit workflow writes nothing but its own attestation.
+    for (const [scope, level] of Object.entries(unitWorkflow.permissions ?? {})) {
+        if (level === 'write') assert.ok(SIGNING.has(scope), `light-toolchain-unit.yml asks to write ${scope}`);
+    }
+});
+
+test('only a job gated on main writes a store, and never in a release', () => {
+    for (const [name, job] of Object.entries(jobs)) {
+        for (const step of stepsOf(job).filter(writesAStore)) {
+            assert.match(conditionOf(job, step), ON_MAIN, `step "${step.name}" of ${name} writes a store off main`);
+            assert.match(conditionOf(job, step), /!inputs\.upload/, `step "${step.name}" of ${name} writes a store in a release`);
+        }
+    }
+    assert.deepEqual(unitSteps.filter(writesAStore).map((s) => s.name), []);
+    // What main stores is the archive the unit job attested, byte for byte.
+    const store = String(stepsOf(/** @type {Job} */ (jobs['store-units'])).find(writesAStore)?.run);
+    assert.match(store, /pack-store\.sh toolchain-publish "\$unit" "\$archive"/);
+    assert.deepEqual(jobs['store-units']?.needs, ['plan', 'wave-1', 'wave-2', 'wave-3']);
+});
+
+test('every toolchain a CI job fetches from the store is verified to be built on main', () => {
+    for (const [file, wf] of [
+        ['light-packs.yml', workflow],
+        ['light-toolchain-unit.yml', unitWorkflow],
+    ]) {
+        assert.equal(/** @type {Workflow} */ (wf).env?.LIGHT_TOOLCHAIN_PROVENANCE, 'required', file);
+        for (const job of Object.values(/** @type {Workflow} */ (wf).jobs)) {
+            for (const step of stepsOf(job)) assert.equal(step.env?.LIGHT_TOOLCHAIN_PROVENANCE, undefined, `${file}: step "${step.name}" sets its own`);
+        }
+    }
+    // The archive is signed in the job that built it, for the run's own ref.
+    const attest = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/attest-build-provenance@'));
+    assert.ok(attest, 'the unit job attests its archive');
+    assert.equal(attest.with?.['subject-path'], '${{ steps.archive.outputs.path }}');
+    assert.equal(unitWorkflow.permissions?.['id-token'], 'write');
+    for (const [name, job] of waves) assert.equal(job.permissions?.['id-token'], 'write', name);
+});
+
+test("a pull request reuses its own earlier build of a unit, and builds nothing it took", () => {
+    const earlier = stepById(unitSteps, 'earlier');
+    assert.match(String(earlier.if), /github\.event_name == 'pull_request'/);
+    assert.match(String(earlier.run), /pack-store\.sh toolchain-artifact "\$UNIT" [^\n]*\n?\s*--ref "\$GITHUB_REF"/);
+    // Everything that builds waits on it.
+    for (const id of ['build', 'cache']) assert.match(String(stepById(unitSteps, id).if), /steps\.earlier\.outputs\.path == ''/, id);
+    const upload = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/upload-artifact@'));
+    assert.equal(upload?.with?.path, '${{ steps.earlier.outputs.path || steps.archive.outputs.path }}');
+});
+
+test('no cache is deleted without naming its ref, and only main deletes one', () => {
+    /** @type {string[]} */
+    const files = [];
+    for (const dir of [WORKFLOWS, '.github/actions/once', 'light/scripts']) {
+        for (const name of fs.readdirSync(path.join(ROOT, dir))) if (/\.(ya?ml|sh|mjs)$/.test(name) && !name.startsWith('test-')) files.push(`${dir}/${name}`);
+    }
+    for (const file of files) {
+        const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+        for (const line of text.split('\n').filter((l) => /gh cache delete/.test(l) && !/^\s*(#|\/\/)/.test(l))) {
+            assert.match(line, /--ref\b/, `${file}: ${line.trim()}`);
+        }
+        // A command built as a list says --ref in the same list.
+        for (const m of text.matchAll(/\['cache', 'delete',[^\]]*\]/g)) assert.match(m[0], /'--ref'/, `${file}: ${m[0]}`);
+    }
+    // The pack workflow prunes main's own caches only, in a job only main runs.
+    const pruning = Object.entries(jobs).filter(([, job]) => stepsOf(job).some((s) => /cache-prune\.mjs --|gh cache delete/.test(String(s.run ?? ''))));
+    assert.deepEqual(pruning.map(([name]) => name), ['caches']);
+    const caches = /** @type {Job} */ (jobs.caches);
+    assert.match(String(caches.if), ON_MAIN);
+    assert.match(String(stepsOf(caches).at(-1)?.run), /cache-prune\.mjs --ref "\$GITHUB_REF"/);
+    assert.equal(unitSteps.some((s) => /cache-prune|gh cache delete/.test(String(s.run ?? ''))), false);
+    // The pull requests' caches go on a schedule, from main.
+    assert.deepEqual(Object.keys(cachesWorkflow.on).sort(), ['schedule', 'workflow_dispatch']);
+    const prune = /** @type {Job} */ (cachesWorkflow.jobs.prune);
+    assert.match(String(prune.if), ON_MAIN);
+    assert.match(String(stepsOf(prune).at(-1)?.run), /cache-prune\.mjs --stale-pulls/);
+});
+
+test('every third-party action is pinned by commit', () => {
+    // A tag can be moved to code nobody reviewed, and the jobs it runs in
+    // sign toolchains or write the stores.
+    for (const file of PINNED) {
+        const lines = fs.readFileSync(path.join(ROOT, file), 'utf8').split('\n');
+        for (const [i, line] of lines.entries()) {
+            const m = /^\s*(?:-\s+)?uses:\s*(\S+)/.exec(line);
+            if (!m || /^\s*#/.test(line)) continue;
+            const target = String(m[1]);
+            if (target.startsWith('./')) continue;
+            assert.match(target, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40}$/, `${file}:${i + 1}: ${target} is not pinned by commit`);
+            assert.match(line, /#\s*v\d+(\.\d+)*\s*$/, `${file}:${i + 1}: say which version the commit is`);
+        }
+    }
+});
+
+test('a light-v release is published only once every asset is attached', () => {
+    const publish = /** @type {Job} */ (releaseWorkflow.jobs.publish);
+    const run = String(stepsOf(publish).find((s) => /gh release create/.test(String(s.run ?? '')))?.run);
+    assert.match(run, /gh release create [^\n]*--draft/);
+    assert.ok(run.indexOf('--draft=false') > run.indexOf('gh release create'), 'published after the draft is made');
+    assert.match(String(publish.if), ON_TAG);
 });
 
 test('the workflow reader reads what YAML means and refuses what it does not know', () => {

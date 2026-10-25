@@ -38,7 +38,7 @@ const TRANSPORT = [
     'SSL_CERT_FILE', 'SSL_CERT_DIR', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE', 'GIT_SSL_CAINFO', 'NODE_EXTRA_CA_CERTS',
     'npm_config_https_proxy', 'npm_config_proxy', 'npm_config_cafile',
 ];
-const OWN = ['OPT', 'MIRROR', 'UNDECLARED', 'SECRET_TOKEN', 'STUB_LEVEL', 'ALLOW_OTHER_TOOLCHAIN', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS', 'JOBS', 'NICE', 'CI', 'PACK_CACHE', 'OUT'];
+const OWN = ['LIGHT_TOOLCHAIN_PROVENANCE', 'OPT', 'MIRROR', 'UNDECLARED', 'SECRET_TOKEN', 'STUB_LEVEL', 'ALLOW_OTHER_TOOLCHAIN', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS', 'JOBS', 'NICE', 'CI', 'PACK_CACHE', 'OUT'];
 
 // The toolchain store: asset name -> { bytes, created }.
 let toolchains = new Map();
@@ -80,6 +80,10 @@ function runScript(script, vars, args) {
         GH_TOKEN: '',
         TOOLCHAIN_CACHE: cache,
         TMPDIR: tmp,
+        // A gh that is signed in nowhere, so a fetch here is one on a
+        // machine without an account: used, and said to be unverified
+        // (test-pack-store.mjs tests the verification itself).
+        PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}`,
     });
     for (const [name, value] of Object.entries(vars)) {
         if (value === undefined) delete env[name];
@@ -201,11 +205,13 @@ echo js/glue.js
 
 before(async () => {
     fs.mkdirSync(path.join(light, 'scripts'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'bin'));
+    fs.writeFileSync(path.join(root, 'bin/gh'), '#!/bin/sh\necho "stand-in gh: not signed in" >&2\nexit 1\n', { mode: 0o755 });
     fs.mkdirSync(tmp);
     for (const name of ['pack-toolchain.sh', 'pack-store.sh', 'pack-lib.sh', 'toolchain-key.sh', 'toolchain-build-env.sh', 'toolchain-manifest.mjs']) {
         fs.copyFileSync(path.join(SCRIPTS, name), path.join(light, 'scripts', name));
     }
-    put('.gitignore', '/cache/\n/tmp/\n/out*/\n/light/app/\n/asset/\n/from*/\n/certs/\n');
+    put('.gitignore', '/bin/\n/cache/\n/tmp/\n/out*/\n/light/app/\n/asset/\n/from*/\n/certs/\n');
     put('light/packs/tool/toolchains/cc/paths', '# The compiler is built from its source, besides this directory.\nsrc/compiler.c\n');
     put('light/packs/tool/toolchains/cc/env', '# What reaches the build.\nOPT variant  # the optimisation level: another compiler\nMIRROR source  # where sources come from; the same bytes\n');
     put('light/packs/tool/toolchains/cc/pins.sh', 'CC_VERSION=1.0\n');

@@ -11,6 +11,10 @@
 # Run by hand (Actions, "Run workflow"), it only uploads the archive as the
 # run's artifact yukibana-light-preview-<run number>.
 #
+# A light-v* release is immutable once published (assets and tag), under a
+# tag ruleset that keeps light-v* tags from moving or being deleted; a
+# repository admin turns both on once with light/scripts/protect-releases.sh.
+#
 # The packs come from light-packs.yml, reused with `upload`, and from nowhere
 # else: this workflow never fetches, assembles or builds a pack itself. There
 # a split pack is assembled from its stored units and tested, and fails
@@ -44,9 +48,17 @@ jobs:
     uses: ./.github/workflows/light-packs.yml
     with:
       upload: true
+    # A called workflow's jobs may ask for no more than its caller grants,
+    # whether or not they run, so this is the most any job of light-packs.yml
+    # asks for. The jobs that write (store-units, store-packs, caches) run
+    # only on main and never with `upload`, and the wave jobs, which sign,
+    # never with `upload` either: a release run reads the stores, verifying
+    # every toolchain, and writes nothing.
     permissions:
-      contents: write # the pack store
-      actions: write # the Haskell pack's inputs; pruning the build caches
+      contents: write
+      actions: write
+      attestations: write
+      id-token: write
 
   assemble:
     name: Assemble the archive
@@ -57,11 +69,11 @@ jobs:
       run:
         working-directory: light/app
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # 24: setup-node's npm cache runs npm at the repository root, whose
       # package.json (the IDE's) requires Node 24 (devEngines).
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
@@ -74,7 +86,7 @@ jobs:
       # so all of them merge into one static/packs. What each pack was made
       # from is the artifact toolchain-key-<pack>, which pack-* never
       # matches.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: pack-*
           merge-multiple: true
@@ -83,7 +95,7 @@ jobs:
       # What each pack was made from, as the pack or assemble job wrote it:
       # one file per pack, $RUNNER_TEMP/keys/<pack>, holding `tree <tree id>`,
       # or one line `toolchain <pack>/<unit> <key>` per unit.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: toolchain-key-*
           merge-multiple: true
@@ -161,7 +173,7 @@ jobs:
       # The artifact's root is release/, so the downloaded zip holds
       # yukibana-light/. Level 0: the packs are .wasm with .br and .gz
       # siblings already, and zipping them again buys little.
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: yukibana-light-preview-${{ github.run_number }}
           path: ${{ runner.temp }}/release/
@@ -179,7 +191,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: yukibana-light-preview-${{ github.run_number }}
           path: release
@@ -204,9 +216,13 @@ jobs:
 
           Unzip \`yukibana-light-$GITHUB_REF_NAME.zip\`, then \`python3 serve.py build --port 8080\` in \`yukibana-light/\` and open http://localhost:8080/ (RUN.txt). \`packs.json\` gives what each pack was made from: the key of each toolchain unit it was assembled from (\`toolchains\`), or the git tree id of \`light/packs/<pack>\` it was built from (\`tree\`). \`toolchains.json\` gives the units' keys alone, by \`<pack>/<unit>\`: each is the asset \`toolchain-<pack>-<unit>-<key>.tar.zst\` of the \`light-toolchains\` prerelease.
           EOF
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+          # A draft first, with every asset, then published: with release
+          # immutability on (light/scripts/protect-releases.sh), publishing
+          # is what locks the assets and the tag, so it comes last.
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
             --title "Yukibana Light $GITHUB_REF_NAME" --notes-file notes.md \
             "yukibana-light-$GITHUB_REF_NAME.zip" packs.json toolchains.json
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
 
   # The release goes live at https://light.yukibana.dev (light/deploy): the
   # archive's build/ is the Worker's assets, and the pack files too big for
@@ -231,15 +247,15 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: yukibana-light-preview-${{ github.run_number }}
           path: ${{ runner.temp }}/release

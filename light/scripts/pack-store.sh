@@ -69,7 +69,8 @@
 #   pack-store.sh toolchain-fetch <unit> [--any] [dir]   downloads it into
 #       dir (default $TOOLCHAIN_CACHE/built/<pack>/<unit>/<key>), read-only,
 #       and prints dir; exit 3 when there is none. --any takes the unit's
-#       newest toolchain whatever its key, saying which.
+#       newest toolchain whatever its key, saying which. Its provenance is
+#       verified first (Provenance, below).
 #   pack-store.sh toolchain-unpack <unit> <archive> [dir]    the same from a
 #       local archive named as a store asset (an artifact of the same CI
 #       run: pack-toolchain.sh ensure --from); its name must carry this
@@ -78,9 +79,42 @@
 #       <out-dir>/toolchain-<pack>-<unit>-<key>.tar.zst and prints its path,
 #       refusing exactly what toolchain-publish refuses; for the artifact a
 #       unit's CI job hands its dependents.
-#   pack-store.sh toolchain-publish <unit> <dir>    uploads dir as the
-#       toolchain of HEAD's inputs, refusing one built from anything else.
+#   pack-store.sh toolchain-publish <unit> <archive>    uploads the archive
+#       toolchain-archive wrote, byte for byte, as the toolchain of HEAD's
+#       inputs: refused unless its name is HEAD's key, its toolchain.json and
+#       files say it was built clean at HEAD, and an attestation says
+#       light-toolchain-unit.yml built it on refs/heads/main. The bytes
+#       stored are the bytes attested, so every consumer can verify them.
 #       Never deletes: from 800 assets it warns, at 1000 it fails.
+#   pack-store.sh toolchain-artifact <unit> <out-dir> --ref <ref> [--branch <b>]
+#       a pull request's own earlier build of the unit: the newest unexpired
+#       Actions artifact named toolchain-<pack>-<unit>-<key> (HEAD's key)
+#       whose archive an attestation says light-toolchain-unit.yml built on
+#       <ref> (refs/pull/<n>/merge), put in out-dir as the archive
+#       toolchain-unpack and `ensure --from` take, and its path printed.
+#       <b> narrows the candidates to runs of that head branch before any is
+#       downloaded; only the attestation decides. Exit 3 when none is
+#       acceptable. Needs GH_TOKEN with actions: read.
+#   pack-store.sh ensure-stores           creates the light-packs and
+#       light-toolchains prereleases unless they exist (protect-releases.sh,
+#       before release immutability is turned on).
+#
+# Provenance. A toolchain is trusted for where it was built, never for which
+# release holds it: a same-repository pull request runs its own copy of the
+# workflows, so whatever it may write to, it can write anything. What it
+# cannot forge is the ref in the OIDC token its run signs with. So every
+# toolchain fetched from the store is checked with
+#   gh attestation verify <archive> --repo <repo> --signer-workflow
+#     <repo>/.github/workflows/light-toolchain-unit.yml
+#     --source-ref refs/heads/main --deny-self-hosted-runners
+# before it is unpacked. The signer is light-toolchain-unit.yml, not
+# light-packs.yml, because a reusable workflow signs as itself; light-packs.yml
+# is its only caller (test-workflows.mjs). LIGHT_TOOLCHAIN_PROVENANCE says how
+# strict: `required` (every CI job) fails by name without gh or without such
+# an attestation; unset, the check runs when gh is signed in and a refusal
+# fails, and when gh is missing or signed out the toolchain is used and that
+# is said (setup.sh on a machine with no gh). Nothing here skips a check
+# silently.
 #
 # A toolchain directory holds toolchain.json, written by its build
 # (pack-toolchain.sh ensure; the format is toolchain-manifest.mjs's): its
@@ -93,7 +127,8 @@
 # Environment: LIGHT_PACKS_REPO (default: the origin's GitHub repository, else
 # tothambrus11/yukibana-cloud), LIGHT_PACKS_TAG (light-packs), KEEP (8),
 # LIGHT_TOOLCHAINS_TAG (light-toolchains), TOOLCHAIN_CACHE
-# (~/.cache/yukibana-toolchains), and LIGHT_PACKS_API
+# (~/.cache/yukibana-toolchains), LIGHT_TOOLCHAIN_PROVENANCE (above),
+# and LIGHT_PACKS_API
 # (https://api.github.com), which test-pack-store.mjs points at a server of
 # its own.
 set -euo pipefail
@@ -112,6 +147,16 @@ MAX_ASSET_BYTES=1900000000
 # GitHub's cap on assets per release, and where publishing starts warning.
 MAX_ASSETS=1000
 WARN_ASSETS=800
+# The one workflow that builds toolchains, which their attestations must name
+# as the signer (Provenance, above). A path in the repository.
+SIGNER_WORKFLOW=.github/workflows/light-toolchain-unit.yml
+# The ref a stored toolchain must have been built on.
+MAIN_REF=refs/heads/main
+# What each store release says it is, when it is created.
+PACKS_TITLE="Yukibana Light packs (build store)"
+PACKS_NOTES="Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup.sh); not a release of the app."
+TOOLCHAINS_TITLE="Yukibana Light toolchains (build store)"
+TOOLCHAINS_NOTES="Toolchain units of Yukibana Light's split packs, one asset per unit and key of its inputs: toolchain-<pack>-<unit>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key <pack>/<unit>). Written by .github/workflows/light-packs.yml on main only, each asset attested by .github/workflows/light-toolchain-unit.yml, and read by light/scripts/pack-store.sh, which verifies that attestation; not a release of the app. Nothing is deleted automatically."
 
 # shellcheck source=toolchain-key.sh
 source "$LIGHT/scripts/toolchain-key.sh"
@@ -241,6 +286,42 @@ release_upload() {
   echo "pack-store.sh: ${file##*/} was stored by another run meanwhile"
 }
 
+# Returns 0 when an attestation says $SIGNER_WORKFLOW of this repository
+# built file $1 on ref $2 on a GitHub-hosted runner, and 1 otherwise, with
+# gh's own words on stderr. Needs gh.
+attested() {
+  local file="$1" ref="$2" r out
+  r="$(repo)"
+  if out="$(gh attestation verify "$file" --repo "$r" --signer-workflow "$r/$SIGNER_WORKFLOW" \
+    --source-ref "$ref" --deny-self-hosted-runners 2>&1)"; then
+    return 0
+  fi
+  printf '%s\n' "$out" | sed 's/^/  gh: /' >&2
+  return 1
+}
+
+# Exits 1 naming $3 (what is checked) unless file $1 was built by
+# $SIGNER_WORKFLOW on ref $2, as LIGHT_TOOLCHAIN_PROVENANCE asks (Provenance,
+# above): `required` needs gh and the attestation; unset, gh signed out or
+# missing means the file is used unverified, and said to be.
+verify_provenance() {
+  local file="$1" ref="$2" what="$3" mode="${LIGHT_TOOLCHAIN_PROVENANCE:-}"
+  case "$mode" in
+    required)
+      command -v gh >/dev/null ||
+        die "$what: gh is needed to verify its provenance (LIGHT_TOOLCHAIN_PROVENANCE=required), and there is none" ;;
+    '')
+      if ! command -v gh >/dev/null || ! gh auth status >/dev/null 2>&1; then
+        echo "pack-store.sh: $what: its provenance is NOT verified: gh is missing or not signed in here (gh auth login, and it is checked; CI always checks)" >&2
+        return 0
+      fi ;;
+    *) die "LIGHT_TOOLCHAIN_PROVENANCE is '$mode'; it is 'required' or unset" ;;
+  esac
+  attested "$file" "$ref" ||
+    die "$what: refused: no attestation says $SIGNER_WORKFLOW of $(repo) built it on $ref"
+  echo "pack-store.sh: $what: built by $SIGNER_WORKFLOW on $ref, as its attestation says" >&2
+}
+
 # Exits 2 when pack $1 is split: its output is assembled over toolchain
 # units from the toolchain store and never kept in this one, where a glue
 # edit would change its tree and rebuild every unit.
@@ -297,8 +378,7 @@ publish() {
   [ -f "$PACKS/$pack/server.js" ] || die "app/static/packs/$pack is not built (no server.js)"
   name="$pack-$(tree "$pack").tar.zst"
   r="$(repo)"
-  release_ensure "$TAG" "$r" "Yukibana Light packs (build store)" \
-    "Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup.sh); not a release of the app."
+  release_ensure "$TAG" "$r" "$PACKS_TITLE" "$PACKS_NOTES"
   list="$(assets)"
   if asset_listed "$name" "$list"; then
     echo "pack-store.sh: $name is in the store already"
@@ -613,9 +693,78 @@ toolchain_fetch() {
   echo "pack-store.sh: $id: downloading $name" >&2
   curl -sSfL --retry 3 -o "$tmp/$name" "$url"
   echo "$sha  $tmp/$name" | sha256sum -c --quiet - || die "$name: sha256 mismatch"
+  verify_provenance "$tmp/$name" "$MAIN_REF" "$name"
   unpack_toolchain "$id" "$key" "$tmp/$name" "$dir"
   rm -rf "$tmp"
   tmp=""
+}
+
+toolchain_artifact() {
+  local id="$1" out="${2:?output directory}" ref="" branch="" key name out_json cands line aid digest url
+  shift 2
+  split_unit "$id"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --ref) ref="${2:?--ref <ref>}"; shift ;;
+      --branch) branch="${2:?--branch <branch>}"; shift ;;
+      *) echo "pack-store.sh: toolchain-artifact: unknown option $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  [ -n "$ref" ] || { echo "pack-store.sh: toolchain-artifact needs --ref <the ref its attestation must name>" >&2; exit 2; }
+  [ -n "${GH_TOKEN:-}" ] || die "toolchain-artifact needs GH_TOKEN (actions: read) to list and download artifacts"
+  command -v gh >/dev/null || die "toolchain-artifact needs gh to verify an artifact's provenance"
+  key="$(toolchain_key "$id")"
+  name="$(asset_of "$id" "$key")"
+  name="${name%.tar.zst}"
+  out_json="$(api_get "actions/artifacts?name=$name&per_page=100")" || die "listing the artifacts named $name failed"
+  # Candidates, newest first, as "<id> <zip sha256 or -> <download url>": not
+  # expired, of the head branch when one is given. At most three are
+  # downloaded: a toolchain can be gigabytes, and more than three refusals
+  # in a row means a rebuild is cheaper than looking further.
+  cands="$(node -e '
+    const [where, s, branch] = process.argv.slice(1);
+    let r;
+    try { r = JSON.parse(s); } catch { console.error("pack-store.sh: " + where + ": not JSON: " + s.slice(0, 200)); process.exit(1); }
+    if (!Array.isArray(r?.artifacts)) { console.error("pack-store.sh: " + where + ": " + (r?.message ?? s.slice(0, 200))); process.exit(1); }
+    const ok = r.artifacts
+      .filter((a) => !a.expired && (branch === "" || a.workflow_run?.head_branch === branch))
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+      .slice(0, 3);
+    for (const a of ok) console.log(a.id, (a.digest ?? "-").replace(/^sha256:/, ""), a.archive_download_url);
+  ' "the artifacts named $name of $(repo)" "$out_json" "$branch")" || die "the artifacts named $name cannot be read"
+  if [ -z "$cands" ]; then
+    echo "pack-store.sh: $id: no unexpired artifact $name${branch:+ of branch $branch}" >&2
+    exit 3
+  fi
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
+  while read -r aid digest url; do
+    rm -rf "${tmp:?}/x" "$tmp/a.zip"
+    echo "pack-store.sh: $id: downloading artifact $aid ($name)" >&2
+    if ! curl -sSfL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -o "$tmp/a.zip" "$url"; then
+      echo "pack-store.sh: $id: artifact $aid cannot be downloaded; skipping it" >&2
+      continue
+    fi
+    if [ "$digest" != - ] && ! echo "$digest  $tmp/a.zip" | sha256sum -c --quiet - 2>/dev/null; then
+      echo "pack-store.sh: $id: artifact $aid does not match its recorded sha256; skipping it" >&2
+      continue
+    fi
+    if ! unzip -q "$tmp/a.zip" "$name.tar.zst" -d "$tmp/x" 2>/dev/null; then
+      echo "pack-store.sh: $id: artifact $aid holds no $name.tar.zst; skipping it" >&2
+      continue
+    fi
+    if ! attested "$tmp/x/$name.tar.zst" "$ref"; then
+      echo "pack-store.sh: $id: artifact $aid has no attestation that $SIGNER_WORKFLOW built it on $ref; skipping it" >&2
+      continue
+    fi
+    mkdir -p "$out"
+    mv "$tmp/x/$name.tar.zst" "$out/$name.tar.zst"
+    echo "pack-store.sh: $id: taking artifact $aid, built by $SIGNER_WORKFLOW on $ref" >&2
+    echo "$out/$name.tar.zst"
+    return 0
+  done <<<"$cands"
+  echo "pack-store.sh: $id: no artifact $name built on $ref; it builds" >&2
+  exit 3
 }
 
 toolchain_unpack() {
@@ -673,13 +822,23 @@ toolchain_archive() {
 }
 
 toolchain_publish() {
-  local id="$1" dir="$2" key name r list n
+  local id="$1" archive="$2" key name r list n
   split_unit "$id"
-  key="$(clean_toolchain_key "$id" "$dir")"
+  [ -f "$archive" ] || die "$archive: no such archive"
+  key="$(toolchain_key "$id")"
   name="$(asset_of "$id" "$key")"
+  [ "${archive##*/}" = "$name" ] || die "$archive is not $name, the toolchain of $id's inputs at HEAD"
+  # What it holds is checked as a fetch would check it, then as a toolchain
+  # built clean at HEAD (clean_toolchain_key); the archive itself is what is
+  # uploaded, so the bytes stored are the bytes its attestation names.
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
+  unpack_toolchain "$id" "$key" "$archive" "$tmp/toolchain" >/dev/null
+  clean_toolchain_key "$id" "$tmp/toolchain" >/dev/null
+  remove_tree "$tmp"
+  tmp=""
+  LIGHT_TOOLCHAIN_PROVENANCE=required verify_provenance "$archive" "$MAIN_REF" "$name"
   r="$(repo)"
-  release_ensure "$TOOLCHAINS_TAG" "$r" "Yukibana Light toolchains (build store)" \
-    "Toolchain units of Yukibana Light's split packs, one asset per unit and key of its inputs: toolchain-<pack>-<unit>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key <pack>/<unit>). Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh; not a release of the app. Nothing is deleted automatically."
+  release_ensure "$TOOLCHAINS_TAG" "$r" "$TOOLCHAINS_TITLE" "$TOOLCHAINS_NOTES"
   list="$(assets "$TOOLCHAINS_TAG")"
   if asset_listed "$name" "$list"; then
     echo "pack-store.sh: $name is in the store already"
@@ -697,9 +856,15 @@ toolchain_publish() {
     echo "pack-store.sh: warning: $r's $TOOLCHAINS_TAG release holds $n of at most $MAX_ASSETS assets; evict toolchains no branch needs with gh release delete-asset $TOOLCHAINS_TAG <asset> (the oldest is $oldest)" >&2
     [ -z "${GITHUB_ACTIONS:-}" ] || echo "::warning::$TOOLCHAINS_TAG holds $n of at most $MAX_ASSETS assets; evict with gh release delete-asset $TOOLCHAINS_TAG <asset>"
   fi
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
-  write_archive "$id" "$key" "$dir" "$tmp/$name"
-  release_upload "$tmp/$name" "$TOOLCHAINS_TAG" "$r"
+  release_upload "$archive" "$TOOLCHAINS_TAG" "$r"
+}
+
+ensure_stores() {
+  local r
+  r="$(repo)"
+  release_ensure "$TAG" "$r" "$PACKS_TITLE" "$PACKS_NOTES"
+  release_ensure "$TOOLCHAINS_TAG" "$r" "$TOOLCHAINS_TITLE" "$TOOLCHAINS_NOTES"
+  echo "pack-store.sh: $r has the releases $TAG and $TOOLCHAINS_TAG"
 }
 
 case "${1:-}" in
@@ -716,6 +881,8 @@ case "${1:-}" in
   toolchain-fetch) toolchain_fetch "${2:?unit}" "${@:3}" ;;
   toolchain-unpack) toolchain_unpack "${2:?unit}" "${3:?archive}" "${4:-}" ;;
   toolchain-archive) toolchain_archive "${2:?unit}" "${3:?toolchain directory}" "${4:?output directory}" ;;
-  toolchain-publish) toolchain_publish "${2:?unit}" "${3:?toolchain directory}" ;;
+  toolchain-publish) toolchain_publish "${2:?unit}" "${3:?toolchain archive}" ;;
+  toolchain-artifact) toolchain_artifact "${2:?unit}" "${3:?output directory}" "${@:4}" ;;
+  ensure-stores) ensure_stores ;;
   *) sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
 esac

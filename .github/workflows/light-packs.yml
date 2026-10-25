@@ -2,7 +2,7 @@
 # when what it is made from changed since it was last made.
 #
 # Two stores, both rolling prereleases of this repository, written only by
-# this workflow (light/scripts/pack-store.sh):
+# this workflow's main-only jobs (light/scripts/pack-store.sh):
 #
 #   light-packs       the whole output (light/app/static/packs/<pack>) of an
 #                     unsplit pack, as <pack>-<git tree id of
@@ -77,9 +77,36 @@
 # each job's summary. Expected numbers are not measured yet; they belong here
 # once the first runs of split packs land.
 #
+# Trust. A toolchain is used only if its provenance says main built it
+# (D40): each unit's archive is attested by light-toolchain-unit.yml with its
+# run's OIDC token, and every consumer of the store (ensure in a unit job,
+# the assemble job, a release's run of it, setup.sh when gh is signed in)
+# runs `gh attestation verify --signer-workflow
+# <repo>/.github/workflows/light-toolchain-unit.yml --source-ref
+# refs/heads/main` before it unpacks one, and fails by name otherwise
+# (LIGHT_TOOLCHAIN_PROVENANCE=required, below). That is the control: a
+# same-repository pull request runs its own copy of this file, so whatever
+# its YAML says, it could ask for any permission; what it cannot forge is
+# the ref in its token. Workflow-level permissions are read only, and only
+# jobs gated on refs/heads/main ask for write (store-units, store-packs,
+# caches); the wave jobs ask only to sign their own archives (id-token,
+# attestations). That rule is hygiene, kept by test-workflows.mjs, not the
+# control. Pull request runs keep their units as artifacts and reuse them
+# on their own later pushes (light-toolchain-unit.yml), and never promote
+# one to main: main builds every unit itself (experiment E3 decides whether
+# promotion is worth adding). Third-party actions are pinned by commit, as
+# the PR's copy of a mutable tag is code nobody reviewed.
+#
+# Caches. A unit or pack job restores its cache from its own ref or main's
+# and saves on its own ref. Only main's `caches` job deletes, and only
+# main's older caches (`--ref refs/heads/main`); pull requests' caches are
+# pruned on a schedule from main (light-caches.yml). No `gh cache delete`
+# runs without `--ref` (test-workflows.mjs), so no run deletes another
+# ref's warm cache.
+#
 # Runs on pushes to main and on pull requests that touch a pack or the scripts
-# that make one. A pull request's run writes to the stores too, unless it
-# comes from a fork. Without `upload`, a pack the store has is not even
+# that make one. Only main's runs write the stores; a pull request's builds
+# serve that pull request. Without `upload`, a pack the store has is not even
 # downloaded, and a split pack whose inputs already passed (once, below) is
 # not assembled again.
 name: Yukibana Light packs
@@ -99,9 +126,14 @@ on:
       - light/scripts/test-pack-toolchain.mjs
       - light/scripts/toolchain-manifest.mjs
       - light/scripts/test-workflows.mjs
+      - light/scripts/cache-prune.mjs
+      - light/scripts/test-cache-prune.mjs
+      - light/scripts/protect-releases.sh
+      - light/scripts/test-protect-releases.mjs
       - light/setup.sh
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
+      - .github/workflows/light-caches.yml
       - .github/actions/once/**
   pull_request:
     paths:
@@ -115,9 +147,14 @@ on:
       - light/scripts/test-pack-toolchain.mjs
       - light/scripts/toolchain-manifest.mjs
       - light/scripts/test-workflows.mjs
+      - light/scripts/cache-prune.mjs
+      - light/scripts/test-cache-prune.mjs
+      - light/scripts/protect-releases.sh
+      - light/scripts/test-protect-releases.mjs
       - light/setup.sh
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
+      - .github/workflows/light-caches.yml
       - .github/actions/once/**
   workflow_dispatch:
   workflow_call:
@@ -135,15 +172,21 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.upload && 'upload' || 'check' }}
   cancel-in-progress: false
 
+# Read only. The jobs that write ask for it themselves, and each of them runs
+# only on main (test-workflows.mjs).
 permissions:
-  contents: write # the pack and toolchain stores' releases
-  actions: write # the Haskell pack's inputs (other runs' artifacts); pruning the build caches
+  contents: read
+  actions: read # the Haskell pack's inputs and this run's artifacts
+  attestations: read # verifying a toolchain's provenance
 
 env:
   PACK_CACHE: /home/runner/.cache/yukibana-packs
   TOOLCHAIN_CACHE: /home/runner/.cache/yukibana-toolchains
   JOBS: 4
   GH_TOKEN: ${{ github.token }}
+  # Every toolchain fetched from the store is verified, and a missing gh or
+  # attestation fails by name (pack-store.sh, Provenance).
+  LIGHT_TOOLCHAIN_PROVENANCE: required
 
 jobs:
   # Whether the store job already passed on exactly its inputs
@@ -160,7 +203,7 @@ jobs:
       wave-3: ${{ steps.units.outputs.wave-3 }}
       split: ${{ steps.units.outputs.split }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: store
         uses: ./.github/actions/once
         with:
@@ -175,6 +218,10 @@ jobs:
             light/scripts/toolchain-manifest.mjs
             light/scripts/test-pack-toolchain.mjs
             light/scripts/test-workflows.mjs
+            light/scripts/cache-prune.mjs
+            light/scripts/test-cache-prune.mjs
+            light/scripts/protect-releases.sh
+            light/scripts/test-protect-releases.mjs
             light/packs/stub
             light/setup.sh
             .github/workflows
@@ -287,18 +334,20 @@ jobs:
       run:
         working-directory: light
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Lint the store and setup scripts
         run: |
           shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-key.sh scripts/toolchain-build-env.sh \
-            scripts/pack-lib.sh scripts/pack-toolchain.sh setup.sh \
+            scripts/pack-lib.sh scripts/pack-toolchain.sh scripts/protect-releases.sh setup.sh \
             packs/stub/glue.sh packs/stub/lib.sh packs/stub/compiler/cc.sh packs/stub/toolchains/*/toolchain.sh
       - name: Test the store
         run: node --test scripts/test-pack-store.mjs
       - name: Test building and assembling toolchains
         run: node --test scripts/test-pack-toolchain.mjs
-      - name: Test this workflow's release rule
+      - name: Test this workflow's rules
         run: node --test scripts/test-workflows.mjs
+      - name: Test the cache pruning and the release protection
+        run: node --test scripts/test-cache-prune.mjs scripts/test-protect-releases.mjs
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.store-key }}
@@ -319,6 +368,13 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.wave-1) }}
+    # Signing its own archive for this run's ref, nothing else
+    # (light-toolchain-unit.yml).
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
     uses: ./.github/workflows/light-toolchain-unit.yml
     with:
       unit: ${{ matrix.unit }}
@@ -336,6 +392,13 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.wave-2) }}
+    # Signing its own archive for this run's ref, nothing else
+    # (light-toolchain-unit.yml).
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
     uses: ./.github/workflows/light-toolchain-unit.yml
     with:
       unit: ${{ matrix.unit }}
@@ -353,6 +416,13 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.wave-3) }}
+    # Signing its own archive for this run's ref, nothing else
+    # (light-toolchain-unit.yml).
+    permissions:
+      contents: read
+      actions: read
+      attestations: write
+      id-token: write
     uses: ./.github/workflows/light-toolchain-unit.yml
     with:
       unit: ${{ matrix.unit }}
@@ -380,9 +450,9 @@ jobs:
       FROM: ${{ github.workspace }}/../from
       TIMINGS: ${{ github.workspace }}/../timings
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
@@ -435,7 +505,7 @@ jobs:
       # The units this run's waves built of this pack (a pack's name has no
       # `-`, so toolchain-<pack>-* is this pack's alone). None is no error:
       # the store has them.
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         if: steps.once.outputs.done != 'true'
         with:
           pattern: toolchain-${{ matrix.pack }}-*
@@ -549,7 +619,7 @@ jobs:
             jq -r '"toolchain \(.unit) \(.key)"' "$dir/toolchain.json"
           done < "$RUNNER_TEMP/dirs" > "$RUNNER_TEMP/toolchain-key/$PACK"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: inputs.upload
         with:
           name: toolchain-key-${{ matrix.pack }}
@@ -559,7 +629,7 @@ jobs:
 
       # The artifact's root is static/packs, so it holds <pack>/ and the
       # release can merge every pack into one static/packs.
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: inputs.upload
         with:
           name: pack-${{ matrix.pack }}
@@ -619,9 +689,9 @@ jobs:
       run:
         working-directory: light/packs/${{ matrix.pack }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 
@@ -681,7 +751,7 @@ jobs:
           sudo apt-get update -q
           grep -v '^#' deps.apt | xargs sudo apt-get install -y -q --no-install-recommends
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         if: steps.need.outputs.build == 'true' && matrix.java
         with:
           distribution: temurin
@@ -694,7 +764,7 @@ jobs:
       - name: Restore the pack's build cache
         id: cache
         if: steps.need.outputs.build == 'true'
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ${{ env.PACK_CACHE }}
@@ -717,7 +787,7 @@ jobs:
           echo "rootfs-run=$(sed -n 's/^ROOTFS_RUN=\([0-9][0-9]*\).*/\1/p' build.sh)" >> "$GITHUB_OUTPUT"
           echo "tools-run=$(sed -n 's/^TOOLS_RUN=\([0-9][0-9]*\).*/\1/p' build.sh)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         id: rootfs-artifact
         if: steps.haskell.outputs.rootfs-run
         continue-on-error: true
@@ -727,7 +797,7 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/haskell-ghc-rootfs
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         id: tools-artifact
         if: steps.haskell.outputs.tools-run
         continue-on-error: true
@@ -756,34 +826,16 @@ jobs:
 
       # Saved also when the build failed or was cancelled, so the next run
       # does not start again from nothing. $TOOLCHAIN_CACHE is not in it: the
-      # toolchain store is its durable copy.
+      # toolchain store is its durable copy. The older ones go in the caches
+      # job, on main's ref only.
       - name: Save the pack's build cache
         if: always() && steps.cache.outcome == 'success'
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ${{ env.PACK_CACHE }}
             !${{ env.PACK_CACHE }}/swift/toolchain
           key: light-${{ matrix.pack }}-${{ steps.need.outputs.cache-id }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      # The cache just saved holds everything the older ones of this pack do
-      # (it was restored from the newest of them), so they go: the
-      # repository's caches are capped at 10 GB, which the C++ pack's alone
-      # nearly fills, and otherwise the packs' caches evict one another.
-      - name: Delete the pack's older build caches
-        if: always() && steps.cache.outcome == 'success'
-        run: |
-          gh cache list --repo "$GITHUB_REPOSITORY" --key "light-$PACK-" --sort created_at --order desc \
-            --limit 100 --json key --jq '.[1:][].key' |
-            while read -r key; do gh cache delete "$key" --repo "$GITHUB_REPOSITORY"; done
-
-      # Only an output that built and passed its tests goes in the store; a
-      # pull request from a fork has no right to write it.
-      - name: Put the output in the store
-        if: >-
-          steps.build.outcome == 'success' &&
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        run: ../../scripts/pack-store.sh publish "$PACK"
 
       - name: Check the output
         env:
@@ -818,7 +870,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/toolchain-key"
           echo "tree $(../../scripts/pack-store.sh tree "$PACK")" > "$RUNNER_TEMP/toolchain-key/$PACK"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: inputs.upload
         with:
           name: toolchain-key-${{ matrix.pack }}
@@ -827,9 +879,11 @@ jobs:
           retention-days: 3
 
       # The artifact's root is static/packs, so it holds <pack>/ and the
-      # release can merge every pack into one static/packs.
-      - uses: actions/upload-artifact@v6
-        if: inputs.upload
+      # release can merge every pack into one static/packs. On main, a pack
+      # that built and passed its tests goes to the store-packs job, which
+      # alone may write the store.
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        if: inputs.upload || (steps.build.outcome == 'success' && github.ref == 'refs/heads/main')
         with:
           name: pack-${{ matrix.pack }}
           path: light/app/static/packs/
@@ -837,3 +891,132 @@ jobs:
           include-hidden-files: true
           compression-level: 1
           retention-days: 3
+
+  # Main only: each unit this run's waves built, from its artifact, into the
+  # toolchain store, byte for byte as light-toolchain-unit.yml attested it.
+  # pack-store.sh toolchain-publish refuses an archive whose name is not
+  # HEAD's key, whose toolchain.json is not a clean build at HEAD, or whose
+  # attestation does not say main built it, so nothing in the store fails
+  # its consumers' verification. A unit whose wave job failed left no
+  # artifact; that job says why, and the others are stored.
+  store-units:
+    name: Store the units
+    needs: [plan, wave-1, wave-2, wave-3]
+    if: >-
+      ${{ !cancelled() && !inputs.upload && github.ref == 'refs/heads/main' &&
+      needs.plan.result == 'success' &&
+      (needs.plan.outputs.wave-1 != '[]' || needs.plan.outputs.wave-2 != '[]' || needs.plan.outputs.wave-3 != '[]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # the toolchain store's release
+      actions: read
+      attestations: read
+    env:
+      FROM: ${{ github.workspace }}/../from
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Every unit's artifact is toolchain-<pack>-<unit>-<key>; in a run
+      # without `upload` no other artifact starts with toolchain-.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: toolchain-*
+          merge-multiple: true
+          path: ${{ env.FROM }}
+
+      - name: Put each unit in the store
+        env:
+          WAVE_1: ${{ needs.plan.outputs.wave-1 }}
+          WAVE_2: ${{ needs.plan.outputs.wave-2 }}
+          WAVE_3: ${{ needs.plan.outputs.wave-3 }}
+        run: |
+          failed=0
+          while read -r unit key; do
+            archive="$FROM/toolchain-${unit%%/*}-${unit#*/}-$key.tar.zst"
+            if [ ! -f "$archive" ]; then
+              echo "::warning title=$unit::its wave job left no toolchain, so it is not stored; that job says why"
+              continue
+            fi
+            if light/scripts/pack-store.sh toolchain-publish "$unit" "$archive"; then
+              echo "$unit: stored $key" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error title=$unit::not stored; pack-store.sh says why above"
+              failed=1
+            fi
+          done < <(jq -r -n --argjson a "$WAVE_1" --argjson b "$WAVE_2" --argjson c "$WAVE_3" \
+            '($a + $b + $c)[] | "\(.unit) \(.key)"')
+          exit "$failed"
+
+  # Main only: each unsplit pack the pack job built and tested on main, from
+  # its artifact, into the pack store. (Verifying a stored pack's provenance
+  # is ST1b's.)
+  store-packs:
+    name: Store the packs
+    needs: [plan, pack]
+    if: ${{ !cancelled() && !inputs.upload && github.ref == 'refs/heads/main' && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write # the pack store's release
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # Only the packs this run built: the pack job uploads pack-<pack> on
+      # main only for a build that passed.
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: pack-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/packs
+
+      - name: Put each pack in the store
+        run: |
+          shopt -s nullglob
+          failed=0
+          mkdir -p light/app/static/packs
+          for dir in "$RUNNER_TEMP"/packs/*/; do
+            pack="$(basename "$dir")"
+            mv "$dir" "light/app/static/packs/$pack"
+            if light/scripts/pack-store.sh publish "$pack"; then
+              echo "$pack: stored" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error title=$pack::not stored; pack-store.sh says why above"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  # Main only: every Light build cache on main's own ref but the newest of
+  # each unit and pack (light/scripts/cache-prune.mjs), as the newest was
+  # restored from the older ones and holds what they do. The repository's
+  # caches are capped at 10 GB, which the C++ pack's alone nearly fills.
+  # Never another ref's: a pull request's caches go on a schedule
+  # (light-caches.yml).
+  caches:
+    name: Prune main's build caches
+    needs: [plan, wave-1, wave-2, wave-3, pack]
+    if: ${{ !cancelled() && !inputs.upload && github.ref == 'refs/heads/main' && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write # deleting caches
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Delete main's older build caches
+        run: node light/scripts/cache-prune.mjs --ref "$GITHUB_REF"

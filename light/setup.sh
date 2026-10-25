@@ -20,7 +20,10 @@
 # lists first (apt-get, with sudo); its build caches what it downloads and
 # compiles in ~/.cache/yukibana-packs ($PACK_CACHE). The C++ and Swift packs
 # take hours from nothing; the others minutes. Needs git, curl, tar with zstd,
-# and Node 22 or later.
+# and Node 22 or later. With gh signed in (gh auth login), every toolchain
+# fetched is first verified to have been built on main by CI
+# (scripts/pack-store.sh, Provenance); without it, each one is said to be
+# unverified.
 #
 # Then: `cd app && npm run dev` (http://localhost:5173), or
 # `npm run build && python3 ../serve.py build` for the built site.

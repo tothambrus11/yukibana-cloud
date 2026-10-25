@@ -7,9 +7,12 @@
 // sources (toolchain-key.sh, toolchain-build-env.sh, pack-lib.sh), and the
 // stores hold archives made here. The pack store's `publish` writes to
 // GitHub and is exercised by light-packs.yml itself; `toolchain-publish`
-// runs here against a stand-in `gh` that writes to the same server.
+// runs here against a stand-in `gh` that writes to the same server, and
+// that answers `gh attestation verify` from attestations a test records,
+// as GitHub would for what attest-build-provenance signed. The same server
+// lists and serves Actions artifacts for `toolchain-artifact`.
 //
-//   node --test scripts/test-pack-store.mjs   (from light/; needs git, tar, zstd)
+//   node --test scripts/test-pack-store.mjs   (from light/; needs git, tar, zstd, zip, unzip)
 import assert from 'node:assert/strict';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -68,12 +71,46 @@ const RELEASE_IDS = { 'light-packs': 1, 'light-toolchains': 2 };
 const EMBEDDED = 3;
 /** Every asset-list request the server answered, as its URL. */
 const assetPages = [];
+/**
+ * The repository's Actions artifacts: each a zip of one file, the run's head
+ * branch, and when it was made.
+ * @type {Array<{ id: number, name: string, zip: Buffer, branch: string, created: string, expired?: boolean }>}
+ */
+let artifacts = [];
+/** The ids of the artifacts downloaded. */
+const artifactDownloads = [];
 
-/** What `gh release view|create|upload|delete-asset <tag> …` does to the releases. */
+/** The workflow every stored toolchain's attestation must name as its signer. */
+const SIGNER = 'test/repo/.github/workflows/light-toolchain-unit.yml';
+/**
+ * The attestations GitHub holds, by the sha256 of the file attested: each
+ * the workflow that signed it and the ref its run was on.
+ * @type {Map<string, Array<{ signer: string, ref: string }>>}
+ */
+let attestations = new Map();
+/** Whether `gh auth status` says gh is signed in. */
+let signedIn = false;
+/** Records that `signer` attested `bytes` on `ref`, as attest-build-provenance would. */
+function attest(bytes, ref = 'refs/heads/main', signer = SIGNER) {
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    attestations.set(sha, [...(attestations.get(sha) ?? []), { signer, ref }]);
+}
+/** What `gh attestation verify <file> --repo R --signer-workflow W --source-ref REF --deny-self-hosted-runners` answers. */
+function verify(args) {
+    const opt = (name) => args[args.indexOf(name) + 1];
+    if (!args.includes('--deny-self-hosted-runners') || opt('--repo') !== 'test/repo') return { code: 2, err: 'stand-in gh: verify asked without the expected flags\n' };
+    const sha = createHash('sha256').update(fs.readFileSync(args[2])).digest('hex');
+    const ok = (attestations.get(sha) ?? []).some((a) => a.signer === opt('--signer-workflow') && a.ref === opt('--source-ref'));
+    return ok ? { code: 0, out: 'Verification succeeded!\n' } : { code: 1, err: 'Error: verifying with issuer "sigstore.dev": no matching attestation\n' };
+}
+
+/** What `gh release view|create|upload|delete-asset <tag> …`, `gh auth status` and `gh attestation verify` do. */
 function gh(args) {
     ghCalls.push(args);
     const [group, verb, tag] = args;
     const r = release(tag);
+    if (group === 'auth' && verb === 'status') return signedIn ? { code: 0 } : { code: 1, err: 'You are not logged into any GitHub hosts.\n' };
+    if (group === 'attestation' && verb === 'verify') return verify(args);
     if (group !== 'release') return { code: 2, err: `stand-in gh: no ${group}\n` };
     if (verb === 'view') return r.exists ? { code: 0, out: `${tag}\n` } : { code: 1, err: 'release not found\n' };
     if (verb === 'create') {
@@ -120,6 +157,31 @@ const server = createServer((req, res) => {
         const per = Math.min(Number(q.get('per_page') ?? 30), 100);
         const n = Number(q.get('page') ?? 1);
         return json(listOf(ptag).slice((n - 1) * per, n * per));
+    }
+    const named = /^\/repos\/test\/repo\/actions\/artifacts\?(.*)$/.exec(req.url);
+    if (named) {
+        const name = new URLSearchParams(named[1]).get('name');
+        return json({
+            total_count: 0,
+            artifacts: artifacts
+                .filter((a) => a.name === name)
+                .map((a) => ({
+                    id: a.id,
+                    name: a.name,
+                    expired: a.expired ?? false,
+                    created_at: a.created,
+                    digest: `sha256:${createHash('sha256').update(a.zip).digest('hex')}`,
+                    archive_download_url: `${base}/artifact/${a.id}`,
+                    workflow_run: { head_branch: a.branch },
+                })),
+        });
+    }
+    const zipped = /^\/artifact\/(\d+)$/.exec(req.url);
+    if (zipped) {
+        artifactDownloads.push(Number(zipped[1]));
+        const a = artifacts.find((x) => x.id === Number(zipped[1]));
+        if (!a || req.headers.authorization !== 'Bearer token') return res.writeHead(a ? 401 : 404).end();
+        return res.writeHead(200).end(a.zip);
     }
     if (req.url === '/gh' && req.method === 'POST') {
         let body = '';
@@ -247,7 +309,7 @@ fetch(process.env.FAKE_GH, { method: 'POST', body: JSON.stringify(process.argv.s
 `,
         0o755,
     );
-    put('.gitignore', '/bin/\n/cache/\n/tc-*\n/built-*\n/fetched*\n/out-*\n/light/app/static/packs/\n/light/.pack-trees/\n');
+    put('.gitignore', '/bin/\n/bin-without-*/\n/cache/\n/tc-*\n/built-*\n/fetched*\n/out-*\n/light/app/static/packs/\n/light/.pack-trees/\n');
     // A split pack of one unit, cc, built from its own directory and the
     // pack file src/compiler.c; its glue is everything else.
     put('light/packs/tool/toolchains/cc/paths', '# The compiler is built from its source, besides this directory.\nsrc/compiler.c\n');
@@ -1087,55 +1149,122 @@ test("a unit's archive from the same run is taken only when its name and manifes
     assert.equal((await store('toolchain-unpack', 'other/main', file)).code, 1);
 });
 
-test('a toolchain built from uncommitted inputs or a changed setting is never published or handed on', async () => {
+/** A PATH holding every command this one does but `command`, as links in one directory. */
+function pathWithout(command) {
+    const dir = path.join(root, `bin-without-${command}`);
+    if (fs.existsSync(dir)) return dir;
+    fs.mkdirSync(dir);
+    for (const from of (process.env.PATH ?? '').split(path.delimiter)) {
+        if (!from || !fs.existsSync(from)) continue;
+        for (const name of fs.readdirSync(from)) {
+            if (name === command || fs.existsSync(path.join(dir, name))) continue;
+            fs.symlinkSync(path.join(from, name), path.join(dir, name));
+        }
+    }
+    return dir;
+}
+/** The archive toolchain-archive writes of a toolchain built at HEAD with `manifest` over its own; asserts it was written. */
+async function archived(manifest = {}) {
+    const out = fs.mkdtempSync(path.join(root, 'out-'));
+    const r = await store('toolchain-archive', 'tool/cc', await builtToolchain(manifest), out);
+    assert.equal(r.code, 0, r.err);
+    return r.out.trim();
+}
+/** An archive named as HEAD's toolchain of tool/cc whose toolchain.json is `manifest` over a listing of its files. */
+async function namedArchive(manifest, files) {
+    const file = path.join(fs.mkdtempSync(path.join(root, 'out-')), `toolchain-tool-cc-${await key()}.tar.zst`);
+    fs.writeFileSync(file, toolchainArchive(manifest, files));
+    return file;
+}
+
+test('a toolchain built from uncommitted inputs, a changed setting or another commit is never published or handed on', async () => {
     toolchains = new Map();
+    attestations = new Map();
     ghCalls.length = 0;
     const built = await builtToolchain();
+    const file = await archived();
+    attest(fs.readFileSync(file));
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 6; }\n');
-    for (const args of [['toolchain-publish', 'tool/cc', built], ['toolchain-archive', 'tool/cc', built, path.join(root, 'out-dirty')]]) {
-        const dirty = await store(...args);
-        assert.notEqual(dirty.code, 0);
-        assert.match(dirty.err, /not storing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/src\/compiler\.c/);
-    }
+    const handed = await store('toolchain-archive', 'tool/cc', built, path.join(root, 'out-dirty'));
+    assert.notEqual(handed.code, 0);
+    assert.match(handed.err, /not storing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/src\/compiler\.c/);
     assert.equal(exists('out-dirty'), false);
+    // The archive's name is HEAD's key no longer.
+    const dirty = await store('toolchain-publish', 'tool/cc', file);
+    assert.notEqual(dirty.code, 0);
+    assert.match(dirty.err, /is not toolchain-tool-cc-[0-9a-f]{40}\.tar\.zst, the toolchain of tool\/cc's inputs at HEAD/);
     clean();
 
-    const setting = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool/cc', built);
+    const setting = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool/cc', file);
     assert.notEqual(setting.code, 0);
-    assert.match(setting.err, /toolchain\.json names the inputs "[0-9a-f]{40}", not [0-9a-f]{40}/);
-    assert.match(setting.err, /is not, file for file, a toolchain of HEAD's inputs and settings \([0-9a-f]{40}\)/);
-
-    const otherUnit = await store('toolchain-publish', 'tool/cc', await builtToolchain({ unit: 'other/main' }));
-    assert.notEqual(otherUnit.code, 0);
-    assert.match(otherUnit.err, /toolchain\.json is of unit "other\/main", not tool\/cc/);
-
-    const changed = await builtToolchain();
-    fs.appendFileSync(path.join(changed, 'bin/cc'), '# changed after the build\n');
-    const tampered = await store('toolchain-publish', 'tool/cc', changed);
-    assert.notEqual(tampered.code, 0);
-    assert.match(tampered.err, /bin\/cc changed size/);
+    assert.match(setting.err, /the toolchain of tool\/cc's inputs at HEAD/);
 
     // An uncommitted env leaves the key as it is, yet it decides what
     // reached the build: OPT, made a source setting, passes unkeyed.
     fs.writeFileSync(path.join(root, 'light/packs/tool/toolchains/cc/env'), 'OPT source  # no longer another compiler\n');
-    const reclassified = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool/cc', built);
+    const reclassified = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool/cc', file);
     assert.notEqual(reclassified.code, 0);
     assert.match(reclassified.err, /not storing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/toolchains\/cc\/env/);
     clean();
 
-    const elsewhere = await store('toolchain-publish', 'tool/cc', await builtToolchain({ commit: 'a'.repeat(40) }));
-    assert.notEqual(elsewhere.code, 0);
-    assert.match(elsewhere.err, /was built at a{40}, not at HEAD/);
+    const commitId = git('rev-parse', 'HEAD');
+    for (const [archive, why] of [
+        [await namedArchive({ unit: 'other/main', key: await key(), commit: commitId }), /toolchain\.json is of unit "other\/main", not tool\/cc/],
+        [await namedArchive({ unit: 'tool/cc', key: await key(), commit: 'a'.repeat(40) }), /was built at a{40}, not at HEAD/],
+        [
+            await namedArchive({ unit: 'tool/cc', key: await key(), commit: commitId, files: listing({ 'bin/cc': '#!/bin/sh\n' }).files }, { 'bin/cc': '#!/bin/sh\n# changed after the build\n' }),
+            /bin\/cc is \d+ bytes, not the \d+ listed/,
+        ],
+    ]) {
+        attest(fs.readFileSync(archive));
+        const r = await store('toolchain-publish', 'tool/cc', archive);
+        assert.notEqual(r.code, 0);
+        assert.match(r.err, why);
+    }
 
-    assert.deepEqual(ghCalls, []);
+    assert.deepEqual(ghCalls.filter(([group]) => group === 'release'), []);
     assert.equal(toolchains.size, 0);
+});
+
+test('only a toolchain whose attestation says the unit workflow built it on main is published', async () => {
+    toolchains = new Map();
+    attestations = new Map();
+    ghCalls.length = 0;
+    const file = await archived();
+    const bytes = fs.readFileSync(file);
+    for (const [ref, signer] of [
+        [null, null],
+        ['refs/pull/7/merge', SIGNER],
+        ['refs/heads/feature', SIGNER],
+        ['refs/heads/main', 'test/repo/.github/workflows/other.yml'],
+    ]) {
+        if (ref) attest(bytes, ref, signer);
+        // Unset or not, publishing always asks for the attestation.
+        const r = await storeWith({ LIGHT_TOOLCHAIN_PROVENANCE: undefined }, 'toolchain-publish', 'tool/cc', file);
+        assert.notEqual(r.code, 0, ref);
+        assert.match(r.err, /refused: no attestation says \.github\/workflows\/light-toolchain-unit\.yml of test\/repo built it on refs\/heads\/main/);
+        assert.match(r.err, /gh: Error: verifying/);
+    }
+    assert.equal(toolchains.size, 0);
+    attest(bytes);
+    const r = await store('toolchain-publish', 'tool/cc', file);
+    assert.equal(r.code, 0, r.err);
+    // The bytes stored are the bytes attested.
+    assert.deepEqual(toolchains.get(path.basename(file)).bytes, bytes);
 });
 
 test('publishing a toolchain never removes another, and a full release is refused by name', async () => {
     toolchains = new Map();
     toolchainsExist = false;
+    attestations = new Map();
     ghCalls.length = 0;
-    const first = await store('toolchain-publish', 'tool/cc', await builtToolchain());
+    /** HEAD's archive of tool/cc, attested as main's. */
+    const mainArchive = async () => {
+        const file = await archived();
+        attest(fs.readFileSync(file));
+        return file;
+    };
+    const first = await store('toolchain-publish', 'tool/cc', await mainArchive());
     assert.equal(first.code, 0, first.err);
     const create = ghCalls.find(([, verb]) => verb === 'create');
     assert.ok(create?.includes('--prerelease') && create.includes('--latest=false'), JSON.stringify(create));
@@ -1147,7 +1276,7 @@ test('publishing a toolchain never removes another, and a full release is refuse
     execFileSync('tar', ['--zstd', '-xf', path.join(out, 'a.tar.zst'), '-C', out]);
     assert.equal(JSON.parse(fs.readFileSync(path.join(out, 'toolchain.json'), 'utf8')).key, await key());
 
-    const again = await store('toolchain-publish', 'tool/cc', await builtToolchain());
+    const again = await store('toolchain-publish', 'tool/cc', await mainArchive());
     assert.equal(again.code, 0, again.err);
     assert.match(again.out, /is in the store already/);
     assert.equal(ghCalls.filter(([, verb]) => verb === 'upload').length, 1);
@@ -1157,7 +1286,7 @@ test('publishing a toolchain never removes another, and a full release is refuse
     const kept = new Set(toolchains.keys());
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 7; }\n');
     commit('compiler 7');
-    const warned = await store('toolchain-publish', 'tool/cc', await builtToolchain());
+    const warned = await store('toolchain-publish', 'tool/cc', await mainArchive());
     assert.equal(warned.code, 0, warned.err);
     assert.match(warned.err, /holds 850 of at most 1000 assets; evict toolchains no branch needs with gh release delete-asset light-toolchains <asset>/);
     for (const old of kept) assert.ok(toolchains.has(old), old);
@@ -1167,9 +1296,121 @@ test('publishing a toolchain never removes another, and a full release is refuse
     for (let i = 1000; toolchains.size < 1000; i++) toolchains.set(`toolchain-other-main-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-02T00:00:00Z' });
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 8; }\n');
     commit('compiler 8');
-    const full = await store('toolchain-publish', 'tool/cc', await builtToolchain());
+    const full = await store('toolchain-publish', 'tool/cc', await mainArchive());
     assert.notEqual(full.code, 0);
     assert.match(full.err, /holds 1000 assets, GitHub's cap of 1000; nothing is evicted automatically: remove toolchains no branch needs with gh release delete-asset light-toolchains <asset>/);
     assert.equal(toolchains.size, 1000);
     assert.deepEqual(ghCalls.filter(([, verb]) => verb === 'delete-asset'), []);
+    toolchains = new Map();
+});
+
+test('a toolchain from the store is used only when its attestation says main built it, and CI never uses one unchecked', async () => {
+    const k = await key();
+    const bytes = toolchainArchive({ unit: 'tool/cc', key: k, commit: git('rev-parse', 'HEAD') });
+    toolchains = new Map([[`toolchain-tool-cc-${k}.tar.zst`, { bytes, created: '2026-10-01T00:00:00Z' }]]);
+    attestations = new Map();
+    const target = path.join(root, 'fetched-provenance');
+    const required = { LIGHT_TOOLCHAIN_PROVENANCE: 'required' };
+    // Written by a pull request's run, or by another workflow on main.
+    for (const [ref, signer] of [
+        [null, null],
+        ['refs/pull/7/merge', SIGNER],
+        ['refs/heads/main', 'test/repo/.github/workflows/light-packs.yml'],
+    ]) {
+        if (ref) attest(bytes, ref, signer);
+        const r = await storeWith(required, 'toolchain-fetch', 'tool/cc', target);
+        assert.equal(r.code, 1, r.err);
+        assert.match(r.err, /toolchain-tool-cc-[0-9a-f]{40}\.tar\.zst: refused: no attestation says .* built it on refs\/heads\/main/);
+        assert.equal(fs.existsSync(target), false);
+    }
+    // Without gh, CI fails by name rather than use it unchecked.
+    const nogh = await storeWith({ ...required, PATH: pathWithout('gh') }, 'toolchain-fetch', 'tool/cc', target);
+    assert.equal(nogh.code, 1);
+    assert.match(nogh.err, /gh is needed to verify its provenance/);
+    assert.equal(fs.existsSync(target), false);
+    attest(bytes);
+    const ok = await storeWith(required, 'toolchain-fetch', 'tool/cc', target);
+    assert.equal(ok.code, 0, ok.err);
+    assert.match(ok.err, /built by \.github\/workflows\/light-toolchain-unit\.yml on refs\/heads\/main, as its attestation says/);
+    fs.rmSync(target, { recursive: true, force: true });
+    const bad = await storeWith({ LIGHT_TOOLCHAIN_PROVENANCE: 'off' }, 'toolchain-fetch', 'tool/cc', target);
+    assert.equal(bad.code, 1);
+    assert.match(bad.err, /LIGHT_TOOLCHAIN_PROVENANCE is 'off'; it is 'required' or unset/);
+});
+
+test('on a machine, a toolchain is checked when gh is signed in, and said to be unchecked when it is not', async () => {
+    const k = await key();
+    const bytes = toolchainArchive({ unit: 'tool/cc', key: k, commit: git('rev-parse', 'HEAD') });
+    toolchains = new Map([[`toolchain-tool-cc-${k}.tar.zst`, { bytes, created: '2026-10-01T00:00:00Z' }]]);
+    attestations = new Map();
+    const target = path.join(root, 'fetched-machine');
+    signedIn = false;
+    const unchecked = await store('toolchain-fetch', 'tool/cc', target);
+    assert.equal(unchecked.code, 0, unchecked.err);
+    assert.match(unchecked.err, /its provenance is NOT verified: gh is missing or not signed in here/);
+    fs.rmSync(target, { recursive: true, force: true });
+    signedIn = true;
+    try {
+        const refused = await store('toolchain-fetch', 'tool/cc', target);
+        assert.equal(refused.code, 1);
+        assert.match(refused.err, /refused: no attestation says/);
+        attest(bytes);
+        const checked = await store('toolchain-fetch', 'tool/cc', target);
+        assert.equal(checked.code, 0, checked.err);
+        assert.match(checked.err, /as its attestation says/);
+    } finally {
+        signedIn = false;
+        fs.rmSync(target, { recursive: true, force: true });
+    }
+});
+
+/** A zip holding `bytes` as the one file `name`, as upload-artifact makes one. */
+function zipOf(name, bytes) {
+    const dir = fs.mkdtempSync(path.join(root, 'out-'));
+    fs.writeFileSync(path.join(dir, name), bytes);
+    execFileSync('zip', ['-q', '-0', 'a.zip', name], { cwd: dir });
+    return fs.readFileSync(path.join(dir, 'a.zip'));
+}
+
+test("a pull request reuses its own earlier build of a unit, and never another pull request's", async () => {
+    const file = await archived();
+    const name = path.basename(file, '.tar.zst');
+    const mine = fs.readFileSync(file);
+    const theirs = toolchainArchive({ unit: 'tool/cc', key: await key(), commit: git('rev-parse', 'HEAD') }, { 'bin/cc': '#!/bin/sh\necho theirs\n' });
+    attestations = new Map();
+    attest(mine, 'refs/pull/7/merge');
+    attest(theirs, 'refs/pull/8/merge');
+    artifactDownloads.length = 0;
+    // Newest first: another pull request's of the same name and branch, then
+    // one of another branch, then an expired one, then this one's.
+    artifacts = [
+        { id: 1, name, zip: zipOf(`${name}.tar.zst`, mine), branch: 'feature', created: '2026-10-01T00:00:00Z' },
+        { id: 2, name, zip: zipOf(`${name}.tar.zst`, mine), branch: 'feature', created: '2026-10-02T00:00:00Z', expired: true },
+        { id: 3, name, zip: zipOf(`${name}.tar.zst`, theirs), branch: 'other', created: '2026-10-03T00:00:00Z' },
+        { id: 4, name, zip: zipOf(`${name}.tar.zst`, theirs), branch: 'feature', created: '2026-10-04T00:00:00Z' },
+    ];
+    const out = path.join(root, 'out-artifact');
+    const token = { GH_TOKEN: 'token' };
+    const r = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', 'refs/pull/7/merge', '--branch', 'feature');
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out.trim(), path.join(out, `${name}.tar.zst`));
+    assert.deepEqual(fs.readFileSync(r.out.trim()), mine);
+    assert.match(r.err, /artifact 4 has no attestation that .* built it on refs\/pull\/7\/merge; skipping it/);
+    assert.match(r.err, /taking artifact 1/);
+    // The other branch's and the expired one were never downloaded.
+    assert.deepEqual(artifactDownloads, [4, 1]);
+    // The pull request it was attested for is the only one that takes it.
+    fs.rmSync(out, { recursive: true, force: true });
+    const other = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', 'refs/pull/9/merge');
+    assert.equal(other.code, 3, other.err);
+    assert.match(other.err, /no artifact toolchain-tool-cc-[0-9a-f]{40} built on refs\/pull\/9\/merge; it builds/);
+    assert.equal(fs.existsSync(out), false);
+    // Another key's artifact is not even looked at.
+    artifacts = [];
+    const none = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', 'refs/pull/7/merge');
+    assert.equal(none.code, 3);
+    assert.match(none.err, /no unexpired artifact toolchain-tool-cc-/);
+    const noToken = await store('toolchain-artifact', 'tool/cc', out, '--ref', 'refs/pull/7/merge');
+    assert.equal(noToken.code, 1);
+    assert.match(noToken.err, /needs GH_TOKEN/);
 });

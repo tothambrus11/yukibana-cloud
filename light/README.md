@@ -100,12 +100,25 @@ the pin rule.
 
 * `.github/workflows/light-packs.yml` runs on every push that touches a pack.
   An unsplit pack whose tree has a build already is only looked up; one
-  that changed is built and tested by its `build.sh` and stored. The units
-  the store lacks are built one per job, in three waves by depth, each
-  handing its toolchain to the next as an artifact of the run
-  (`light-toolchain-unit.yml`), and each split pack is then assembled over
-  its units and tested. So a pack is tested on the push that changed it,
-  and on no other.
+  that changed is built and tested by its `build.sh`, and stored when the
+  push is to main. The units the store lacks are built one per job, in
+  three waves by depth, each handing its toolchain to the next as an
+  artifact of the run (`light-toolchain-unit.yml`), and each split pack is
+  then assembled over its units and tested. So a pack is tested on the push
+  that changed it, and on no other.
+* Only main writes the stores, and a toolchain is used only if its
+  provenance says main built it. Each unit's archive is attested by
+  `light-toolchain-unit.yml` with its run's OIDC token, and every fetch from
+  `light-toolchains` (in CI, in a release, and in `setup.sh` when `gh` is
+  signed in) runs `gh attestation verify` for that workflow and
+  `refs/heads/main` first, failing by name otherwise; without a signed-in
+  `gh`, `setup.sh` says the toolchain is unverified. A pull request's run
+  has read-only permissions, keeps its units as artifacts, and reuses them
+  on its own later pushes when their attestation names its ref; it never
+  writes a store or deletes a cache. Main's run prunes main's older build
+  caches, and `light-caches.yml` prunes pull requests' daily
+  (`scripts/cache-prune.mjs`, always with `--ref`). Third-party actions are
+  pinned by commit. `scripts/test-workflows.mjs` keeps these rules.
 * `.github/workflows/light-ci.yml` checks the app (types, unit tests, the
   JavaScript pack end to end) when the app, or a pack file its tests read,
   changed. Every job in the repository's CI runs only when the inputs its
@@ -119,6 +132,12 @@ the pin rule.
   `{"toolchains": {<unit>: <key>}}` for a split pack, `{"tree": <git tree
   id>}` for any other) and `toolchains.json` (the units' keys alone, by
   `<pack>/<unit>`). Run by hand, it only uploads the archive as the run's artifact.
+  A release is published as a draft with every asset first, so that with
+  release immutability on, its assets and tag never change afterwards; a
+  repository admin turns that on once, with a tag ruleset that keeps
+  `light-v*` tags from moving or being deleted, by running
+  `scripts/protect-releases.sh`, which makes sure the two stores exist
+  first and undoes itself if they would be locked.
   On a tag it also deploys the build to https://light.yukibana.dev
   (`deploy/deploy.sh`: a Worker with the build as its static assets, COOP
   and COEP on every response, the `.br` copy of each file, and the few pack

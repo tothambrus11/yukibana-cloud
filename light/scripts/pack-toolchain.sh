@@ -30,9 +30,13 @@
 #                  by file like a fetch. A corrupt one fails; a missing one
 #                  is no error.
 #         fetch    from the store, unless the build would be dirty or
-#                  --no-fetch is given. --any then fetches the unit's newest
+#                  --no-fetch is given, once its attestation says
+#                  light-toolchain-unit.yml built it on main (pack-store.sh,
+#                  Provenance; CI sets LIGHT_TOOLCHAIN_PROVENANCE=required,
+#                  and a machine without a signed-in gh is told it is
+#                  unverified). --any then fetches the unit's newest
 #                  toolchain whatever its key, saying it is not this commit's
-#                  (setup.sh --latest).
+#                  (setup.sh --latest), and verified the same way.
 #         build    exit 3 instead with --fetch-only; exit 4 instead when the
 #                  build would be dirty and --build-dirty is not given.
 #                  Otherwise every unit it needs is ensured first, by this
@@ -179,7 +183,8 @@
 # Environment: TOOLCHAIN_CACHE (~/.cache/yukibana-toolchains), passed on to
 # pack-store.sh; ALLOW_OTHER_TOOLCHAIN; and whatever toolchain_env_args
 # passes to a build. pack-store.sh's own (LIGHT_PACKS_REPO, LIGHT_PACKS_API,
-# LIGHT_TOOLCHAINS_TAG, GH_TOKEN) reach it unchanged.
+# LIGHT_TOOLCHAINS_TAG, LIGHT_TOOLCHAIN_PROVENANCE, GH_TOKEN) reach it
+# unchanged.
 set -euo pipefail
 shopt -s inherit_errexit
 
