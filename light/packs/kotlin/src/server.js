@@ -1,17 +1,21 @@
-// Yukibana Kotlin pack: a language server that reads Kotlin's syntax and
-// nothing more, in a module Web Worker. One JSON-RPC message per
-// postMessage, as CONTRACT.md says.
+// Yukibana Kotlin pack: the language server, in a module Web Worker. One
+// JSON-RPC message per postMessage, as CONTRACT.md says.
 //
-// There is no Kotlin compiler that runs in a browser (README.md), so this is
-// tree-sitter (web-tree-sitter, with the tree-sitter-kotlin grammar) and
-// name resolution done on the trees: what is declared where, which
-// declarations a scope sees, and the type a variable was declared with or
-// constructed as. That is enough for syntax errors, symbols, definition,
-// references, rename, hover with KDoc, signature help and completion of
-// names, of the members of the project's own classes and of their enum
-// entries (`Color.`, and in `when (color) {`). It is not type checking: a
-// type error, an unresolved name or a wrong argument is not reported, and
-// the members of a library type (String, List) are not known.
+// Diagnostics are the real compiler's: kotlinc (K2) in WebAssembly, in a
+// worker of this server's own (check.js), checks the whole project after
+// each edit, for Kotlin/Wasm with the WASI target as Run does. Until it has
+// downloaded (about 25 MB), and if it cannot start, syntax errors come from
+// the trees below.
+//
+// Everything else is tree-sitter (web-tree-sitter, with the
+// tree-sitter-kotlin grammar) and name resolution done on the trees: what is
+// declared where, which declarations a scope sees, and the type a variable
+// was declared with or constructed as. That is enough for symbols,
+// definition, references, rename, hover with KDoc, signature help and
+// completion of names, of the members of the project's own classes and of
+// their enum entries (`Color.`, and in `when (color) {`). The members of a
+// library type (String, List) are not known to it: kotlinc's analysis is
+// not exposed beyond its diagnostics yet (README.md).
 
 import { Parser, Language } from './tree-sitter.js';
 
@@ -514,6 +518,90 @@ function syntaxErrors(doc) {
     return out;
 }
 
+// ---- Diagnostics: kotlinc's
+
+/**
+ * kotlinc in its worker. state: 'loading' until it can check, then
+ * 'ready'; 'failed' if it cannot start (syntax errors only, then).
+ */
+const checker = { worker: null, state: 'loading', id: 0, snapshot: null };
+try {
+    checker.worker = new Worker(new URL('check.js', import.meta.url), { type: 'module' });
+    checker.worker.onmessage = ({ data }) => onChecker(data);
+    checker.worker.onerror = (e) => {
+        e.preventDefault?.();
+        checkerFailed(e.message ?? String(e));
+    };
+} catch (e) {
+    checker.state = 'failed';
+    log(`kotlinc: cannot start its worker: ${e?.message ?? e}`, 1);
+}
+
+function checkerFailed(error) {
+    if (checker.state === 'failed') return;
+    checker.state = 'failed';
+    log(`kotlinc failed to start, so only syntax errors are shown: ${error}`, 1);
+    for (const uri of docs.keys()) pending.add(uri);
+    publish();
+}
+
+function onChecker(m) {
+    if (m.type === 'loading') {
+        send({ jsonrpc: '2.0', method: 'yukibana/loading', params: { label: m.label, loaded: m.loaded, total: m.total } });
+    } else if (m.type === 'ready') {
+        checker.state = 'ready';
+        const t = m.timings;
+        log(`kotlinc ${m.versions?.kotlin ?? ''} (WebAssembly, GraalVM Web Image) ready: downloaded in ${t.download} ms, instantiated in ${t.instantiate} ms, libraries in ${t.libraries} ms`);
+        requestCheck();
+    } else if (m.type === 'failed') {
+        checkerFailed(m.error);
+    } else if (m.type === 'checked') {
+        if (m.id !== checker.id || !checker.snapshot) return;
+        publishChecked(checker.snapshot, m.messages);
+        log(`kotlinc checked the project in ${m.ms} ms`, 4);
+    }
+}
+
+/** Asks kotlinc to check every .kt document as it is now. */
+function requestCheck() {
+    const files = {};
+    const snapshot = new Map();
+    for (const [uri, doc] of docs) {
+        if (!uri.endsWith('.kt')) continue;
+        files[pathOf(uri)] = doc.text;
+        snapshot.set(uri, doc.version);
+    }
+    checker.snapshot = snapshot;
+    checker.worker.postMessage({ type: 'check', id: ++checker.id, files });
+}
+
+const SEVERITY = { error: 1, exception: 1, 'strong warning': 2, warning: 2, info: 3 };
+
+/** Publishes a check's messages for each document that has not changed since. */
+function publishChecked(snapshot, messages) {
+    const byUri = new Map([...snapshot.keys()].map((uri) => [uri, []]));
+    const uriOf = new Map([...snapshot.keys()].map((uri) => [`/workspace/${pathOf(uri)}`, uri]));
+    for (const m of messages) {
+        const uri = m.path ? uriOf.get(m.path) : null;
+        const list = uri && byUri.get(uri);
+        if (!list || !(m.line > 0)) {
+            if (m.severity !== 'info') log(`kotlinc: ${m.severity}: ${m.message}`, m.severity === 'warning' ? 2 : 1);
+            continue;
+        }
+        const start = { line: m.line - 1, character: Math.max(0, m.column - 1) };
+        const ends = m.lineEnd > 0 && (m.lineEnd > m.line || (m.lineEnd === m.line && m.columnEnd > m.column));
+        const end = ends ? { line: m.lineEnd - 1, character: m.columnEnd - 1 } : { line: start.line, character: start.character + 1 };
+        list.push({ range: { start, end }, severity: SEVERITY[m.severity] ?? 1, source: 'kotlinc', message: m.message });
+    }
+    for (const [uri, diagnostics] of byUri) {
+        const doc = docs.get(uri);
+        if (!doc || doc.version !== snapshot.get(uri)) continue;
+        send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, version: doc.version, diagnostics } });
+    }
+}
+
+// ---- Publishing
+
 let timer = 0;
 const pending = new Set();
 function schedule(uri) {
@@ -521,13 +609,25 @@ function schedule(uri) {
     clearTimeout(timer);
     timer = setTimeout(publish, 150);
 }
+/**
+ * Syntax errors for what kotlinc does not check (a .kts script, or every
+ * document while it is not ready), and a new check for the rest: its
+ * result replaces the diagnostics when it comes.
+ */
 function publish() {
     clearTimeout(timer);
+    let check = false;
     for (const uri of pending) {
         const doc = docs.get(uri);
-        if (doc) send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, version: doc.version, diagnostics: syntaxErrors(doc) } });
+        if (!doc) continue;
+        if (checker.state !== 'failed' && uri.endsWith('.kt')) {
+            check = true;
+            if (checker.state === 'ready') continue;
+        }
+        send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, version: doc.version, diagnostics: syntaxErrors(doc) } });
     }
     pending.clear();
+    if (check && checker.state === 'ready') requestCheck();
 }
 
 // ---- Requests
@@ -624,7 +724,7 @@ function parametersOf(d) {
 const requests = {
     initialize: async () => {
         await ready;
-        return { capabilities, serverInfo: { name: `tree-sitter-kotlin ${manifest.versions.kotlinGrammar} (syntax only)`, version: manifest.versions.kotlinGrammar } };
+        return { capabilities, serverInfo: { name: `kotlinc ${manifest.versions.kotlin} (diagnostics) and tree-sitter-kotlin ${manifest.versions.kotlinGrammar}`, version: manifest.versions.kotlin } };
     },
     shutdown: async () => { shutDown = true; return null; },
     'textDocument/completion': (p) => {
@@ -797,6 +897,8 @@ const notifications = {
         docs.delete(uri);
         pending.delete(uri);
         send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, diagnostics: [] } });
+        // The others may have used what it declared.
+        if (uri.endsWith('.kt') && checker.state === 'ready') requestCheck();
     },
     'workspace/didChangeWatchedFiles': () => {},
 };
