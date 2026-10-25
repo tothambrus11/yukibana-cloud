@@ -69,6 +69,7 @@ what it produces. The options, as of October 2026:
 | `junit.jar` | 383 KB | 345 KB | 338 KB | JUnit Jupiter API 5.14.4, Platform Commons 1.14.4, opentest4j 1.3.0, apiguardian 1.1.2: class files only |
 | `server.js` | 19 KB | 6 KB | 5 KB | ours: the LSP worker |
 | `runner.js` | 28 KB | 9 KB | 8 KB | ours: the Run / Test worker |
+| `explorer.js`, `classfile.js` | 26 KB | 9 KB | 8 KB | ours: the bytecode view's worker and its class file listing |
 | `manifest.json`, `LICENSE-*.txt` | | | | sizes and versions; licences (below) |
 
 The language server transfers **2.0 MB** with brotli (`compiler.wasm`,
@@ -106,6 +107,36 @@ TeaVM takes (2 s of the sample's 2.7 s Run) more than how a student's
 program behaves; javac itself has no optimisation levels. Not measured;
 the app's Optimization select is not shown for Java. Download's Maven
 project runs on the JVM, whose JIT has no level either.
+
+## The bytecode view (src/explorer.js, src/classfile.js)
+
+The app's **Bytecode** button lists the class files javac writes for the
+active source as `javap -c -p` lists them (../CONTRACT.md, "Showing
+compiler output"), each instruction mapped to its source line by its
+method's LineNumberTable (javac writes one by default, and no columns).
+The worker compiles the project with the language server's javac
+(`compiler.wasm`, already cached once the editor has loaded) and reads the
+jar it returns: there is no javap in the browser, so `classfile.js` reads
+the class files itself (constant pool, methods, Code and LineNumberTable,
+every opcode, switches and `wide` included). Nothing is linked, so
+`classlib-teavm.bin` is not downloaded.
+
+* A file's classes are the ones whose SourceFile is its name and whose
+  package is its directory: nested, local, anonymous and record classes
+  each have a class file, and all are listed, in the order of their first
+  line.
+* **Details** shows the constant pool indices as javap does
+  (`invokevirtual #7 // Method geometry/Point.norm:()D`), each method's
+  `stack=, locals=`, and the synthetic methods javac makes up (bridges,
+  accessors); off, a constant is shown by what it is
+  (`invokevirtual geometry/Point.norm:()D`, own members without their
+  class) and a lambda's body is the only synthetic method kept.
+* A test file (`src/test/java/`, `tests/`) is compiled with the tests and
+  JUnit on the class path, as Test does; any other file without them.
+
+`test-classfile.mjs` checks the listing against what a desktop JDK's javap
+printed for the class files its javac wrote for
+`tests/fixtures/sample.json` (`tests/fixtures/gen.sh` makes both again).
 
 ## What we changed
 

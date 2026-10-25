@@ -16,6 +16,8 @@
 #                      needs (junit-platform-commons, opentest4j, apiguardian-api)
 #   server.js          the language server worker (src/server.js)
 #   runner.js          the Run / Test worker (src/runner.js)
+#   explorer.js, classfile.js  the bytecode view's worker and its class file
+#                      listing (src/)
 #   manifest.json      file names, sizes and versions
 #   LICENSE-*.txt      the licences of what is shipped (scripts/licences.py)
 #   *.gz, *.br         compressed siblings
@@ -151,7 +153,7 @@ cp "$B/generated/teavm/wasm-gc/compiler.wasm" "$OUT/compiler.wasm"
 cp "$B/generated/teavm/wasm-gc/compiler.wasm-runtime.js" "$OUT/teavm-runtime.js"
 cp "$B/classlib/compile-classlib-teavm.bin" "$OUT/classlib-javac.bin"
 cp "$B/classlib/runtime-classlib-teavm.bin" "$OUT/classlib-teavm.bin"
-cp "$HERE/src/server.js" "$HERE/src/runner.js" "$OUT/"
+cp "$HERE/src/server.js" "$HERE/src/runner.js" "$HERE/src/explorer.js" "$HERE/src/classfile.js" "$OUT/"
 # ASM's licence is only in its sources' headers: the sources jar, pinned.
 SHA256[asm-9.8-sources.jar]=c6294794f956f21e2b252a9bf65a96ce0489fb4c0f978447d85c8a75e485b633
 fetch org/ow2/asm/asm/9.8/asm-9.8-sources.jar asm-9.8-sources.jar
