@@ -296,9 +296,14 @@ test('a release run fails by name when a unit of a split pack is not in the stor
     const assemble = stepsOf(/** @type {Job} */ (jobs.assemble));
     const step = assemble.find((s) => s.name === 'A release never builds a compiler');
     assert.ok(step, 'the assemble job has the step');
-    assert.match(String(step.if), /inputs\.upload && steps\.units\.outputs\.missing != ''/);
+    assert.match(String(step.if), /inputs\.upload && !inputs\.stored && steps\.units\.outputs\.missing != ''/);
     assert.match(String(step.run), /::error title=.*a release never builds a compiler/);
     assert.match(String(step.run), /exit 1/);
+    // A branch deploy neither builds: it ships the newest stored build, said as a warning.
+    const fallback = stepById(assemble, 'fallback');
+    assert.match(String(fallback.if), /inputs\.upload && inputs\.stored && steps\.units\.outputs\.missing != ''/);
+    assert.match(String(fallback.run), /pack-store\.sh fetch "\$PACK" --any/);
+    assert.match(String(fallback.run), /::warning title=\$PACK::/);
     // and the units it looks for are fetched, never built
     assert.match(String(stepById(assemble, 'units').run), /ensure "\$unit" --fetch-only/);
 });

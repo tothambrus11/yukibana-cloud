@@ -556,7 +556,7 @@ jobs:
           echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
 
       - name: A release never builds a compiler
-        if: ${{ inputs.upload && steps.units.outputs.missing != '' }}
+        if: ${{ inputs.upload && !inputs.stored && steps.units.outputs.missing != '' }}
         env:
           MISSING: ${{ steps.units.outputs.missing }}
         run: |
@@ -564,6 +564,23 @@ jobs:
             echo "::error title=$unit::no toolchain of $unit for this commit in light-toolchains; a release never builds a compiler. Run light-packs on main for this commit first."
           done
           exit 1
+
+      # A branch deploy (`stored`) neither builds a compiler: while main has
+      # none of this pack's units for these sources, it ships the newest
+      # build the pack store kept, from before the pack was split, as the
+      # deploy rule does for an unsplit pack, said as a warning and in the
+      # summary. Before 2026-10-25 this failed the deploy, and with cpp split
+      # and PR #71 not merged, every branch deploy failed.
+      - name: A deploy takes the newest stored build
+        id: fallback
+        if: ${{ inputs.upload && inputs.stored && steps.units.outputs.missing != '' }}
+        env:
+          MISSING: ${{ steps.units.outputs.missing }}
+        run: |
+          light/scripts/pack-store.sh fetch "$PACK" --any
+          got="$(cat "light/.pack-trees/$PACK")"
+          echo "::warning title=$PACK::light-toolchains has none of $MISSING for this commit; deploying the newest stored build of $PACK, $got"
+          echo "$PACK: **not this commit's sources**: deployed the newest stored build, $got (missing units: $MISSING)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: A unit this run should have built
         if: ${{ !inputs.upload && steps.units.outputs.missing != '' }}
@@ -634,8 +651,14 @@ jobs:
       # whose name no pack-* pattern matches.
       - name: Record what the pack was made from
         if: inputs.upload
+        env:
+          FALLBACK: ${{ steps.fallback.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/toolchain-key"
+          if [ "$FALLBACK" = true ]; then
+            echo "tree $(cat "light/.pack-trees/$PACK")" > "$RUNNER_TEMP/toolchain-key/$PACK"
+            exit 0
+          fi
           while read -r dir; do
             jq -r '"toolchain \(.unit) \(.key)"' "$dir/toolchain.json"
           done < "$RUNNER_TEMP/dirs" > "$RUNNER_TEMP/toolchain-key/$PACK"

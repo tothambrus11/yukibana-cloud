@@ -52,13 +52,13 @@ function commitDemo(content) {
 }
 
 /** A store archive of a demo pack whose server.js says `marker`. */
-function archive(marker, { serverJs = true } = {}) {
+function archive(marker, { serverJs = true, pack = 'demo' } = {}) {
     const dir = fs.mkdtempSync(path.join(root, 'out-'));
-    fs.mkdirSync(path.join(dir, 'demo'));
-    if (serverJs) fs.writeFileSync(path.join(dir, 'demo/server.js'), `// ${marker}\n`);
-    fs.writeFileSync(path.join(dir, 'demo/runner.js'), '');
+    fs.mkdirSync(path.join(dir, pack));
+    if (serverJs) fs.writeFileSync(path.join(dir, `${pack}/server.js`), `// ${marker}\n`);
+    fs.writeFileSync(path.join(dir, `${pack}/runner.js`), '');
     const file = path.join(dir, 'a.tar.zst');
-    execFileSync('tar', ['--zstd', '-cf', file, '-C', dir, 'demo']);
+    execFileSync('tar', ['--zstd', '-cf', file, '-C', dir, pack]);
     return fs.readFileSync(file);
 }
 
@@ -758,6 +758,17 @@ test('a split pack is never put in the pack store', async () => {
         assert.match(r.err, /tool: split pack: fetch its toolchain units and assemble \(pack-toolchain\.sh\)/);
     }
     assert.equal(exists('light/app/static/packs/tool'), false);
+});
+
+test("fetch --any of a split pack takes the newest build from before it was split, a branch deploy's fallback", async () => {
+    assets.set('tool-1111111111111111111111111111111111111111.tar.zst', { bytes: archive('older', { pack: 'tool' }), created: '2026-09-01T00:00:00Z' });
+    assets.set('tool-2222222222222222222222222222222222222222.tar.zst', { bytes: archive('newest', { pack: 'tool' }), created: '2026-10-02T00:00:00Z' });
+    const r = await store('fetch', 'tool', '--any');
+    assert.equal(r.code, 0, r.err);
+    assert.equal(fs.readFileSync(path.join(light, 'app/static/packs/tool/server.js'), 'utf8'), '// newest\n');
+    assert.equal(fs.readFileSync(path.join(light, '.pack-trees/tool'), 'utf8').trim(), '2222222222222222222222222222222222222222');
+    for (const name of [...assets.keys()].filter((n) => n.startsWith('tool-'))) assets.delete(name);
+    fs.rmSync(path.join(light, 'app/static/packs/tool'), { recursive: true, force: true });
 });
 
 test('the plan puts every unit in a wave after the units it needs, and leaves out the ones the store has', async () => {

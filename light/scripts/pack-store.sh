@@ -29,7 +29,9 @@
 # light/setup.sh reads to skip a pack that is already current.
 #
 # A split pack (one with packs/<pack>/toolchains/) is never in this store:
-# `has`, `fetch` and `publish` exit 2 for one. Its toolchain is one or more
+# `has`, `fetch` and `publish` exit 2 for one, except `fetch <pack> --any`,
+# which takes the newest build stored before the pack was split (a branch
+# deploy's fallback while main has none of its units, light-packs.yml). Its toolchain is one or more
 # units (packs/<pack>/toolchains/<unit>/, named <pack>/<unit>), each kept in
 # the toolchain store under a key of its own inputs, and the pack assembled
 # over all of them (pack-toolchain.sh), so a glue edit rebuilds nothing and
@@ -347,8 +349,14 @@ has() {
 
 fetch() {
   local pack="$1" any="${2:-}" want name sha url
-  not_split "$pack"
-  want="$pack-$(tree "$pack").tar.zst"
+  # A split pack's assembled output is never stored under its tree, so with
+  # --any the newest build from before the split is the only one there is.
+  if [ "$any" = --any ] && [ -d "$LIGHT/packs/$pack/toolchains" ]; then
+    want="$pack-(split, so none of these sources).tar.zst"
+  else
+    not_split "$pack"
+    want="$pack-$(tree "$pack").tar.zst"
+  fi
   local list
   list="$(assets)"
   read -r name sha _ url < <(asset_line "$want" "$list") || true
