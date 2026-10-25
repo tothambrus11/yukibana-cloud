@@ -212,9 +212,10 @@ test('a release run never skips a pack', () => {
 });
 
 test('every script the toolchain key reads starts the pack workflow', () => {
+    const scripts = ['toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'pack-store.sh', 'pack-toolchain.sh'];
     for (const event of ['push', 'pull_request']) {
         const paths = workflow.on[event].paths;
-        for (const script of ['light/scripts/toolchain-env.sh', 'light/scripts/pack-toolchain.sh']) {
+        for (const script of scripts.map((name) => `light/scripts/${name}`)) {
             assert.ok(paths.includes(script), `${script} is not in on.${event}.paths`);
         }
     }

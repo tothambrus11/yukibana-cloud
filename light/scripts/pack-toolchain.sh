@@ -35,7 +35,7 @@
 #       glue's versions check.
 #   pack-toolchain.sh record-state <pack>
 #       Prints "<tree of packs/<pack>> <blob of pack-toolchain.sh> <blob of
-#       toolchain-env.sh> <key>", the state setup.sh records for a pack
+#       toolchain-build-env.sh> <key>", the state setup.sh records for a pack
 #       assembled at HEAD, or exits 5 naming why the assembled pack is not
 #       HEAD's: an uncommitted change to the pack or to assembly, a dirty
 #       build, or another commit's toolchain.
@@ -48,10 +48,17 @@
 #   split pack     a pack with packs/<pack>/toolchain.paths. Its output is
 #                  the toolchain plus the glue, never kept whole in a store.
 #   toolchain      what packs/<pack>/toolchain.sh builds from the files
-#                  toolchain_specs names (toolchain-env.sh): compilers,
+#                  toolchain_specs names (toolchain-key.sh): compilers,
 #                  sysroots, runtimes. Hours of work, changed rarely.
+#   build env      toolchain-build-env.sh: what reaches toolchain.sh besides
+#                  its inputs (the variables let through, the JVM's proxy
+#                  flags, the stage). One of every toolchain's inputs, so
+#                  changing it rebuilds them all.
 #   key            the hash of exactly those inputs and the set variant
-#                  knobs (pack-store.sh toolchain-key). One key, one toolchain.
+#                  knobs (pack-store.sh toolchain-key, defined by
+#                  toolchain-key.sh, which is no input itself: a change of
+#                  what it computes bumps the key's format tag). One key, one
+#                  toolchain.
 #   knob           a variable toolchain.env declares, the only one besides the
 #                  fixed and transport variables that reaches toolchain.sh.
 #                  A `variant` knob changes the output: setting it changes the
@@ -74,7 +81,8 @@
 #                  versions.json has every version the glue reads, and exits
 #                  non-zero naming what is missing.
 #   assembly       this script and toolchain-manifest.mjs: part of no key, so
-#                  changing them rebuilds nothing.
+#                  changing them rebuilds nothing; nor does changing the
+#                  helpers they share with pack-store.sh (pack-lib.sh).
 #   sidecar        app/node_modules/.cache/yukibana/toolchain-<pack>.json,
 #                  written by assemble: the toolchain's files with their
 #                  sha256 and their mtimes in the assembled pack, so a later
@@ -91,9 +99,9 @@
 #
 # Removal. A toolchain's files are read-only, and the files of an assembled
 # pack are hard links to them: the same inodes. So a tree is only ever
-# removed by remove_tree, which makes its directories writable and never
-# chmods a file: a chmod on a linked file would make the toolchain in the
-# cache writable too.
+# removed by remove_tree (pack-lib.sh), which makes its directories
+# writable and never chmods a file: a chmod on a linked file would make the
+# toolchain in the cache writable too.
 #
 # Environment: TOOLCHAIN_CACHE (~/.cache/yukibana-toolchains), passed on to
 # pack-store.sh; ALLOW_OTHER_TOOLCHAIN; and whatever toolchain_env_args
@@ -112,20 +120,13 @@ SIDECARS="$LIGHT/app/node_modules/.cache/yukibana"
 # included: the current one and the one before, to switch branches cheaply.
 KEEP_LOCAL=2
 
-# shellcheck source=toolchain-env.sh
-source "$LIGHT/scripts/toolchain-env.sh"
+# shellcheck source=toolchain-key.sh
+source "$LIGHT/scripts/toolchain-key.sh"
+# shellcheck source=pack-lib.sh
+source "$LIGHT/scripts/pack-lib.sh"
 
 say() { echo "pack-toolchain.sh: $*" >&2; }
 die() { say "$*"; exit 1; }
-
-# Removes the tree $1, which may hold read-only files that are hard links
-# into a toolchain: only its directories are made writable, which is all
-# removing their entries needs. See "Removal" above.
-remove_tree() {
-  [ -e "$1" ] || [ -L "$1" ] || return 0
-  find "$1" -type d -exec chmod u+w {} +
-  rm -rf "$1"
-}
 
 # A stage and a half-built toolchain or pack, removed however the script ends.
 stage=""
@@ -417,7 +418,7 @@ record_state() {
   split_pack "$pack"
   refuse() { say "$pack: not recording the assembled pack as HEAD's: $*"; exit 5; }
   tree="$(git -C "$LIGHT" rev-parse "HEAD:light/packs/$pack")"
-  dirty="$(git -C "$LIGHT" status --porcelain --untracked-files=all -- "packs/$pack" scripts/pack-toolchain.sh scripts/toolchain-env.sh scripts/toolchain-manifest.mjs)"
+  dirty="$(git -C "$LIGHT" status --porcelain --untracked-files=all -- "packs/$pack" scripts/pack-toolchain.sh scripts/pack-lib.sh scripts/toolchain-key.sh scripts/toolchain-build-env.sh scripts/toolchain-manifest.mjs)"
   [ -z "$dirty" ] || refuse "uncommitted changes:"$'\n'"$dirty"
   [ -z "${ALLOW_OTHER_TOOLCHAIN:-}" ] || refuse "ALLOW_OTHER_TOOLCHAIN is set: the pack may be over another commit's toolchain"
   sidecar="$(sidecar_of "$pack")"
@@ -429,7 +430,7 @@ record_state() {
   [ "$sother" != 1 ] || refuse "it was assembled over another commit's toolchain"
   key="$(key_of "$pack")"
   [ "$skey" = "$key" ] || refuse "it was assembled over the toolchain $skey, but HEAD's inputs give $key"
-  echo "$tree $(git -C "$LIGHT" hash-object scripts/pack-toolchain.sh) $(git -C "$LIGHT" hash-object scripts/toolchain-env.sh) $key"
+  echo "$tree $(git -C "$LIGHT" hash-object scripts/pack-toolchain.sh) $(git -C "$LIGHT" hash-object scripts/toolchain-build-env.sh) $key"
 }
 
 case "${1:-}" in

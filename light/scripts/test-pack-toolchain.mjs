@@ -1,10 +1,12 @@
 // Tests of pack-toolchain.sh, through which every split pack's toolchain is
 // reused, fetched or built, and every split pack assembled: a throwaway git
 // repository laid out like this one (light/scripts with copies of
-// pack-toolchain.sh, pack-store.sh, toolchain-env.sh and
-// toolchain-manifest.mjs, and the split pack light/packs/tool, whose
-// toolchain.sh takes milliseconds) against a server of its own that answers
-// like GitHub's releases API for the toolchain store.
+// pack-toolchain.sh, pack-store.sh, pack-lib.sh, toolchain-key.sh,
+// toolchain-build-env.sh and toolchain-manifest.mjs, and the split pack
+// light/packs/tool, whose toolchain.sh takes milliseconds) against a server
+// of its own that answers like GitHub's releases API for the toolchain
+// store. The staged toolchain.sh sources toolchain-build-env.sh alone, as a
+// real one may, which is what keeps that file self-contained.
 //
 //   node --test scripts/test-pack-toolchain.mjs   (from light/; needs git, tar, zstd; keytool for one check)
 import assert from 'node:assert/strict';
@@ -132,9 +134,9 @@ function store(dir) {
 /** The names of the variables the toolchain script of `dir` saw. */
 const seen = (dir) =>
     fs.readFileSync(path.join(dir, 'env.txt'), 'utf8').split('\n').filter((l) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(l)).map((l) => l.slice(0, l.indexOf('=')));
-/** A bash array of toolchain-env.sh, by name. */
+/** A bash array of toolchain-build-env.sh, by name. */
 const envArray = (name) =>
-    execFileSync('bash', ['-c', `source "$1"; printf '%s\\n' "\${${name}[@]}"`, 'bash', path.join(light, 'scripts/toolchain-env.sh')], { encoding: 'utf8' })
+    execFileSync('bash', ['-c', `source "$1"; printf '%s\\n' "\${${name}[@]}"`, 'bash', path.join(light, 'scripts/toolchain-build-env.sh')], { encoding: 'utf8' })
         .trim()
         .split('\n')
         .map((v) => v.split('=')[0]);
@@ -150,7 +152,7 @@ printf '{"cc":"%s"}\\n' "$CC_VERSION" > "$OUT/versions.json"
 printf 'opt=%s\\n' "\${OPT:-}" > "$OUT/lib/opt.txt"
 env > "$OUT/env.txt"
 if [ -n "\${HTTPS_PROXY:-}" ]; then
-  . ../../scripts/toolchain-env.sh
+  . ../../scripts/toolchain-build-env.sh
   stage="$(cd ../../.. && pwd)"
   toolchain_jvm_proxy_opts "$stage" > "$OUT/jvm.txt"
   if [ -n "\${SSL_CERT_FILE:-}" ]; then
@@ -171,7 +173,7 @@ echo js/glue.js
 before(async () => {
     fs.mkdirSync(path.join(light, 'scripts'), { recursive: true });
     fs.mkdirSync(tmp);
-    for (const name of ['pack-toolchain.sh', 'pack-store.sh', 'toolchain-env.sh', 'toolchain-manifest.mjs']) {
+    for (const name of ['pack-toolchain.sh', 'pack-store.sh', 'pack-lib.sh', 'toolchain-key.sh', 'toolchain-build-env.sh', 'toolchain-manifest.mjs']) {
         fs.copyFileSync(path.join(SCRIPTS, name), path.join(light, 'scripts', name));
     }
     put('.gitignore', '/cache/\n/tmp/\n/out*/\n/light/app/\n/asset.tar.zst\n/certs/\n');
@@ -470,7 +472,7 @@ test('a proxy setting reaches the toolchain script and its JVM flags, and change
 
 test('a proxy the JVM cannot be given as plain flags is refused, not passed on', () => {
     const flags = (vars) =>
-        spawnSync('bash', ['-c', 'source "$1"; toolchain_jvm_proxy_opts "$2"', 'bash', path.join(light, 'scripts/toolchain-env.sh'), tmp], {
+        spawnSync('bash', ['-c', 'source "$1"; toolchain_jvm_proxy_opts "$2"', 'bash', path.join(light, 'scripts/toolchain-build-env.sh'), tmp], {
             encoding: 'utf8',
             env: { PATH: process.env.PATH, ...vars },
         });
@@ -572,7 +574,7 @@ test('a pack assembled by an uncommitted assembly script is not recorded as curr
     const [tree, script, env, k] = r.out.trim().split(' ');
     assert.equal(tree, git('rev-parse', 'HEAD:light/packs/tool'));
     assert.equal(script, git('rev-parse', 'HEAD:light/scripts/pack-toolchain.sh'));
-    assert.equal(env, git('rev-parse', 'HEAD:light/scripts/toolchain-env.sh'));
+    assert.equal(env, git('rev-parse', 'HEAD:light/scripts/toolchain-build-env.sh'));
     assert.equal(k, await key());
 
     fs.appendFileSync(path.join(light, 'scripts/pack-toolchain.sh'), '# an uncommitted change to assembly\n');

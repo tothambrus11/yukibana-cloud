@@ -31,17 +31,13 @@
 # in the toolchain store instead and the pack assembled over it
 # (pack-toolchain.sh), so a glue edit rebuilds nothing:
 #
-#   pack-store.sh toolchain-key <pack>    the key of the pack's toolchain:
-#       the first 40 hex digits of the sha256 of the lines
-#         yukibana-toolchain/1
-#         pack <pack>
-#         <mode> <git blob id> <path>   each input in the worktree, sorted
-#         env NAME=value                each set variant knob, sorted
-#       where the inputs are the files `toolchain_specs <pack>` names
-#       (toolchain-env.sh; untracked files included, ignored ones not) and
-#       the knobs those `toolchain_knobs <pack>` reads from toolchain.env.
-#       So changing toolchain-env.sh rebuilds every toolchain; changing
-#       pack-toolchain.sh (assembly) rebuilds none. Exit 2: not split.
+#   pack-store.sh toolchain-key <pack>    the key of the pack's toolchain,
+#       40 hex digits: the sha256 of its inputs in the worktree, the build
+#       environment (toolchain-build-env.sh) among them, and its set variant
+#       knobs, as toolchain-key.sh defines and documents. So changing
+#       toolchain-build-env.sh rebuilds every toolchain; changing
+#       toolchain-key.sh, this script, pack-lib.sh or pack-toolchain.sh
+#       (assembly) rebuilds none. Exit 2: not split.
 #   pack-store.sh toolchain-key-report <pack> <base>    what changed the key
 #       since commit <base>: the inputs that differ, the env lines then and
 #       now, both keys when toolchain.paths or toolchain.env changed, and a
@@ -89,19 +85,12 @@ MAX_ASSET_BYTES=1900000000
 MAX_ASSETS=1000
 WARN_ASSETS=800
 
-# shellcheck source=toolchain-env.sh
-source "$LIGHT/scripts/toolchain-env.sh"
+# shellcheck source=toolchain-key.sh
+source "$LIGHT/scripts/toolchain-key.sh"
+# shellcheck source=pack-lib.sh
+source "$LIGHT/scripts/pack-lib.sh"
 
 die() { echo "pack-store.sh: $*" >&2; exit 1; }
-
-# Removes a directory tree that may hold read-only directories (a toolchain
-# is made read-only): only the directories are made writable first, which is
-# all removing their entries needs.
-remove_tree() {
-  [ -e "$1" ] || return 0
-  find "$1" -type d -exec chmod u+w {} +
-  rm -rf "$1"
-}
 
 # A download or archive being made, and a toolchain being extracted, removed
 # however the script ends.
@@ -237,73 +226,6 @@ split_pack() {
   fi
 }
 
-# Prints the lines hashed into pack $1's toolchain key (see the header),
-# reading the repository TOOLCHAIN_ROOT names: the checkout, or the scratch
-# copy of an older commit that toolchain-key-report makes.
-toolchain_lines() {
-  local pack="$1" out list path mode i=0
-  local -a specs=() paths=() modes=() regular=() hashes=()
-  # Every failure returns explicitly: old_toolchain_key runs this where
-  # `set -e` is off, and an empty pathspec list would mean every file.
-  out="$(toolchain_specs "$pack")" || return 1
-  mapfile -t specs <<<"$out"
-  list="$(mktemp "${TMPDIR:-/tmp}/pack-store.XXXXXX")" || return 1
-  git -C "$TOOLCHAIN_ROOT" ls-files -co --exclude-standard -z -- "${specs[@]}" >"$list" || { rm -f "$list"; return 1; }
-  mapfile -d '' -t paths < <(LC_ALL=C sort -zu "$list")
-  rm -f "$list"
-  echo "yukibana-toolchain/1"
-  echo "pack $pack"
-  # Modes first, then every regular file hashed by one git process (with the
-  # path's filters, so a committed file gives its blob id).
-  for path in "${paths[@]}"; do
-    case "$path" in *$'\n'*) echo "pack-store.sh: a toolchain input's name holds a newline: $path" >&2; return 1 ;; esac
-    if [ -L "$TOOLCHAIN_ROOT/$path" ]; then
-      mode=120000
-    elif [ -f "$TOOLCHAIN_ROOT/$path" ]; then
-      if [ -x "$TOOLCHAIN_ROOT/$path" ]; then mode=100755; else mode=100644; fi
-      regular+=("$path")
-    elif [ ! -e "$TOOLCHAIN_ROOT/$path" ]; then
-      mode=- # deleted in the worktree: no longer an input
-    else
-      echo "pack-store.sh: $path is neither a file nor a symlink (a submodule?); a toolchain input must be one" >&2
-      return 1
-    fi
-    modes+=("$mode")
-  done
-  if [ "${#regular[@]}" -gt 0 ]; then
-    out="$(printf '%s\n' "${regular[@]}" | git -C "$TOOLCHAIN_ROOT" hash-object --stdin-paths)" || return 1
-    mapfile -t hashes <<<"$out"
-  fi
-  local r=0
-  for i in "${!paths[@]}"; do
-    path="${paths[$i]}"
-    case "${modes[$i]}" in
-      -) ;;
-      120000) echo "120000 $(printf '%s' "$(readlink "$TOOLCHAIN_ROOT/$path")" | git -C "$TOOLCHAIN_ROOT" hash-object --stdin) $path" ;;
-      *) echo "${modes[$i]} ${hashes[$r]} $path"; r=$((r + 1)) ;;
-    esac
-  done
-  toolchain_env_lines "$pack"
-}
-
-# Prints "env NAME=value" for each variant knob of pack $1 that is set in
-# this environment, sorted; reads toolchain.env from $2 when given.
-toolchain_env_lines() {
-  local out name class
-  out="$(toolchain_knobs "$1" "${2:-}")" || return 1
-  while read -r name class; do
-    [ "$class" = variant ] || continue
-    [ -n "${!name+x}" ] || continue
-    printf 'env %s=%s\n' "$name" "${!name}"
-  done <<<"$out" | LC_ALL=C sort
-}
-
-toolchain_key() {
-  local lines
-  lines="$(toolchain_lines "$1")" || return 1
-  printf '%s\n' "$lines" | sha256sum | cut -c1-40
-}
-
 toolchain_key_report() {
   local pack="$1" base="$2" out key old_key="" f differ=""
   local -a specs=()
@@ -369,19 +291,23 @@ toolchain_key_report() {
 }
 
 # Prints the key pack $1's toolchain had at commit $2, or "none (why)": its
-# files and toolchain-env.sh, and what else base's toolchain.paths names,
-# archived from $2 into the scratch directory $3, which is made a repository
-# so the key is computed exactly as for a checkout, by base's own
-# toolchain-env.sh.
+# files, the key's definition and the build environment, and what else
+# base's toolchain.paths names, archived from $2 into the scratch directory
+# $3, which is made a repository so the key is computed exactly as for a
+# checkout, by base's own toolchain-key.sh. A base from before the key's
+# definition had a file of its own has no key this can compute (its build
+# environment was another file, so every key differs anyway): "none".
 old_toolchain_key() {
-  local pack="$1" base="$2" scratch="$3" dir="light/packs/$1" line
-  local env=light/scripts/toolchain-env.sh
+  local pack="$1" base="$2" scratch="$3" dir="light/packs/$1" line f
+  local def=light/scripts/toolchain-key.sh env=light/scripts/toolchain-build-env.sh
   git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$dir/toolchain.paths" 2>/dev/null ||
     { echo "none (no $dir/toolchain.paths at $base)"; return 0; }
-  git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$env" 2>/dev/null ||
-    { echo "none (no $env at $base)"; return 0; }
+  for f in "$def" "$env"; do
+    git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$f" 2>/dev/null ||
+      { echo "none (no $f at $base)"; return 0; }
+  done
   mkdir -p "$scratch"
-  git -C "$TOOLCHAIN_ROOT" archive "$base" -- "$dir" "$env" | tar -x -C "$scratch"
+  git -C "$TOOLCHAIN_ROOT" archive "$base" -- "$dir" "$def" "$env" | tar -x -C "$scratch"
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"
     line="${line%"${line##*[![:space:]]}"}"
@@ -392,11 +318,12 @@ old_toolchain_key() {
   done <"$scratch/$dir/toolchain.paths"
   git -C "$scratch" init -q
   git -C "$scratch" add -A -f
-  # Base's toolchain-env.sh sets TOOLCHAIN_ROOT to the scratch copy, in this
-  # subshell only (shellcheck's SC2031 elsewhere is about this, and wanted).
+  # Base's toolchain-key.sh sets TOOLCHAIN_ROOT to the scratch copy, and
+  # defines the key as base did, in this subshell only (shellcheck's SC2031
+  # elsewhere is about this, and wanted).
   (
-    # shellcheck source=toolchain-env.sh
-    source "$scratch/$env"
+    # shellcheck source=toolchain-key.sh
+    source "$scratch/$def"
     toolchain_key "$pack"
   ) || echo "unknown (base's toolchain inputs do not resolve)"
 }

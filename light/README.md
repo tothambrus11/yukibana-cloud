@@ -60,16 +60,20 @@ tests is kept as `<pack>-<tree>.tar.zst` on the repository's rolling
 A split pack (one with `packs/<pack>/toolchain.paths`) is never kept there.
 Its toolchain, the part that takes hours, is kept on the `light-toolchains`
 prerelease as `toolchain-<pack>-<key>.tar.zst`, where `<key>` hashes exactly
-the inputs `toolchain_specs <pack>` in `scripts/toolchain-env.sh` names and
+the inputs `toolchain_specs <pack>` in `scripts/toolchain-key.sh` names and
 the output-changing settings of its `toolchain.env`
 (`scripts/pack-store.sh toolchain-key <pack>`), so a glue edit keeps the
 key. `scripts/pack-store.sh toolchain-key-report <pack> <base>` says what
-changed a key.
+changed a key. Of the scripts, only `scripts/toolchain-build-env.sh`, what
+reaches a build, is an input of every key, so changing it rebuilds every
+toolchain; `toolchain-key.sh` is pinned by a test instead and changes what
+it computes only with a new format tag, and the shared helpers in
+`scripts/pack-lib.sh` are part of no key.
 
 `scripts/pack-toolchain.sh` is the one way from those inputs to a pack:
 `ensure <pack>` reuses the local toolchain, fetches it from the store, or
 builds it (its `toolchain.sh` run in a copy of only its inputs, under
-`env -i` with only the variables `toolchain-env.sh` lets through, and its
+`env -i` with only the variables `toolchain-build-env.sh` lets through, and its
 declared `toolchain.outputs` checked), and prints its directory; uncommitted
 inputs or a set output-changing setting are built only with `--build-dirty`
 and never published. `assemble <pack> <dir>` links the read-only toolchain

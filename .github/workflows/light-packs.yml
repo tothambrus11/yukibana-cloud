@@ -15,7 +15,7 @@
 #                     pack, one with light/packs/<pack>/toolchain.paths, as
 #                     toolchain-<pack>-<key>.tar.zst. The key covers exactly
 #                     the toolchain's inputs (toolchain_specs and
-#                     toolchain_knobs in light/scripts/toolchain-env.sh), so a
+#                     toolchain_knobs in light/scripts/toolchain-key.sh), so a
 #                     glue edit (glue.sh, the pack's JavaScript) keeps it and
 #                     the pack is only assembled over the stored toolchain
 #                     (pack-toolchain.sh assemble), in seconds. Nothing is
@@ -40,8 +40,8 @@
 # Why a toolchain rebuilds. The plan job compares every split pack's toolchain
 # key with the base commit's (the pull request's base, or the commit before a
 # push) and writes each change and its cause to the run's summary and as a
-# warning, so a change that rebuilds compilers (toolchain-env.sh rebuilds all
-# of them) says so on the pull request that makes it.
+# warning, so a change that rebuilds compilers (toolchain-build-env.sh
+# rebuilds all of them) says so on the pull request that makes it.
 #
 # A pack that does build runs on a clean ubuntu-24.04 runner, with the system
 # packages its deps.apt lists and its download and compile cache ($PACK_CACHE,
@@ -73,7 +73,9 @@ on:
       - light/scripts/pack-store.sh
       - light/scripts/test-pack-store.mjs
       - light/scripts/pack-toolchain.sh
-      - light/scripts/toolchain-env.sh
+      - light/scripts/toolchain-key.sh
+      - light/scripts/toolchain-build-env.sh
+      - light/scripts/pack-lib.sh
       - light/scripts/test-pack-toolchain.mjs
       - light/scripts/toolchain-manifest.mjs
       - light/scripts/test-workflows.mjs
@@ -86,7 +88,9 @@ on:
       - light/scripts/pack-store.sh
       - light/scripts/test-pack-store.mjs
       - light/scripts/pack-toolchain.sh
-      - light/scripts/toolchain-env.sh
+      - light/scripts/toolchain-key.sh
+      - light/scripts/toolchain-build-env.sh
+      - light/scripts/pack-lib.sh
       - light/scripts/test-pack-toolchain.mjs
       - light/scripts/toolchain-manifest.mjs
       - light/scripts/test-workflows.mjs
@@ -137,7 +141,9 @@ jobs:
           paths: |
             light/scripts/pack-store.sh
             light/scripts/test-pack-store.mjs
-            light/scripts/toolchain-env.sh
+            light/scripts/toolchain-key.sh
+            light/scripts/toolchain-build-env.sh
+            light/scripts/pack-lib.sh
             light/scripts/pack-toolchain.sh
             light/scripts/toolchain-manifest.mjs
             light/scripts/test-pack-toolchain.mjs
@@ -145,8 +151,8 @@ jobs:
             light/setup.sh
             .github/workflows/light-packs.yml
 
-      # Every run, so a change to toolchain-env.sh shows one warning per split
-      # pack on the pull request that makes it. The base is fetched alone
+      # Every run, so a change to toolchain-build-env.sh shows one warning per
+      # split pack on the pull request that makes it. The base is fetched alone
       # (depth 1): the report compares files, not history. A base that cannot
       # be fetched (a force push, a deleted branch) means no report, said as
       # a notice; a report that fails once the base is here is a bug, and
@@ -207,7 +213,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Lint the store and setup scripts
-        run: shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-env.sh scripts/pack-toolchain.sh setup.sh
+        run: shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-key.sh scripts/toolchain-build-env.sh scripts/pack-lib.sh scripts/pack-toolchain.sh setup.sh
       - name: Test the store
         run: node --test scripts/test-pack-store.mjs
       - name: Test building and assembling toolchains
@@ -280,7 +286,7 @@ jobs:
             exit 0
           fi
           # shellcheck source=/dev/null
-          source ../../scripts/toolchain-env.sh
+          source ../../scripts/toolchain-key.sh
           specs="$(toolchain_specs "$PACK")"
           {
             echo "split=true"
@@ -288,8 +294,9 @@ jobs:
             while IFS= read -r spec; do
               toolchain_spec_excludes "$spec" || printf '%s\n' "$spec"
             done <<<"$specs"
-            printf '%s\n' "light/packs/$PACK" light/scripts/pack-toolchain.sh light/scripts/toolchain-env.sh \
-              light/scripts/toolchain-manifest.mjs light/scripts/pack-store.sh .github/workflows/light-packs.yml
+            printf '%s\n' "light/packs/$PACK" light/scripts/pack-toolchain.sh light/scripts/toolchain-key.sh \
+              light/scripts/toolchain-build-env.sh light/scripts/pack-lib.sh light/scripts/toolchain-manifest.mjs \
+              light/scripts/pack-store.sh .github/workflows/light-packs.yml
             echo ONCE_PATHS
           } >> "$GITHUB_OUTPUT"
 

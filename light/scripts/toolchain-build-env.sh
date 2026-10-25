@@ -1,100 +1,35 @@
 # shellcheck shell=bash
-# This file is the build environment of every toolchain. Changing it rebuilds
-# all of them.
+# This file is the build environment of every toolchain. Its blob is a line
+# of every toolchain's key, so changing it, a comment included, rebuilds all
+# of them. Keep in it only what reaches a toolchain.sh.
 #
-# What a split pack's toolchain is built from, and what reaches its build: the
-# one definition of its inputs, of the settings that change its output, and
-# of the environment its toolchain.sh runs in. Sourced, never run, by every
-# script that keys, reports on, checks, stages or builds a toolchain
-# (pack-store.sh, pack-toolchain.sh; CI's once lists and setup.sh as they
-# arrive), so none of them keeps a list of its own that could drift. A
-# toolchain.sh may source its staged copy too, for toolchain_jvm_proxy_opts.
+# What reaches a split pack's toolchain build: the variables passed through
+# from the caller (fixed, transport and declared knobs), the one value
+# derived from them for the JVM, and the stage the build runs in. These shape
+# what a build produces, and nothing else records them, so they are keyed as
+# a file: an honest rebuild when the environment changes, never a toolchain
+# built in one environment served for another.
 #
-# A split pack is one with light/packs/<pack>/toolchain.paths. Its build is
-# two halves: the toolchain (compilers, sysroots, runtimes: hours, rarely
-# changed), kept in the toolchain store under a key of exactly these inputs,
-# and the glue (glue.sh, the pack's JavaScript: seconds, changed often),
-# assembled over a fetched toolchain. A glue edit must not change the key,
-# and nothing the toolchain reads may be left out of it.
+# What a toolchain is built from (its inputs, its knobs, the key's lines) is
+# not here but in toolchain-key.sh, which is not keyed by blob: everything
+# it computes is already in the key as resolved lines, so a comment or a
+# refactor there rebuilds nothing, and a deliberate change of what it
+# computes bumps the key's format tag. Helpers shared by the store scripts
+# are in pack-lib.sh, which is part of no key. A helper added here would
+# rebuild every toolchain, cpp's hours-long compilers included: put it in
+# one of those two instead unless a build reads it.
 #
-# This file is itself an input of every toolchain, which is right, as it
-# decides what they are built from and in. Assembly (pack-toolchain.sh,
-# toolchain-manifest.mjs) is not an input of any.
+# Sourced, never run: by toolchain-key.sh (and so by pack-store.sh and
+# pack-toolchain.sh), and by a toolchain.sh from its staged copy for
+# toolchain_jvm_proxy_opts, which therefore needs nothing but this file.
+# toolchain_env_args and toolchain_stage call toolchain_knobs and
+# toolchain_specs, so they need toolchain-key.sh sourced as well; a staged
+# toolchain.sh calls neither. This file sets no variable but the two arrays
+# below, so it cannot clash with a toolchain's own scripts.
 #
 # Functions return non-zero after naming what is wrong on stderr; with
-# `set -e` and `shopt -s inherit_errexit`, `x=$(toolchain_specs p)` stops the
-# caller there.
-
-# The repository root this copy of the file belongs to. Taken from the file's
-# own place (<root>/light/scripts/toolchain-env.sh), so a copy extracted from
-# an older commit into a scratch directory (pack-store.sh's key report)
-# describes that directory, not the checkout.
-TOOLCHAIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-
-# Whether the git pathspec $1 is an exclusion (`:!x`, `:^x`, `:(exclude)x`,
-# `:(glob,exclude)x`), as opposed to one naming inputs.
-toolchain_spec_excludes() {
-  local magic
-  case "$1" in
-    ':!'* | ':^'*) return 0 ;;
-    ':('*)
-      magic="${1#:(}"
-      magic="${magic%%)*}"
-      case ",$magic," in *,exclude,*) return 0 ;; esac
-      ;;
-  esac
-  return 1
-}
-
-# Prints the git pathspecs of the toolchain of pack $1, one per line, from the
-# repository root: the lines of light/packs/<pack>/toolchain.paths, then
-# exclusions of the pack's files that are never toolchain inputs
-# (toolchain.paths, toolchain.outputs, build.sh, glue.sh, requires.json),
-# then light/scripts/toolchain-env.sh.
-#
-# toolchain.paths holds one pathspec per line, magic such as `:(exclude)`
-# allowed; blank lines and lines starting with `#` are ignored. It fails
-# safe: it normally names the whole pack directory and excludes the glue by
-# name, so a new file nobody classified counts as an input, which costs a
-# rebuild, rather than as glue, which would serve a stale toolchain. For the
-# same reason a naming pathspec that matches no file is an error (a typo
-# would drop inputs silently), and so is a file naming no input at all (only
-# exclusions would leave nothing but this file).
-#
-# Returns 2 when the pack has no toolchain.paths (it is not split), 1 for
-# anything wrong in it.
-toolchain_specs() {
-  local pack="${1:?pack}" dir file line n=0 naming=0 found
-  dir="light/packs/$pack"
-  file="$TOOLCHAIN_ROOT/$dir/toolchain.paths"
-  if [ ! -f "$file" ]; then
-    echo "toolchain-env.sh: $pack has no toolchain ($dir/toolchain.paths)" >&2
-    return 2
-  fi
-  while IFS= read -r line || [ -n "$line" ]; do
-    n=$((n + 1))
-    line="${line#"${line%%[![:space:]]*}"}"
-    line="${line%"${line##*[![:space:]]}"}"
-    case "$line" in '' | '#'*) continue ;; esac
-    if ! toolchain_spec_excludes "$line"; then
-      naming=$((naming + 1))
-      found="$(git -C "$TOOLCHAIN_ROOT" ls-files -co --exclude-standard -- "$line")" || return 1
-      if [ -z "$found" ]; then
-        echo "toolchain-env.sh: $dir/toolchain.paths:$n: '$line' matches no file" >&2
-        return 1
-      fi
-    fi
-    printf '%s\n' "$line"
-  done <"$file"
-  if [ "$naming" -eq 0 ]; then
-    echo "toolchain-env.sh: $dir/toolchain.paths names no input, only exclusions" >&2
-    return 1
-  fi
-  for line in toolchain.paths toolchain.outputs build.sh glue.sh requires.json; do
-    printf ':(exclude)%s/%s\n' "$dir" "$line"
-  done
-  echo light/scripts/toolchain-env.sh
-}
+# `set -e` and `shopt -s inherit_errexit`, `x=$(toolchain_env_args p)` stops
+# the caller there.
 
 # The variables of the caller's environment that reach every toolchain
 # build, by name when they are set, and the ones set to a fixed value
@@ -131,67 +66,6 @@ toolchain_env_reserved() {
   return 1
 }
 
-# Prints the knobs of pack $1's toolchain build as lines "NAME source" or
-# "NAME variant", read from light/packs/<pack>/toolchain.env, or from $2 when
-# given (the report reads a file from another commit). No file means no
-# knobs. This is the one parser of toolchain.env: the key, the dirty check
-# and the build environment all read it through here.
-#
-# Each line of toolchain.env matches
-#   ^([A-Z][A-Z0-9_]*) (source|variant)( +# .*)?$
-# and empty lines and lines starting with `#` are ignored. A knob is the only
-# variable from the caller's environment that reaches the build besides the
-# fixed and transport ones. `variant` changes what the build produces (an
-# optimisation level, a target list), so a set variant knob is part of the
-# toolchain's key and makes its build dirty. `source` changes only how it is
-# obtained (a mirror) and never the bytes, so it is neither. Say why in the
-# comment: whether a knob changes the output is the one thing a reviewer must
-# check.
-#
-# Anything else is an error naming the file and line, never skipped: a tab, a
-# carriage return (a file saved on Windows), leading or trailing blanks, a
-# lower-case name, an unknown kind, a name declared twice, or a fixed or
-# transport variable's name. A skipped line would be a setting that silently
-# never reaches the build, or silently stays out of the key. Every bad line
-# is named, then it returns 1.
-toolchain_knobs() {
-  local pack="${1:?pack}" file="${2:-}" where line shown n=0 bad=0 seen=" "
-  if [ -z "$file" ]; then
-    file="$TOOLCHAIN_ROOT/light/packs/$pack/toolchain.env"
-    where="light/packs/$pack/toolchain.env"
-  else
-    where="$file"
-  fi
-  [ -f "$file" ] || return 0
-  while IFS= read -r line || [ -n "$line" ]; do
-    n=$((n + 1))
-    case "$line" in '' | '#'*) continue ;; esac
-    # The pattern's `.*` would take a carriage return or a tab in the
-    # comment: control characters are refused first.
-    if [[ "$line" != *[[:cntrl:]]* ]] && [[ "$line" =~ ^([A-Z][A-Z0-9_]*)\ (source|variant)(\ +#\ .*)?$ ]]; then
-      if [[ "$seen" == *" ${BASH_REMATCH[1]} "* ]]; then
-        echo "toolchain-env.sh: $where:$n: ${BASH_REMATCH[1]} is declared twice" >&2
-        bad=1
-        continue
-      fi
-      if toolchain_env_reserved "${BASH_REMATCH[1]}"; then
-        echo "toolchain-env.sh: $where:$n: ${BASH_REMATCH[1]} is a fixed or transport variable of every build, not a knob" >&2
-        bad=1
-        continue
-      fi
-      seen+="${BASH_REMATCH[1]} "
-      printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    else
-      # A tab or a carriage return is shown for what it is ($'...\t...').
-      shown="'$line'"
-      [[ "$line" != *[[:cntrl:]]* ]] || shown="$(printf '%q' "$line")"
-      echo "toolchain-env.sh: $where:$n: $shown is not 'NAME source|variant  # why'" >&2
-      bad=1
-    fi
-  done <"$file"
-  return "$bad"
-}
-
 # Prints the arguments that, after `env -i`, give pack $1's toolchain.sh its
 # whole environment, one NAME=value per line: the fixed variables (those set
 # here, and LANG=C.UTF-8), the transport variables that are set, and every
@@ -217,7 +91,7 @@ toolchain_env_args() {
   for name in "${names[@]}"; do
     [ -n "${!name+x}" ] || continue
     case "${!name}" in
-      *$'\n'*) echo "toolchain-env.sh: $name holds a newline; it cannot reach a toolchain build" >&2; return 1 ;;
+      *$'\n'*) echo "toolchain-build-env.sh: $name holds a newline; it cannot reach a toolchain build" >&2; return 1 ;;
     esac
     printf '%s=%s\n' "$name" "${!name}"
   done
@@ -258,7 +132,7 @@ toolchain_jvm_proxy_opts() {
       host="${BASH_REMATCH[1]}"
       port="${BASH_REMATCH[3]}"
     else
-      echo "toolchain-env.sh: cannot read a host and port from the proxy $(printf '%q' "$proxy")" >&2
+      echo "toolchain-build-env.sh: cannot read a host and port from the proxy $(printf '%q' "$proxy")" >&2
       return 1
     fi
     if [ -z "$port" ]; then
@@ -279,7 +153,7 @@ toolchain_jvm_proxy_opts() {
   fi
   if [ -n "${SSL_CERT_FILE:-}" ]; then
     if ! command -v keytool >/dev/null; then
-      echo "toolchain-env.sh: SSL_CERT_FILE is set but there is no keytool to make the JVM's truststore of it" >&2
+      echo "toolchain-build-env.sh: SSL_CERT_FILE is set but there is no keytool to make the JVM's truststore of it" >&2
       return 1
     fi
     dir="$(mktemp -d "$stage/truststore.XXXXXX")" || return 1
@@ -293,14 +167,14 @@ toolchain_jvm_proxy_opts() {
       # caller's own truststore must not be what is read.
       if ! JAVA_TOOL_OPTIONS='' keytool -importcert -noprompt -alias "ca-$n" -file "$item" \
         -keystore "$stage/truststore.p12" -storetype PKCS12 -storepass changeit >/dev/null 2>&1; then
-        echo "toolchain-env.sh: keytool refused certificate $n of $SSL_CERT_FILE" >&2
+        echo "toolchain-build-env.sh: keytool refused certificate $n of $SSL_CERT_FILE" >&2
         rm -rf "$dir"
         return 1
       fi
     done
     rm -rf "$dir"
     if [ "$n" -eq 0 ]; then
-      echo "toolchain-env.sh: SSL_CERT_FILE ($SSL_CERT_FILE) holds no certificate" >&2
+      echo "toolchain-build-env.sh: SSL_CERT_FILE ($SSL_CERT_FILE) holds no certificate" >&2
       return 1
     fi
     opts+=" -Djavax.net.ssl.trustStore=$stage/truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=PKCS12"
@@ -308,7 +182,7 @@ toolchain_jvm_proxy_opts() {
   opts="${opts# }"
   # The pattern above, in POSIX classes: bash's =~ has no \S.
   if ! [[ "$opts" =~ ^(\ ?-D(https?\.(proxyHost|proxyPort|nonProxyHosts)|javax\.net\.ssl\.trustStore(Password|Type)?)=[^[:space:]]+)*$ ]]; then
-    echo "toolchain-env.sh: the JVM flags derived from the proxy settings are not plain -Dname=value flags: $(printf '%q' "$opts")" >&2
+    echo "toolchain-build-env.sh: the JVM flags derived from the proxy settings are not plain -Dname=value flags: $(printf '%q' "$opts")" >&2
     return 1
   fi
   printf '%s\n' "$opts"
@@ -320,7 +194,8 @@ toolchain_jvm_proxy_opts() {
 # modes and symlinks. A toolchain.sh runs in such a copy, so a file it reads
 # that is no input (the glue, build.sh) is simply not there and the build
 # fails, rather than the key missing an input. A file deleted in the
-# worktree is no longer an input and is not copied.
+# worktree is no longer an input and is not copied. The repository is the one
+# TOOLCHAIN_ROOT names (toolchain-key.sh).
 toolchain_stage() {
   local pack="${1:?pack}" dest="${2:?stage directory}" out
   local -a specs=()
@@ -335,5 +210,5 @@ toolchain_stage() {
       done |
       tar -C "$TOOLCHAIN_ROOT" --null --no-recursion -T - -cf - |
       tar -C "$dest" -xf -
-  ) || { echo "toolchain-env.sh: could not stage the toolchain of $pack in $dest" >&2; return 1; }
+  ) || { echo "toolchain-build-env.sh: could not stage the toolchain of $pack in $dest" >&2; return 1; }
 }

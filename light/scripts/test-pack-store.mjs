@@ -2,8 +2,9 @@
 // rely on, against a server of its own that answers like GitHub's releases
 // API: a throwaway git repository laid out like this one (light/scripts,
 // light/packs/demo, and the split packs light/packs/tool and
-// light/packs/other) gets a copy of the script and of toolchain-env.sh, and
-// the stores hold archives made here. The pack store's `publish` writes to
+// light/packs/other) gets a copy of the script and of the scripts it
+// sources (toolchain-key.sh, toolchain-build-env.sh, pack-lib.sh), and the
+// stores hold archives made here. The pack store's `publish` writes to
 // GitHub and is exercised by light-packs.yml itself; `toolchain-publish`
 // runs here against a stand-in `gh` that writes to the same server.
 //
@@ -19,6 +20,8 @@ import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
+/** The scripts a test repository gets a copy of: pack-store.sh and what it reads. */
+const COPIED = ['pack-store.sh', 'toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'toolchain-manifest.mjs'];
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-store-test-'));
 const light = path.join(root, 'light');
@@ -201,7 +204,7 @@ const exists = (rel) => fs.existsSync(path.join(root, rel));
 before(async () => {
     fs.mkdirSync(path.join(light, 'scripts'), { recursive: true });
     fs.mkdirSync(path.join(light, 'packs/demo'), { recursive: true });
-    for (const name of ['pack-store.sh', 'toolchain-env.sh', 'toolchain-manifest.mjs']) fs.copyFileSync(path.join(SCRIPTS, name), path.join(light, 'scripts', name));
+    for (const name of COPIED) fs.copyFileSync(path.join(SCRIPTS, name), path.join(light, 'scripts', name));
     // The stand-in gh: hands its arguments to the server and answers as it says.
     put(
         'bin/gh',
@@ -343,16 +346,92 @@ test("a toolchain's key changes when an input, its mode, or the set of inputs ch
     assert.equal(await key(), keys[0]);
 });
 
-test("changing the toolchain build environment changes every toolchain's key, and changing assembly changes none", async () => {
+test('a change to the build environment changes every key', async () => {
     const before = [await key('tool'), await key('other')];
-    put('light/scripts/pack-toolchain.sh', '#!/bin/sh\n# assembly\n', 0o755);
-    commit('assembly');
-    assert.deepEqual([await key('tool'), await key('other')], before);
-    fs.appendFileSync(path.join(light, 'scripts/toolchain-env.sh'), '# another build environment\n');
+    // A comment is enough: the file is keyed whole, as what reaches a build.
+    fs.appendFileSync(path.join(light, 'scripts/toolchain-build-env.sh'), '# another build environment\n');
     const after = [await key('tool'), await key('other')];
     assert.notEqual(after[0], before[0]);
     assert.notEqual(after[1], before[1]);
     clean();
+});
+
+test('a comment or helper change in the key or store scripts leaves every toolchain key unchanged', async () => {
+    const before = [await key('tool'), await key('other')];
+    fs.appendFileSync(path.join(light, 'scripts/toolchain-key.sh'), '# a comment on how keys are made\n');
+    fs.appendFileSync(path.join(light, 'scripts/pack-store.sh'), '# a comment on the store\n');
+    fs.appendFileSync(path.join(light, 'scripts/pack-lib.sh'), '\n# A new shared helper.\nsay_hello() { echo hello; }\n');
+    put('light/scripts/pack-toolchain.sh', '#!/bin/sh\n# assembly\n', 0o755);
+    assert.deepEqual([await key('tool'), await key('other')], before);
+    // Nor do they make a build dirty: none of them is an input.
+    const dirty = await store('toolchain-dirty', 'tool');
+    assert.equal(dirty.code, 1, dirty.out + dirty.err);
+    commit('scripts');
+    assert.deepEqual([await key('tool'), await key('other')], before);
+    git('reset', '-q', '--hard', 'HEAD~1');
+});
+
+/**
+ * The lines the key of the golden test's pack hashes, as toolchain-key.sh
+ * defines them. `<build env>` stands for toolchain-build-env.sh's blob, which
+ * is a line of every key but no part of how keys are computed: the build
+ * environment may change without this test noticing, as it should.
+ */
+const GOLDEN = `yukibana-toolchain/1
+pack fix
+100644 4e610c04d58371663d95ca8237eea260b08f090c light/packs/fix/src/a.c
+120000 6bc0e647512d2a0bef4f26111e484dc87df7f5ca light/packs/fix/src/link.c
+100644 d8805c92f24d9461a93c9a318ab62da581e3988c light/packs/fix/src/new.c
+100644 e4ff82f9205d73ddc5d359fd797b95d1f028e0f0 light/packs/fix/toolchain.env
+100755 666656ac3528feb4be6109698f22ab4d535b0148 light/packs/fix/toolchain.sh
+100644 <build env> light/scripts/toolchain-build-env.sh
+100644 cd911e2352e44b4e43d1e1e4b48f1fe65803c11b light/shared/patch.diff
+env LEVEL=3
+`;
+
+test('a fixed pack keeps its exact key lines and key until the format tag yukibana-toolchain/N is bumped', () => {
+    // toolchain-key.sh is no input of any key, so nothing else would notice a
+    // change of what it computes: a toolchain built under the old meaning
+    // would be served for the new one. If this fails and the change is meant,
+    // bump the tag in toolchain_lines and update GOLDEN here, in one commit.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-store-golden-'));
+    try {
+        const g = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
+        const write = (rel, content, mode = 0o644) => {
+            fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+            fs.writeFileSync(path.join(dir, rel), content);
+            fs.chmodSync(path.join(dir, rel), mode);
+        };
+        fs.mkdirSync(path.join(dir, 'light/scripts'), { recursive: true });
+        for (const name of COPIED) fs.copyFileSync(path.join(SCRIPTS, name), path.join(dir, 'light/scripts', name));
+        write('.gitignore', '*.o\n');
+        write('light/packs/fix/toolchain.paths', '# The whole pack but its glue, and a shared patch.\nlight/packs/fix\n\n  :(exclude)light/packs/fix/src/glue.js  \nlight/shared/patch.diff\n');
+        write('light/packs/fix/toolchain.env', 'LEVEL variant  # another compiler\nMIRROR source  # the same bytes\nUNSET variant  # never set here\n');
+        write('light/packs/fix/toolchain.sh', '#!/bin/sh\nmake\n', 0o755);
+        write('light/packs/fix/toolchain.outputs', 'bin/cc\n');
+        write('light/packs/fix/glue.sh', '#!/bin/sh\n', 0o755);
+        write('light/packs/fix/build.sh', '#!/bin/sh\n', 0o755);
+        write('light/packs/fix/requires.json', '{}\n');
+        write('light/packs/fix/src/a.c', 'int a;\n');
+        write('light/packs/fix/src/glue.js', 'export {};\n');
+        write('light/packs/fix/src/a.o', 'ignored\n');
+        fs.symlinkSync('a.c', path.join(dir, 'light/packs/fix/src/link.c'));
+        write('light/shared/patch.diff', '--- a\n+++ b\n');
+        g('init', '-q');
+        g('add', '-A');
+        g('-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-q', '-m', 'fixture');
+        // Untracked, not ignored: an input like any other.
+        write('light/packs/fix/src/new.c', 'int n;\n');
+        const env = { PATH: process.env.PATH, HOME: process.env.HOME, LEVEL: '3', MIRROR: 'https://mirror.example', UNDECLARED: '1' };
+        const build = g('hash-object', 'light/scripts/toolchain-build-env.sh');
+        const lines = execFileSync('bash', ['-c', 'set -eu; source light/scripts/toolchain-key.sh; toolchain_lines fix'], { cwd: dir, env, encoding: 'utf8' });
+        const golden = GOLDEN.replace('<build env>', build);
+        assert.equal(lines, golden);
+        const k = execFileSync(path.join(dir, 'light/scripts/pack-store.sh'), ['toolchain-key', 'fix'], { env, encoding: 'utf8' }).trim();
+        assert.equal(k, createHash('sha256').update(golden).digest('hex').slice(0, 40));
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });
 
 test('an output-changing setting gives another key, and a setting the pack does not declare does not', async () => {
