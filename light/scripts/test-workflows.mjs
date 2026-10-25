@@ -283,6 +283,25 @@ test('the units build in three waves, each after the one before, and the packs a
     assert.match(plan.run, /for wave in 1 2 3;/);
 });
 
+test('a unit job builds the unit its plan found missing, even when another run stores it meanwhile', () => {
+    // Fetched instead, its toolchain.json would name the other run's
+    // commit, and publish and archive (clean_toolchain_key) would fail the
+    // job though the right toolchain is in the store. The units it needs
+    // are still fetched: --no-build-deps keeps --no-fetch to the unit.
+    const build = unitSteps.find((s) => s.id === 'build');
+    assert.match(build.run, /pack-toolchain\.sh ensure "\$UNIT"[^\n]*--no-build-deps/);
+    assert.match(build.run, /pack-toolchain\.sh ensure "\$UNIT"[^\n]*--no-fetch/);
+});
+
+test('a unit job installs only the system packages in its own key', () => {
+    const install = unitSteps.find((s) => s.name === 'Install build dependencies');
+    assert.ok(install, 'the unit workflow has the step');
+    for (const text of [String(install.if), install.run]) {
+        assert.match(text, /UNIT_DIR/);
+        assert.doesNotMatch(text, /light\/packs\/(\{0\}|\$PACK)\/deps\.apt/, 'a pack-level deps.apt is in no unit\'s key');
+    }
+});
+
 test('each unit has its own build cache, under a prefix no other unit or pack starts with', () => {
     const restore = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/cache/restore@'));
     const save = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/cache/save@'));

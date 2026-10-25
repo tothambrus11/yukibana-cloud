@@ -187,6 +187,13 @@ export function problemsOf(/** @type {string} */ root, /** @type {string} */ pac
             for (const [n, line] of pinProblems(fs.readFileSync(pins, 'utf8'))) problems.push(`${dir}/toolchains/${unit.slice(pack.length + 1)}/pins.sh:${n}: '${line}' is not a plain NAME=value pin`);
         }
     }
+    // A unit's build installs its own toolchains/<unit>/deps.apt, an input
+    // of its key. A pack-level one would reach every unit's build while
+    // being in no unit's key (or, named by glue.paths, in none at all), so
+    // editing it would change what every unit builds with and re-key none.
+    if (fs.existsSync(path.join(root, dir, 'deps.apt'))) {
+        problems.push(`${dir}/deps.apt: a split pack's system packages are each unit's toolchains/<unit>/deps.apt, in that unit's key; a pack-level one would reach every unit's build and re-key none`);
+    }
     const glue = path.join(root, dir, 'glue.sh');
     if (!fs.existsSync(glue)) problems.push(`${dir} has no glue.sh`);
     else for (const [n, tool] of compilerCalls(fs.readFileSync(glue, 'utf8'))) problems.push(`${dir}/glue.sh:${n}: runs ${tool}; a split pack's glue never compiles, a unit does`);
@@ -250,6 +257,29 @@ test('a file no unit and no glue.paths line names is a named error, not an input
         // Named in a unit's paths, it is that unit's input and owned.
         fs.appendFileSync(path.join(dir, 'light/packs/stub/toolchains/vm/paths'), 'patches/\nbuild-extra.sh\n');
         assert.deepEqual(problemsOf(dir, 'stub'), []);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("a split pack's system packages are its units' own, so an edit to them re-keys the units they reach", () => {
+    const dir = scratch();
+    try {
+        const own = 'light/packs/stub/toolchains/libs/deps.apt';
+        fs.writeFileSync(path.join(dir, own), 'libzstd-dev\n');
+        assert.deepEqual(problemsOf(dir, 'stub'), []);
+        assert.ok(ownersOf(dir, 'stub').units.get('stub/libs')?.has(own), 'the unit owns its deps.apt');
+        const keyOf = (/** @type {string} */ unit) => sh(dir, 'set -euo pipefail; source "$1"; toolchain_key "$2"', [path.join(dir, 'light/scripts/toolchain-key.sh'), unit]).trim();
+        const before = keyOf('stub/libs');
+        fs.writeFileSync(path.join(dir, own), 'libzstd-dev\nlibssl-dev\n');
+        assert.notEqual(keyOf('stub/libs'), before, "editing a unit's deps.apt re-keys it");
+
+        // A pack-level one is refused, even when glue.paths names it.
+        fs.writeFileSync(path.join(dir, 'light/packs/stub/deps.apt'), 'cmake\n');
+        fs.appendFileSync(path.join(dir, 'light/packs/stub/glue.paths'), 'deps.apt\n');
+        assert.deepEqual(problemsOf(dir, 'stub'), [
+            "light/packs/stub/deps.apt: a split pack's system packages are each unit's toolchains/<unit>/deps.apt, in that unit's key; a pack-level one would reach every unit's build and re-key none",
+        ]);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

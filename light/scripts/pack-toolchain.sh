@@ -40,6 +40,13 @@
 #                  anything is built), with --build-dirty, --no-fetch and
 #                  --from passed on, and as --fetch-only with
 #                  --no-build-deps, so a CI job builds exactly one unit.
+#                  With --no-build-deps, --no-fetch is this unit's alone:
+#                  nothing would build the units it needs, so they are
+#                  still taken from --from or fetched. A CI unit job passes
+#                  both, so it builds the unit its plan found missing even
+#                  when another run stored it meanwhile: a toolchain fetched
+#                  in its place names that run's commit, and publish and
+#                  archive refuse it (pack-store.sh clean_toolchain_key).
 #                  Then toolchain.sh runs in a stage holding only the unit's
 #                  inputs and, read-only at $DEP_<UNIT>, the units it needs
 #                  (toolchain_stage), under `env -i` with only
@@ -64,7 +71,13 @@
 #       stored is checked here or nowhere. Refuses a toolchain of other
 #       inputs unless ALLOW_OTHER_TOOLCHAIN=1 (set by setup.sh --latest) and
 #       that toolchain has every output HEAD's `outputs` declares and the
-#       glue's versions check passes.
+#       glue's versions check passes. Refuses, every time, a unit given
+#       with a unit it needs whose key is not the one its toolchain.json
+#       records it was built over (toolchain-manifest.mjs needs): with
+#       HEAD's keys that cannot happen, as the dependency's key is a line of
+#       the unit's, but `ensure --any` fetches each unit's newest toolchain
+#       on its own, and libraries built by an old compiler must not be
+#       assembled with a new one (D44).
 #   pack-toolchain.sh record-state <pack>
 #       Prints "<tree of packs/<pack>> <blob of pack-toolchain.sh> <blob of
 #       toolchain-manifest.mjs> <unit>=<key>...", the state setup.sh records
@@ -415,9 +428,15 @@ ensure_unit() {
   local dep d
   local -a flags=() staged=() deps=()
   [ -z "$build_dirty" ] || flags+=(--build-dirty)
-  [ -z "$no_fetch" ] || flags+=(--no-fetch)
   [ -z "$from" ] || flags+=(--from "$from")
-  [ -z "$no_build_deps" ] || flags+=(--fetch-only --no-build-deps)
+  # --no-fetch reaches the units it needs only when they may be built
+  # here: under --no-build-deps they are fetch-only, and a fetch-only
+  # dependency that may not be fetched could come from nowhere but --from.
+  if [ -n "$no_build_deps" ]; then
+    flags+=(--fetch-only --no-build-deps)
+  elif [ -n "$no_fetch" ]; then
+    flags+=(--no-fetch)
+  fi
   out="$(toolchain_needs "$id")"
   [ -z "$out" ] || mapfile -t deps <<<"$out"
   for dep in "${deps[@]}"; do
@@ -553,6 +572,7 @@ assemble() {
     [ -z "$writable" ] || die "$u: $writable is writable; a toolchain's files are read-only, so that assembly cannot write into it"
   done
   node "$MANIFEST" overlap "${dirs[@]}" || die "$pack: its units cannot be linked into one pack"
+  node "$MANIFEST" needs "${dirs[@]}" || die "$pack: a unit is given with another toolchain of a unit it needs than the one it was built over"
   if [ "$other" = 1 ]; then
     (cd "$LIGHT/packs/$pack" && env -u OUT "${glue[@]}" bash glue.sh --check-versions >&2) ||
       die "$pack: the glue's versions check refuses the toolchains it was given"

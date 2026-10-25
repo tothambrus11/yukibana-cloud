@@ -97,15 +97,15 @@ jobs:
           sudo docker image prune --all --force >/dev/null || true
           df -h /
 
-      # The pack's deps.apt and the unit's own (an input of its key, being in
-      # its directory).
+      # The unit's own deps.apt only: it is in the unit's directory, so an
+      # input of its key. A pack-level deps.apt would reach every unit's
+      # build and be in no unit's key, so a split pack has none
+      # (light/packs/contract.test.mjs).
       - name: Install build dependencies
-        if: hashFiles(format('light/packs/{0}/deps.apt', env.PACK), format('{0}/deps.apt', env.UNIT_DIR)) != ''
+        if: hashFiles(format('{0}/deps.apt', env.UNIT_DIR)) != ''
         run: |
           sudo apt-get update -q
-          for f in "light/packs/$PACK/deps.apt" "$UNIT_DIR/deps.apt"; do
-            [ ! -f "$f" ] || grep -v '^#' "$f"
-          done | xargs sudo apt-get install -y -q --no-install-recommends
+          grep -v '^#' "$UNIT_DIR/deps.apt" | xargs sudo apt-get install -y -q --no-install-recommends
 
       # What earlier waves of this run built of the units it needs. A unit
       # the store already had is not among them: ensure fetches it.
@@ -130,7 +130,10 @@ jobs:
 
       # Hermetic (pack-toolchain.sh): the unit's inputs, and the units it
       # needs read-only at $DEP_<UNIT>, taken from this run's artifacts or
-      # the store and never built here.
+      # the store and never built here. --no-fetch: the unit itself is
+      # built, as the plan found it missing. Were it fetched because another
+      # run stored the same key meanwhile, its toolchain.json would name
+      # that run's commit, and publish and archive below would refuse it.
       - name: Build the unit
         id: build
         env:
@@ -140,7 +143,7 @@ jobs:
           [ -z "$RESTORED" ] || how="warm, from $RESTORED"
           trap 'echo "Build $UNIT ($how)|$SECONDS" >> "$TIMINGS"' EXIT
           mkdir -p "$FROM"
-          dir="$(light/scripts/pack-toolchain.sh ensure "$UNIT" --from "$FROM" --no-build-deps)"
+          dir="$(light/scripts/pack-toolchain.sh ensure "$UNIT" --from "$FROM" --no-build-deps --no-fetch)"
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       # Only a toolchain built from clean HEAD goes in the store (publish

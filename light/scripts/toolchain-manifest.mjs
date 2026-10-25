@@ -8,6 +8,7 @@
 //   node toolchain-manifest.mjs check <dir> <unit> <key|->     prints "<key> <commit>"
 //   node toolchain-manifest.mjs adopt <dir> <unit> <key>
 //   node toolchain-manifest.mjs overlap <dir>...               refuses two units writing one path
+//   node toolchain-manifest.mjs needs <dir>...                 refuses a unit given with another key of a unit it needs
 //   node toolchain-manifest.mjs linked <pack> <out> <sidecar> <0|1> <dir>...
 //   node toolchain-manifest.mjs sidecar <file>                 prints "<pack> <0|1>", then "<unit> <key> <commit>" per unit
 //
@@ -46,9 +47,11 @@ import { pathToFileURL } from 'node:url';
  * was built from uncommitted inputs, with a set variant knob, or over a
  * dirty unit it needs: such a toolchain is used locally and never
  * published. `knobs` maps each variant knob that was set to its value.
- * `needs` maps each unit it was built with to that unit's key, as a record
- * of what it was built over; the key already covers them, so nothing checks
- * it. `built` is an ISO 8601 time. `files` and `links` list everything in
+ * `needs` maps each unit it was built with to that unit's key: what it
+ * was built over. With HEAD's keys the unit's own key already covers them;
+ * assembly still checks it (the `needs` command), because a unit and a unit
+ * it needs taken each at its newest (`ensure --any`) can be of different
+ * builds. `built` is an ISO 8601 time. `files` and `links` list everything in
  * the directory but toolchain.json itself, sorted by path; a fetch rewrites
  * each `mtime` to the local copy's, as an archive keeps whole seconds at
  * best.
@@ -262,6 +265,28 @@ const commands = {
             if (d) refuse(`${p} is a file of ${unit} and a directory of ${d}; units of one pack may not write the same path`);
         }
     },
+    /**
+     * Refuses a unit among the toolchains `dirs` whose manifest records a
+     * key for a unit it needs that differs from the key of that unit's
+     * toolchain among `dirs`: libraries built over one compilers toolchain
+     * assembled with another (D44). A needed unit not among `dirs` (of
+     * another pack) is not checked here; assemble already takes every unit
+     * of its pack.
+     */
+    needs(/** @type {string[]} */ dirs) {
+        const manifests = dirs.map((dir) => readManifest(dir, readUnit(dir), '-'));
+        const keyOf = new Map(manifests.map((m) => [m.unit, m.key]));
+        for (const m of manifests) {
+            const needs = m.needs ?? {};
+            if (typeof needs !== 'object' || Array.isArray(needs)) refuse(`${m.unit}'s ${MANIFEST} has a malformed needs: ${JSON.stringify(needs)}`);
+            for (const [dep, built] of Object.entries(needs)) {
+                const given = keyOf.get(dep);
+                if (given !== undefined && given !== built) {
+                    refuse(`${m.unit} was built over ${dep} ${built}, but is given with ${dep} ${given}; a unit is assembled only with the toolchains it was built over`);
+                }
+            }
+        }
+    },
     /** Checks that assembly left every file of the units `dirs` in `out` as it is in its toolchain, and writes the sidecar. */
     linked(/** @type {string[]} */ [pack, out, sidecar, other, ...dirs]) {
         if (fs.existsSync(path.join(out, MANIFEST))) refuse(`the assembled pack holds a ${MANIFEST}; it is a toolchain's, not the pack's`);
@@ -310,7 +335,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const [command, ...args] = process.argv.slice(2);
     const run = commands[/** @type {keyof typeof commands} */ (command)];
     if (!run) {
-        console.error(`toolchain-manifest.mjs: no command ${JSON.stringify(command)} (write, check, adopt, overlap, linked, sidecar)`);
+        console.error(`toolchain-manifest.mjs: no command ${JSON.stringify(command)} (write, check, adopt, overlap, needs, linked, sidecar)`);
         process.exit(2);
     }
     try {

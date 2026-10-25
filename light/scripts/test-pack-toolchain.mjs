@@ -853,6 +853,65 @@ test('a unit takes what it needs from an earlier job of the same run, and with -
     removeTree(from);
 });
 
+test("a unit job builds its unit though another run stored it meanwhile, so what it publishes is this commit's", async () => {
+    const { dirs } = await ensureStub();
+    const [compilers, libs] = dirs;
+    // Another run, of the same inputs at another commit, stored both.
+    toolchains = new Map();
+    for (const dir of [compilers, libs]) {
+        const m = manifestOf(dir);
+        execFileSync('chmod', ['u+w', path.join(dir, 'toolchain.json')]);
+        fs.writeFileSync(path.join(dir, 'toolchain.json'), JSON.stringify({ ...m, commit: 'f'.repeat(40) }));
+        store(dir);
+    }
+    removeTree(cache);
+    const from = path.join(root, 'from-empty');
+    fs.mkdirSync(from, { recursive: true });
+    const { dir, r } = await ensureUnit('stub/libs', {}, '--from', from, '--no-build-deps', '--no-fetch');
+    // The unit it needs is still fetched, as nothing here would build it...
+    assert.match(r.err, /downloading toolchain-stub-compilers-/);
+    assert.doesNotMatch(r.err, /stub\/compilers: building/);
+    // ...and the unit itself is built at HEAD, not taken from the store.
+    assert.match(r.err, /stub\/libs: building toolchain/);
+    assert.doesNotMatch(r.err, /downloading toolchain-stub-libs-/);
+    assert.equal(manifestOf(dir).commit, git('rev-parse', 'HEAD'));
+    const archived = await runScript('pack-store.sh', {}, ['toolchain-archive', 'stub/libs', dir, path.join(root, 'archive-out')]);
+    assert.equal(archived.code, 0, archived.err);
+    // Fetched, it would have been refused there.
+    removeTree(cache);
+    const fetched = await ensureUnit('stub/libs', {}, '--from', from, '--no-build-deps');
+    const refused = await runScript('pack-store.sh', {}, ['toolchain-archive', 'stub/libs', fetched.dir, path.join(root, 'archive-out')]);
+    assert.equal(refused.code, 1);
+    assert.match(refused.err, /was built at f{40}, not at HEAD/);
+    fs.rmSync(path.join(root, 'archive-out'), { recursive: true, force: true });
+    removeTree(from);
+    removeTree(cache);
+    toolchains = new Map();
+});
+
+test('libraries built over one compilers toolchain are not assembled with another', async () => {
+    removeTree(cache);
+    toolchains = new Map();
+    const { dirs } = await ensureStub();
+    const [compilers, libs, vm] = dirs;
+    put('light/packs/stub/toolchains/compilers/pins.sh', `${fs.readFileSync(path.join(root, 'light/packs/stub/toolchains/compilers/pins.sh'), 'utf8')}CC_PATCH=1\n`);
+    commit('another compilers');
+    const newer = (await ensureUnit('stub/compilers', {}, '--no-fetch')).dir;
+    assert.notEqual(manifestOf(newer).key, manifestOf(compilers).key);
+    // Each unit at its newest, as ensure --any takes them: libs is still
+    // the one built over the old compilers.
+    const out = path.join(root, 'out-mixed');
+    const r = await assemble({ ALLOW_OTHER_TOOLCHAIN: '1' }, 'stub', out, newer, libs, vm);
+    assert.equal(r.code, 1, r.err);
+    assert.match(r.err, new RegExp(`stub/libs was built over stub/compilers ${manifestOf(compilers).key}, but is given with stub/compilers ${manifestOf(newer).key}`));
+    assert.equal(fs.existsSync(out), false);
+    // The old compilers with the libraries built over them may stand in.
+    const old = await assemble({ ALLOW_OTHER_TOOLCHAIN: '1' }, 'stub', out, compilers, libs, vm);
+    assert.equal(old.code, 0, old.err);
+    git('reset', '-q', '--hard', 'HEAD~1');
+    removeTree(out);
+});
+
 test('a unit built over a dirty unit it needs is dirty too', async () => {
     put('light/packs/stub/toolchains/compilers/pins.sh', 'CC_VERSION=1.9\n');
     const refused = await toolchain({}, 'ensure', 'stub/libs', '--no-fetch');
