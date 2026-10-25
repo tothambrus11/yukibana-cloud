@@ -19,7 +19,7 @@ case $a in x86_64) k=x86_64 ;; aarch64) k=arm64 ;; riscv64) k=riscv ;; *) echo "
 [ -f "$D/lib/libc.a" ] || { echo "cc.sh: no musl sysroot in $D (run ../build-targets.sh)" >&2; exit 1; }
 H=$QC/hdr/$k/include
 CLANG=${CLANG:-clang-18}
-inc=(--target=$a-linux-musl -nostdlibinc -isystem "$("$CLANG" -print-resource-dir)/include" -isystem "$D/include" -idirafter "$H")
+inc=(--target="$a-linux-musl" -nostdlibinc -isystem "$("$CLANG" -print-resource-dir)/include" -isystem "$D/include" -idirafter "$H")
 for x in "$@"; do case $x in -c|-E|-S|-M|-MM) exec "$CLANG" "${inc[@]}" "$@" ;; esac; done
 exec "$CLANG" "${inc[@]}" -static -fuse-ld=lld -nostdlib \
   "$D/lib/crt1.o" "$D/lib/crti.o" "$@" "$D/lib/libc.a" "$D/lib/libclang_rt.builtins.a" "$D/lib/crtn.o"

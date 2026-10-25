@@ -24,15 +24,11 @@ mkdir -p "$W" "$OUT"
 source "$CACHE/emsdk/emsdk_env.sh" >/dev/null 2>&1
 # No exceptions or RTTI, as LLVM is built; the demangler uses neither.
 common=(-std=c++17 -Oz -fno-exceptions -fno-rtti -I"$SRC/llvm/include")
-objects=()
 # Only the Itanium demangler: Linux and WASI targets mangle nothing else.
-for f in ItaniumDemangle; do
-  em++ "${common[@]}" -c "$SRC/llvm/lib/Demangle/$f.cpp" -o "$W/$f.o"
-  objects+=("$W/$f.o")
-done
+em++ "${common[@]}" -c "$SRC/llvm/lib/Demangle/ItaniumDemangle.cpp" -o "$W/ItaniumDemangle.o"
 em++ "${common[@]}" -Wall -Wextra -Wpedantic -Werror -c "$HERE/src/demangle/demangle.cpp" -o "$W/yk.o"
 # emmalloc: the smallest malloc; one call allocates a few kilobytes.
-em++ -Oz "$W/yk.o" "${objects[@]}" -o "$W/demangle.js" \
+em++ -Oz "$W/yk.o" "$W/ItaniumDemangle.o" -o "$W/demangle.js" \
   -sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createDemangle -sENVIRONMENT=worker,node \
   -sFILESYSTEM=0 -sMALLOC=emmalloc -sALLOW_MEMORY_GROWTH=1 \
   -sEXPORTED_FUNCTIONS=_yk_demangle_lines,_free -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToNewUTF8

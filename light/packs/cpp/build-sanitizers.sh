@@ -91,14 +91,21 @@ compile() { # dir objdir extra-flags... -- sources...
   printf '%s\n' "$@" | xargs -P "$JOBS" -I{} sh -c \
     "'$WASI_SDK/bin/clang++' $(printf "'%s' " "${cflags[@]}" "${extra[@]}") -c '$dir/{}' -o '$obj/{}.o'"
 }
+sources() { # dir excluded... : the names of dir's .cpp files, but the excluded
+  (cd "$1" && shift && for f in *.cpp; do case " $* " in *" $f "*) ;; *) printf '%s\n' "$f" ;; esac; done)
+}
 cd "$W/rt/lib"
 # As tools/system_libs.py lists them, but sanitizer_platform_limits_posix.cpp:
 # it describes Emscripten's libc's structures, which WASI's are not, and
 # nothing on WASI intercepts the calls that need them.
-compile sanitizer_common "$W/obj/common" -- $(cd sanitizer_common && ls *.cpp | grep -vx 'sanitizer_common_nolibc.cpp\|sanitizer_platform_limits_posix.cpp')
-compile ubsan "$W/obj/ubsan" -DUBSAN_CAN_USE_CXXABI -- $(cd ubsan && ls *.cpp | grep -vx 'ubsan_diag_standalone.cpp')
-compile lsan "$W/obj/lsan" -- $(cd lsan && ls lsan_common*.cpp)
-compile asan "$W/obj/asan" -- $(cd asan && ls *.cpp)
+mapfile -t common_src < <(sources sanitizer_common sanitizer_common_nolibc.cpp sanitizer_platform_limits_posix.cpp)
+mapfile -t ubsan_src < <(sources ubsan ubsan_diag_standalone.cpp)
+mapfile -t lsan_src < <(cd lsan && printf '%s\n' lsan_common*.cpp)
+mapfile -t asan_src < <(sources asan)
+compile sanitizer_common "$W/obj/common" -- "${common_src[@]}"
+compile ubsan "$W/obj/ubsan" -DUBSAN_CAN_USE_CXXABI -- "${ubsan_src[@]}"
+compile lsan "$W/obj/lsan" -- "${lsan_src[@]}"
+compile asan "$W/obj/asan" -- "${asan_src[@]}"
 compile ubsan_minimal "$W/obj/minimal" -- ubsan_minimal_handlers.cpp
 cd "$W"
 cc=("$WASI_SDK/bin/clang" --target=wasm32-wasip1 -O2 -Wall -Werror -D_WASI_EMULATED_MMAN -I"$HERE/src/sanitizer-rt/include")

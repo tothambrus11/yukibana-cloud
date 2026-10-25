@@ -42,7 +42,7 @@ stamp=$(cat "$HERE/pins.txt" "$HERE/patches/"*.patch "${BASH_SOURCE[0]}" | sha25
 if [ "$(cat "$ART/user.stamp" 2>/dev/null)" = "$stamp" ]; then echo "qemu user: up to date"; exit 0; fi
 [ -f "$TARGET/lib/libglib-2.0.a" ] && [ -f "$SRC/configure" ] || { echo "run build-qemu.sh first" >&2; exit 1; }
 [ -f "$HDR/linux/types.h" ] || { echo "run build-kernel.sh x86_64 first (UAPI headers)" >&2; exit 1; }
-# shellcheck disable=SC1091
+# shellcheck source=/dev/null
 source "$QC/emsdk-$EMSDK_VERSION/env.sh"
 export PATH=$QC/venv/bin:$PATH
 
@@ -100,8 +100,12 @@ cd "$B"
 PKG_CONFIG_PATH=$TARGET/lib/pkgconfig $NICE ninja -j"$JOBS" qemu-x86_64 qemu-aarch64 qemu-riscv64
 # Strict warnings on the file we wrote (QEMU's own flags do not include -Wextra);
 # after the build, which generates the headers it includes.
-emcc $(jq -r '.[] | select(.file | endswith("wasm32/wasm-host.c")) | .command' compile_commands.json | head -1 |
-  sed 's/^[^ ]* //; s/ -o [^ ]*//; s/ -c [^ ]*//; s/ -MD -MQ [^ ]* -MF [^ ]*//') \
+# Its compile command from compile_commands.json, without the compiler, the
+# input, the output and the dependency file, split into words as the shell
+# would have run it.
+read -ra host_flags < <(jq -r '.[] | select(.file | endswith("wasm32/wasm-host.c")) | .command' compile_commands.json | head -1 |
+  sed 's/^[^ ]* //; s/ -o [^ ]*//; s/ -c [^ ]*//; s/ -MD -MQ [^ ]* -MF [^ ]*//')
+emcc "${host_flags[@]}" \
   --system-header-prefix=qemu/ -Wall -Wextra -Wno-sign-compare -Wno-missing-field-initializers -Werror -fsyntax-only "$UT/common-user/host/wasm32/wasm-host.c"
 for a in x86_64 aarch64 riscv64; do
   cmd=$(ninja -t commands "qemu-$a" | tail -1)

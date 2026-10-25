@@ -28,6 +28,7 @@ fetch_wasm_sdk() {
     tar -xzf "${tmp}/wasm-sdk.tar.gz" -C "$WASM_SDK_ROOT"
     rm -rf "$tmp"
   fi
+  # shellcheck disable=SC2034 # read by the scripts that source this one
   WASM_SDK_ID="${SWIFT_TAG}_wasm"
   WASM_SDK_BUNDLE="$(dirname "$(find -L "$WASM_SDK_ROOT" -maxdepth 5 -type d -name WASI.sdk \
     -path '*wasm32-unknown-wasip1/*' -print -quit)")"

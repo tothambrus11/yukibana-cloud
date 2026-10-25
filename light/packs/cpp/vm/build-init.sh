@@ -28,7 +28,7 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 for p in x86_64:x86_64 aarch64:arm64 riscv64:riscv; do
   a=${p%%:*} k=${p##*:}
-  flags=(--target=$a-linux -nostdlib -static -ffreestanding -fno-stack-protector -std=gnu11
+  flags=(--target="$a-linux" -nostdlib -static -ffreestanding -fno-stack-protector -std=gnu11
     -isystem "$N" -isystem "$QC/hdr/$k/include" -include nolibc.h)
   "$TIDY" --quiet "$G/init.c" -- "${flags[@]}" 2> >(grep -v 'warnings generated' >&2)
   # -Wpedantic stays on; only the GNU statement expressions inside nolibc's own
