@@ -67,7 +67,9 @@ const TOP = (line) => line !== '' && indentOf(line) === 0 && !line.startsWith('-
  *
  * - `ticks: false` removes the notes from the text (the mapping stays):
  *   they are most of a -g dump's width, and the colours show the same.
- * - `details: false` also drops the dumps' size reports.
+ * - `details: false` also drops the dumps' size reports and the bindings
+ *   GHC makes for Typeable (`$trModule`, `$tcPoint`, `$krep…`), which every
+ *   module and type has and nobody wrote.
  *
  * Returns `{ text, lines }`: the kept lines and one mapping or null each.
  * Never throws.
@@ -105,7 +107,7 @@ export function filterCore(text, { ticks = false, details = false } = {}) {
         lines.push(map);
         shown.push(ticks ? row : row.replace(/src<[^>]*>\s*/g, ''));
     }
-    if (ticks) return { text: shown.join('\n'), lines };
+    if (ticks) return typeable({ text: shown.join('\n'), lines }, details);
     // Without the notes, a line that was only notes is empty, and one that
     // ended in a note before its expression (`= src<…>`, `(src<…>`) is cut
     // short: it is joined with the line under it, which maps more precisely.
@@ -124,7 +126,33 @@ export function filterCore(text, { ticks = false, details = false } = {}) {
         }
         kept.push({ text, map: lines[i] });
     }
-    return { text: kept.map((l) => l.text).join('\n'), lines: kept.map((l) => l.map) };
+    return typeable({ text: kept.map((l) => l.text).join('\n'), lines: kept.map((l) => l.map) }, details);
+}
+
+/** A Typeable binding's name, as Core and STG print it: `$trModule`, `$trModule3_r1xG`, `$tc'Point1`, `$krep_rJJ`. */
+const TYPEABLE = /^\$(trModule|tc|krep)[\w'$]*(\s|$)/;
+
+/**
+ * `out` (filterCore's) without its Typeable bindings unless `details`: each
+ * top-level group of lines (from an unindented line to the next blank one)
+ * whose first line names one goes, with the blank line after it.
+ */
+function typeable(out, details) {
+    if (details) return out;
+    const rows = out.text.split('\n');
+    const keep = [];
+    let dropping = false;
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row !== '' && !/^\s/.test(row) && (i === 0 || rows[i - 1] === '')) dropping = TYPEABLE.test(row);
+        if (dropping) {
+            if (row === '') dropping = false;
+            continue;
+        }
+        keep.push(i);
+    }
+    while (keep.length && rows[keep[0]] === '') keep.shift();
+    return { text: keep.map((i) => rows[i]).join('\n'), lines: keep.map((i) => out.lines[i]) };
 }
 
 /** A Cmm procedure's first line: `[Main.square_entry() { //  [R2]`, or a data section's: `[section ""data" . Main.square_closure" {`. */

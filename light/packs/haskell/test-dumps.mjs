@@ -51,6 +51,15 @@ test('Core: a right-hand side that began with notes keeps its "=" on the line of
     assert.ok(!rows(core).some((r) => /^\s*=\s*$/.test(r.text)));
 });
 
+test('Core and STG leave out the Typeable bindings every module has, unless Details is on', () => {
+    for (const name of ['Main.dump-simpl', 'Geometry-O.dump-stg-final']) {
+        const plain = filterCore(dump(name));
+        assert.doesNotMatch(plain.text, /^\$(trModule|tc|krep)/m, name);
+        assert.match(plain.text, /^(square|norm)/m, name);
+        assert.match(filterCore(dump(name), { details: true }).text, /^\$trModule/m, name);
+    }
+});
+
 test('Core with ticks: the notes stay, each line maps the same as without them', () => {
     const core = filterCore(dump('Main.dump-simpl'), { ticks: true });
     assert.match(core.text, /src<\/workspace\/Main\.hs:6:12> x_\w+/);
