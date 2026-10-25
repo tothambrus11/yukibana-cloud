@@ -713,8 +713,10 @@ jobs:
           - pack: javascript
             timeout: 30
             deploy-builds: true
+          # kotlinc's WebAssembly image: 6 minutes and 11 GB when kotlinc/
+          # changes (the pack's cache keeps it otherwise), 15 with downloads.
           - pack: kotlin
-            timeout: 20
+            timeout: 45
           - pack: php
             timeout: 30
           - pack: python

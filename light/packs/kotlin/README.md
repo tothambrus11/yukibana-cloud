@@ -1,74 +1,101 @@
-# Kotlin pack: a syntax-level server on tree-sitter
+# Kotlin pack: the real kotlinc, in WebAssembly
 
-**Server:** ours (`src/server.js`), on
-[web-tree-sitter](https://www.npmjs.com/package/web-tree-sitter) 0.25.10
-(the tree-sitter runtime, compiled to WebAssembly) and the Kotlin grammar
+**Compiler:** JetBrains' `kotlinc` 2.4.21 (K2), unmodified, compiled to
+WebAssembly GC by **GraalVM Web Image** (`native-image --tool:svm-wasm`)
+and loaded into a worker (`src/kotlinc.js`). How that build works, and
+why each workaround is there, is in [`kotlinc/README.md`](kotlinc/README.md).
+
+**Server:** ours (`src/server.js`), in one module Web Worker. Its
+diagnostics are kotlinc's: a worker of its own (`src/check.js`) compiles
+the whole project after each edit. Everything else (completion, hover,
+signature help, definition, references, rename, highlights, symbols)
+comes from [web-tree-sitter](https://www.npmjs.com/package/web-tree-sitter)
+0.25.10 and the Kotlin grammar
 [`@tree-sitter-grammars/tree-sitter-kotlin`](https://github.com/tree-sitter-grammars/tree-sitter-kotlin)
-1.1.0, as published on npm, in one module Web Worker. It parses every
-`.kt` and `.kts` file of the project and answers from the syntax trees:
-syntax errors, completion, hover with KDoc, signature help, go to
-definition, references, rename, highlights and document symbols, across
-files.
+1.1.0, answered from the syntax trees as before.
 
-**Runner:** none. Run and Test are not offered for Kotlin ("Why no Run").
+**Runner:** ours (`src/runner.js`). kotlinc compiles the project for
+**Kotlin/Wasm with the WASI target**, and the program runs in a worker of
+its own (`src/program.js`) with a terminal on stdin and stdout. Test runs
+the project's `kotlin.test` tests the same way.
 
-**Syntax only.** There is no Kotlin compiler in the browser, so there are
-no type errors, no inference, and nothing about the standard library's or
-any library's types beyond a list of names. Names are resolved by scope and
-by declared or constructed types written in the source (`val p: Point`,
-`val p = Point(…)`), which covers a beginner's project and not much more.
+Requires a browser with WebAssembly GC and exception references (exnref):
+Chromium 137 or later, Firefox 131 or later. Standard input needs a
+cross-origin isolated page, as for every pack.
 
-Both packages are fetched from the npm registry, checked against its
-sha512 (`build.sh`); nothing is compiled. The build takes seconds and caches
-5 MB in `~/.cache/yukibana-packs/kotlin`.
+## Why Kotlin/Wasm for WASI
 
-## Why no Run, and why not a real server
+kotlinc in the browser can compile for the JVM, for JavaScript and for
+Kotlin/Wasm. Only the last gives a program the browser runs with nothing
+else: a WASI module of about 600 KB that imports four calls (`fd_write`,
+`fd_read`, `poll_oneoff`, `random_get`), which `program.js` provides.
+JVM class files would need a JVM or the Java pack's TeaVM to link them;
+Kotlin/JS links in 5 to 6 s instead of one and prints numbers as
+JavaScript does (`0` for `0.0`).
 
-* **The Kotlin compiler is a JVM program.** `kotlinc` (K2) runs only on a
-  JVM; JetBrains publishes no build of it for JavaScript or WebAssembly.
-  Kotlin/JS and Kotlin/Wasm are *targets*: they compile Kotlin to run in a
-  browser, but the compiler itself stays on the JVM. Running it here would
-  need a JVM in the browser:
-  * **CheerpJ** runs real JVM programs, kotlinc included, but is
-    proprietary (free for personal use only) and loads its runtime and JDK
-    from Leaning Technologies' CDN: a static, self-hosted, offline-capable
-    site cannot use it.
-  * **TeaVM**, which the Java pack uses to compile javac, needs a program
-    that avoids reflection, class loading and threads; kotlinc relies on all
-    three (IntelliJ's platform core, `ServiceLoader`, coroutines), and is
-    some 60 MB of bytecode. Not feasible, and not attempted.
-  * **Doppio** is a Java 8 JVM, unmaintained since 2018.
-* **The Kotlin language servers need the compiler too.** JetBrains'
-  `kotlin-lsp` (2025, IntelliJ-based) and fwcd's `kotlin-language-server`
-  are JVM programs built on the compiler. A remote server would break the
-  pack contract: no backend.
-* **Kotlin Playground** (play.kotlinlang.org) compiles on JetBrains'
-  servers, the same objection.
-
-So the honest pack is a syntax-level one: tree-sitter's Kotlin grammar is
-small (3.4 MB raw, 163 KB brotli), MIT, maintained, and recovers from
-errors, which an editor needs. Download still gives a Gradle build that
-runs and tests the project with the real compiler.
+The price is the standard library: a Kotlin/Wasm program has Kotlin's
+common standard library (collections, strings, `kotlin.math`, `readln`,
+`println`), not the JDK. `java.util.Scanner`, `java.io.File` and
+`kotlin.system.exitProcess` do not exist, and kotlinc says so in the editor
+before Run, because the server checks against the same library Run
+compiles with. Numbers and data classes print as on the JVM
+(`Point(x=0.0, y=0.0)`).
 
 ## What is in `app/static/packs/kotlin/`
 
 | file | raw | gzip | brotli | what |
 |---|---|---|---|---|
-| `tree-sitter-kotlin.wasm` | 3.44 MB | 304 KB | 163 KB | the Kotlin grammar 1.1.0, as published |
-| `tree-sitter.wasm` | 205 KB | 81 KB | 66 KB | web-tree-sitter 0.25.10's runtime |
-| `tree-sitter.js` | 151 KB | 31 KB | 26 KB | its loader, unchanged |
-| `server.js` | 43 KB | 12 KB | 11 KB | ours: the LSP worker |
-| `manifest.json`, `LICENSE-*.txt` | | | | sizes and versions; both licences (MIT) |
+| `kc.js.wasm` | 90.9 MB | 31.1 MB | **20.5 MB** | kotlinc and our service (`kotlinc/service/`), WebAssembly GC |
+| `kc.js` | 111 KB | | 18 KB | GraalVM's loader, patched by `build.sh` to take the bytes `kotlinc.js` downloaded |
+| `kotlin-stdlib-wasm-wasi.klib` | 11.7 MB | | 2.5 MB | the standard library for Kotlin/Wasm WASI, with stored zip entries |
+| `kotlin-test-wasm-wasi.klib` | 264 KB | | 78 KB | `kotlin.test` for it, from Maven Central |
+| `tree-sitter-kotlin.wasm`, `tree-sitter.wasm`, `tree-sitter.js` | 3.80 MB | | 255 KB | the grammar 1.1.0 and web-tree-sitter 0.25.10, as published |
+| `server.js`, `check.js`, `kotlinc.js` | | | 15 KB | ours: the language server, its checker, the loader |
+| `runner.js`, `program.js` | | | 7 KB | ours: the runner, the program's worker |
+| `manifest.json`, `LICENSE-*.txt` | | | | sizes and versions; the licences |
 
-The language server transfers **0.27 MB** with brotli. It starts in under
-0.1 s once downloaded.
+The language server and the runner share every large file by URL, so the
+browser downloads them once: **23.5 MB** with brotli for the pack. The
+syntax features answer as soon as tree-sitter has loaded (0.27 MB);
+kotlinc's diagnostics follow once it has downloaded and started.
+
+Library archives have stored zip entries, not deflated ones: the image has
+no zlib (`kotlinc/README.md`, "Run-time gaps"). They compress as well
+either way for the transfer.
+
+## Measured
+
+Chromium (headless, Playwright) on a 4-core cloud container, from
+`test-run.mjs` and `test.mjs`, files served raw from a local server:
+
+| step | time |
+|---|---|
+| the server answers `initialize` (tree-sitter) | 0.16 s |
+| kotlinc ready in the server's checker: download, instantiate, libraries | 3.2 s (0.5 + 1.6 + 0.7, local server) |
+| an edit to its new diagnostics (debounce included) | about 0.5 s |
+| the runner's kotlinc ready, warm-up included | 16.6 s, of which the warm-up compile and link is 13.5 s |
+| first Run in the app (the runner warm since the language started) | 8.6 s |
+| a warm Run of the sample: compile, link, run | 1.0 s (0.2 + 0.7 + 0.1) |
+| a warm Run of another program | 1.9 to 2.9 s (linking is 1.8 to 2.6 s) |
+| Test of the sample (kotlin.test linked for the first time) | 3.4 s |
+| Stop of an endless loop to the next run's output | 2.1 s, kotlinc kept |
+
+The warm-up's first compile is slow because V8 tiers up kotlinc's 91 MB
+of code as it runs; it happens while the person reads the sample, which
+is why the runner is started ahead (`warmRunner`).
 
 ## What the server does
 
-* **Diagnostics:** tree-sitter's `ERROR` and `MISSING` nodes, as "Syntax
-  error: unexpected …" or "Syntax error: missing …", source `kotlin (syntax)`. One
-  mistake can make the grammar's error recovery swallow the rest of a
-  block; the server reports each such region once, where it starts.
+* **Diagnostics:** kotlinc's, every error and warning with its range, in
+  kotlinc's words, source `kotlinc`. A check compiles every `.kt` of the
+  project, tests included, against the standard library and `kotlin.test`
+  for Kotlin/Wasm WASI, as Test does, into a klib it throws away. Checks
+  are debounced (150 ms) and a newer one replaces one still waiting;
+  their results are published only for documents that have not changed
+  since. Until kotlinc is ready, and for `.kts` scripts, which it does not
+  check, tree-sitter's syntax errors are shown ("Syntax error: unexpected
+  …", source `kotlin (syntax)`), as is everything if kotlinc cannot start
+  (a browser without WebAssembly GC), which the server logs.
 * **Completion:** after `.`, the members of a project class when the
   receiver's class is known (a parameter or property with a declared type,
   a `val` initialised with a constructor call, `this`, a class or object
@@ -100,61 +127,126 @@ The language server transfers **0.27 MB** with brotli. It starts in under
 * **Document symbols:** classes, objects, their properties and functions,
   top-level functions and properties, type aliases, enum entries.
 
+## Running
+
+Run compiles every `.kt` of the project except the tests (files under a
+`test/` or `tests/` directory, such as `src/test/kotlin/`), in two steps as
+Gradle does: sources to a klib (`-nopack`), then the klib to `main.wasm`
+(`-Xir-produce-js`), with the standard library's linked code cached in
+kotlinc's file system (`-Xcache-directory`) from the first link on. The
+runner starts kotlinc as soon as the app starts it (`warmRunner`) and
+compiles and links a small program out of sight, so the first Run already
+links in about a second.
+
+* **Output:** `stdout` and `stderr` messages as the program writes, a
+  prompt without a newline included.
+* **Input:** `readln()`, `readlnOrNull()` and `readLine()` read the
+  terminal, blocking in `fd_read` on the contract's SharedArrayBuffer
+  (CONTRACT.md, "Standard input"): a read with nothing left asks the app
+  for a line. Ctrl-D answers one read with end of file. With no buffer,
+  every read is end of file.
+* **Compile errors:** kotlinc's, on stderr, as kotlinc prints them:
+  `src/main/kotlin/Main.kt:2:18: error: …`, then the line with the range
+  underlined. The run exits with kotlinc's code (1).
+* **Uncaught exceptions:** `Exception in thread "main" IllegalStateException:
+  boom`, on stderr, and exit code 1, as on the JVM. A WASI program cannot
+  say this by itself (its uncaught exception is a WebAssembly exception
+  without a message, and Kotlin/Wasm's WASI library has no stderr), so the
+  runner compiles a small wrapper beside the project (`mainWrapper` in
+  `runner.js`) that calls the entry file's `main` or `main(args)` (with no
+  arguments), catches what it throws, and hands its text to the runner one
+  character at a time. Kotlin/Wasm's traces have no stack frames, so only
+  the exception and its message are shown. A `suspend fun main`, or a main
+  the wrapper cannot call, runs without it, from WASI's `_start`.
+* **Stop:** the runner understands `cancel`: it terminates the program's
+  worker and answers `exit` 130 with `reusable: true`, keeping kotlinc warm.
+  A cancel during a compile waits for it (a compile cannot be interrupted);
+  the app terminates the runner if that takes longer than its grace period.
+* **Reusable:** every exit says `reusable: true` unless kotlinc itself
+  failed, and the next run starts from a fresh project directory.
+* **Timings:** `mark` messages: `kotlinc-ready`, `kotlinc-warm-up`,
+  `compiled`, `linked`, `first-stdout`, `exit`.
+
+**Test** compiles every `.kt`, tests included, against `kotlin.test`
+(`kotlin-test-wasm-wasi` 2.4.21, from Maven Central, sha256-pinned in
+`kotlinc/build.sh`), and calls the module's `startUnitTests`, which runs
+every `@Test` (with `@BeforeTest`, `@AfterTest` and `@Ignore`). kotlin.test
+for WASI reports in TeamCity service messages (`##teamcity[testStarted
+…]`), which the runner turns into a report for people: each class, each
+test with ✓ or ✗, a failure's message under its test, and `3 tests: 3
+passed`. Lines the tests print themselves pass through. Exit 0 only when
+every test passed and at least one ran; a project with no `@Test` under
+`test/` gets "No tests" and exit 1.
+
+## Optimization: not offered
+
+kotlinc for Kotlin/Wasm has no optimisation levels to choose from (its
+own optimisations always run, Binaryen's are a Gradle step this pack does
+not take), so the app's Optimization select is not shown.
+
 ## Download (Gradle)
 
 Download writes `build.gradle.kts` (Kotlin 2.4.21, the `application`
 plugin with the entry's `MainKt` class, `kotlin.test` on JUnit 5) and
-`settings.gradle.kts`. `gradle run -q --console=plain` runs the program
-(stdin connected) and `gradle test` runs the tests. Checked with Gradle
-8.14.3 and Temurin 25: the sample prints
+`settings.gradle.kts`. `gradle run -q --console=plain` runs the program on
+the JVM (stdin connected) and `gradle test` runs the tests. Checked with
+Gradle 8.14.3 and Temurin 25: the sample prints
 `Point(x=0.0, y=0.0) to Point(x=3.0, y=4.0): 5.0` and its three tests pass.
+A project written for the browser also builds there: the common standard
+library is part of the JVM's.
 
 ## What does not work
 
-* **No type checking**: a type error, an unresolved name or a wrong
-  argument count is not reported. Only syntax errors are.
-* **No library types**: members of `String`, `List`, or any standard
-  library or dependency type are not completed (the editor offers the
-  document's words), and hover over them shows nothing.
-* **Resolution is by name and written types**: no inference across calls
-  (`val p = makePoint()` has no known class), no overload resolution, no
-  extension functions on library types, no smart casts. Simple string
-  template references (`"$name"`) are not found; `${…}` ones are.
-* **Rename is as good as references**, and so misses what they miss: a
-  simple string template (`"$name"`), an override of a renamed member, a
-  named argument (`copy(x = 1.0)`), a use through a receiver whose class the
-  syntax does not say (when the name is not unique among the project's
-  members). Files are not renamed with their class.
-* **No formatting, no quick fixes, no type definition, no Run, no Test.**
-  So no property-based tests and no mutation testing either: both need a
-  compiler and a test runner in the browser, and kotlinc is a JVM program
-  ("Why no Run"). In the downloaded Gradle build they work as usual:
-  kotest-property (`io.kotest:kotest-property`, with JUnit 5) for
-  properties, and PIT (the `info.solidsoft.pitest` Gradle plugin) for
-  mutants, which mutates Kotlin's bytecode as it does Java's. Neither is
-  added to the generated `build.gradle.kts`: the editor could not check or
-  complete their API.
-* Error recovery is tree-sitter's: an unfinished construct can hide
-  declarations after it until it is closed (a text fallback keeps member
-  completion working for top-level `val x = Class(…)`).
-
-## Optimization: not offered
-
-There is no Run for Kotlin ("Why no Run"), so nothing to optimise; the
-app's Optimization select is not shown. Download's Gradle project builds
-for the JVM, where kotlinc has no optimisation levels.
+* **No JDK.** Programs use Kotlin's common standard library (see "Why
+  Kotlin/Wasm for WASI"). No files, threads, networking, `exitProcess` or
+  `System.currentTimeMillis()`; `kotlin.time` works.
+* **Library types in the editor:** kotlinc checks them, but completion and
+  hover come from the syntax trees, which do not know `String`'s or
+  `List`'s members (the editor offers the document's words), and hover over
+  a library name shows nothing. Exposing kotlinc's analysis (FIR) for
+  completion and hover is the next step; it would live in the same image
+  (`kotlinc/README.md`, "What this means for the Kotlin pack").
+* **Resolution for definition, references and rename is by name and
+  written types:** no inference across calls, no overload resolution, no
+  extension functions on library types, no smart casts. Rename misses what
+  references misses: a simple string template (`"$name"`), an override of a
+  renamed member, a named argument (`copy(x = 1.0)`).
+* **Memory:** kotlinc is a 91 MB WebAssembly module, and the server's
+  checker and the runner each hold one: about 570 MB of the tab's memory each in Chromium, 1.1 GB for both.
+* **No formatting, no quick fixes, no property-based or mutation
+  testing.** kotest-property and PIT need the JVM; they work in the
+  downloaded Gradle build.
+* **The GraalVM build is an early-access one** (`kotlinc/README.md`,
+  "Toolchain risk"): Oracle GraalVM 25.1 EA, whose licence is for
+  development and evaluation. Web Image is GPLv2 with the Classpath
+  Exception in oracle/graal; a GraalVM built from that source, or the 25.1
+  release, should replace it before Light depends on this pack.
 
 ## Licences
 
-web-tree-sitter (`LICENSE-web-tree-sitter.txt`) and tree-sitter-kotlin
-(`LICENSE-tree-sitter-kotlin.txt`) are MIT; both texts are copied from the
-npm packages by `build.sh`.
+kotlinc (`LICENSE-kotlin.txt`: Apache 2.0, with its notices) and
+`kotlin.test` are JetBrains', Apache 2.0. `kc.js.wasm` also contains
+GraalVM's runtime and Java class library (`LICENSE-graalvm.txt`, the
+GraalVM Free Terms and Conditions with the Early Adopter licence for this
+build). web-tree-sitter and tree-sitter-kotlin are MIT
+(`LICENSE-web-tree-sitter.txt`, `LICENSE-tree-sitter-kotlin.txt`).
 
 ## Building and testing
 
 ```sh
 ./build.sh            # into ../../app/static/packs/kotlin/
-node test.mjs         # 38 checks (playwright-core: npm install, or link ../java/node_modules)
+node test.mjs         # the language server (playwright-core: npm install)
+node test-run.mjs     # the runner: Run, stdin, errors, Test, Stop
 ```
 
-The app's `tests/e2e.mjs kotlin` drives the built app (no Run or Test).
+`build.sh` fetches the tree-sitter packages from npm (sha512-checked) and
+builds kotlinc with `kotlinc/build.sh` into
+`$PACK_CACHE/kotlin/kotlinc-<key>`, `<key>` a hash of the image's inputs in `kotlinc/`: a change
+of the pack's JavaScript reuses it, a change of `kotlinc/` builds it again,
+in about 6 minutes with a peak of about 11 GB of memory (15 minutes the
+first time, with about 1 GB of downloads: GraalVM, Binaryen, kotlinc and
+kotlin.test, all sha256-pinned). Brotli at quality 11 on `kc.js.wasm`
+takes about 4 minutes more, also once per key.
+
+The app's `tests/e2e.mjs kotlin` drives the built app: diagnostics, Run
+and Test.

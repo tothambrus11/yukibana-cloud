@@ -1067,17 +1067,18 @@ class GeometryTest {
 	{
 		// Gradle's layout (the downloaded build.gradle.kts builds it as it
 		// is): the program in src/main/kotlin, kotlin.test tests in
-		// src/test/kotlin. The browser reads Kotlin's syntax only: no
-		// compiler runs Kotlin there (packs/kotlin/README.md).
+		// src/test/kotlin. The real kotlinc, compiled to WebAssembly, checks
+		// it and builds it for Kotlin/Wasm (WASI), which Run and Test run in
+		// the browser (packs/kotlin/README.md).
 		id: 'kotlin',
 		label: 'Kotlin',
 		monacoLanguages: ['kotlin'],
 		settings: {},
 		entry: 'src/main/kotlin/Main.kt',
 		extension: '.kt',
-		runs: false,
-		cannotRun:
-			'Kotlin cannot run in the browser: its compiler runs only on a JVM. The editor knows Kotlin\'s syntax (errors, completion, hover, go to definition); Download the project to run it with Gradle.',
+		runs: true,
+		tests: true,
+		warmRunner: true,
 		sample: {
 			'src/main/kotlin/Main.kt': `fun main() {
     val a = Point(0.0, 0.0)

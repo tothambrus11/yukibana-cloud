@@ -7,9 +7,11 @@ and compiles for three targets: JVM class files, JavaScript, and Kotlin/Wasm
 for WASI. The last of these gives a runner with no server and no JVM: kotlinc
 writes a small WASI module that runs in the browser with stdin.
 
-This is a prototype next to the Kotlin pack (`../../packs/kotlin`),
-which is still syntax-only. That pack's README says kotlinc cannot run in a
-browser. It can, and this directory shows how.
+This directory builds the Kotlin pack's compiler (`../README.md`): the
+pack's `build.sh` runs `build.sh` here into its cache, and the pack's
+diagnostics, Run and Test use the result. It started as a prototype
+(`light/prototypes/kotlin-wasm`) when the pack's README still said kotlinc
+cannot run in a browser. It can, and this directory shows how.
 
 ## Measured
 
@@ -169,7 +171,7 @@ The other ideas I checked:
      `Scanner`, no `java.io.File`). For consistency, the editor should then
      type-check against the wasi klib too (`compile("wasm", …)`), not the JVM
      classpath. `kotlin.test` for wasm-wasi is a separate klib on Maven
-     Central (`kotlin-test-wasm-wasi`) that this prototype does not fetch yet.
+     Central (`kotlin-test-wasm-wasi`) that `build.sh` fetches and the pack's Test uses.
   2. **JVM class files, linked by the Java pack's TeaVM-in-the-browser.**
      This keeps JVM semantics and `java.*`, within TeaVM's class library.
      That link step belongs to the Java pack, and I have not tried it with
@@ -189,13 +191,15 @@ The other ideas I checked:
 ## Building and testing
 
 ```sh
-./build.sh                                                   # into dist/, about 15 min the first time
+./build.sh [out]                                             # into out (default dist/), about 15 min the first time
 node --experimental-wasm-exnref test/run-node.mjs dist test/demo
 node test/browser.mjs dist                                   # playwright from the global node_modules
 ```
 
-`build.sh` pins and checks GraalVM `jdk-25e1-25.0.3-ea.32`, binaryen 133 and
-kotlinc 2.4.21 by sha256, and caches them in `~/.cache/yukibana-kotlin-wasm`.
+`build.sh` pins and checks GraalVM `jdk-25e1-25.0.3-ea.32`, binaryen 133,
+kotlinc 2.4.21 and kotlin-test-wasm-wasi 2.4.21 by sha256, and caches them
+in `$YK_CACHE` (default `~/.cache/yukibana-kotlin-wasm`; the pack's build
+passes `$PACK_CACHE/kotlin/kotlinc-build`).
 The image takes about 5 minutes to build, with a peak of about 10 GB.
 `config/traced-reachability-metadata.json` is the tracing agent's output for
 the compilations `test/run-node.mjs` makes. Delete it to trace again.

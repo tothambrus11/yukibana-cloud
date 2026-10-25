@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Builds the real Kotlin compiler (kotlinc, K2) as WebAssembly GC with GraalVM Web Image, into
-# ./dist:
+# the directory given (default ./dist); the Kotlin pack's build.sh runs it into its cache:
 #
 #   kc.js, kc.js.wasm   kotlinc $KOTLIN_VERSION and yk.KotlinService (service/), compiled by
 #                       native-image --tool:svm-wasm; kc.js reads globalThis.ykWasmPath
 #   lib/                the libraries a compilation reads, with their zip entries stored, not
 #                       deflated (there is no zlib at run time): kotlin-stdlib.jar,
 #                       jdk-api.jar (java.base's java.* classes, for -no-jdk),
-#                       kotlin-stdlib-js.klib, kotlin-stdlib-wasm-wasi.klib
+#                       kotlin-stdlib-js.klib, kotlin-stdlib-wasm-wasi.klib,
+#                       kotlin-test-wasm-wasi.klib (Maven Central; kotlinc's zip has no kotlin.test
+#                       for Kotlin/Wasm)
 #
 # Steps: download and check the pinned GraalVM EA, binaryen and kotlinc; patch two builder bugs
 # and the compiler's jars (tools/); compile the service, the substitutions and the tracing driver;
@@ -27,10 +29,13 @@ GRAALVM_FILE=graalvm-jdk-25e1-25.0.3-ea.32_linux-x64_bin.tar.gz
 GRAALVM_SHA256=46342977b254c57e3f870aa58aba1af152751e027e8390f3bfbd956d4cce3ef7
 BINARYEN_VERSION=133
 BINARYEN_SHA256=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
+# Maven Central publishes no .sha256 for it; this is the file's, checked against its .sha1
+# (c8d5bd92557e809f2b9f423e44a2646945c8f09a) when it was pinned.
+KOTLIN_TEST_WASI_SHA256=d1083ca4a4cf27751b272d4c78b5e8d2cc5e5dbc48965aec2f746546ad9e12c0
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CACHE="${YK_CACHE:-$HOME/.cache/yukibana-kotlin-wasm}"
-DIST="$HERE/dist"
+DIST="$(mkdir -p "${1:-$HERE/dist}" && cd "${1:-$HERE/dist}" && pwd)"
 mkdir -p "$CACHE" "$DIST/lib"
 
 fetch() { # fetch <url> <file> <sha256>: into $CACHE, verified
@@ -43,6 +48,8 @@ fetch "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARY
     "binaryen-$BINARYEN_VERSION.tar.gz" "$BINARYEN_SHA256"
 fetch "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN_VERSION/kotlin-compiler-$KOTLIN_VERSION.zip" \
     "kotlin-compiler-$KOTLIN_VERSION.zip" "$KOTLIN_SHA256"
+fetch "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-test-wasm-wasi/$KOTLIN_VERSION/kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib" \
+    "kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib" "$KOTLIN_TEST_WASI_SHA256"
 
 if [ ! -d "$CACHE/graalvm" ]; then
     mkdir -p "$CACHE/graalvm.part" && tar xzf "$CACHE/$GRAALVM_FILE" -C "$CACHE/graalvm.part" --strip-components=1
@@ -112,6 +119,7 @@ mkdir -p "$B/jdk" && jmod extract --dir "$B/jdk" "$G/jmods/java.base.jmod"
 store "$KLIB/kotlin-stdlib.jar" "$DIST/lib/kotlin-stdlib.jar"
 store "$KLIB/kotlin-stdlib-js.klib" "$DIST/lib/kotlin-stdlib-js.klib"
 store "$KLIB/kotlin-stdlib-wasm-wasi.klib" "$DIST/lib/kotlin-stdlib-wasm-wasi.klib"
+store "$CACHE/kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib" "$DIST/lib/kotlin-test-wasm-wasi.klib"
 
 # Reflection, resources and proxies kotlinc uses, traced on HotSpot over the same compilations
 # test/run-node.mjs makes. Committed in config/; delete it to trace again.
@@ -148,4 +156,11 @@ sed 's|const wasmPath = config.wasm_path \|\| runtime.getCurrentFile() + ".wasm"
     "$B/image/kc.js" > "$DIST/kc.js"
 grep -q ykWasmPath "$DIST/kc.js" || { echo "kc.js: the wasm path line moved" >&2; exit 1; }
 cp "$B/image/kc.js.wasm" "$DIST/"
+# The image is kotlinc (Apache 2.0, with its third-party notices) linked with GraalVM's runtime
+# and class library (the GraalVM Free Terms, with the early adopter licence, for this build).
+cp "$G/LICENSE.txt" "$DIST/LICENSE-graalvm.txt"
+cat "$CACHE/kotlinc/license/LICENSE.txt" "$CACHE/kotlinc/license/NOTICE.txt" "$CACHE/kotlinc/license/COPYRIGHT.txt" > "$DIST/LICENSE-kotlin.txt"
+printf '{"kotlin":"%s","graalvm":"%s","binaryen":"%s"}\n' "$KOTLIN_VERSION" "$GRAALVM_TAG" "$BINARYEN_VERSION" > "$DIST/versions.json"
+# The build directory is about 300 MB nobody reads again.
+rm -rf "$B"
 ls -l "$DIST" "$DIST/lib"
