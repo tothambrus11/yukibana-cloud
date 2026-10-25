@@ -104,10 +104,11 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
   else.** A browser goes through GitHub or a mailed code and lands on
   `/auth/callback`, which stores the session in cookies. The CLI and the IDE
   library open `/auth/connect` in the system browser: the person logs in to
-  the website and confirms which account, Supabase Auth's OAuth 2.1 server
-  issues a PKCE-bound code for the registry's OAuth client, and the
-  consent route sends the browser with it straight to a listener on
-  `127.0.0.1`. The CLI trades it for a session
+  the website and confirms which account, the Worker asks Supabase Auth's
+  OAuth 2.1 server for an authorization for the registry's OAuth client,
+  the consent route approves that one (and only the one this browser's
+  connect cookie names) for a PKCE-bound code, and sends the browser with
+  it straight to a listener on `127.0.0.1`. The CLI trades it for a session
   of its own and sends the access token as `Authorization: Bearer`. CI
   sends a project token instead.
 * **The Worker trusts a request only after Auth's keys say so.** The hook

@@ -2,7 +2,7 @@ import { test, expect } from 'vitest';
 import {
   authorizeUrl, connectCookie, connectQuery, connectRequestOf, declinedUrl, deliveryUrl, loginCode, loopbackPort, relayOf, relayState,
 } from '../src/lib/connect';
-import { approve, consent, nonce, returned, siteOrigin, type ConsentAuth, type Decision } from '../src/lib/server/connect';
+import { approve, consent, nonce, returned, siteOrigin, start, type ConsentAuth, type Decision } from '../src/lib/server/connect';
 
 const challenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 const state = 'c3RhdGUtb2YtdGhlLWNsaQ';
@@ -124,29 +124,41 @@ test('a remembered consent, and every answer, must send the browser to the retur
   expect(await approve(auth({ gone: true }).fake, 'auth-1', expected)).toMatchObject({ ok: false, status: 400, message: expect.stringMatching(/Start the login again/) });
 });
 
-const mine = connectCookie(NONCE);
-const other = connectCookie('b3RoZXItbG9naW4tbm9uY2U');
+const mine = { name: connectCookie(NONCE), value: 'auth-1' };
+const other = { name: connectCookie('b3RoZXItbG9naW4tbm9uY2U'), value: 'auth-2' };
+const session = { name: 'sb-session', value: 'x' };
 const where = (d: Decision): string => ('redirect' in d.to ? d.to.redirect.toString() : `${d.to.status}`);
 
 test('consent relays the code straight to the loopback, and spends only this login\'s cookie', async () => {
   const a = auth();
-  const d = await consent({ authorizationId: 'auth-1', signedIn: true, cookies: ['sb-session', mine, other], auth: a.fake, expected });
+  const d = await consent({ authorizationId: 'auth-1', signedIn: true, cookies: [session, mine, other], auth: a.fake, expected });
   expect(where(d)).toBe(`http://127.0.0.1:4242/callback?code=abc&state=${state}`);
-  expect(d.spend).toEqual([mine]);
+  expect(d.spend).toEqual([mine.name]);
 });
 
-test('without a connect cookie, nobody here clicked Continue: Auth is not even asked', async () => {
-  const a = auth();
-  const d = await consent({ authorizationId: 'auth-1', signedIn: true, cookies: ['sb-session'], auth: a.fake, expected });
-  expect(where(d)).toBe('400');
-  expect(a.calls).toEqual([]);
+test('a page elsewhere that names an authorization this browser did not start changes nothing, in Auth or in the browser', async () => {
+  // What a page on a sibling subdomain can send while the person's login is
+  // in flight: the person's cookies, and an id it made itself, or none.
+  const cases: [string, { authorizationId: string | null; cookies: { name: string; value: string }[] }][] = [
+    ['no connect cookie', { authorizationId: 'auth-1', cookies: [session] }],
+    ['an id no cookie holds', { authorizationId: 'attackers-own', cookies: [session, mine, other] }],
+    ['no id', { authorizationId: null, cookies: [mine, other] }],
+    ['a bad id', { authorizationId: 'no spaces allowed', cookies: [mine, other] }],
+    ['a cookie\'s name rather than its value', { authorizationId: NONCE, cookies: [mine] }],
+  ];
+  for (const [name, input] of cases) {
+    const a = auth();
+    const d = await consent({ ...input, signedIn: true, auth: a.fake, expected });
+    expect(where(d), name).toBe('400');
+    expect(a.calls, name).toEqual([]);
+    expect(d.spend, name).toEqual([]);
+  }
 });
 
-test('every way consent can fail sends nothing to a loopback and spends every connect cookie', async () => {
+test('once the browser comes back with its own authorization, every way consent can fail sends nothing to a loopback and spends every connect cookie', async () => {
   const cases: [string, Parameters<typeof consent>[0]][] = [
-    ['a bad id', { authorizationId: 'no spaces allowed', signedIn: true, cookies: [mine, other], auth: auth().fake, expected }],
     ['signed out', { authorizationId: 'auth-1', signedIn: false, cookies: [mine, other], auth: auth().fake, expected }],
-    ['another login\'s nonce', { authorizationId: 'auth-1', signedIn: true, cookies: [other], auth: auth().fake, expected }],
+    ['Auth\'s state names another login\'s nonce', { authorizationId: 'auth-2', signedIn: true, cookies: [mine, other], auth: auth().fake, expected }],
     ['Auth no longer knows it', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ gone: true }).fake, expected }],
     ['a foreign client', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ client: 'x' }).fake, expected }],
     ['a redirect elsewhere', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ redirect: 'https://evil.example/?code=abc' }).fake, expected }],
@@ -155,17 +167,67 @@ test('every way consent can fail sends nothing to a loopback and spends every co
   for (const [name, input] of cases) {
     const d = await consent(input);
     expect('status' in d.to, name).toBe(true);
-    expect(d.spend.toSorted(), name).toEqual(input.cookies.filter((c) => c.startsWith('__Host-')).toSorted());
+    expect(d.spend.toSorted(), name).toEqual([mine.name, other.name].toSorted());
   }
 });
 
-test('the return route relays a refusal to the loopback, never a code', () => {
+/** Auth's authorization endpoint, faked: answers every request with
+ *  `status` and `location`, and records what it was asked. */
+function authorizeEndpoint(status: number, location: string | null, body = '') {
+  const asked: { url: string; redirect: RequestRedirect | undefined }[] = [];
+  const fetchFn = (async (url: URL | RequestInfo, init?: RequestInit) => {
+    asked.push({ url: url instanceof Request ? url.url : url.toString(), redirect: init?.redirect });
+    return new Response(body, { status, headers: location === null ? {} : { location } });
+  }) as typeof fetch;
+  return { fetchFn, asked };
+}
+
+const SITE = 'https://cloud.example';
+const startWith = (fetchFn: typeof fetch) =>
+  start({ authorize: authorizeUrl('https://auth.example', 'client-1', RETURN, { port: 4242, challenge, state }, NONCE), site: SITE, nonce: NONCE, fetchFn });
+
+test('continuing asks Auth for the authorization from the server, and the browser goes to consent holding a cookie with its id', async () => {
+  const ep = authorizeEndpoint(302, `${SITE}/auth/connect/consent?authorization_id=az-9_1`);
+  const s = await startWith(ep.fetchFn);
+  expect(ep.asked).toEqual([{ url: expect.stringMatching(/^https:\/\/auth\.example\/auth\/v1\/oauth\/authorize\?/), redirect: 'manual' }]);
+  expect(where({ to: s.to, spend: [] })).toBe(`${SITE}/auth/connect/consent?authorization_id=az-9_1`);
+  expect(s.cookie).toEqual({ name: connectCookie(NONCE), value: 'az-9_1' });
+});
+
+test('a request Auth refuses after checking the client goes back to the CLI as an error, and sets no cookie', async () => {
   const st = relayState({ port: 4242, state, nonce: NONCE });
-  const err = returned(new URLSearchParams({ error: 'invalid_request', error_description: 'bad', state: st }), [mine]);
+  const s = await startWith(authorizeEndpoint(302, `${RETURN}?error=invalid_request&error_description=bad&state=${st}`).fetchFn);
+  expect(where({ to: s.to, spend: [] })).toBe(`http://127.0.0.1:4242/callback?error=invalid_request&error_description=bad&state=${state}`);
+  expect(s.cookie).toBeNull();
+});
+
+test('anything else Auth answers to continuing is this site\'s misconfiguration, shown as such, and sets no cookie', async () => {
+  const st = relayState({ port: 4242, state, nonce: NONCE });
+  const cases: [string, ReturnType<typeof authorizeEndpoint>['fetchFn']][] = [
+    ['an unknown client', authorizeEndpoint(400, null, '{"error_code":"oauth_client_not_found"}').fetchFn],
+    ['another site_url', authorizeEndpoint(302, 'https://elsewhere.example/auth/connect/consent?authorization_id=a').fetchFn],
+    ['an id this site cannot take', authorizeEndpoint(302, `${SITE}/auth/connect/consent?authorization_id=a%20b`).fetchFn],
+    ['a code at the return route', authorizeEndpoint(302, `${RETURN}?code=abc&state=${st}`).fetchFn],
+    ['another login\'s nonce', authorizeEndpoint(302, `${RETURN}?error=x&state=${relayState({ port: 4242, state, nonce: 'b3RoZXItbG9naW4tbm9uY2U' })}`).fetchFn],
+    ['no answer at all', async () => { throw new Error('connection refused'); }],
+  ];
+  for (const [name, fetchFn] of cases) {
+    const s = await startWith(fetchFn);
+    expect(where({ to: s.to, spend: [] }), name).toBe('502');
+    expect(s.cookie, name).toBeNull();
+  }
+});
+
+test('the return route relays a refusal to the loopback, never a code, and a refusal of its own spends nothing', () => {
+  const st = relayState({ port: 4242, state, nonce: NONCE });
+  const err = returned(new URLSearchParams({ error: 'invalid_request', error_description: 'bad', state: st }), [mine.name]);
   expect(where(err)).toBe(`http://127.0.0.1:4242/callback?error=invalid_request&error_description=bad&state=${state}`);
-  expect(err.spend).toEqual([mine]);
-  const code = returned(new URLSearchParams({ code: 'abc', state: st }), [mine]);
+  expect(err.spend).toEqual([mine.name]);
+  const code = returned(new URLSearchParams({ code: 'abc', state: st }), [mine.name]);
   expect(where(code)).toBe('400');
-  expect(code.spend).toEqual([mine]);
+  expect(code.spend).toEqual([]);
+  const guessed = returned(new URLSearchParams({ error: 'x', state: relayState({ port: 4242, state, nonce: 'Z3Vlc3NlZC1ieS1hLXBhZ2U' }) }), [mine.name, other.name]);
+  expect(where(guessed)).toBe('400');
+  expect(guessed.spend).toEqual([]);
   expect(where(returned(new URLSearchParams({ error: 'x', state: st }), []))).toBe('400');
 });

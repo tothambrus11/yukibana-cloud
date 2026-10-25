@@ -1,8 +1,8 @@
 import { error, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
-import { authorizeUrl, connectCookie, connectQuery, connectRequestOf, declinedUrl, loginCode, loopback, type ConnectRequest } from '#lib/connect.ts';
+import { authorizeUrl, connectQuery, connectRequestOf, declinedUrl, loginCode, loopback, type ConnectRequest } from '#lib/connect.ts';
 import { me } from '#lib/server/catalogue.ts';
-import { CONNECT_COOKIE_OPTIONS, nonce, returnUrlOf, siteOrigin } from '#lib/server/connect.ts';
+import { CONNECT_COOKIE_OPTIONS, nonce, returnUrlOf, siteOrigin, start } from '#lib/server/connect.ts';
 import { withContext } from '#lib/server/context.ts';
 import { workerConfig } from '#lib/server/worker.ts';
 
@@ -59,19 +59,22 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
 };
 
 export const actions: Actions = {
-  /** The person confirmed. The browser goes to Auth's OAuth server, which
-   *  sends it straight back to `/auth/connect/consent`; the cookie named by
-   *  the nonce in the state is what that route checks before relaying the
-   *  code. */
+  /** The person confirmed. The site asks Auth's OAuth server for the
+   *  authorization itself and sends the browser with its id to
+   *  `/auth/connect/consent`; the connect cookie, named by the nonce in the
+   *  state and holding that id, is what that route checks before it asks
+   *  Auth anything (`start` in #lib/server/connect says why). */
   continue: async (event) => {
     const req = await formRequest(event);
     const config = workerConfig();
     if (config.oauthClientId === null) error(503, NOT_OFFERED);
     if (event.locals.claims === null) redirect(303, `/auth/login?next=${encodeURIComponent(here(req))}`);
     const n = nonce();
-    event.cookies.set(connectCookie(n), '1', CONNECT_COOKIE_OPTIONS);
-    const to = authorizeUrl(config.supabaseUrl, config.oauthClientId, returnUrlOf(siteOrigin(config.siteUrl, event.url)), req, n);
-    redirect(303, to.toString(), { external: [new URL(config.supabaseUrl).origin] });
+    const site = siteOrigin(config.siteUrl, event.url);
+    const started = await start({ authorize: authorizeUrl(config.supabaseUrl, config.oauthClientId, returnUrlOf(site), req, n), site, nonce: n, fetchFn: fetch });
+    if (started.cookie !== null) event.cookies.set(started.cookie.name, started.cookie.value, CONNECT_COOKIE_OPTIONS);
+    if ('status' in started.to) error(started.to.status, started.to.message);
+    redirect(303, started.to.redirect.toString(), { external: [site, loopback(req.port).origin] });
   },
 
   /** Another account: log this browser out of the website (this browser

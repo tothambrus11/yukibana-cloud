@@ -4,6 +4,8 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { asUser, connect } from '../../src/lib/server/db.js';
 import { SESSION_COOKIE } from '../../src/lib/session-cookie.js';
+import { CONNECT_COOKIE_PREFIX, authorizeUrl, connectCookie } from '../../src/lib/connect.js';
+import { nonce, returnUrlOf } from '../../src/lib/server/connect.js';
 import { ALICE, TEACHER, claimsOf, config } from './env.js';
 import { codeMailedTo } from './mail.js';
 import { startApp, type App } from './app.js';
@@ -203,6 +205,59 @@ test('a page on a sibling subdomain that loads every route of this site changes 
   expect(touched).toEqual([]);
   expect(await fingerprint()).toEqual(before);
   expect(await whoIs(teacher)).toBe(TEACHER);
+});
+
+test('a page on a sibling subdomain cannot have Auth bind or approve a login of its own as the person viewing it, nor cancel theirs', { timeout: 60_000 }, async () => {
+  if (config.oauthClientId === null) throw new Error('SUPABASE_OAUTH_CLIENT_ID is not set: run `node scripts/oauth-client.mjs` against the stack and export what it prints');
+  // Two real authorizations for the registry's client, made the way
+  // "Continue" makes them: the teacher's, whose id their connect cookie
+  // holds, and one the sibling page made for itself. Both for the client's
+  // registered return URI, on Auth's site_url, so Auth takes them.
+  const registered = returnUrlOf('http://127.0.0.1:5173');
+  const authorization = async (n: string): Promise<string> => {
+    const req = { port: 4242, challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM', state: 'c3RhdGUtb2YtdGhlLWNsaQ' };
+    const res = await fetch(authorizeUrl(config.supabaseUrl, config.oauthClientId ?? '', registered, req, n), { redirect: 'manual' });
+    expect(res.status, await res.text()).toBe(302);
+    const id = new URL(res.headers.get('location') ?? '').searchParams.get('authorization_id');
+    if (id === null) throw new Error(`Auth made no authorization: ${res.headers.get('location') ?? ''}`);
+    return id;
+  };
+  const n = nonce();
+  const theirs = await authorization(n);
+  const forged = await authorization(nonce());
+  const browser = `${teacher}; ${connectCookie(n)}=${theirs}`;
+  const sibling = { 'sec-fetch-site': 'same-site', 'sec-fetch-mode': 'no-cors', cookie: browser };
+
+  const before = await fingerprint();
+  const answers: string[] = [];
+  for (const path of [
+    `/auth/connect/consent?authorization_id=${forged}`,
+    '/auth/connect/consent',
+    `/auth/connect/return?error=access_denied&state=4242.c3RhdGUtb2YtdGhlLWNsaQ.${nonce()}`,
+  ]) {
+    const r = await fetch(`${app.origin}${path}`, { headers: sibling, redirect: 'manual' });
+    await r.arrayBuffer();
+    const spent = setCookies(r).filter((c) => c.name.startsWith(CONNECT_COOKIE_PREFIX)).map((c) => c.name);
+    answers.push(`${path}: ${r.status}${spent.length > 0 ? `, spent ${spent.join(', ')}` : ''}`);
+  }
+  expect(answers).toEqual([
+    `/auth/connect/consent?authorization_id=${forged}: 400`,
+    '/auth/connect/consent: 400',
+    expect.stringMatching(/^\/auth\/connect\/return\?.*: 400$/),
+  ]);
+  expect(await fingerprint()).toEqual(before);
+
+  // The control: the browser's own authorization does reach Auth, and the
+  // fingerprint sees Auth bind it, so the equality above is not a
+  // fingerprint that cannot see Auth's OAuth tables. (This app's SITE_URL
+  // is not Auth's site_url, so the approval is then refused; the binding
+  // is what counts here.)
+  const own = await fetch(`${app.origin}/auth/connect/consent?authorization_id=${theirs}`, {
+    headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', cookie: browser }, redirect: 'manual',
+  });
+  await own.arrayBuffer();
+  expect(own.status).not.toBe(503);
+  expect(await fingerprint()).not.toEqual(before);
 });
 
 test('a Domain=yukibana.dev cookie set by a light.yukibana.dev page does not change who the cloud thinks is signed in', { timeout: 60_000 }, async () => {

@@ -2,7 +2,7 @@ import { test, expect, beforeAll } from 'vitest';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { authorizeUrl, connectCookie, type ConnectRequest } from '../../src/lib/connect.js';
-import { approve, consent, nonce, returnUrlOf } from '../../src/lib/server/connect.js';
+import { approve, consent, nonce, returnUrlOf, start } from '../../src/lib/server/connect.js';
 import { claimsOf } from '../../src/lib/claims.js';
 import { sendCode, verifyCode } from '../../src/lib/server/login.js';
 import { config } from './env.js';
@@ -11,7 +11,9 @@ import { codeMailedTo } from './mail.js';
 // The whole of an IDE login through the website, against the real Auth
 // server: everything the browser and the CLI would do, with the website's
 // part done by the same functions its routes call. The routes themselves
-// (the cookie, the forms) are thin over these and are not run here.
+// (the cookie, the forms) are thin over these and are not run here;
+// tests/integration/sibling.test.ts sends the consent route what a page
+// elsewhere could.
 
 /** The local site_url (supabase/config.toml), where Auth sends the consent
  *  step and where the OAuth client's one redirect URI lives. */
@@ -63,18 +65,19 @@ beforeAll(async () => {
 
 const expected = () => ({ clientId: clientId(), returnUrl: RETURN });
 
-/** From "Continue" to the code on the loopback address: the authorize
- *  request the browser makes, and the consent route's decision on where
- *  Auth sends it, holding the cookie "Continue" set. Returns the loopback
- *  address the browser is sent to. */
+/** From "Continue" to the code on the loopback address: what "Continue"
+ *  asks Auth from the server, and the consent route's decision on the
+ *  authorization it was given, holding the cookie "Continue" set. Returns
+ *  the loopback address the browser is sent to. */
 async function confirm(req: ConnectRequest, as: Browser = site): Promise<URL> {
   const n = nonce();
-  const res = await fetch(authorizeUrl(config.supabaseUrl, clientId(), RETURN, req, n), { redirect: 'manual' });
-  expect(res.status).toBe(302);
-  const at = new URL(res.headers.get('location') ?? '');
+  const started = await start({ authorize: authorizeUrl(config.supabaseUrl, clientId(), RETURN, req, n), site: SITE, nonce: n, fetchFn: fetch });
+  if ('status' in started.to) throw new Error(started.to.message);
+  const at = started.to.redirect;
   expect(at.origin + at.pathname).toBe(`${SITE}/auth/connect/consent`);
+  expect(started.cookie).toEqual({ name: connectCookie(n), value: at.searchParams.get('authorization_id') });
   const decided = await consent({
-    authorizationId: at.searchParams.get('authorization_id'), signedIn: true, cookies: [connectCookie(n)], auth: as.auth.oauth, expected: expected(),
+    authorizationId: at.searchParams.get('authorization_id'), signedIn: true, cookies: started.cookie === null ? [] : [started.cookie], auth: as.auth.oauth, expected: expected(),
   });
   expect(decided.spend).toEqual([connectCookie(n)]);
   if ('status' in decided.to) throw new Error(decided.to.message);

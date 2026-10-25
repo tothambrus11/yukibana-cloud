@@ -406,11 +406,16 @@ login also goes to GitHub whatever the registry says; the IDE needs an
 `@yukibana/cli` from after it.
 
 **The website says the login expired or was already used.** Five minutes
-passed between "Continue" and the browser coming back; or the browser
-refuses the site's cookies; or the client was registered for another
-address than `site_url`'s, so Auth sends the consent step where the cookie
-is not. Run the script again with the right address: it registers a client
-for it, and `SUPABASE_OAUTH_CLIENT_ID` must be that client's id.
+passed between "Continue" and the browser coming back, or the browser
+refuses the site's cookies.
+
+**"Continue" answers 502 with what Auth's OAuth server said.** The Worker
+asks Auth for the authorization itself (so that the consent route asks Auth
+about no other), and Auth refused or sent it somewhere other than this
+site's consent route: the client was registered for another address than
+`site_url`'s, or `SUPABASE_OAUTH_CLIENT_ID` names no client. Run the script
+again with the right address: it registers a client for it, and
+`SUPABASE_OAUTH_CLIENT_ID` must be that client's id.
 
 **The client script answers 404.** The OAuth server is not on yet: step 7,
 1. The "Supabase settings, before" step of the last Database run shows
