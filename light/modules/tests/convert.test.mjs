@@ -289,6 +289,63 @@ test('a file operation, or an edit of a file outside the workspace, is named as 
 	assert.deepEqual(edit.edits.map((e) => e.resource.model), [ROOT + 'Main.hs']);
 });
 
+/** The host's command for a server's: a stand-in for one that runs it. */
+const commandOf = (cmd) => ({ id: 'run', title: cmd.title, arguments: [cmd] });
+
+test('a quick fix whose edit only changes files of the workspace is offered with its edit and its command', () => {
+	const command = { title: 'organise', command: 'hls.organise' };
+	const { action, unsupported } = c.toCodeAction(
+		{ title: 'Add the import', kind: 'quickfix', isPreferred: true, edit: { changes: { [ROOT + 'a.hs']: [{ range: range(0, 0, 0, 0), newText: 'import X\n' }] } }, command },
+		uriOf,
+		commandOf,
+	);
+	assert.deepEqual(unsupported, []);
+	assert.equal(action.disabled, undefined);
+	assert.deepEqual(action.edit.edits.map((e) => e.resource.model), [ROOT + 'a.hs']);
+	assert.deepEqual(action.command, commandOf(command));
+	assert.equal(action.kind, 'quickfix');
+	assert.equal(action.isPreferred, true);
+});
+
+test('a code action whose edit creates a file is not offered as if it would work: it is disabled, says why, and applies nothing', () => {
+	const { action, unsupported } = c.toCodeAction(
+		{
+			title: "Create class 'Point'",
+			kind: 'quickfix',
+			edit: { documentChanges: [{ kind: 'create', uri: ROOT + 'Point.java' }, { textDocument: { uri: ROOT + 'Point.java', version: null }, edits: [{ range: range(0, 0, 0, 0), newText: 'class Point {}' }] }] },
+			command: { title: 'open', command: 'java.open' },
+		},
+		uriOf,
+		commandOf,
+	);
+	assert.deepEqual(unsupported, [`create ${ROOT}Point.java (file operations are not supported)`]);
+	assert.equal(action.disabled, `needs changes the editor cannot make: create ${ROOT}Point.java (file operations are not supported)`);
+	assert.equal(action.edit, undefined);
+	assert.equal(action.command, undefined);
+});
+
+test('a code action that edits a file outside the workspace is disabled rather than applied to the files inside it', () => {
+	const { action } = c.toCodeAction(
+		{ title: 'Fix everywhere', edit: { changes: { [ROOT + 'a.c']: [{ range: range(0, 0, 0, 1), newText: 'x' }], 'file:///usr/include/stdio.h': [{ range: range(0, 0, 0, 1), newText: 'x' }] } } },
+		uriOf,
+		commandOf,
+	);
+	assert.match(action.disabled, /^needs changes the editor cannot make: edit file:\/\/\/usr\/include\/stdio\.h/);
+	assert.equal(action.edit, undefined);
+});
+
+test("a server's own reason for disabling an action is the one shown", () => {
+	const { action } = c.toCodeAction({ title: 'Extract', disabled: { reason: 'Select an expression' }, edit: { documentChanges: [{ kind: 'delete', uri: ROOT + 'a.ts' }] } }, uriOf, commandOf);
+	assert.equal(action.disabled, 'Select an expression');
+});
+
+test("a code action's diagnostics become markers, and a bare command offered as an action runs that command", () => {
+	const fix = c.toCodeAction({ title: 'Remove', diagnostics: [{ range: range(1, 0, 1, 3), message: 'unused', severity: 2 }] }, uriOf, commandOf).action;
+	assert.deepEqual(fix.diagnostics, [{ ...monacoRange(2, 1, 2, 4), message: 'unused', severity: Severity.Warning }]);
+	const command = { title: 'Run tests', command: 'tests.run', arguments: [1] };
+	assert.deepEqual(c.toCodeAction(command, uriOf, commandOf), { action: { title: 'Run tests', command: commandOf(command) }, unsupported: [] });
+});
+
 test('folding ranges move to lines counted from 1, keep their kind, and one-line ranges are dropped', () => {
 	assert.deepEqual(
 		c.toFolds([

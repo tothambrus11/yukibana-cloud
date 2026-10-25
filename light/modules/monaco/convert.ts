@@ -432,6 +432,55 @@ export function toWorkspaceEdit(edit: lsp.WorkspaceEdit, uriOf: UriOf): { edit: 
 	return { edit: { edits }, unsupported };
 }
 
+// Code actions.
+
+/**
+ * A server's command as a Monaco command that runs it. Only the host can
+ * make one: running it means asking the server (`workspace/executeCommand`)
+ * through a Monaco command the host registered, whose id is the host's.
+ * Light's app registers one per client and passes the command as its
+ * argument. Must not throw.
+ */
+export type CommandOf = (command: lsp.Command) => monaco.languages.Command;
+
+/** Whether a code action answer is a bare command, which LSP lets a server send in place of an action. */
+function isCommand(a: lsp.Command | lsp.CodeAction): a is lsp.Command {
+	return typeof a.command === 'string';
+}
+
+/**
+ * A server's code action, or a bare command offered as one, as Monaco's,
+ * and what of its edit the editor cannot make (as {@link toWorkspaceEdit}
+ * names it). An action whose edit is not wholly carried is never offered
+ * as if it would work: it is disabled with the reason (`needs changes the
+ * editor cannot make: create file:///a/B.java (…)`), and keeps neither its
+ * edit nor its command, so choosing it applies no part of what the server
+ * meant. Java's "create class" and TypeScript's "move to a new file" are
+ * such actions. A server's own `disabled` reason wins over this one. The
+ * caller should log `unsupported` when a person chose the action (after
+ * `codeAction/resolve`), since Monaco then applies nothing and says
+ * nothing.
+ */
+export function toCodeAction(a: lsp.Command | lsp.CodeAction, uriOf: UriOf, commandOf: CommandOf): { action: monaco.languages.CodeAction; unsupported: string[] } {
+	if (isCommand(a)) return { action: { title: a.title, command: commandOf(a) }, unsupported: [] };
+	const converted = a.edit && toWorkspaceEdit(a.edit, uriOf);
+	const unsupported = converted?.unsupported ?? [];
+	const whole = unsupported.length === 0;
+	const disabled = a.disabled?.reason ?? (whole ? undefined : `needs changes the editor cannot make: ${unsupported.join(', ')}`);
+	return {
+		action: {
+			title: a.title,
+			...(a.kind !== undefined && { kind: a.kind }),
+			...(a.isPreferred !== undefined && { isPreferred: a.isPreferred }),
+			...(disabled !== undefined && { disabled }),
+			...(a.diagnostics && { diagnostics: a.diagnostics.map((d) => toMarker(d, uriOf)) }),
+			...(converted && whole && { edit: converted.edit }),
+			...(a.command && whole && { command: commandOf(a.command) }),
+		},
+		unsupported,
+	};
+}
+
 // Folding and selection.
 
 /**

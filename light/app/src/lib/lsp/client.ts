@@ -985,7 +985,7 @@ export class LanguageClient {
 	 * LSP command becomes a Monaco one that runs it: for code actions and
 	 * code lenses, whose commands are the server's.
 	 */
-	private registerServerCommand(): (cmd: lsp.Command) => monaco.languages.Command {
+	private registerServerCommand(): c.CommandOf {
 		const commandId = `yukibana.lsp.command.${crypto.randomUUID()}`;
 		this.disposables.push(
 			monaco.editor.registerCommand(commandId, (_accessor, command: lsp.Command) => {
@@ -997,20 +997,15 @@ export class LanguageClient {
 		return (cmd) => ({ id: commandId, title: cmd.title, arguments: [cmd] });
 	}
 
-	private registerCodeActions(selector: string[], resolve: boolean, toCommand: (cmd: lsp.Command) => monaco.languages.Command): void {
+	private registerCodeActions(selector: string[], resolve: boolean, toCommand: c.CommandOf): void {
 		const original = new WeakMap<monaco.languages.CodeAction, lsp.CodeAction>();
-		const convert = (a: lsp.CodeAction): monaco.languages.CodeAction => {
-			const action: monaco.languages.CodeAction = {
-				title: a.title,
-				...(a.kind !== undefined && { kind: a.kind }),
-				...(a.isPreferred !== undefined && { isPreferred: a.isPreferred }),
-				...(a.disabled && { disabled: a.disabled.reason }),
-				...(a.diagnostics && { diagnostics: a.diagnostics.map((d) => c.toMarker(d, uriOf)) }),
-				...(a.edit && { edit: c.toWorkspaceEdit(a.edit, uriOf).edit }),
-				...(a.command && { command: toCommand(a.command) }),
-			};
-			original.set(action, a);
-			return action;
+		// An action whose edit the editor can make only in part comes back
+		// disabled (convert.ts); `unsupported` is logged only once a person
+		// has chosen it, in resolveCodeAction, not each time the lightbulb asks.
+		const convert = (a: lsp.Command | lsp.CodeAction): { action: monaco.languages.CodeAction; unsupported: string[] } => {
+			const converted = c.toCodeAction(a, uriOf, toCommand);
+			if (typeof a.command !== 'string') original.set(converted.action, a as lsp.CodeAction);
+			return converted;
 		};
 		this.disposables.push(
 			monaco.languages.registerCodeActionProvider(selector, {
@@ -1023,7 +1018,7 @@ export class LanguageClient {
 						{ textDocument: { uri: model.uri.toString() }, range: lspRange, context: { diagnostics, ...(context.only !== undefined && { only: [context.only] }), triggerKind: context.trigger } },
 						token,
 					);
-					const actions = (result ?? []).map((a) => (typeof a.command === 'string' ? { title: a.title, command: toCommand(a as lsp.Command) } : convert(a as lsp.CodeAction)));
+					const actions = (result ?? []).map((a) => convert(a).action);
 					return { actions, dispose: () => {} };
 				},
 				...(resolve && {
@@ -1032,7 +1027,10 @@ export class LanguageClient {
 						const model = monaco.editor.getModels().find((m) => this.owns(m));
 						if (!a || a.edit || !model) return action;
 						const resolved = await this.ask<lsp.CodeAction>(model, 'codeAction/resolve', a, token);
-						return resolved ? convert(resolved) : action;
+						if (!resolved) return action;
+						const { action: next, unsupported } = convert(resolved);
+						for (const u of unsupported) this.options.events.log('warning', `${resolved.title}: not applied: ${u}`);
+						return next;
 					},
 				}),
 			}),

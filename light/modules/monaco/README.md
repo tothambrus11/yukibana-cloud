@@ -17,7 +17,7 @@ files, the theme, and Monaco's editor services for a host that wants them.
 
 | File | What |
 |---|---|
-| `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, folds, smart select, inlay hints, a refused rename's reason |
+| `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, code actions (one the editor can make only in part is disabled, with the reason), folds, smart select, inlay hints, a refused rename's reason |
 
 Two things a conversion cannot make without the host's Monaco, and how
 `convert.ts` does without it:

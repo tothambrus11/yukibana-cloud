@@ -282,6 +282,24 @@ export interface WorkspaceEdit {
 }
 
 /**
+ * A change a server offers at a place: an edit, a command, or both (the
+ * edit first). A server that resolves code actions may leave `edit` out
+ * until `codeAction/resolve`. `disabled` is offered but cannot be applied,
+ * with the reason to show.
+ */
+export interface CodeAction {
+	title: string;
+	kind?: string;
+	diagnostics?: readonly Diagnostic[];
+	isPreferred?: boolean;
+	disabled?: { reason: string };
+	edit?: WorkspaceEdit;
+	command?: Command;
+	/** The server's own, handed back in `codeAction/resolve`. */
+	data?: unknown;
+}
+
+/**
  * A range of lines that can be folded. The characters are optional, and a
  * client that declares `lineFoldingOnly` (Yukibana's does) is sent whole
  * lines. `kind` is `comment`, `imports`, `region`, or a server's own word.
