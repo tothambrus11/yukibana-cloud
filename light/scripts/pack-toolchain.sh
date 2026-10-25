@@ -158,7 +158,7 @@ dirty_reasons() {
   out="$(toolchain_knobs "$pack")"
   [ -n "$out" ] || return 0
   while read -r name kind; do
-    [ "$kind" = variant ] && [ -n "${!name+x}" ] || continue
+    if [ "$kind" != variant ] || [ -z "${!name+x}" ]; then continue; fi
     printf '%s=%s (a variant knob)\n' "$name" "${!name}"
   done <<<"$out"
 }
