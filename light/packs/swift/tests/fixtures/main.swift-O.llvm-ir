@@ -1,0 +1,504 @@
+; ModuleID = '/build/view.out'
+source_filename = "/build/view.out"
+target datalayout = "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-i128:128-n32:64-S128-ni:1:10:20"
+target triple = "wasm32-unknown-wasip1"
+
+%TSa = type <{ %Ts22_ContiguousArrayBufferV }>
+%Ts22_ContiguousArrayBufferV = type <{ ptr }>
+%TSd = type <{ double }>
+%swift.type_descriptor = type opaque
+%swift.protocol = type { ptr, ptr, ptr, ptr, ptr, ptr, ptr, ptr, i32, i32, i32, i32, i32, i32 }
+%swift.type = type { i32 }
+%swift.full_boxmetadata = type { ptr, ptr, %swift.type, i32, ptr }
+%T4main5ShapeP = type { [12 x i8], ptr, ptr }
+%Ts26DefaultStringInterpolationV = type <{ %TSS }>
+%TSS = type <{ %Ts11_StringGutsV }>
+%Ts11_StringGutsV = type <{ %Ts13_StringObjectV }>
+%Ts13_StringObjectV = type <{ %TSi, %Ts13_StringObjectV7VariantO, %Ts5UInt8V, %Ts6UInt16V }>
+%TSi = type <{ i32 }>
+%Ts13_StringObjectV7VariantO = type <{ [4 x i8], [1 x i8] }>
+%Ts5UInt8V = type <{ i8 }>
+%Ts6UInt16V = type <{ i16 }>
+
+$__swift_instantiateConcreteTypeFromMangledName = comdat any
+
+$"$s4main5Shape_pWOc" = comdat any
+
+$"$s4main5Shape_pWOb" = comdat any
+
+$__swift_project_boxed_opaque_existential_1 = comdat any
+
+$__swift_destroy_boxed_opaque_existential_1 = comdat any
+
+$"symbolic _____y______pG s23_ContiguousArrayStorageC 4main5ShapeP" = comdat any
+
+$"$ss23_ContiguousArrayStorageCy4main5Shape_pGMD" = comdat any
+
+$"symbolic _____ 4main6CircleV" = comdat any
+
+$"symbolic _____ 4main6SquareV" = comdat any
+
+$"symbolic _____yypG s23_ContiguousArrayStorageC" = comdat any
+
+$"$ss23_ContiguousArrayStorageCyypGMD" = comdat any
+
+$__swift_reflection_version = comdat any
+
+@"$s4main6shapesSayAA5Shape_pGvp" = hidden local_unnamed_addr global %TSa zeroinitializer, align 4
+@"$s4main5totalSdvp" = hidden global %TSd zeroinitializer, align 8
+@"$ss23_ContiguousArrayStorageCMn" = external global %swift.type_descriptor, align 4
+@"got.$ss23_ContiguousArrayStorageCMn" = private unnamed_addr constant ptr @"$ss23_ContiguousArrayStorageCMn"
+@"$s4main5ShapeMp" = external global %swift.protocol, align 4
+@"got.$s4main5ShapeMp" = private unnamed_addr constant ptr @"$s4main5ShapeMp"
+@"symbolic _____y______pG s23_ContiguousArrayStorageC 4main5ShapeP" = linkonce_odr hidden constant <{ i8, i32, [1 x i8], i8, i32, [3 x i8], i8 }> <{ i8 2, i32 sub (i32 ptrtoint (ptr @"got.$ss23_ContiguousArrayStorageCMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, [1 x i8], i8, i32, [3 x i8], i8 }>, ptr @"symbolic _____y______pG s23_ContiguousArrayStorageC 4main5ShapeP", i32 0, i32 1) to i32)), [1 x i8] c"y", i8 2, i32 sub (i32 ptrtoint (ptr @"got.$s4main5ShapeMp" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, [1 x i8], i8, i32, [3 x i8], i8 }>, ptr @"symbolic _____y______pG s23_ContiguousArrayStorageC 4main5ShapeP", i32 0, i32 4) to i32)), [3 x i8] c"_pG", i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@"$ss23_ContiguousArrayStorageCy4main5Shape_pGMD" = linkonce_odr hidden global { i32, i32 } { i32 sub (i32 ptrtoint (ptr @"symbolic _____y______pG s23_ContiguousArrayStorageC 4main5ShapeP" to i32), i32 ptrtoint (ptr @"$ss23_ContiguousArrayStorageCy4main5Shape_pGMD" to i32)), i32 -14 }, comdat, align 8
+@"$s4main6CircleVN" = external global %swift.type, align 4
+@"$s4main6CircleVAA5ShapeAAWP" = external global ptr, align 4
+@"$s4main6CircleVMn" = external global %swift.type_descriptor, align 4
+@"got.$s4main6CircleVMn" = private unnamed_addr constant ptr @"$s4main6CircleVMn"
+@"symbolic _____ 4main6CircleV" = linkonce_odr hidden constant <{ i8, i32, i8 }> <{ i8 2, i32 sub (i32 ptrtoint (ptr @"got.$s4main6CircleVMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, i8 }>, ptr @"symbolic _____ 4main6CircleV", i32 0, i32 1) to i32)), i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@"\01l__swift5_reflection_descriptor" = private constant { i32, i32, i32, i32 } { i32 1, i32 0, i32 0, i32 sub (i32 ptrtoint (ptr @"symbolic _____ 4main6CircleV" to i32), i32 ptrtoint (ptr getelementptr inbounds ({ i32, i32, i32, i32 }, ptr @"\01l__swift5_reflection_descriptor", i32 0, i32 3) to i32)) }, section "swift5_capture", no_sanitize_address, align 4
+@metadata = private constant %swift.full_boxmetadata { ptr @objectdestroy, ptr null, %swift.type { i32 1024 }, i32 8, ptr @"\01l__swift5_reflection_descriptor" }, align 4
+@"$s4main6SquareVN" = external global %swift.type, align 4
+@"$s4main6SquareVAA5ShapeAAWP" = external global ptr, align 4
+@"$s4main6SquareVMn" = external global %swift.type_descriptor, align 4
+@"got.$s4main6SquareVMn" = private unnamed_addr constant ptr @"$s4main6SquareVMn"
+@"symbolic _____ 4main6SquareV" = linkonce_odr hidden constant <{ i8, i32, i8 }> <{ i8 2, i32 sub (i32 ptrtoint (ptr @"got.$s4main6SquareVMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, i8 }>, ptr @"symbolic _____ 4main6SquareV", i32 0, i32 1) to i32)), i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@"\01l__swift5_reflection_descriptor.1" = private constant { i32, i32, i32, i32 } { i32 1, i32 0, i32 0, i32 sub (i32 ptrtoint (ptr @"symbolic _____ 4main6SquareV" to i32), i32 ptrtoint (ptr getelementptr inbounds ({ i32, i32, i32, i32 }, ptr @"\01l__swift5_reflection_descriptor.1", i32 0, i32 3) to i32)) }, section "swift5_capture", no_sanitize_address, align 4
+@"symbolic _____yypG s23_ContiguousArrayStorageC" = linkonce_odr hidden constant <{ i8, i32, [4 x i8], i8 }> <{ i8 2, i32 sub (i32 ptrtoint (ptr @"got.$ss23_ContiguousArrayStorageCMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, [4 x i8], i8 }>, ptr @"symbolic _____yypG s23_ContiguousArrayStorageC", i32 0, i32 1) to i32)), [4 x i8] c"yypG", i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@"$ss23_ContiguousArrayStorageCyypGMD" = linkonce_odr hidden global { i32, i32 } { i32 sub (i32 ptrtoint (ptr @"symbolic _____yypG s23_ContiguousArrayStorageC" to i32), i32 ptrtoint (ptr @"$ss23_ContiguousArrayStorageCyypGMD" to i32)), i32 -9 }, comdat, align 8
+@".str.11.total area " = private unnamed_addr constant [12 x i8] c"total area \00"
+@"$ss26DefaultStringInterpolationVN" = external global %swift.type, align 4
+@"$ss26DefaultStringInterpolationVs16TextOutputStreamsWP" = external global ptr, align 4
+@"$sSSN" = external global %swift.type, align 4
+@"$sSiN" = external global %swift.type, align 4
+@"\01l_entry_point" = private constant { i32, i32 } { i32 ptrtoint (ptr @__main_argc_argv to i32), i32 0 }, section "swift5_entry", align 4
+@__swift_reflection_version = linkonce_odr hidden constant i16 3, comdat
+@_swift1_autolink_entries = private constant [77 x i8] c"-lswift_Concurrency\00-lswiftCore\00-lswift_StringProcessing\00-lswift_RegexParser\00", section ".swift1_autolink_entries", no_sanitize_address, align 4
+@llvm.used = appending global [6 x ptr] [ptr @"\01l__swift5_reflection_descriptor", ptr @"\01l__swift5_reflection_descriptor.1", ptr @"\01l_entry_point", ptr @__main_argc_argv, ptr @__swift_reflection_version, ptr @_swift1_autolink_entries], section "llvm.metadata"
+
+define noundef i32 @__main_argc_argv(i32 %0, ptr readnone captures(none) %1) #0 !dbg !24 {
+  %3 = alloca %T4main5ShapeP, align 4
+  %access-scratch = alloca [12 x i8], align 4
+  %4 = alloca %T4main5ShapeP, align 4
+  %5 = alloca %Ts26DefaultStringInterpolationV, align 4
+  %6 = alloca %Ts11_StringGutsV, align 4
+  %access-scratch6 = alloca [12 x i8], align 4
+  %7 = tail call ptr @__swift_instantiateConcreteTypeFromMangledName(ptr nonnull @"$ss23_ContiguousArrayStorageCy4main5Shape_pGMD") #10, !dbg !26
+  %8 = tail call noalias ptr @swift_allocObject(ptr %7, i32 56, i32 3) #3, !dbg !26
+  %9 = getelementptr inbounds nuw i8, ptr %8, i32 8, !dbg !30
+  store i32 2, ptr %9, align 4, !dbg !30
+  %._storage._capacityAndFlags = getelementptr inbounds nuw i8, ptr %8, i32 12, !dbg !30
+  store i32 4, ptr %._storage._capacityAndFlags, align 4, !dbg !30
+  %10 = getelementptr inbounds nuw i8, ptr %8, i32 16, !dbg !33
+  %11 = tail call swiftcc double @"$s4main6CircleV6radiusACSd_tcfC"(double 1.000000e+00), !dbg !34
+  %12 = getelementptr inbounds nuw i8, ptr %8, i32 28, !dbg !34
+  store ptr @"$s4main6CircleVN", ptr %12, align 4, !dbg !34
+  %13 = getelementptr inbounds nuw i8, ptr %8, i32 32, !dbg !34
+  store ptr @"$s4main6CircleVAA5ShapeAAWP", ptr %13, align 4, !dbg !34
+  %14 = tail call noalias ptr @swift_allocObject(ptr nonnull getelementptr inbounds nuw (i8, ptr @metadata, i32 8), i32 16, i32 7) #3, !dbg !34
+  %15 = getelementptr inbounds nuw i8, ptr %14, i32 8, !dbg !34
+  store ptr %14, ptr %10, align 4, !dbg !34
+  store double %11, ptr %15, align 8, !dbg !34
+  %16 = getelementptr inbounds nuw i8, ptr %8, i32 36, !dbg !33
+  %17 = tail call swiftcc double @"$s4main6SquareV4sideACSd_tcfC"(double 2.000000e+00), !dbg !35
+  %18 = getelementptr inbounds nuw i8, ptr %8, i32 48, !dbg !35
+  store ptr @"$s4main6SquareVN", ptr %18, align 4, !dbg !35
+  %19 = getelementptr inbounds nuw i8, ptr %8, i32 52, !dbg !35
+  store ptr @"$s4main6SquareVAA5ShapeAAWP", ptr %19, align 4, !dbg !35
+  %20 = tail call noalias ptr @swift_allocObject(ptr nonnull getelementptr inbounds nuw (i8, ptr @metadata, i32 8), i32 16, i32 7) #3, !dbg !35
+  %21 = getelementptr inbounds nuw i8, ptr %20, i32 8, !dbg !35
+  store ptr %20, ptr %16, align 4, !dbg !35
+  store double %17, ptr %21, align 8, !dbg !35
+  store ptr %8, ptr @"$s4main6shapesSayAA5Shape_pGvp", align 4, !dbg !33
+  store double 0.000000e+00, ptr @"$s4main5totalSdvp", align 8, !dbg !36
+  call void @llvm.lifetime.start.p0(i64 20, ptr nonnull %3), !dbg !37
+  %22 = tail call ptr @swift_retain(ptr nonnull returned %8) #11, !dbg !39
+  call void @llvm.lifetime.start.p0(i64 -1, ptr nonnull %access-scratch), !dbg !41
+  call void @swift_beginAccess(ptr nonnull @"$s4main5totalSdvp", ptr nonnull %access-scratch, i32 1, ptr null) #3, !dbg !41
+  %23 = getelementptr inbounds nuw i8, ptr %4, i32 16
+  %24 = getelementptr inbounds nuw i8, ptr %4, i32 12
+  %25 = call ptr @"$s4main5Shape_pWOc"(ptr nonnull %10, ptr nonnull %3), !dbg !46
+  call void @llvm.lifetime.start.p0(i64 20, ptr nonnull %4), !dbg !37
+  %26 = call ptr @"$s4main5Shape_pWOb"(ptr nonnull %3, ptr nonnull %4), !dbg !53
+  %27 = load ptr, ptr %24, align 4, !dbg !54
+  %28 = load ptr, ptr %23, align 4, !dbg !54
+  %29 = call ptr @__swift_project_boxed_opaque_existential_1(ptr nonnull %4, ptr %27) #3, !dbg !54
+  %30 = getelementptr inbounds nuw i8, ptr %28, i32 4, !dbg !55
+  %31 = load ptr, ptr %30, align 4, !dbg !55, !invariant.load !56
+  %32 = call swiftcc double %31(ptr noalias swiftself %29, ptr %27, ptr %28), !dbg !55
+  %33 = load double, ptr @"$s4main5totalSdvp", align 8, !dbg !57
+  %34 = fadd double %32, %33, !dbg !57
+  store double %34, ptr @"$s4main5totalSdvp", align 8, !dbg !57
+  call void @__swift_destroy_boxed_opaque_existential_1(ptr nonnull %4) #3, !dbg !39
+  call void @llvm.lifetime.end.p0(i64 20, ptr nonnull %4), !dbg !39
+  %35 = getelementptr inbounds nuw i8, ptr %8, i32 36, !dbg !46
+  %36 = call ptr @"$s4main5Shape_pWOc"(ptr nonnull %35, ptr nonnull %3), !dbg !46
+  call void @llvm.lifetime.start.p0(i64 20, ptr nonnull %4), !dbg !37
+  %37 = call ptr @"$s4main5Shape_pWOb"(ptr nonnull %3, ptr nonnull %4), !dbg !53
+  %38 = load ptr, ptr %24, align 4, !dbg !54
+  %39 = load ptr, ptr %23, align 4, !dbg !54
+  %40 = call ptr @__swift_project_boxed_opaque_existential_1(ptr nonnull %4, ptr %38) #3, !dbg !54
+  %41 = getelementptr inbounds nuw i8, ptr %39, i32 4, !dbg !55
+  %42 = load ptr, ptr %41, align 4, !dbg !55, !invariant.load !56
+  %43 = call swiftcc double %42(ptr noalias swiftself %40, ptr %38, ptr %39), !dbg !55
+  %44 = load double, ptr @"$s4main5totalSdvp", align 8, !dbg !57
+  %45 = fadd double %43, %44, !dbg !57
+  store double %45, ptr @"$s4main5totalSdvp", align 8, !dbg !57
+  call void @__swift_destroy_boxed_opaque_existential_1(ptr nonnull %4) #3, !dbg !39
+  call void @llvm.lifetime.end.p0(i64 20, ptr nonnull %4), !dbg !39
+  call void @swift_release(ptr nonnull %8) #3, !dbg !39
+  call void @llvm.lifetime.end.p0(i64 20, ptr nonnull %3), !dbg !39
+  %46 = call ptr @__swift_instantiateConcreteTypeFromMangledName(ptr nonnull @"$ss23_ContiguousArrayStorageCyypGMD") #10, !dbg !58
+  %47 = call noalias ptr @swift_allocObject(ptr %46, i32 32, i32 3) #3, !dbg !58
+  %48 = getelementptr inbounds nuw i8, ptr %47, i32 8, !dbg !61
+  store i32 1, ptr %48, align 4, !dbg !61
+  %._storage2._capacityAndFlags = getelementptr inbounds nuw i8, ptr %47, i32 12, !dbg !61
+  store i32 2, ptr %._storage2._capacityAndFlags, align 4, !dbg !61
+  %49 = getelementptr inbounds nuw i8, ptr %47, i32 16, !dbg !54
+  call void @llvm.lifetime.start.p0(i64 12, ptr nonnull %5), !dbg !37
+  call void @llvm.lifetime.start.p0(i64 12, ptr nonnull %6), !dbg !64
+  %._object._variant = getelementptr inbounds nuw i8, ptr %6, i32 4, !dbg !72
+  %50 = getelementptr inbounds nuw i8, ptr %6, i32 8, !dbg !72
+  %._object._discriminator = getelementptr inbounds nuw i8, ptr %6, i32 9, !dbg !72
+  call void @llvm.memset.p0.i64(ptr noundef nonnull align 4 dereferenceable(9) %6, i8 0, i64 9, i1 false), !dbg !72
+  store i8 -32, ptr %._object._discriminator, align 1, !dbg !72
+  %._object._flags = getelementptr inbounds nuw i8, ptr %6, i32 10, !dbg !72
+  store i16 0, ptr %._object._flags, align 2, !dbg !72
+  call swiftcc void @"$ss11_StringGutsV4growyySiF"(i32 13, ptr nonnull swiftself captures(none) dereferenceable(12) %6), !dbg !72
+  %51 = load i32, ptr %6, align 4, !dbg !72
+  %52 = load i32, ptr %._object._variant, align 4, !dbg !72
+  %53 = load i8, ptr %50, align 4, !dbg !72
+  %54 = load i8, ptr %._object._discriminator, align 1, !dbg !72
+  %55 = load i16, ptr %._object._flags, align 2, !dbg !72
+  call void @llvm.lifetime.end.p0(i64 12, ptr nonnull %6), !dbg !72
+  store i32 %51, ptr %5, align 4, !dbg !73
+  %._storage4._guts._object._variant = getelementptr inbounds nuw i8, ptr %5, i32 4, !dbg !73
+  store i32 %52, ptr %._storage4._guts._object._variant, align 4, !dbg !73
+  %56 = getelementptr inbounds nuw i8, ptr %5, i32 8, !dbg !73
+  store i8 %53, ptr %56, align 4, !dbg !73
+  %._storage4._guts._object._discriminator = getelementptr inbounds nuw i8, ptr %5, i32 9, !dbg !73
+  store i8 %54, ptr %._storage4._guts._object._discriminator, align 1, !dbg !73
+  %._storage4._guts._object._flags = getelementptr inbounds nuw i8, ptr %5, i32 10, !dbg !73
+  store i16 %55, ptr %._storage4._guts._object._flags, align 2, !dbg !73
+  call swiftcc void @"$sSS6appendyySSF"(i32 11, i32 sub (i32 ptrtoint (ptr @".str.11.total area " to i32), i32 20), i32 -805273600, ptr nonnull swiftself captures(none) dereferenceable(12) %5), !dbg !74
+  call void @llvm.lifetime.start.p0(i64 -1, ptr nonnull %access-scratch6), !dbg !78
+  call void @swift_beginAccess(ptr nonnull @"$s4main5totalSdvp", ptr nonnull %access-scratch6, i32 0, ptr null) #3, !dbg !78
+  %57 = load double, ptr @"$s4main5totalSdvp", align 8, !dbg !78
+  call swiftcc void @"$sSd5write2toyxz_ts16TextOutputStreamRzlF"(ptr nonnull %5, double %57, ptr nonnull @"$ss26DefaultStringInterpolationVN", ptr nonnull @"$ss26DefaultStringInterpolationVs16TextOutputStreamsWP"), !dbg !79
+  %58 = load i32, ptr %5, align 4, !dbg !54
+  %59 = load i32, ptr %._storage4._guts._object._variant, align 4, !dbg !54
+  %60 = load i8, ptr %56, align 4, !dbg !54
+  %61 = load i8, ptr %._storage4._guts._object._discriminator, align 1, !dbg !54
+  %62 = load i16, ptr %._storage4._guts._object._flags, align 2, !dbg !54
+  call void @llvm.lifetime.end.p0(i64 12, ptr nonnull %5), !dbg !39
+  %63 = getelementptr inbounds nuw i8, ptr %47, i32 28, !dbg !73
+  store ptr @"$sSSN", ptr %63, align 4, !dbg !73
+  store i32 %58, ptr %49, align 4, !dbg !73
+  %._guts._object._variant = getelementptr inbounds nuw i8, ptr %47, i32 20, !dbg !73
+  store i32 %59, ptr %._guts._object._variant, align 4, !dbg !73
+  %64 = getelementptr inbounds nuw i8, ptr %47, i32 24, !dbg !73
+  store i8 %60, ptr %64, align 4, !dbg !73
+  %._guts._object._discriminator = getelementptr inbounds nuw i8, ptr %47, i32 25, !dbg !73
+  store i8 %61, ptr %._guts._object._discriminator, align 1, !dbg !73
+  %._guts._object._flags = getelementptr inbounds nuw i8, ptr %47, i32 26, !dbg !73
+  store i16 %62, ptr %._guts._object._flags, align 2, !dbg !73
+  call swiftcc void @"$ss5print_9separator10terminatoryypd_S2StF"(ptr %47, i32 32, i32 0, i32 57600, i32 10, i32 0, i32 57600), !dbg !85
+  call void @swift_release(ptr %47) #3, !dbg !39
+  %65 = call noalias ptr @swift_allocObject(ptr %46, i32 32, i32 3) #3, !dbg !86
+  %66 = getelementptr inbounds nuw i8, ptr %65, i32 8, !dbg !88
+  store i32 1, ptr %66, align 4, !dbg !88
+  %._storage9._capacityAndFlags = getelementptr inbounds nuw i8, ptr %65, i32 12, !dbg !88
+  store i32 2, ptr %._storage9._capacityAndFlags, align 4, !dbg !88
+  %67 = getelementptr inbounds nuw i8, ptr %65, i32 16, !dbg !54
+  %68 = call swiftcc i32 @"$s4main6squareyS2iF"(i32 7), !dbg !90
+  %69 = getelementptr inbounds nuw i8, ptr %65, i32 28, !dbg !90
+  store ptr @"$sSiN", ptr %69, align 4, !dbg !90
+  store i32 %68, ptr %67, align 4, !dbg !90
+  call swiftcc void @"$ss5print_9separator10terminatoryypd_S2StF"(ptr %65, i32 32, i32 0, i32 57600, i32 10, i32 0, i32 57600), !dbg !91
+  call void @swift_release(ptr %65) #3, !dbg !39
+  ret i32 0, !dbg !39
+}
+
+; Function Attrs: mustprogress nofree noinline nounwind willreturn memory(read)
+define linkonce_odr hidden ptr @__swift_instantiateConcreteTypeFromMangledName(ptr %0) local_unnamed_addr #1 comdat !dbg !92 {
+entry:
+  %1 = load atomic i64, ptr %0 monotonic, align 8, !dbg !93
+  %2 = icmp slt i64 %1, 0, !dbg !93
+  br i1 %2, label %7, label %3, !dbg !93, !prof !94
+
+3:                                                ; preds = %7, %entry
+  %4 = phi i64 [ %1, %entry ], [ %17, %7 ], !dbg !93
+  %5 = trunc i64 %4 to i32, !dbg !93
+  %6 = inttoptr i32 %5 to ptr, !dbg !93
+  ret ptr %6, !dbg !93
+
+7:                                                ; preds = %entry
+  %8 = lshr i64 %1, 32, !dbg !93
+  %9 = trunc nuw i64 %8 to i32, !dbg !93
+  %10 = sub i32 0, %9, !dbg !93
+  %11 = trunc i64 %1 to i32, !dbg !93
+  %12 = ptrtoint ptr %0 to i32, !dbg !93
+  %13 = add i32 %11, %12, !dbg !93
+  %14 = inttoptr i32 %13 to ptr, !dbg !93
+  %15 = tail call swiftcc ptr @swift_getTypeByMangledNameInContext2(ptr %14, i32 %10, ptr null, ptr null) #12, !dbg !93
+  %16 = ptrtoint ptr %15 to i32, !dbg !93
+  %17 = zext i32 %16 to i64, !dbg !93
+  store atomic i64 %17, ptr %0 monotonic, align 8, !dbg !93
+  br label %3, !dbg !93
+}
+
+; Function Attrs: nounwind memory(argmem: readwrite)
+declare swiftcc ptr @swift_getTypeByMangledNameInContext2(ptr, i32, ptr, ptr) local_unnamed_addr #2
+
+; Function Attrs: nounwind
+declare ptr @swift_allocObject(ptr, i32, i32) local_unnamed_addr #3
+
+declare swiftcc double @"$s4main6CircleV6radiusACSd_tcfC"(double) local_unnamed_addr #0
+
+; Function Attrs: nounwind
+define private swiftcc void @objectdestroy(ptr swiftself %0) #4 !dbg !95 {
+entry:
+  tail call void @swift_deallocObject(ptr %0, i32 16, i32 7) #3, !dbg !96
+  ret void, !dbg !96
+}
+
+; Function Attrs: nounwind
+declare void @swift_deallocObject(ptr, i32, i32) local_unnamed_addr #3
+
+declare swiftcc double @"$s4main6SquareV4sideACSd_tcfC"(double) local_unnamed_addr #0
+
+; Function Attrs: mustprogress nocallback nofree nosync nounwind willreturn memory(argmem: readwrite)
+declare void @llvm.lifetime.start.p0(i64 immarg, ptr captures(none)) #5
+
+; Function Attrs: mustprogress nounwind willreturn
+declare ptr @swift_retain(ptr returned) local_unnamed_addr #6
+
+; Function Attrs: nounwind
+declare void @swift_beginAccess(ptr, ptr, i32, ptr) local_unnamed_addr #3
+
+; Function Attrs: noinline nounwind
+define linkonce_odr hidden ptr @"$s4main5Shape_pWOc"(ptr %0, ptr %1) local_unnamed_addr #7 comdat !dbg !97 {
+entry:
+  %2 = getelementptr inbounds nuw i8, ptr %0, i32 12, !dbg !98
+  %3 = load ptr, ptr %2, align 4, !dbg !98
+  %4 = getelementptr inbounds nuw i8, ptr %1, i32 12, !dbg !98
+  store ptr %3, ptr %4, align 4, !dbg !98
+  %5 = getelementptr inbounds nuw i8, ptr %0, i32 16, !dbg !98
+  %6 = load ptr, ptr %5, align 4, !dbg !98
+  %7 = getelementptr inbounds nuw i8, ptr %1, i32 16, !dbg !98
+  store ptr %6, ptr %7, align 4, !dbg !98
+  %8 = getelementptr inbounds i8, ptr %3, i32 -4, !dbg !98
+  %.valueWitnesses = load ptr, ptr %8, align 4, !dbg !98, !invariant.load !56, !dereferenceable !99
+  %InitializeBufferWithCopyOfBuffer = load ptr, ptr %.valueWitnesses, align 4, !dbg !98, !invariant.load !56
+  %9 = tail call ptr %InitializeBufferWithCopyOfBuffer(ptr noalias %1, ptr noalias %0, ptr %3) #3, !dbg !98
+  ret ptr %1, !dbg !98
+}
+
+; Function Attrs: noinline nounwind
+define linkonce_odr hidden ptr @"$s4main5Shape_pWOb"(ptr %0, ptr %1) local_unnamed_addr #7 comdat !dbg !100 {
+entry:
+  tail call void @llvm.memcpy.p0.p0.i32(ptr noundef nonnull align 4 dereferenceable(20) %1, ptr noundef nonnull align 4 dereferenceable(20) %0, i32 20, i1 false), !dbg !101
+  ret ptr %1, !dbg !101
+}
+
+; Function Attrs: mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite)
+declare void @llvm.memcpy.p0.p0.i32(ptr noalias writeonly captures(none), ptr noalias readonly captures(none), i32, i1 immarg) #8
+
+; Function Attrs: noinline nounwind
+define linkonce_odr hidden ptr @__swift_project_boxed_opaque_existential_1(ptr %0, ptr %1) local_unnamed_addr #7 comdat !dbg !102 {
+entry:
+  %2 = getelementptr inbounds i8, ptr %1, i32 -4, !dbg !103
+  %.valueWitnesses = load ptr, ptr %2, align 4, !dbg !103, !invariant.load !56, !dereferenceable !99
+  %3 = getelementptr inbounds nuw i8, ptr %.valueWitnesses, i32 40, !dbg !103
+  %flags = load i32, ptr %3, align 4, !dbg !103, !invariant.load !56
+  %4 = and i32 %flags, 131072, !dbg !103
+  %flags.isInline = icmp eq i32 %4, 0, !dbg !103
+  br i1 %flags.isInline, label %common.ret, label %boxed, !dbg !103
+
+common.ret:                                       ; preds = %entry, %boxed
+  %common.ret.op = phi ptr [ %9, %boxed ], [ %0, %entry ]
+  ret ptr %common.ret.op, !dbg !103
+
+boxed:                                            ; preds = %entry
+  %5 = load ptr, ptr %0, align 4, !dbg !103
+  %flags.alignmentMask = and i32 %flags, 255, !dbg !103
+  %6 = add nuw nsw i32 %flags.alignmentMask, 8, !dbg !103
+  %7 = xor i32 %flags.alignmentMask, -1, !dbg !103
+  %8 = and i32 %6, %7, !dbg !103
+  %9 = getelementptr inbounds nuw i8, ptr %5, i32 %8, !dbg !103
+  br label %common.ret, !dbg !103
+}
+
+; Function Attrs: noinline nounwind
+define linkonce_odr hidden void @__swift_destroy_boxed_opaque_existential_1(ptr %0) local_unnamed_addr #7 comdat !dbg !104 {
+entry:
+  %1 = getelementptr inbounds nuw i8, ptr %0, i32 12, !dbg !105
+  %2 = load ptr, ptr %1, align 4, !dbg !105
+  %3 = getelementptr inbounds i8, ptr %2, i32 -4, !dbg !105
+  %.valueWitnesses = load ptr, ptr %3, align 4, !dbg !105, !invariant.load !56, !dereferenceable !99
+  %4 = getelementptr inbounds nuw i8, ptr %.valueWitnesses, i32 40, !dbg !105
+  %flags = load i32, ptr %4, align 4, !dbg !105, !invariant.load !56
+  %5 = and i32 %flags, 131072, !dbg !105
+  %flags.isInline = icmp eq i32 %5, 0, !dbg !105
+  br i1 %flags.isInline, label %inline, label %outline, !dbg !105
+
+common.ret:                                       ; preds = %outline, %inline
+  ret void, !dbg !105
+
+inline:                                           ; preds = %entry
+  %6 = getelementptr inbounds nuw i8, ptr %.valueWitnesses, i32 4, !dbg !105
+  %Destroy = load ptr, ptr %6, align 4, !dbg !105, !invariant.load !56
+  tail call void %Destroy(ptr noalias nonnull %0, ptr nonnull %2) #3, !dbg !105
+  br label %common.ret, !dbg !105
+
+outline:                                          ; preds = %entry
+  %7 = load ptr, ptr %0, align 4, !dbg !105
+  tail call void @swift_release(ptr %7) #3, !dbg !105
+  br label %common.ret, !dbg !105
+}
+
+; Function Attrs: nounwind
+declare void @swift_release(ptr) local_unnamed_addr #3
+
+; Function Attrs: mustprogress nocallback nofree nosync nounwind willreturn memory(argmem: readwrite)
+declare void @llvm.lifetime.end.p0(i64 immarg, ptr captures(none)) #5
+
+declare swiftcc void @"$ss11_StringGutsV4growyySiF"(i32, ptr swiftself captures(none) dereferenceable(12)) local_unnamed_addr #0
+
+declare swiftcc void @"$sSS6appendyySSF"(i32, i32, i32, ptr swiftself captures(none) dereferenceable(12)) local_unnamed_addr #0
+
+declare swiftcc void @"$sSd5write2toyxz_ts16TextOutputStreamRzlF"(ptr, double, ptr, ptr) local_unnamed_addr #0
+
+declare swiftcc void @"$ss5print_9separator10terminatoryypd_S2StF"(ptr, i32, i32, i32, i32, i32, i32) local_unnamed_addr #0
+
+declare swiftcc i32 @"$s4main6squareyS2iF"(i32) local_unnamed_addr #0
+
+; Function Attrs: nocallback nofree nounwind willreturn memory(argmem: write)
+declare void @llvm.memset.p0.i64(ptr writeonly captures(none), i8, i64, i1 immarg) #9
+
+attributes #0 = { "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #1 = { mustprogress nofree noinline nounwind willreturn memory(read) "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #2 = { nounwind memory(argmem: readwrite) }
+attributes #3 = { nounwind }
+attributes #4 = { nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #5 = { mustprogress nocallback nofree nosync nounwind willreturn memory(argmem: readwrite) }
+attributes #6 = { mustprogress nounwind willreturn }
+attributes #7 = { noinline nounwind "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #8 = { mustprogress nocallback nofree nounwind willreturn memory(argmem: readwrite) }
+attributes #9 = { nocallback nofree nounwind willreturn memory(argmem: write) }
+attributes #10 = { nounwind memory(read) }
+attributes #11 = { nounwind willreturn }
+attributes #12 = { nounwind memory(argmem: read) }
+
+!llvm.dbg.cu = !{!0, !13, !15}
+!swift.module.flags = !{!17}
+!llvm.module.flags = !{!18, !19, !20, !21, !22, !23}
+!llvm.linker.options = !{}
+
+!0 = distinct !DICompileUnit(language: DW_LANG_Swift, file: !1, producer: "Swift version 6.3.3 (swift-6.3.3-RELEASE)", isOptimized: true, runtimeVersion: 6, emissionKind: LineTablesOnly, imports: !2, sysroot: "/sysroot/wasi-sysroot")
+!1 = !DIFile(filename: "/workspace/main.swift", directory: "/")
+!2 = !{!3, !5, !7, !9, !11}
+!3 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !4, file: !1)
+!4 = !DIModule(scope: null, name: "main", includePath: "/workspace")
+!5 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !6, file: !1)
+!6 = !DIModule(scope: null, name: "Swift", includePath: "/sysroot/swift/lib/swift_static/wasi/Swift.swiftmodule/wasm32-unknown-wasip1.swiftmodule")
+!7 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !8, file: !1)
+!8 = !DIModule(scope: null, name: "_StringProcessing", includePath: "/sysroot/swift/lib/swift_static/wasi/_StringProcessing.swiftmodule/wasm32-unknown-wasip1.swiftmodule")
+!9 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !10, file: !1)
+!10 = !DIModule(scope: null, name: "_SwiftConcurrencyShims", includePath: "/sysroot/swift/lib/swift_static/shims")
+!11 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !12, file: !1)
+!12 = !DIModule(scope: null, name: "_Concurrency", includePath: "/sysroot/swift/lib/swift_static/wasi/_Concurrency.swiftmodule/wasm32-unknown-wasip1.swiftmodule")
+!13 = distinct !DICompileUnit(language: DW_LANG_C11, file: !14, producer: "clang version 21.1.6 (https://github.com/swiftlang/llvm-project.git 82cdc19fa54d566969527b56f587ea8ea30bef51)", isOptimized: true, runtimeVersion: 0, emissionKind: LineTablesOnly, splitDebugInlining: false, nameTableKind: None)
+!14 = !DIFile(filename: "<swift-imported-modules>", directory: "/")
+!15 = distinct !DICompileUnit(language: DW_LANG_C99, file: !16, producer: "Swift version 6.3.3 (swift-6.3.3-RELEASE)", isOptimized: true, runtimeVersion: 0, splitDebugFilename: "/tmp/module-cache/3QVTNN1AAOJNU/_SwiftConcurrencyShims-31O3Y2F55MJEQ.pcm", emissionKind: FullDebug, dwoId: 2996294089423176434)
+!16 = !DIFile(filename: "_SwiftConcurrencyShims", directory: "/sysroot/swift/lib/swift_static/shims")
+!17 = !{!"standard-library", i1 false}
+!18 = !{i32 7, !"Dwarf Version", i32 4}
+!19 = !{i32 2, !"Debug Info Version", i32 3}
+!20 = !{i32 1, !"wchar_size", i32 4}
+!21 = !{i32 8, !"PIC Level", i32 2}
+!22 = !{i32 4, !"Objective-C Garbage Collection", i32 100861696}
+!23 = !{i32 1, !"Swift Version", i32 7}
+!24 = distinct !DISubprogram(name: "__main_argc_argv", linkageName: "__main_argc_argv", scope: !4, file: !1, line: 1, type: !25, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!25 = !DISubroutineType(types: null)
+!26 = !DILocation(line: 0, scope: !27, inlinedAt: !29)
+!27 = distinct !DISubprogram(name: "_allocateUninitializedArray", linkageName: "$ss27_allocateUninitializedArrayySayxG_BptBwlF4main5Shape_p_Tg5", scope: !6, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!28 = !DIFile(filename: "<compiler-generated>", directory: "/")
+!29 = distinct !DILocation(line: 1, column: 23, scope: !24)
+!30 = !DILocation(line: 0, scope: !31, inlinedAt: !32)
+!31 = distinct !DISubprogram(linkageName: "$sSa13_adoptStorage_5countSayxG_SpyxGts016_ContiguousArrayB0CyxGn_SitFZ4main5Shape_p_Tt1g5", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!32 = distinct !DILocation(line: 0, scope: !27, inlinedAt: !29)
+!33 = !DILocation(line: 1, column: 23, scope: !24)
+!34 = !DILocation(line: 1, column: 24, scope: !24)
+!35 = !DILocation(line: 1, column: 43, scope: !24)
+!36 = !DILocation(line: 2, column: 13, scope: !24)
+!37 = !DILocation(line: 0, scope: !38)
+!38 = !DILexicalBlockFile(scope: !24, discriminator: 0)
+!39 = !DILocation(line: 0, scope: !40)
+!40 = !DILexicalBlockFile(scope: !24, file: !28, discriminator: 0)
+!41 = !DILocation(line: 0, scope: !42, inlinedAt: !45)
+!42 = distinct !DISubprogram(name: "next", linkageName: "$ss16IndexingIteratorV4next7ElementQzSgyFSay4main5Shape_pG_Tg5", scope: !43, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !44)
+!43 = !DICompositeType(tag: DW_TAG_structure_type, name: "IndexingIterator", scope: !6, flags: DIFlagFwdDecl, runtimeLang: DW_LANG_Swift, identifier: "$ss16IndexingIteratorVyxGD")
+!44 = !DISubprogram(name: "next", linkageName: "$ss16IndexingIteratorV4next7ElementQzSgyFSay4main5Shape_pG_Tg5", scope: !43, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagOptimized)
+!45 = distinct !DILocation(line: 3, column: 1, scope: !24)
+!46 = !DILocation(line: 0, scope: !47, inlinedAt: !48)
+!47 = distinct !DISubprogram(linkageName: "$sSa11_getElement_20wasNativeTypeChecked22matchingSubscriptCheckxSi_Sbs16_DependenceTokenVtF4main5Shape_p_Tg5", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!48 = distinct !DILocation(line: 0, scope: !49, inlinedAt: !50)
+!49 = distinct !DISubprogram(linkageName: "$sSayxSicir4main5Shape_p_Tg5", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!50 = distinct !DILocation(line: 0, scope: !51, inlinedAt: !52)
+!51 = distinct !DISubprogram(linkageName: "$sSayxGSlsSly7ElementQz5IndexQzcirTW4main5Shape_p_Tg5", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!52 = distinct !DILocation(line: 0, scope: !42, inlinedAt: !45)
+!53 = !DILocation(line: 3, column: 21, scope: !24)
+!54 = !DILocation(line: 0, scope: !24)
+!55 = !DILocation(line: 4, column: 20, scope: !24)
+!56 = !{}
+!57 = !DILocation(line: 4, column: 11, scope: !24)
+!58 = !DILocation(line: 0, scope: !59, inlinedAt: !60)
+!59 = distinct !DISubprogram(name: "_allocateUninitializedArray", linkageName: "$ss27_allocateUninitializedArrayySayxG_BptBwlFyp_Tg5", scope: !6, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!60 = distinct !DILocation(line: 6, column: 7, scope: !24)
+!61 = !DILocation(line: 0, scope: !62, inlinedAt: !63)
+!62 = distinct !DISubprogram(linkageName: "$sSa13_adoptStorage_5countSayxG_SpyxGts016_ContiguousArrayB0CyxGn_SitFZyp_Tt1g5", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!63 = distinct !DILocation(line: 0, scope: !59, inlinedAt: !60)
+!64 = !DILocation(line: 0, scope: !65, inlinedAt: !67)
+!65 = !DILexicalBlockFile(scope: !66, discriminator: 0)
+!66 = distinct !DISubprogram(linkageName: "$sSS12_createEmpty19withInitialCapacitySSSi_tFZ", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!67 = distinct !DILocation(line: 0, scope: !68, inlinedAt: !71)
+!68 = distinct !DISubprogram(name: "init", linkageName: "$ss26DefaultStringInterpolationV15literalCapacity18interpolationCountABSi_SitcfC", scope: !69, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !70)
+!69 = !DICompositeType(tag: DW_TAG_structure_type, name: "DefaultStringInterpolation", scope: !6, flags: DIFlagFwdDecl, runtimeLang: DW_LANG_Swift, identifier: "$ss26DefaultStringInterpolationVD")
+!70 = !DISubprogram(name: "init", linkageName: "$ss26DefaultStringInterpolationV15literalCapacity18interpolationCountABSi_SitcfC", scope: !69, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagOptimized)
+!71 = distinct !DILocation(line: 6, column: 7, scope: !24)
+!72 = !DILocation(line: 0, scope: !66, inlinedAt: !67)
+!73 = !DILocation(line: 6, column: 7, scope: !24)
+!74 = !DILocation(line: 0, scope: !75, inlinedAt: !77)
+!75 = distinct !DISubprogram(name: "appendLiteral", linkageName: "$ss26DefaultStringInterpolationV13appendLiteralyySSF", scope: !69, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !76)
+!76 = !DISubprogram(name: "appendLiteral", linkageName: "$ss26DefaultStringInterpolationV13appendLiteralyySSF", scope: !69, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagOptimized)
+!77 = distinct !DILocation(line: 6, column: 8, scope: !24)
+!78 = !DILocation(line: 6, column: 21, scope: !24)
+!79 = !DILocation(line: 0, scope: !80, inlinedAt: !81)
+!80 = distinct !DISubprogram(linkageName: "$sSds20TextOutputStreamablessAAP5write2toyqd__z_ts0aB6StreamRd__lFTWs26DefaultStringInterpolationV_Tg5", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!81 = distinct !DILocation(line: 0, scope: !82, inlinedAt: !84)
+!82 = distinct !DISubprogram(name: "appendInterpolation", linkageName: "$ss26DefaultStringInterpolationV06appendC0yyxs06CustomB11ConvertibleRzs20TextOutputStreamableRzlFSd_Tg5", scope: !69, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !83)
+!83 = !DISubprogram(name: "appendInterpolation", linkageName: "$ss26DefaultStringInterpolationV06appendC0yyxs06CustomB11ConvertibleRzs20TextOutputStreamableRzlFSd_Tg5", scope: !69, file: !28, type: !25, spFlags: DISPFlagLocalToUnit | DISPFlagOptimized)
+!84 = distinct !DILocation(line: 6, column: 20, scope: !24)
+!85 = !DILocation(line: 6, column: 1, scope: !24)
+!86 = !DILocation(line: 0, scope: !59, inlinedAt: !87)
+!87 = distinct !DILocation(line: 7, column: 7, scope: !24)
+!88 = !DILocation(line: 0, scope: !62, inlinedAt: !89)
+!89 = distinct !DILocation(line: 0, scope: !59, inlinedAt: !87)
+!90 = !DILocation(line: 7, column: 7, scope: !24)
+!91 = !DILocation(line: 7, column: 1, scope: !24)
+!92 = distinct !DISubprogram(linkageName: "__swift_instantiateConcreteTypeFromMangledName", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!93 = !DILocation(line: 0, scope: !92)
+!94 = !{!"branch_weights", !"expected", i32 1, i32 2000}
+!95 = distinct !DISubprogram(linkageName: "objectdestroy", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!96 = !DILocation(line: 0, scope: !95)
+!97 = distinct !DISubprogram(linkageName: "$s4main5Shape_pWOc", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!98 = !DILocation(line: 0, scope: !97)
+!99 = !{i64 48}
+!100 = distinct !DISubprogram(linkageName: "$s4main5Shape_pWOb", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!101 = !DILocation(line: 0, scope: !100)
+!102 = distinct !DISubprogram(linkageName: "__swift_project_boxed_opaque_existential_1", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!103 = !DILocation(line: 0, scope: !102)
+!104 = distinct !DISubprogram(linkageName: "__swift_destroy_boxed_opaque_existential_1", scope: !4, file: !28, type: !25, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!105 = !DILocation(line: 0, scope: !104)

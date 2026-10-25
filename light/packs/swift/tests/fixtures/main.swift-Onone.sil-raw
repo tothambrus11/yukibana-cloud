@@ -1,0 +1,356 @@
+sil_stage raw
+
+import Builtin
+import Swift
+import SwiftShims
+
+@_hasStorage @_hasInitialValue let shapes: [any Shape] { get }
+
+@_hasStorage @_hasInitialValue var total: Double { get set }
+
+// shapes
+sil_global hidden [let] @$s4main6shapesSayAA5Shape_pGvp : $Array<any Shape>
+
+// total
+sil_global hidden @$s4main5totalSdvp : $Double
+
+sil_scope 1 {  parent @__main_argc_argv : $@convention(c) (Int32, UnsafeMutablePointer<Optional<UnsafeMutablePointer<Int8>>>) -> Int32 }
+sil_scope 2 { loc "/workspace/main.swift":1:23 parent 1 }
+sil_scope 3 { loc "/workspace/main.swift":2:1 parent 1 }
+sil_scope 4 { loc "/workspace/main.swift":2:13 parent 3 }
+sil_scope 5 { loc "/workspace/main.swift":3:1 parent 3 }
+sil_scope 6 { loc "/workspace/main.swift":3:1 parent 5 }
+sil_scope 7 { loc "/workspace/main.swift":3:21 parent 6 }
+sil_scope 8 { loc "/workspace/main.swift":6:1 parent 5 }
+sil_scope 9 { loc "/workspace/main.swift":7:1 parent 8 }
+
+// __main_argc_argv, scope 1
+// Isolation: unspecified
+sil [ossa] @__main_argc_argv : $@convention(c) (Int32, UnsafeMutablePointer<Optional<UnsafeMutablePointer<Int8>>>) -> Int32 {
+bb0(%0 : $Int32, %1 : $UnsafeMutablePointer<Optional<UnsafeMutablePointer<Int8>>>):
+  alloc_global @$s4main6shapesSayAA5Shape_pGvp, loc * "/workspace/main.swift":1:5, scope 1 // id: %2
+  %3 = global_addr @$s4main6shapesSayAA5Shape_pGvp : $*Array<any Shape>, loc * "/workspace/main.swift":1:5, scope 1 // users: %47, %36
+  %4 = integer_literal $Builtin.Word, 2, loc "/workspace/main.swift":1:23, scope 2 // user: %6
+  // function_ref _allocateUninitializedArray<A>(_:)
+  %5 = function_ref @$ss27_allocateUninitializedArrayySayxG_BptBwlF : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer), loc "/workspace/main.swift":1:23, scope 2 // user: %6
+  %6 = apply %5<any Shape>(%4) : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer), loc "/workspace/main.swift":1:23, scope 2 // user: %7
+  (%7, %8) = destructure_tuple %6, loc "/workspace/main.swift":1:23, scope 2 // users: %35, %9
+  %9 = begin_borrow %7, loc "/workspace/main.swift":1:23, scope 2 // users: %33, %10
+  %10 = struct_extract %9, #Array._buffer, loc "/workspace/main.swift":1:23, scope 2 // user: %11
+  %11 = struct_extract %10, #_ContiguousArrayBuffer._storage, loc "/workspace/main.swift":1:23, scope 2 // user: %12
+  %12 = ref_tail_addr %11, $any Shape, loc "/workspace/main.swift":1:23, scope 2 // users: %23, %20
+  %13 = metatype $@thin Circle.Type, loc "/workspace/main.swift":1:24, scope 2 // user: %19
+  %14 = integer_literal $Builtin.IntLiteral, 1, loc "/workspace/main.swift":1:39, scope 2 // user: %17
+  %15 = metatype $@thin Double.Type, loc "/workspace/main.swift":1:39, scope 2 // user: %17
+  // function_ref Double.init(_builtinIntegerLiteral:)
+  %16 = function_ref @$sSd22_builtinIntegerLiteralSdBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Double.Type) -> Double, loc "/workspace/main.swift":1:39, scope 2 // user: %17
+  %17 = apply %16(%14, %15) : $@convention(method) (Builtin.IntLiteral, @thin Double.Type) -> Double, loc "/workspace/main.swift":1:39, scope 2 // user: %19
+  // function_ref Circle.init(radius:)
+  %18 = function_ref @$s4main6CircleV6radiusACSd_tcfC : $@convention(method) (Double, @thin Circle.Type) -> Circle, loc "/workspace/main.swift":1:24, scope 2 // user: %19
+  %19 = apply %18(%17, %13) : $@convention(method) (Double, @thin Circle.Type) -> Circle, loc "/workspace/main.swift":1:24, scope 2 // user: %21
+  %20 = init_existential_addr %12, $Circle, loc "/workspace/main.swift":1:24, scope 2 // user: %21
+  store %19 to [trivial] %20, loc "/workspace/main.swift":1:24, scope 2 // id: %21
+  %22 = integer_literal $Builtin.Word, 1, loc "/workspace/main.swift":1:23, scope 2 // user: %23
+  %23 = index_addr %12, %22, loc "/workspace/main.swift":1:23, scope 2 // user: %31
+  %24 = metatype $@thin Square.Type, loc "/workspace/main.swift":1:43, scope 2 // user: %30
+  %25 = integer_literal $Builtin.IntLiteral, 2, loc "/workspace/main.swift":1:56, scope 2 // user: %28
+  %26 = metatype $@thin Double.Type, loc "/workspace/main.swift":1:56, scope 2 // user: %28
+  // function_ref Double.init(_builtinIntegerLiteral:)
+  %27 = function_ref @$sSd22_builtinIntegerLiteralSdBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Double.Type) -> Double, loc "/workspace/main.swift":1:56, scope 2 // user: %28
+  %28 = apply %27(%25, %26) : $@convention(method) (Builtin.IntLiteral, @thin Double.Type) -> Double, loc "/workspace/main.swift":1:56, scope 2 // user: %30
+  // function_ref Square.init(side:)
+  %29 = function_ref @$s4main6SquareV4sideACSd_tcfC : $@convention(method) (Double, @thin Square.Type) -> Square, loc "/workspace/main.swift":1:43, scope 2 // user: %30
+  %30 = apply %29(%28, %24) : $@convention(method) (Double, @thin Square.Type) -> Square, loc "/workspace/main.swift":1:43, scope 2 // user: %32
+  %31 = init_existential_addr %23, $Square, loc "/workspace/main.swift":1:43, scope 2 // user: %32
+  store %30 to [trivial] %31, loc "/workspace/main.swift":1:43, scope 2 // id: %32
+  end_borrow %9, loc "/workspace/main.swift":1:58, scope 2 // id: %33
+  // function_ref _finalizeUninitializedArray<A>(_:)
+  %34 = function_ref @$ss27_finalizeUninitializedArrayySayxGABnlF : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0>, loc "/workspace/main.swift":1:23, scope 2 // user: %35
+  %35 = apply %34<any Shape>(%7) : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0>, loc "/workspace/main.swift":1:23, scope 2 // user: %36
+  store %35 to [init] %3, loc "/workspace/main.swift":1:23, scope 2 // id: %36
+  alloc_global @$s4main5totalSdvp, loc * "/workspace/main.swift":2:5, scope 2 // id: %37
+  %38 = global_addr @$s4main5totalSdvp : $*Double, loc * "/workspace/main.swift":2:5, scope 2 // users: %113, %68, %43
+  %39 = float_literal $Builtin.FPIEEE64, 0x0 // 0, loc "/workspace/main.swift":2:13, scope 4 // user: %42
+  %40 = metatype $@thin Double.Type, loc "/workspace/main.swift":2:13, scope 4 // user: %42
+  // function_ref Double.init(_builtinFloatLiteral:)
+  %41 = function_ref @$sSd20_builtinFloatLiteralSdBf64__tcfC : $@convention(method) (Builtin.FPIEEE64, @thin Double.Type) -> Double, loc "/workspace/main.swift":2:13, scope 4 // user: %42
+  %42 = apply %41(%39, %40) : $@convention(method) (Builtin.FPIEEE64, @thin Double.Type) -> Double, loc "/workspace/main.swift":2:13, scope 4 // user: %43
+  store %42 to [trivial] %38, loc "/workspace/main.swift":2:13, scope 4 // id: %43
+  %44 = alloc_box ${ var IndexingIterator<Array<any Shape>> }, var, name "$shape$generator", loc "/workspace/main.swift":3:14, scope 6 // users: %77, %45
+  %45 = begin_borrow [var_decl] %44, loc "/workspace/main.swift":3:14, scope 4 // users: %76, %46
+  %46 = project_box %45, 0, loc "/workspace/main.swift":3:14, scope 4 // users: %55, %51
+  %47 = load [copy] %3, loc "/workspace/main.swift":3:14, scope 6 // user: %49
+  %48 = alloc_stack $Array<any Shape>, loc "/workspace/main.swift":3:14, scope 6 // users: %52, %51, %49
+  store %47 to [init] %48, loc "/workspace/main.swift":3:14, scope 6 // id: %49
+  // function_ref Collection<>.makeIterator()
+  %50 = function_ref @$sSlss16IndexingIteratorVyxG0B0RtzrlE04makeB0ACyF : $@convention(method) <τ_0_0 where τ_0_0 : Collection, τ_0_0.Iterator == IndexingIterator<τ_0_0>> (@in τ_0_0) -> @out IndexingIterator<τ_0_0>, loc "/workspace/main.swift":3:1, scope 6 // user: %51
+  %51 = apply %50<Array<any Shape>>(%46, %48) : $@convention(method) <τ_0_0 where τ_0_0 : Collection, τ_0_0.Iterator == IndexingIterator<τ_0_0>> (@in τ_0_0) -> @out IndexingIterator<τ_0_0>, loc "/workspace/main.swift":3:14, scope 6
+  dealloc_stack %48, loc "/workspace/main.swift":3:1, scope 6 // id: %52
+  %53 = alloc_stack $Optional<any Shape>, loc "/workspace/main.swift":3:1, scope 6 // users: %75, %62, %59, %57
+  br bb1, loc "/workspace/main.swift":3:1, scope 6 // id: %54
+
+bb1:                                              // Preds: bb3 bb0
+  %55 = begin_access [modify] [unknown] %46, loc "/workspace/main.swift":3:1, scope 6 // users: %58, %57
+  // function_ref IndexingIterator.next()
+  %56 = function_ref @$ss16IndexingIteratorV4next7ElementQzSgyF : $@convention(method) <τ_0_0 where τ_0_0 : Collection> (@inout IndexingIterator<τ_0_0>) -> @out Optional<τ_0_0.Element>, loc "/workspace/main.swift":3:1, scope 6 // user: %57
+  %57 = apply %56<Array<any Shape>>(%53, %55) : $@convention(method) <τ_0_0 where τ_0_0 : Collection> (@inout IndexingIterator<τ_0_0>) -> @out Optional<τ_0_0.Element>, loc "/workspace/main.swift":3:1, scope 6
+  end_access %55, loc * "/workspace/main.swift":3:1, scope 6 // id: %58
+  switch_enum_addr %53, case #Optional.some!enumelt: bb3, case #Optional.none!enumelt: bb2, loc "/workspace/main.swift":3:1, scope 6 // id: %59
+
+bb2:                                              // Preds: bb1
+  br bb4, loc "/workspace/main.swift":3:1, scope 6 // id: %60
+
+bb3:                                              // Preds: bb1
+  %61 = alloc_stack [lexical] [var_decl] $any Shape, let, name "shape", loc "/workspace/main.swift":3:5, scope 6 // users: %73, %72, %65, %63
+  %62 = unchecked_take_enum_data_addr %53, #Optional.some!enumelt, loc "/workspace/main.swift":3:1, scope 6 // user: %63
+  copy_addr [take] %62 to [init] %61, loc "/workspace/main.swift":3:21, scope 7 // id: %63
+  %64 = metatype $@thin Double.Type, loc "/workspace/main.swift":4:11, scope 7 // user: %70
+  %65 = open_existential_addr immutable_access %61 to $*@opened("DC38E3BD-D82D-4384-847B-D76DA444906D", any Shape) Self, loc "/workspace/main.swift":4:20, scope 7 // users: %67, %67, %66
+  %66 = witness_method $@opened("DC38E3BD-D82D-4384-847B-D76DA444906D", any Shape) Self, #Shape.area!getter : <Self where Self : Shape> (Self) -> () -> Double, %65 : $*@opened("DC38E3BD-D82D-4384-847B-D76DA444906D", any Shape) Self : $@convention(witness_method: Shape) <τ_0_0 where τ_0_0 : Shape> (@in_guaranteed τ_0_0) -> Double, loc "/workspace/main.swift":4:20, scope 7 // type-defs: %65; user: %67
+  %67 = apply %66<@opened("DC38E3BD-D82D-4384-847B-D76DA444906D", any Shape) Self>(%65) : $@convention(witness_method: Shape) <τ_0_0 where τ_0_0 : Shape> (@in_guaranteed τ_0_0) -> Double, loc "/workspace/main.swift":4:20, scope 7 // type-defs: %65; user: %70
+  %68 = begin_access [modify] [dynamic] %38, loc "/workspace/main.swift":4:5, scope 7 // users: %71, %70
+  // function_ref static Double.+= infix(_:_:)
+  %69 = function_ref @$sSd2peoiyySdz_SdtFZ : $@convention(method) (@inout Double, Double, @thin Double.Type) -> (), loc "/workspace/main.swift":4:11, scope 7 // user: %70
+  %70 = apply %69(%68, %67, %64) : $@convention(method) (@inout Double, Double, @thin Double.Type) -> (), loc "/workspace/main.swift":4:11, scope 7
+  end_access %68, loc * "/workspace/main.swift":4:5, scope 7 // id: %71
+  destroy_addr %61, loc "/workspace/main.swift":5:1, scope 7 // id: %72
+  dealloc_stack %61, loc "/workspace/main.swift":5:1, scope 7 // id: %73
+  br bb1, loc "/workspace/main.swift":5:1, scope 7 // id: %74
+
+bb4:                                              // Preds: bb2
+  dealloc_stack %53, loc "/workspace/main.swift":5:1, scope 6 // id: %75
+  end_borrow %45, loc "/workspace/main.swift":5:1, scope 6 // id: %76
+  destroy_value %44, loc "/workspace/main.swift":5:1, scope 6 // id: %77
+  %78 = integer_literal $Builtin.Word, 1, loc "/workspace/main.swift":6:7, scope 6 // user: %80
+  // function_ref _allocateUninitializedArray<A>(_:)
+  %79 = function_ref @$ss27_allocateUninitializedArrayySayxG_BptBwlF : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer), loc "/workspace/main.swift":6:7, scope 6 // user: %80
+  %80 = apply %79<Any>(%78) : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer), loc "/workspace/main.swift":6:7, scope 6 // user: %81
+  (%81, %82) = destructure_tuple %80, loc "/workspace/main.swift":6:7, scope 6 // users: %144, %83
+  %83 = begin_borrow %81, loc "/workspace/main.swift":6:7, scope 6 // users: %142, %84
+  %84 = struct_extract %83, #Array._buffer, loc "/workspace/main.swift":6:7, scope 6 // user: %85
+  %85 = struct_extract %84, #_ContiguousArrayBuffer._storage, loc "/workspace/main.swift":6:7, scope 6 // user: %86
+  %86 = ref_tail_addr %85, $Any, loc "/workspace/main.swift":6:7, scope 6 // user: %140
+  %87 = alloc_box ${ var DefaultStringInterpolation }, scope 6 // users: %136, %88
+  %88 = begin_borrow [var_decl] %87, scope 6      // users: %135, %89
+  %89 = project_box %88, 0, scope 6               // users: %134, %129, %118, %108, %101
+  %90 = integer_literal $Builtin.IntLiteral, 11, loc "/workspace/main.swift":6:7, scope 6 // user: %93
+  %91 = metatype $@thin Int.Type, loc "/workspace/main.swift":6:7, scope 6 // user: %93
+  // function_ref Int.init(_builtinIntegerLiteral:)
+  %92 = function_ref @$sSi22_builtinIntegerLiteralSiBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int, loc "/workspace/main.swift":6:7, scope 6 // user: %93
+  %93 = apply %92(%90, %91) : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int, loc "/workspace/main.swift":6:7, scope 6 // user: %100
+  %94 = integer_literal $Builtin.IntLiteral, 1, loc "/workspace/main.swift":6:7, scope 6 // user: %97
+  %95 = metatype $@thin Int.Type, loc "/workspace/main.swift":6:7, scope 6 // user: %97
+  // function_ref Int.init(_builtinIntegerLiteral:)
+  %96 = function_ref @$sSi22_builtinIntegerLiteralSiBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int, loc "/workspace/main.swift":6:7, scope 6 // user: %97
+  %97 = apply %96(%94, %95) : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int, loc "/workspace/main.swift":6:7, scope 6 // user: %100
+  %98 = metatype $@thin DefaultStringInterpolation.Type, loc "/workspace/main.swift":6:7, scope 8 // user: %100
+  // function_ref DefaultStringInterpolation.init(literalCapacity:interpolationCount:)
+  %99 = function_ref @$ss26DefaultStringInterpolationV15literalCapacity18interpolationCountABSi_SitcfC : $@convention(method) (Int, Int, @thin DefaultStringInterpolation.Type) -> @owned DefaultStringInterpolation, loc "/workspace/main.swift":6:7, scope 8 // user: %100
+  %100 = apply %99(%93, %97, %98) : $@convention(method) (Int, Int, @thin DefaultStringInterpolation.Type) -> @owned DefaultStringInterpolation, loc "/workspace/main.swift":6:7, scope 8 // user: %101
+  store %100 to [init] %89, loc "/workspace/main.swift":6:7, scope 8 // id: %101
+  %102 = string_literal utf8 "total area ", loc "/workspace/main.swift":6:7, scope 8 // user: %107
+  %103 = integer_literal $Builtin.Word, 11, loc "/workspace/main.swift":6:7, scope 8 // user: %107
+  %104 = integer_literal $Builtin.Int1, -1, loc "/workspace/main.swift":6:7, scope 8 // user: %107
+  %105 = metatype $@thin String.Type, loc "/workspace/main.swift":6:7, scope 8 // user: %107
+  // function_ref String.init(_builtinStringLiteral:utf8CodeUnitCount:isASCII:)
+  %106 = function_ref @$sSS21_builtinStringLiteral17utf8CodeUnitCount7isASCIISSBp_BwBi1_tcfC : $@convention(method) (Builtin.RawPointer, Builtin.Word, Builtin.Int1, @thin String.Type) -> @owned String, loc "/workspace/main.swift":6:7, scope 8 // user: %107
+  %107 = apply %106(%102, %103, %104, %105) : $@convention(method) (Builtin.RawPointer, Builtin.Word, Builtin.Int1, @thin String.Type) -> @owned String, loc "/workspace/main.swift":6:7, scope 8 // users: %112, %110
+  %108 = begin_access [modify] [unknown] %89, loc "/workspace/main.swift":6:8, scope 8 // users: %111, %110
+  // function_ref DefaultStringInterpolation.appendLiteral(_:)
+  %109 = function_ref @$ss26DefaultStringInterpolationV13appendLiteralyySSF : $@convention(method) (@guaranteed String, @inout DefaultStringInterpolation) -> (), loc "/workspace/main.swift":6:7, scope 8 // user: %110
+  %110 = apply %109(%107, %108) : $@convention(method) (@guaranteed String, @inout DefaultStringInterpolation) -> (), loc "/workspace/main.swift":6:8, scope 8
+  end_access %108, loc * "/workspace/main.swift":6:8, scope 8 // id: %111
+  destroy_value %107, loc "/workspace/main.swift":6:7, scope 8 // id: %112
+  %113 = begin_access [read] [dynamic] %38, loc "/workspace/main.swift":6:21, scope 8 // users: %115, %114
+  %114 = load [trivial] %113, loc "/workspace/main.swift":6:21, scope 8 // user: %117
+  end_access %113, loc * "/workspace/main.swift":6:21, scope 8 // id: %115
+  %116 = alloc_stack $Double, loc "/workspace/main.swift":6:21, scope 8 // users: %122, %120, %117
+  store %114 to [trivial] %116, loc "/workspace/main.swift":6:21, scope 8 // id: %117
+  %118 = begin_access [modify] [unknown] %89, loc "/workspace/main.swift":6:20, scope 8 // users: %121, %120
+  // function_ref DefaultStringInterpolation.appendInterpolation<A>(_:)
+  %119 = function_ref @$ss26DefaultStringInterpolationV06appendC0yyxs06CustomB11ConvertibleRzs20TextOutputStreamableRzlF : $@convention(method) <τ_0_0 where τ_0_0 : CustomStringConvertible, τ_0_0 : TextOutputStreamable> (@in_guaranteed τ_0_0, @inout DefaultStringInterpolation) -> (), loc "/workspace/main.swift":6:20, scope 8 // user: %120
+  %120 = apply %119<Double>(%116, %118) : $@convention(method) <τ_0_0 where τ_0_0 : CustomStringConvertible, τ_0_0 : TextOutputStreamable> (@in_guaranteed τ_0_0, @inout DefaultStringInterpolation) -> (), loc "/workspace/main.swift":6:20, scope 8
+  end_access %118, loc * "/workspace/main.swift":6:20, scope 8 // id: %121
+  dealloc_stack %116, loc "/workspace/main.swift":6:26, scope 8 // id: %122
+  %123 = string_literal utf8 "", loc "/workspace/main.swift":6:27, scope 8 // user: %128
+  %124 = integer_literal $Builtin.Word, 0, loc "/workspace/main.swift":6:27, scope 8 // user: %128
+  %125 = integer_literal $Builtin.Int1, -1, loc "/workspace/main.swift":6:27, scope 8 // user: %128
+  %126 = metatype $@thin String.Type, loc "/workspace/main.swift":6:27, scope 8 // user: %128
+  // function_ref String.init(_builtinStringLiteral:utf8CodeUnitCount:isASCII:)
+  %127 = function_ref @$sSS21_builtinStringLiteral17utf8CodeUnitCount7isASCIISSBp_BwBi1_tcfC : $@convention(method) (Builtin.RawPointer, Builtin.Word, Builtin.Int1, @thin String.Type) -> @owned String, loc "/workspace/main.swift":6:27, scope 8 // user: %128
+  %128 = apply %127(%123, %124, %125, %126) : $@convention(method) (Builtin.RawPointer, Builtin.Word, Builtin.Int1, @thin String.Type) -> @owned String, loc "/workspace/main.swift":6:27, scope 8 // users: %133, %131
+  %129 = begin_access [modify] [unknown] %89, loc "/workspace/main.swift":6:27, scope 8 // users: %132, %131
+  // function_ref DefaultStringInterpolation.appendLiteral(_:)
+  %130 = function_ref @$ss26DefaultStringInterpolationV13appendLiteralyySSF : $@convention(method) (@guaranteed String, @inout DefaultStringInterpolation) -> (), loc "/workspace/main.swift":6:27, scope 8 // user: %131
+  %131 = apply %130(%128, %129) : $@convention(method) (@guaranteed String, @inout DefaultStringInterpolation) -> (), loc "/workspace/main.swift":6:27, scope 8
+  end_access %129, loc * "/workspace/main.swift":6:27, scope 8 // id: %132
+  destroy_value %128, loc "/workspace/main.swift":6:27, scope 8 // id: %133
+  %134 = load [copy] %89, loc "/workspace/main.swift":6:7, scope 8 // user: %139
+  end_borrow %88, loc "/workspace/main.swift":6:27, scope 8 // id: %135
+  destroy_value %87, loc "/workspace/main.swift":6:27, scope 8 // id: %136
+  %137 = metatype $@thin String.Type, loc "/workspace/main.swift":6:7, scope 8 // user: %139
+  // function_ref String.init(stringInterpolation:)
+  %138 = function_ref @$sSS19stringInterpolationSSs013DefaultStringB0V_tcfC : $@convention(method) (@owned DefaultStringInterpolation, @thin String.Type) -> @owned String, loc "/workspace/main.swift":6:7, scope 8 // user: %139
+  %139 = apply %138(%134, %137) : $@convention(method) (@owned DefaultStringInterpolation, @thin String.Type) -> @owned String, loc "/workspace/main.swift":6:7, scope 8 // user: %141
+  %140 = init_existential_addr %86, $String, loc "/workspace/main.swift":6:7, scope 8 // user: %141
+  store %139 to [init] %140, loc "/workspace/main.swift":6:7, scope 8 // id: %141
+  end_borrow %83, loc "/workspace/main.swift":6:7, scope 8 // id: %142
+  // function_ref _finalizeUninitializedArray<A>(_:)
+  %143 = function_ref @$ss27_finalizeUninitializedArrayySayxGABnlF : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0>, loc "/workspace/main.swift":6:7, scope 8 // user: %144
+  %144 = apply %143<Any>(%81) : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0>, loc "/workspace/main.swift":6:7, scope 8 // users: %153, %150
+  // function_ref default argument 1 of print(_:separator:terminator:)
+  %145 = function_ref @$ss5print_9separator10terminatoryypd_S2StFfA0_ : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":6:6, scope 8 // user: %146
+  %146 = apply %145() : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":6:6, scope 8 // users: %152, %150
+  // function_ref default argument 2 of print(_:separator:terminator:)
+  %147 = function_ref @$ss5print_9separator10terminatoryypd_S2StFfA1_ : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":6:6, scope 8 // user: %148
+  %148 = apply %147() : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":6:6, scope 8 // users: %151, %150
+  // function_ref print(_:separator:terminator:)
+  %149 = function_ref @$ss5print_9separator10terminatoryypd_S2StF : $@convention(thin) (@guaranteed Array<Any>, @guaranteed String, @guaranteed String) -> (), loc "/workspace/main.swift":6:1, scope 8 // user: %150
+  %150 = apply %149(%144, %146, %148) : $@convention(thin) (@guaranteed Array<Any>, @guaranteed String, @guaranteed String) -> (), loc "/workspace/main.swift":6:1, scope 8
+  destroy_value %148, loc "/workspace/main.swift":6:28, scope 8 // id: %151
+  destroy_value %146, loc "/workspace/main.swift":6:28, scope 8 // id: %152
+  destroy_value %144, loc "/workspace/main.swift":6:28, scope 8 // id: %153
+  %154 = integer_literal $Builtin.Word, 1, loc "/workspace/main.swift":7:7, scope 8 // user: %156
+  // function_ref _allocateUninitializedArray<A>(_:)
+  %155 = function_ref @$ss27_allocateUninitializedArrayySayxG_BptBwlF : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer), loc "/workspace/main.swift":7:7, scope 8 // user: %156
+  %156 = apply %155<Any>(%154) : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer), loc "/workspace/main.swift":7:7, scope 8 // user: %157
+  (%157, %158) = destructure_tuple %156, loc "/workspace/main.swift":7:7, scope 8 // users: %173, %159
+  %159 = begin_borrow %157, loc "/workspace/main.swift":7:7, scope 8 // users: %171, %160
+  %160 = struct_extract %159, #Array._buffer, loc "/workspace/main.swift":7:7, scope 8 // user: %161
+  %161 = struct_extract %160, #_ContiguousArrayBuffer._storage, loc "/workspace/main.swift":7:7, scope 8 // user: %162
+  %162 = ref_tail_addr %161, $Any, loc "/workspace/main.swift":7:7, scope 8 // user: %169
+  %163 = integer_literal $Builtin.IntLiteral, 7, loc "/workspace/main.swift":7:14, scope 9 // user: %166
+  %164 = metatype $@thin Int.Type, loc "/workspace/main.swift":7:14, scope 9 // user: %166
+  // function_ref Int.init(_builtinIntegerLiteral:)
+  %165 = function_ref @$sSi22_builtinIntegerLiteralSiBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int, loc "/workspace/main.swift":7:14, scope 9 // user: %166
+  %166 = apply %165(%163, %164) : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int, loc "/workspace/main.swift":7:14, scope 9 // user: %168
+  // function_ref square(_:)
+  %167 = function_ref @$s4main6squareyS2iF : $@convention(thin) (Int) -> Int, loc "/workspace/main.swift":7:7, scope 9 // user: %168
+  %168 = apply %167(%166) : $@convention(thin) (Int) -> Int, loc "/workspace/main.swift":7:7, scope 9 // user: %170
+  %169 = init_existential_addr %162, $Int, loc "/workspace/main.swift":7:7, scope 9 // user: %170
+  store %168 to [trivial] %169, loc "/workspace/main.swift":7:7, scope 9 // id: %170
+  end_borrow %159, loc "/workspace/main.swift":7:15, scope 9 // id: %171
+  // function_ref _finalizeUninitializedArray<A>(_:)
+  %172 = function_ref @$ss27_finalizeUninitializedArrayySayxGABnlF : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0>, loc "/workspace/main.swift":7:7, scope 9 // user: %173
+  %173 = apply %172<Any>(%157) : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0>, loc "/workspace/main.swift":7:7, scope 9 // users: %182, %179
+  // function_ref default argument 1 of print(_:separator:terminator:)
+  %174 = function_ref @$ss5print_9separator10terminatoryypd_S2StFfA0_ : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":7:6, scope 9 // user: %175
+  %175 = apply %174() : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":7:6, scope 9 // users: %181, %179
+  // function_ref default argument 2 of print(_:separator:terminator:)
+  %176 = function_ref @$ss5print_9separator10terminatoryypd_S2StFfA1_ : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":7:6, scope 9 // user: %177
+  %177 = apply %176() : $@convention(thin) () -> @owned String, loc "/workspace/main.swift":7:6, scope 9 // users: %180, %179
+  // function_ref print(_:separator:terminator:)
+  %178 = function_ref @$ss5print_9separator10terminatoryypd_S2StF : $@convention(thin) (@guaranteed Array<Any>, @guaranteed String, @guaranteed String) -> (), loc "/workspace/main.swift":7:1, scope 9 // user: %179
+  %179 = apply %178(%173, %175, %177) : $@convention(thin) (@guaranteed Array<Any>, @guaranteed String, @guaranteed String) -> (), loc "/workspace/main.swift":7:1, scope 9
+  destroy_value %177, loc "/workspace/main.swift":7:16, scope 9 // id: %180
+  destroy_value %175, loc "/workspace/main.swift":7:16, scope 9 // id: %181
+  destroy_value %173, loc "/workspace/main.swift":7:16, scope 9 // id: %182
+  %183 = integer_literal $Builtin.Int32, 0, scope 9 // user: %184
+  %184 = struct $Int32 (%183), scope 9            // user: %185
+  return %184, scope 9                            // id: %185
+} // end sil function '__main_argc_argv'
+
+
+// _allocateUninitializedArray<A>(_:), scope 0
+// Isolation: unspecified
+sil [serialized] [heuristic_always_inline] [_semantics "array.uninitialized_intrinsic"] @$ss27_allocateUninitializedArrayySayxG_BptBwlF : $@convention(thin) <τ_0_0> (Builtin.Word) -> (@owned Array<τ_0_0>, Builtin.RawPointer)
+
+
+// Double.init(_builtinIntegerLiteral:), scope 0
+// Isolation: unspecified
+sil [transparent] [serialized] @$sSd22_builtinIntegerLiteralSdBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Double.Type) -> Double
+
+
+// Circle.init(radius:), loc "/workspace/Shapes.swift":5:8, scope 0
+// Isolation: unspecified
+sil hidden_external @$s4main6CircleV6radiusACSd_tcfC : $@convention(method) (Double, @thin Circle.Type) -> Circle
+
+
+// Square.init(side:), loc "/workspace/Shapes.swift":10:8, scope 0
+// Isolation: unspecified
+sil hidden_external @$s4main6SquareV4sideACSd_tcfC : $@convention(method) (Double, @thin Square.Type) -> Square
+
+
+// _finalizeUninitializedArray<A>(_:), scope 0
+// Isolation: unspecified
+sil hidden_external [serialized] [readnone] [_semantics "array.finalize_intrinsic"] @$ss27_finalizeUninitializedArrayySayxGABnlF : $@convention(thin) <τ_0_0> (@owned Array<τ_0_0>) -> @owned Array<τ_0_0> {
+[%0: escape! v** => %r.v**, escape! v**.c*.v** => %r.v**.c*.v**]
+} // end sil function '$ss27_finalizeUninitializedArrayySayxGABnlF'
+
+
+// Double.init(_builtinFloatLiteral:), scope 0
+// Isolation: unspecified
+sil [transparent] [serialized] @$sSd20_builtinFloatLiteralSdBf64__tcfC : $@convention(method) (Builtin.FPIEEE64, @thin Double.Type) -> Double
+
+
+// Collection<>.makeIterator(), scope 0
+// Isolation: unspecified
+sil [serialized] [heuristic_always_inline] @$sSlss16IndexingIteratorVyxG0B0RtzrlE04makeB0ACyF : $@convention(method) <τ_0_0 where τ_0_0 : Collection, τ_0_0.Iterator == IndexingIterator<τ_0_0>> (@in τ_0_0) -> @out IndexingIterator<τ_0_0>
+
+
+// IndexingIterator.next(), scope 0
+// Isolation: unspecified
+sil [serialized] [heuristic_always_inline] @$ss16IndexingIteratorV4next7ElementQzSgyF : $@convention(method) <τ_0_0 where τ_0_0 : Collection> (@inout IndexingIterator<τ_0_0>) -> @out Optional<τ_0_0.Element>
+
+
+// static Double.+= infix(_:_:), scope 0
+// Isolation: unspecified
+sil [transparent] [serialized] @$sSd2peoiyySdz_SdtFZ : $@convention(method) (@inout Double, Double, @thin Double.Type) -> ()
+
+
+// Int.init(_builtinIntegerLiteral:), scope 0
+// Isolation: unspecified
+sil [transparent] [serialized] @$sSi22_builtinIntegerLiteralSiBI_tcfC : $@convention(method) (Builtin.IntLiteral, @thin Int.Type) -> Int
+
+
+// DefaultStringInterpolation.init(literalCapacity:interpolationCount:), scope 0
+// Isolation: unspecified
+sil [serialized] @$ss26DefaultStringInterpolationV15literalCapacity18interpolationCountABSi_SitcfC : $@convention(method) (Int, Int, @thin DefaultStringInterpolation.Type) -> @owned DefaultStringInterpolation
+
+
+// String.init(_builtinStringLiteral:utf8CodeUnitCount:isASCII:), scope 0
+// Isolation: unspecified
+sil [serialized] [heuristic_always_inline] [readonly] [_semantics "string.makeUTF8"] @$sSS21_builtinStringLiteral17utf8CodeUnitCount7isASCIISSBp_BwBi1_tcfC : $@convention(method) (Builtin.RawPointer, Builtin.Word, Builtin.Int1, @thin String.Type) -> @owned String
+
+
+// DefaultStringInterpolation.appendLiteral(_:), scope 0
+// Isolation: unspecified
+sil [serialized] @$ss26DefaultStringInterpolationV13appendLiteralyySSF : $@convention(method) (@guaranteed String, @inout DefaultStringInterpolation) -> ()
+
+
+// DefaultStringInterpolation.appendInterpolation<A>(_:), scope 0
+// Isolation: unspecified
+sil [serialized] @$ss26DefaultStringInterpolationV06appendC0yyxs06CustomB11ConvertibleRzs20TextOutputStreamableRzlF : $@convention(method) <τ_0_0 where τ_0_0 : CustomStringConvertible, τ_0_0 : TextOutputStreamable> (@in_guaranteed τ_0_0, @inout DefaultStringInterpolation) -> ()
+
+
+// String.init(stringInterpolation:), scope 0
+// Isolation: unspecified
+sil [serialized] [readonly] @$sSS19stringInterpolationSSs013DefaultStringB0V_tcfC : $@convention(method) (@owned DefaultStringInterpolation, @thin String.Type) -> @owned String
+
+
+// default argument 1 of print(_:separator:terminator:), scope 0
+// Isolation: unspecified
+sil hidden_external [serialized] @$ss5print_9separator10terminatoryypd_S2StFfA0_ : $@convention(thin) () -> @owned String
+
+
+// default argument 2 of print(_:separator:terminator:), scope 0
+// Isolation: unspecified
+sil hidden_external [serialized] @$ss5print_9separator10terminatoryypd_S2StFfA1_ : $@convention(thin) () -> @owned String
+
+
+// print(_:separator:terminator:), scope 0
+// Isolation: unspecified
+sil @$ss5print_9separator10terminatoryypd_S2StF : $@convention(thin) (@guaranteed Array<Any>, @guaranteed String, @guaranteed String) -> ()
+
+
+// square(_:), loc "/workspace/Shapes.swift":15:6, scope 0
+// Isolation: unspecified
+sil hidden_external @$s4main6squareyS2iF : $@convention(thin) (Int) -> Int
+
+
+
+// Mappings from '#fileID' to '#filePath':
+//   'main/main.swift' => '/workspace/main.swift'
+//   'main/Shapes.swift' => '/workspace/Shapes.swift'
+
+
