@@ -1,8 +1,9 @@
 // Tests of what decides whether the C/C++ pack's build reuses a cached tree
 // or a skipped step (build-lib.sh's keep_tree, follow_patch,
-// llvm_lld_sources, npm_deps, the stamps' input lists, and
-// vm/build-qemu-user.sh's stamp), with throwaway directories and fakes in
-// place of LLVM, npm and QEMU: no compiler is built, so it takes a second.
+// llvm_lld_sources, npm_deps, emsdk_install, the stamps' input lists, and
+// vm/build-qemu-user.sh's stamp), and of where the pack's pins live, with
+// throwaway directories and fakes in place of LLVM, npm, emsdk and QEMU: no
+// compiler is built, so it takes a second.
 //
 //   node --test test-build-lib.mjs   (from light/packs/cpp; needs bash, git, tar, xz, patch)
 import assert from 'node:assert/strict';
@@ -59,8 +60,10 @@ test('a build tree made by another LLVM or Emscripten is built again from empty,
     const r = ok(`EMSDK_COMMIT=0000000000000000000000000000000000000000; keep_tree tree "$(llvm_made_by)"`, { cwd: dir });
     assert.ok(!fs.existsSync(path.join(dir, 'tree/object.o')), 'another emsdk starts the tree again');
     assert.match(r.err, /tree was made by something else/);
-    assert.match(r.err, /emsdk 4\.0\.22 0{40}/, 'the message names what differs');
-    assert.match(fs.readFileSync(path.join(dir, 'tree/.yk-made-by'), 'utf8'), /^yukibana-tree\/1\nllvm 21\.1\.8 [0-9a-f]{64}\nemsdk 4\.0\.22 0{40}\n$/);
+    assert.match(r.err, /emsdk \d+\.\d+\.\d+ 0{40} [0-9a-f]{40} [0-9a-f]{64}/, 'the message names what differs');
+    assert.match(fs.readFileSync(path.join(dir, 'tree/.yk-made-by'), 'utf8'), /^yukibana-tree\/1\nllvm \d+\.\d+\.\d+ [0-9a-f]{64}\nemsdk \d+\.\d+\.\d+ 0{40} [0-9a-f]{40} [0-9a-f]{64}\n$/);
+    const r2 = ok(`EMSDK_RELEASE=${'1'.repeat(40)}; keep_tree tree "$(llvm_made_by)"`, { cwd: dir });
+    assert.match(r2.err, /tree was made by something else/, 'another toolchain release under the same emsdk commit starts it again too');
 });
 
 test('a build tree that does not say what made it is not reused', () => {
@@ -217,7 +220,7 @@ test("another initial memory or other musl headers for the user-mode QEMU is ano
     const stamp = (env = {}) => {
         const r = spawnSync(path.join(HERE, 'vm/build-qemu-user.sh'), [], {
             encoding: 'utf8',
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: musl, PRINT_STAMP: '1', ...env },
+            env: { PATH: process.env.PATH, HOME: process.env.HOME, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: musl, PRINT_STAMP: '1', ...env },
         });
         assert.equal(r.status, 0, r.stderr);
         return r.stdout.trim();
@@ -228,4 +231,140 @@ test("another initial memory or other musl headers for the user-mode QEMU is ano
     assert.notEqual(stamp({ USER_INITIAL_MEMORY_MB: '32' }), first);
     write(path.join(musl, 'sys/signalfd.h'), '/* another musl */\n');
     assert.notEqual(stamp(), first);
+});
+
+/** The NAME=value pins a pins file assigns, as a map from name to value. */
+const pinsOf = (file) => new Map(fs.readFileSync(file, 'utf8').split('\n')
+    .filter((l) => /^[A-Z][A-Z0-9_]*=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+
+test("the pack pins one Emscripten, in pins.sh, and the VM's pins name nothing pins.sh names", () => {
+    const pack = pinsOf(path.join(HERE, 'pins.sh'));
+    const vm = pinsOf(path.join(HERE, 'vm/pins.sh'));
+    assert.ok(pack.has('EMSDK_VERSION') && pack.has('EMSDK_COMMIT') && pack.has('EMSDK_RELEASE'), 'pins.sh pins the emsdk');
+    assert.deepEqual([...vm.keys()].filter((k) => pack.has(k)), [], 'no pin is in both files');
+    assert.deepEqual([...vm.keys()].filter((k) => k.startsWith('EMSDK_') || k.startsWith('MUSL_')), [], 'the VM has no Emscripten or musl of its own');
+    for (const line of fs.readFileSync(path.join(HERE, 'vm/pins.sh'), 'utf8').split('\n'))
+        assert.ok(line === '' || line.startsWith('#') || /^[A-Z][A-Z0-9_]*=[^$`(]*$/.test(line), `vm/pins.sh: '${line}' is a plain NAME=value pin`);
+    assert.ok(!fs.existsSync(path.join(HERE, 'vm/pins.txt')), 'vm/pins.txt is gone');
+});
+
+test('nothing in the pack patches, or deletes from, the installed Emscripten', () => {
+    // The pack once patched proxying.c in $PACK_CACHE/cpp/emsdk and deleted
+    // the prebuilt libc-mt*.a for emcc to rebuild: a toolchain made by
+    // mutating a cached tool (plan D52). A fix Emscripten lacks is a newer pin.
+    const scripts = fs.readdirSync(HERE).filter((f) => f.endsWith('.sh')).map((f) => path.join(HERE, f))
+        .concat(fs.readdirSync(path.join(HERE, 'vm')).filter((f) => f.endsWith('.sh')).map((f) => path.join(HERE, 'vm', f)));
+    for (const file of scripts) {
+        const text = fs.readFileSync(file, 'utf8');
+        assert.doesNotMatch(text, /patch[^\n]*-d[^\n]*emsdk|emsdk[^\n]*\.proxying-patched|rm [^\n]*emsdk\/upstream/, `${path.relative(HERE, file)} leaves the emsdk as installed`);
+    }
+    for (const patch of fs.readdirSync(path.join(HERE, 'patches')))
+        assert.doesNotMatch(fs.readFileSync(path.join(HERE, 'patches', patch), 'utf8'), /^\+\+\+ b\/system\/lib\//m, `patches/${patch} is not a patch to Emscripten's own tree`);
+});
+
+/**
+ * A directory of fakes for emsdk_install: `git` (clone makes a checkout at
+ * $FAKE_COMMIT holding a fake `emsdk`, and `-C <dir> rev-parse HEAD` reads
+ * it back), `curl` (writes "archive" and logs the URL), and the fake emsdk,
+ * which logs its arguments and the downloads it was handed, and installs an
+ * emcc and an .emscripten. Returns the PATH and the log's path.
+ */
+function emsdkFakes() {
+    const bin = fresh();
+    const log = path.join(bin, 'log');
+    write(path.join(bin, 'git'), `#!/bin/bash
+if [ "$1" = -c ]; then shift 2; fi
+if [ "$1" = clone ]; then
+  dir=\${@: -1}; mkdir -p "$dir"; echo "$FAKE_COMMIT" > "$dir/.head"; echo "git clone $*" >> "${log}"
+  cat > "$dir/emsdk" <<'EOT'
+#!/bin/bash
+echo "emsdk $* keep=$EMSDK_KEEP_DOWNLOADS downloads=$(ls downloads | tr '\\n' ' ')" >> "$LOG"
+case $1 in
+  install) mkdir -p upstream/emscripten && printf '#!/bin/sh\\n' > upstream/emscripten/emcc && chmod +x upstream/emscripten/emcc ;;
+  activate) touch .emscripten ;;
+esac
+EOT
+  chmod +x "$dir/emsdk"; exit 0
+fi
+if [ "$1" = -C ] && [ "$3" = rev-parse ]; then cat "$2/.head"; exit 0; fi
+exit 1
+`);
+    write(path.join(bin, 'curl'), `#!/bin/bash\nout=; for ((i = 1; i <= $#; i++)); do [ "\${!i}" = -o ] && { j=$((i + 1)); out=\${!j}; }; done\necho "curl \${@: -1}" >> "${log}"\necho archive > "$out"\n`);
+    fs.chmodSync(path.join(bin, 'git'), 0o755);
+    fs.chmodSync(path.join(bin, 'curl'), 0o755);
+    return { PATH: `${bin}:${process.env.PATH}`, LOG: log };
+}
+test("the pack's Emscripten is installed once, from the checked archives, and again only at another commit", () => {
+    const cache = fresh();
+    const { PATH, LOG } = emsdkFakes();
+    const sha = execFileSync('sha256sum', { input: 'archive\n', encoding: 'utf8' }).split(' ')[0];
+    const pins = `EMSDK_BINARIES_SHA256=${sha}; EMSDK_NODE_SHA256=${sha}; EMSDK_COMMIT=${'a'.repeat(40)};`;
+    const run = (commit = 'a'.repeat(40)) => ok(`${pins} emsdk_install`, { cwd: cache, env: { PATH, LOG, FAKE_COMMIT: commit } });
+    const log = () => fs.readFileSync(LOG, 'utf8').trim().split('\n');
+    run();
+    const first = log();
+    assert.equal(first.filter((l) => l.startsWith('git clone')).length, 1);
+    assert.ok(first.some((l) => /^curl https:\/\/storage\.googleapis\.com\/.*\/wasm-binaries\.tar\.xz$/.test(l)), 'the toolchain archive is fetched by the script');
+    const install = first.find((l) => l.startsWith('emsdk install'));
+    assert.match(install, /keep=1/, 'emsdk is told to use the downloads it was handed');
+    assert.match(install, /downloads=\S+-wasm-binaries\.tar\.xz node-\S+\.tar\.xz/, 'emsdk finds both checked archives under the names it looks for');
+    assert.ok(first.some((l) => l.startsWith('emsdk activate')));
+    assert.ok(fs.existsSync(path.join(cache, 'emsdk/upstream/emscripten/emcc')));
+    assert.ok(!fs.existsSync(path.join(cache, 'emsdk/downloads')), 'the archives are not kept beside the install');
+    run();
+    assert.deepEqual(log(), first, 'an installed emsdk at the pinned commit is used as it is');
+    fs.writeFileSync(path.join(cache, 'emsdk/.head'), `${'b'.repeat(40)}\n`);
+    run();
+    assert.equal(log().filter((l) => l.startsWith('git clone')).length, 2, 'an emsdk at another commit is installed again');
+    fs.rmSync(path.join(cache, 'emsdk/.emscripten'));
+    run();
+    assert.equal(log().filter((l) => l.startsWith('git clone')).length, 3, 'an install that was never activated is not used');
+});
+
+test('an Emscripten archive whose checksum is not the pinned one is never handed to emsdk', () => {
+    const cache = fresh();
+    const { PATH, LOG } = emsdkFakes();
+    const sha = execFileSync('sha256sum', { input: 'archive\n', encoding: 'utf8' }).split(' ')[0];
+    const r = bash(`EMSDK_BINARIES_SHA256=${sha}; EMSDK_NODE_SHA256=${'0'.repeat(64)}; EMSDK_COMMIT=${'a'.repeat(40)}; emsdk_install`,
+        { cwd: cache, env: { PATH, LOG, FAKE_COMMIT: 'a'.repeat(40) } });
+    assert.notEqual(r.status, 0);
+    assert.match(r.err, /checksum mismatch for https:\/\/storage\.googleapis\.com\/.*node-/);
+    assert.ok(!fs.readFileSync(LOG, 'utf8').includes('emsdk install'), 'emsdk never ran');
+    const other = bash(`EMSDK_COMMIT=${'a'.repeat(40)}; emsdk_install`, { cwd: fresh(), env: { PATH, LOG, FAKE_COMMIT: 'c'.repeat(40) } });
+    assert.notEqual(other.status, 0);
+    assert.match(other.err, /emsdk \S+ is not commit a{40}/, 'a tag that moved to another commit is refused by name');
+});
+
+test("the VM's user-mode QEMU is built again for another Emscripten, and not for a pin that is not the VM's", () => {
+    // A copy of the pack's files the script reads, so that its pins can change.
+    const pack = fresh();
+    for (const f of ['pins.sh', 'build-lib.sh', 'vm/pins.sh', 'vm/build-qemu-user.sh', ...fs.readdirSync(path.join(HERE, 'vm/patches')).map((p) => `vm/patches/${p}`)]) {
+        fs.mkdirSync(path.dirname(path.join(pack, f)), { recursive: true });
+        fs.copyFileSync(path.join(HERE, f), path.join(pack, f));
+    }
+    fs.chmodSync(path.join(pack, 'vm/build-qemu-user.sh'), 0o755);
+    const qc = fresh();
+    write(path.join(qc, 'work/target/lib/libglib-2.0.a'), '');
+    write(path.join(qc, 'work/target/.yk-made-by'), 'yukibana-tree/1\nsome dependencies\n');
+    write(path.join(qc, 'work/qemu-wasm/configure'), '#!/bin/sh\n');
+    execFileSync('git', ['init', '-q', path.join(qc, 'work/qemu-wasm')]);
+    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), 'add', '.']);
+    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'qemu']);
+    write(path.join(qc, 'hdr/x86_64/include/linux/types.h'), '/* uapi */\n');
+    write(path.join(qc, 'musl/include/sys/signalfd.h'), '/* musl */\n');
+    const stamp = () => {
+        const r = spawnSync(path.join(pack, 'vm/build-qemu-user.sh'), [], {
+            encoding: 'utf8',
+            env: { PATH: process.env.PATH, HOME: process.env.HOME, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: path.join(qc, 'musl/include'), PRINT_STAMP: '1' },
+        });
+        assert.equal(r.status, 0, r.stderr);
+        return r.stdout.trim();
+    };
+    const pinsFile = path.join(pack, 'pins.sh');
+    const swap = (name, value) => fs.writeFileSync(pinsFile, fs.readFileSync(pinsFile, 'utf8').replace(new RegExp(`^${name}=.*$`, 'm'), `${name}=${value}`));
+    const first = stamp();
+    swap('APK_MUSL_X86_64', '0'.repeat(64));
+    assert.equal(stamp(), first, "an Alpine package's pin is none of the VM's business");
+    swap('EMSDK_RELEASE', '1'.repeat(40));
+    assert.notEqual(stamp(), first, 'another Emscripten release is another build');
 });

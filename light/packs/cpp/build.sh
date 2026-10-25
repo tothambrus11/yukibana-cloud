@@ -37,8 +37,9 @@
 # reused tree records what made it (build-lib.sh, keep_tree), and every
 # skipped step has a stamp of its inputs (README, "Build", lists them).
 # Needs a Linux host with clang, cmake, ninja, git, curl, python3, make and
-# node 22. Emscripten is fetched into the cache. Most of the time is the
-# clangd step: about an hour at -j3 on this machine (see README).
+# node 22. Emscripten is fetched into the cache (build-lib.sh's
+# emsdk_install). Most of the time is the clangd step: about an hour at -j3
+# on this machine (see README).
 #
 #   JOBS=3 ./build.sh
 set -euo pipefail
@@ -78,33 +79,8 @@ fi
 # takes them from it too.
 keep_tree "musl-$MUSL_VERSION" "musl $MUSL_SHA256"
 [ -f "musl-$MUSL_VERSION/Makefile" ] || tar xzf "musl-$MUSL_VERSION.tar.gz" -C "musl-$MUSL_VERSION" --strip-components=1
-if [ ! -x emsdk/upstream/emscripten/emcc ] || [ "$(git -C emsdk rev-parse HEAD 2>/dev/null)" != "$EMSDK_COMMIT" ]; then
-  rm -rf emsdk
-  git clone --quiet --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk
-  [ "$(git -C emsdk rev-parse HEAD)" = "$EMSDK_COMMIT" ] || die "emsdk $EMSDK_VERSION is not commit $EMSDK_COMMIT"
-  mkdir -p emsdk/downloads
-  fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/$EMSDK_RELEASE/wasm-binaries.tar.xz" \
-    "$EMSDK_BINARIES_SHA256" "emsdk/downloads/$EMSDK_RELEASE-wasm-binaries.tar.xz"
-  fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/$EMSDK_NODE" \
-    "$EMSDK_NODE_SHA256" "emsdk/downloads/$EMSDK_NODE"
-  (cd emsdk && EMSDK_KEEP_DOWNLOADS=1 ./emsdk install "$EMSDK_VERSION" >/dev/null && ./emsdk activate "$EMSDK_VERSION" >/dev/null)
-  rm -rf emsdk/downloads
-fi
-# Emscripten's proxying: a synchronous proxied call is signalled before its
-# mutex is unlocked, as upstream does from 5.0.5 (the patch says why: clangd
-# trapped on "unaligned accesses" about one C++ e2e run in four). Its libc is
-# prebuilt in the emsdk's cache, so the multithreaded variants are deleted for
-# emcc to rebuild from the patched source on the next link; .proxying-patched
-# holds the patch's SHA-256, and a change to it also relinks clangd.
-proxying_sha=$(sha256sum < "$HERE/patches/emscripten-proxying-signal-before-unlock.patch" | cut -d' ' -f1)
-if [ "$(cat emsdk/.proxying-patched 2>/dev/null)" != "$proxying_sha" ]; then
-  p="$HERE/patches/emscripten-proxying-signal-before-unlock.patch"
-  patch -d emsdk/upstream/emscripten -p1 -R --dry-run --quiet < "$p" >/dev/null 2>&1 ||
-    patch -d emsdk/upstream/emscripten -p1 --quiet < "$p"
-  rm -f emsdk/upstream/emscripten/cache/sysroot/lib/wasm32-emscripten/libc-mt*.a
-  rm -f build-wasm/bin/clangd.js
-  echo "$proxying_sha" > emsdk/.proxying-patched
-fi
+# Emscripten (pins.sh), installed once and never patched (build-lib.sh).
+emsdk_install
 
 step "native table generators"
 # The wasm build runs these on the host; it cannot run its own.

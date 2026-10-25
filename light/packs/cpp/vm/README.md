@@ -182,10 +182,12 @@ default.
    translation block with `-cpu max`. The default `qemu64` works and is what the
    kernel is built for.
 2. **The VM froze about once in 20 boots** with emscripten 3.1.50 (which qemu-wasm
-   pins) and 4.0.22 (which the rest of the pack uses). `emscripten_proxy_finish`
+   pins) and 4.0.22 (which the rest of the pack then used). `emscripten_proxy_finish`
    signalled the waiter after unlocking, so a proxied call's wakeup could be lost.
-   This was fixed in emscripten 5.0.5 (emscripten-core/emscripten#26582), and the pack
-   builds QEMU with 6.0.13. It is found with worker stacks over the DevTools protocol.
+   This was fixed in emscripten 5.0.5 (emscripten-core/emscripten#26582). QEMU was
+   first built with a second Emscripten, 6.0.13, of its own; the whole pack is now
+   built with that one Emscripten (`pins.sh`, `emsdk_install` in `build-lib.sh`, in
+   `$PACK_CACHE/cpp/emsdk`). It is found with worker stacks over the DevTools protocol.
 3. **The TCG backend gave wrong i32 results** once a block was compiled to Wasm (after
    1500 executions). The wrong ops were `add2/sub2/mulu2/muls2/extract/sextract/clz/ctz`
    on dirty upper halves, and two cases produced invalid Wasm. Symptoms were AArch64's
@@ -281,12 +283,13 @@ default.
 ## Building
 
 Run `./build-vm.sh`, which uses `JOBS=3` by default and `nice`. Each step is skipped when
-its stamp in `$PACK_CACHE/cpp/vm-artifacts` matches its inputs (`pins.txt`, the patches,
-the configs, the script itself, the compiler version).
+its stamp in `$PACK_CACHE/cpp/vm-artifacts` matches its inputs (`vm/pins.sh`, the
+patches, the configs, the script itself, the compiler version, and for the QEMU steps the
+Emscripten `pins.sh` names).
 
 | step | script | time here |
 |---|---|---|
-| emsdk 6.0.13, zlib/libffi/glib/pixman, qemu-system ×3 | `vm/build-qemu.sh` | 210 s to relink the 3 targets (the dependencies and objects came from the research caches; a from-scratch build was not timed in this session) |
+| the pack's emsdk (if `build.sh` has not installed it), zlib/libffi/glib/pixman, qemu-system ×3 | `vm/build-qemu.sh` | 210 s to relink the 3 targets (the dependencies and objects came from the research caches; a from-scratch build was not timed in this session) |
 | Linux 6.12.114 per arch, with clang, + UAPI headers | `vm/build-kernel.sh <arch>` | about 30 s each with existing trees |
 | yk-init (nolibc), its unit tests (ASan+UBSan), clang-tidy | `vm/build-init.sh` | 4 s |
 | static strace 6.12 per arch (musl) | `vm/build-strace.sh` | 220–315 s for all three |
@@ -346,7 +349,8 @@ The pack ships these GPL and other licensed binaries:
 
 The corresponding source is:
 
-- the upstream releases and commits pinned by SHA-256 or commit in `vm/pins.txt`:
+- the upstream releases and commits pinned by SHA-256 or commit in `vm/pins.sh`:
   ktock/qemu-wasm, linux-6.12.114, strace-6.12, and the qboot and OpenSBI submodule
-  commits of that QEMU;
+  commits of that QEMU, and in `pins.sh` the Emscripten that compiles QEMU and the
+  musl whose headers the user-mode build takes;
 - plus `vm/patches/`, `vm/kconfig/`, `vm/devices/` and `vm/guest/`.

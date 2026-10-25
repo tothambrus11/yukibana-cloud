@@ -4,8 +4,10 @@
 # opensbi-riscv64-generic-fw_dynamic.bin.
 #
 # From ktock/qemu-wasm at QEMU_WASM_COMMIT plus patches/qemu-wasm-tcg.patch (PR #3's
-# Wasm TCG fixes), with emscripten 6.0.13 and the dependencies PR #3's build-deps.sh
-# builds (zlib, libffi, glib, pixman), all in $QC (default ~/.cache/yukibana-packs/qemu-wasm).
+# Wasm TCG fixes), with the pack's Emscripten (../pins.sh, installed by build-lib.sh's
+# emsdk_install in $PACK_CACHE/cpp/emsdk, where clangd and the compilers are built with
+# it too) and the dependencies PR #3's build-deps.sh builds (zlib, libffi, glib,
+# pixman), in $QC (default ~/.cache/yukibana-packs/qemu-wasm).
 # Configured with --without-default-devices: each board gets only devices/<arch>.mak
 # (the board and virtio-serial), and nothing for virtfs, displays, networks or disks.
 #
@@ -13,11 +15,15 @@
 # Skips everything when $ART/qemu-system.stamp matches its inputs.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=pins.txt
-source "$HERE/pins.txt"
-# keep_tree (each reused tree records what made it); its fetch is replaced below.
+# shellcheck source=../pins.sh
+source "$HERE/../pins.sh"
+# shellcheck source=pins.sh
+source "$HERE/pins.sh"
+# keep_tree (each reused tree records what made it), emsdk_install; its fetch is
+# replaced below.
 # shellcheck source=../build-lib.sh
 source "$HERE/../build-lib.sh"
+CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 JOBS=${JOBS:-3}
@@ -38,8 +44,11 @@ LDFLAGS="-sASYNCIFY=1 -sASYNCIFY_IMPORTS=ffi_call_js -sPROXY_TO_PTHREAD=1 -sFORC
  -sINITIAL_MEMORY=512MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -sMALLOC=emmalloc -sEXPORT_ES6=1 -L$TARGET/lib
  -sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,FS"
 
-stamp=$(cat "$HERE/pins.txt" "$HERE/patches/qemu-wasm-tcg.patch" "$HERE"/devices/*.mak <(echo "$CFLAGS $LDFLAGS") \
-  "${BASH_SOURCE[0]}" | sha256sum | cut -d' ' -f1)
+# Made of the VM's pins (this directory's pins.sh) and the Emscripten by name
+# (emsdk_made_by), not of the pack's ../pins.sh, whose other pins are none of
+# QEMU's business.
+stamp=$(cat "$HERE/pins.sh" "$HERE/patches/qemu-wasm-tcg.patch" "$HERE"/devices/*.mak <(echo "$CFLAGS $LDFLAGS") \
+  <(emsdk_made_by) "${BASH_SOURCE[0]}" | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$ART/qemu-system.stamp" 2>/dev/null)" = "$stamp" ]; then
   echo "qemu-system: up to date ($ART)"; exit 0
 fi
@@ -52,22 +61,14 @@ fetch() { # url sha256 file
   fi
 }
 
-# --- emscripten 6.0.13, the binary release unpacked as emsdk would. The
-# directory is named by the version; it records the release and its pin.
-# Its config names this machine's node, so it is written on every run (it
-# was written once, and kept naming a node that had since moved).
-EM=$QC/emsdk-$EMSDK_VERSION
-EM_MADE_BY="emscripten $EMSDK_VERSION $EMSDK_RELEASE $EMSDK_BINARIES_SHA256"
-keep_tree "$EM" "$EM_MADE_BY"
-if [ ! -x "$EM/install/emscripten/emcc" ]; then
-  fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/$EMSDK_RELEASE/wasm-binaries.tar.xz" \
-    "$EMSDK_BINARIES_SHA256" "$EM/wasm-binaries.tar.xz"
-  tar xJf "$EM/wasm-binaries.tar.xz" -C "$EM" && rm "$EM/wasm-binaries.tar.xz"
-fi
-printf "LLVM_ROOT = '%s'\nBINARYEN_ROOT = '%s'\nNODE_JS = '%s'\n" "$EM/install/bin" "$EM/install" "$(command -v node)" > "$EM/.emscripten"
-printf 'export EM_CONFIG=%s\nexport PATH=%s:%s:$PATH\n' "$EM/.emscripten" "$EM/install/emscripten" "$EM/install/bin" > "$EM/env.sh"
+# --- Emscripten: the pack's one emsdk, installed (or found) by build-lib.sh. It
+# used to be a second Emscripten, a binary release unpacked here, because the rest
+# of the pack was on 4.0.22, which loses a proxied-call wakeup and freezes the VM
+# (vm/README.md); the pack is on 6.0.13 now (plan D52).
+EM_MADE_BY=$(emsdk_made_by)
+emsdk_install
 # shellcheck disable=SC1091
-source "$EM/env.sh"
+source "$CACHE/emsdk/emsdk_env.sh" >/dev/null 2>&1
 # meson 1.5 (QEMU 8.2's configure wants a newer one than distributions ship)
 # and setuptools, whose distutils shim glib 2.75's gdbus-codegen imports
 # (distutils.version): Python 3.12 dropped distutils, and a venv made by 3.12

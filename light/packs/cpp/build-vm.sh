@@ -12,16 +12,17 @@
 #   LICENSE-{qemu,linux,strace,opensbi,qboot}.txt
 #
 # with .gz and .br siblings. vm/README.md is the report: what works, sizes, timings,
-# every patch and why, and where the GPL sources are (vm/pins.txt, vm/patches/).
+# every patch and why, and where the GPL sources are (vm/pins.sh, pins.sh, vm/patches/).
 #
 # Steps, each skipped when its stamp in $PACK_CACHE/cpp/vm-artifacts matches its inputs:
-#   vm/build-qemu.sh          emscripten 6.0.13, QEMU's dependencies, qemu-system-*
+#   vm/build-qemu.sh          the pack's Emscripten, QEMU's dependencies, qemu-system-*
 #   vm/build-kernel.sh <arch> Linux 6.12.114 with clang, and its UAPI headers
 #   vm/build-init.sh          yk-init with the kernel's nolibc (+ its unit tests, clang-tidy)
 #   vm/build-strace.sh        static strace 6.12 (musl)
 #   vm/build-qemu-user.sh     qemu-<arch> (linux-user) with patches/qemu-linux-user-wasm.patch
 #   vm/stage.sh               lays it all out, bundles vm.js, compresses
-# Caches: $PACK_CACHE/qemu-wasm (sources, emsdk, build trees), $PACK_CACHE/cpp/vm-artifacts.
+# Caches: $PACK_CACHE/qemu-wasm (sources, build trees), $PACK_CACHE/cpp/emsdk (the
+# pack's one Emscripten, shared with build.sh), $PACK_CACHE/cpp/vm-artifacts.
 # KEEP_TREES=0 deletes the kernel and QEMU build trees once their artifacts exist
 # (about 0.6 GB; a later change to a kernel config or QEMU then rebuilds from scratch).
 # USER_MODE=0 skips user emulation (stage.sh then ships no user/).
@@ -34,8 +35,8 @@
 #   JOBS=3 ./build-vm.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# The VM's own pins are vm/pins.txt, which vm/build-*.sh source; pins.sh is
-# sourced for the pack's (none of them used here yet) and build-lib.sh for step.
+# The VM's own pins are vm/pins.sh, which vm/build-*.sh source after pins.sh (the
+# pack's, whose Emscripten and musl the VM uses); build-lib.sh is sourced for step.
 # shellcheck source-path=SCRIPTDIR source=pins.sh
 source "$HERE/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh

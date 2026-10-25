@@ -1,7 +1,7 @@
 # ShellCheck's settings for the VM's build scripts (shellcheck -x -S style
 # light/packs/cpp/vm/*.sh, from any directory).
 #
-# `source pins.txt` is found next to the script, not in the directory
+# `source pins.sh` and `source ../pins.sh` are found next to the script, not in the directory
 # shellcheck runs from.
 source-path=SCRIPTDIR
 

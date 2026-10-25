@@ -1,7 +1,13 @@
-# Pinned inputs of the Linux VM (build-vm.sh and vm/build-*.sh source this file).
-# Every download is checked against its SHA-256; git sources are pinned by commit.
-# The QEMU, Linux, qboot and OpenSBI binaries the pack ships are built from (or are)
-# exactly these, so this file and vm/patches/ are the corresponding source (GPL-2.0).
+# shellcheck shell=bash disable=SC2034
+# The Linux VM's own pinned inputs: vm/build-*.sh source this file after the pack's
+# pins.sh, which pins what the VM shares with the rest of the pack (Emscripten, which
+# compiles QEMU, and musl, whose headers the user-mode build takes). It is the vm
+# unit's pins.sh (T4 moves it to toolchains/vm/pins.sh): plain NAME=value lines, no
+# commands, and no input that pins.sh pins too (it once held a second Emscripten and a
+# second musl). Every download is checked against its SHA-256; git sources are pinned
+# by commit. The QEMU, Linux, qboot and OpenSBI binaries the pack ships are built from
+# (or are) exactly these, with the Emscripten pins.sh names, so this file, pins.sh and
+# vm/patches/ are the corresponding source (GPL-2.0).
 
 # QEMU-Wasm: ktock/qemu-wasm (QEMU 8.2 with a Wasm TCG backend), at the commit
 # PR #3 (prototypes/qemu-wasm, patches/BASE) builds, plus its backend fix.
@@ -9,14 +15,6 @@ QEMU_WASM_REPO=https://github.com/ktock/qemu-wasm
 QEMU_WASM_COMMIT=0ef7b4e2814b231705d8371dd7997f5b72e70baf
 # git patch-id --stable of vm/patches/qemu-wasm-tcg.patch (PR #3's 0001 patch).
 QEMU_WASM_TCG_PATCH_ID=a2989c25fb91c4ef61927e1803fdc40e74dd6497
-
-# Emscripten 6.0.13: 5.0.5 or later is required (3.1.50, which qemu-wasm pins, and
-# 4.0.22, which the rest of the cpp pack uses, lose a proxied-call wakeup and
-# freeze the VM; see vm/README.md). The binary release named by emsdk's
-# emscripten-releases-tags.json for 6.0.13.
-EMSDK_VERSION=6.0.13
-EMSDK_RELEASE=eb132757325583b787fe9414b09afea9442b72ad
-EMSDK_BINARIES_SHA256=cda6801012ff3319a539111826ed02a9abd7eff135c2ef261c8941caf5a3763e
 
 # QEMU's dependencies, as PR #3's build-deps.sh (ktock/qemu-wasm's Dockerfile stages).
 ZLIB_URL=https://zlib.net/fossils/zlib-1.3.1.tar.gz
@@ -27,7 +25,7 @@ GLIB_URL=https://download.gnome.org/sources/glib/2.75/glib-2.75.0.tar.xz
 GLIB_SHA256=6dde8e55cc4a2c83d96797120b08bcffb5f645b2e212164ae22d63c40e0e6360
 PIXMAN_REPO=https://gitlab.freedesktop.org/pixman/pixman
 # The commit tag pixman-0.42.2 points to: a tag can be moved, a commit cannot.
-PIXMAN_COMMIT=37216a32839f59e8dcaa4c3951b3fcfc3f07852c  # pixman-0.42.2
+PIXMAN_COMMIT=37216a32839f59e8dcaa4c3951b3fcfc3f07852c
 
 # The guest kernel: Linux 6.12 LTS.
 LINUX_VERSION=6.12.114
@@ -48,9 +46,3 @@ OPENSBI_COMMIT=057eb10b6d523540012e6947d5c9f63e95244e94
 OPENSBI_LICENSE_SHA256=82d13fb1bf6bb162629deeea9eb9c117e74548d3b707e478967691fe79a68e21
 QBOOT_SHA256=9b9dfc6c25740d6225625570d71cab6805cc9216e68c8932e343266daaeb8c4b
 OPENSBI_SHA256=2335a28682ddf65e46c1f492632c2cb026efcb2271caf544a3f7ddc858b03e02
-
-# musl's headers for the user-mode build's compat directory (the cpp pack's build.sh
-# pins the same tarball).
-MUSL_VERSION=1.2.5
-MUSL_URL=https://musl.libc.org/releases/musl-1.2.5.tar.gz
-MUSL_SHA256=a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4

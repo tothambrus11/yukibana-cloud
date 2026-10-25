@@ -5,6 +5,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+/* asan_flags.cpp frees each option string _emscripten_sanitizer_get_option
+ * returns with free() (since Emscripten 6.0), declared by none of the files
+ * it includes itself: Emscripten's own header brings <stdlib.h> in through
+ * the headers it includes, so this one does too. */
+#include <stdlib.h>
 #include <sys/types.h>
 #ifdef __cplusplus
 extern "C" {

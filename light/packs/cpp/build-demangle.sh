@@ -6,7 +6,7 @@
 # compiler output views (README, "Compiler output views"). Fetched by
 # explorer.js only when a view opens.
 #
-# Emscripten 4.0.22 (build.sh's), -Oz, an ES module factory for workers and
+# The pack's Emscripten (pins.sh), -Oz, an ES module factory for workers and
 # Node (test-demangle.mjs), no file system. demangle.cpp is compiled with
 # -Wall -Wextra -Wpedantic -Werror; LLVM's own files with LLVM's usual
 # warnings. Takes under a minute.

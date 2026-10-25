@@ -18,7 +18,7 @@
 #                guest as /lib/ld-musl-<arch>.so.1
 #
 # WebAssembly: compiler-rt's Emscripten port (emsdk's
-# upstream/emscripten/system/lib/compiler-rt, LLVM 20.1.8 with Emscripten's
+# upstream/emscripten/system/lib/compiler-rt, LLVM 22.1.8's with Emscripten's
 # changes) with patches/compiler-rt-wasi.patch, compiled for wasm32-wasip1
 # by wasi-sdk 30's clang (build-cxx-runtime.sh fetches it) with the source
 # lists and flags of Emscripten's tools/system_libs.py, plus

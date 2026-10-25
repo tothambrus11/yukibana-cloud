@@ -1,7 +1,7 @@
 compiler-rt's sanitizer runtimes for wasm32-wasip1 (build-sanitizers.sh;
-README, "Sanitizers"), as a patch to Emscripten 4.0.22's port of
+README, "Sanitizers"), as a patch to Emscripten 6.0.13's port of
 compiler-rt (emsdk's upstream/emscripten/system/lib/compiler-rt, LLVM
-20.1.8's compiler-rt with Emscripten's changes, which build for wasm32).
+22.1.8's compiler-rt with Emscripten's changes, which build for wasm32).
 
 WASI builds Emscripten's port: SANITIZER_EMSCRIPTEN is on for __wasi__
 too, and SANITIZER_WASI marks where WASI differs from Emscripten:
@@ -40,8 +40,8 @@ conditionals in the Emscripten and Linux files.
  
  AsanThreadIdAndName::AsanThreadIdAndName(AsanThreadContext *t) {
 @@ -216,6 +220,10 @@
-   // three-doubleword data structure with the first field containing
-   // the address of the function's code.
+   // three-doubleword (or three-word for 32-bit AIX) data structure with
+   // the first field containing the address of the function's code.
    descr->frame_pc = *reinterpret_cast<uptr *>(descr->frame_pc);
 +#elif SANITIZER_WASI
 +  // On WebAssembly the address of a function is its index in the indirect
@@ -52,12 +52,13 @@ conditionals in the Emscripten and Linux files.
  
 --- a/lib/asan/asan_posix.cpp
 +++ b/lib/asan/asan_posix.cpp
-@@ -178,7 +178,7 @@
+@@ -184,7 +184,8 @@
  
  void InstallAtForkHandler() {
  #  if SANITIZER_SOLARIS || SANITIZER_NETBSD || SANITIZER_APPLE || \
--      (SANITIZER_LINUX && SANITIZER_SPARC)
-+      (SANITIZER_LINUX && SANITIZER_SPARC) || SANITIZER_WASI
+-      (SANITIZER_LINUX && SANITIZER_SPARC) || SANITIZER_HAIKU || SANITIZER_AIX
++      (SANITIZER_LINUX && SANITIZER_SPARC) || SANITIZER_HAIKU || SANITIZER_AIX || \
++      SANITIZER_WASI
    // While other Linux targets use clone in internal_fork which doesn't
    // trigger pthread_atfork handlers, Linux/sparc64 uses __fork, causing a
    // hang.
@@ -126,7 +127,7 @@ conditionals in the Emscripten and Linux files.
 @@ -203,7 +223,11 @@
  }
  
- tid_t GetTid() {
+ ThreadID GetTid() {
 +#if SANITIZER_WASI
 +  return 1;
 +#else
@@ -167,18 +168,18 @@ conditionals in the Emscripten and Linux files.
  #  include <pthread.h>
  #  include <sched.h>
  #  include <signal.h>
-@@ -71,7 +73,9 @@
- #  include <sys/syscall.h>
+@@ -70,7 +72,9 @@
+ #  include <sys/stat.h>
+ #  if !SANITIZER_HAIKU
+ #    include <sys/syscall.h>
+-#    include <ucontext.h>
++#    if !SANITIZER_WASI
++#      include <ucontext.h>
++#    endif
+ #  endif
  #  include <sys/time.h>
  #  include <sys/types.h>
--#  include <ucontext.h>
-+#  if !SANITIZER_WASI
-+#    include <ucontext.h>
-+#  endif
- #  include <unistd.h>
- 
- #  if SANITIZER_LINUX
-@@ -171,7 +175,9 @@
+@@ -186,7 +190,9 @@
  namespace __sanitizer {
  
  void SetSigProcMask(__sanitizer_sigset_t *set, __sanitizer_sigset_t *oldset) {
@@ -188,16 +189,16 @@ conditionals in the Emscripten and Linux files.
  }
  
  #  if SANITIZER_LINUX
-@@ -1341,7 +1347,7 @@
+@@ -1390,7 +1396,7 @@
    return (name[base_name_length] == '-' || name[base_name_length] == '.');
  }
  
--#  if !SANITIZER_ANDROID
-+#  if !SANITIZER_ANDROID && !SANITIZER_WASI
+-#  if !SANITIZER_ANDROID && !SANITIZER_HAIKU
++#  if !SANITIZER_ANDROID && !SANITIZER_HAIKU && !SANITIZER_WASI
  // Call cb for each region mapped by map.
  void ForEachMappedRegion(link_map *map, void (*cb)(const void *, uptr)) {
    CHECK_NE(map, nullptr);
-@@ -1999,6 +2005,14 @@
+@@ -2000,6 +2006,14 @@
  static bool Aarch64GetESR(ucontext_t *ucontext, u64 *esr) { return false; }
  #  endif
  
@@ -212,7 +213,7 @@ conditionals in the Emscripten and Linux files.
  using Context = ucontext_t;
  
  SignalContext::WriteFlag SignalContext::GetWriteFlag() const {
-@@ -2744,6 +2758,7 @@
+@@ -2762,6 +2776,7 @@
  }
  
  void SignalContext::InitPcSpBp() { GetPcSpBp(context, &pc, &sp, &bp); }
@@ -232,7 +233,7 @@ conditionals in the Emscripten and Linux files.
  #  error "This operating system is not supported"
  #endif
  
-@@ -136,11 +137,18 @@
+@@ -148,11 +149,18 @@
  #  define SANITIZER_MUSL 0
  #endif
  
@@ -250,23 +251,23 @@ conditionals in the Emscripten and Linux files.
 +# define SANITIZER_WASI 0
 +#endif
  
- #define SANITIZER_POSIX                                     \
-   (SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_APPLE || \
+ #define SANITIZER_POSIX                                        \
+   (SANITIZER_FREEBSD || SANITIZER_LINUX || SANITIZER_APPLE ||  \
 --- a/lib/sanitizer_common/sanitizer_platform_limits_posix.h
 +++ b/lib/sanitizer_common/sanitizer_platform_limits_posix.h
-@@ -603,6 +603,9 @@
+@@ -652,6 +652,9 @@
    // The size is determined by looking at sizeof of real sigset_t on linux.
    uptr val[128 / sizeof(uptr)];
  };
-+#elif SANITIZER_WASI
++#  elif SANITIZER_WASI
 +// WASI has no signals, and so no sigset_t.
 +typedef unsigned long __sanitizer_sigset_t;
- #elif SANITIZER_EMSCRIPTEN
+ #  elif SANITIZER_EMSCRIPTEN
  typedef sigset_t __sanitizer_sigset_t;
- #endif
+ #  endif
 --- a/lib/sanitizer_common/sanitizer_posix.cpp
 +++ b/lib/sanitizer_common/sanitizer_posix.cpp
-@@ -324,6 +324,11 @@
+@@ -315,6 +315,11 @@
    return false;
  }
  
@@ -278,7 +279,7 @@ conditionals in the Emscripten and Linux files.
  uptr SignalContext::GetAddress() const {
    auto si = static_cast<const siginfo_t *>(siginfo);
    return (uptr)si->si_addr;
-@@ -337,6 +342,7 @@
+@@ -328,6 +333,7 @@
  int SignalContext::GetType() const {
    return static_cast<const siginfo_t *>(siginfo)->si_signo;
  }
@@ -298,7 +299,7 @@ conditionals in the Emscripten and Linux files.
  #include <unistd.h>
  
  #if SANITIZER_FREEBSD
-@@ -43,12 +45,18 @@
+@@ -43,14 +45,20 @@
  #define MAP_NORESERVE 0
  #endif
  
@@ -307,6 +308,8 @@ conditionals in the Emscripten and Linux files.
 +#endif
  
  namespace __sanitizer {
+ 
+ [[maybe_unused]] static atomic_uint8_t signal_handler_is_from_sanitizer[64];
  
  u32 GetUid() {
 +#if SANITIZER_WASI
@@ -317,7 +320,7 @@ conditionals in the Emscripten and Linux files.
  }
  
  uptr GetThreadSelf() {
-@@ -151,7 +159,7 @@
+@@ -153,7 +161,7 @@
  #endif
  
  void Abort() {
@@ -326,7 +329,7 @@ conditionals in the Emscripten and Linux files.
    // If we are handling SIGABRT, unhandle it first.
    // TODO(vitalybuka): Check if handler belongs to sanitizer.
    if (GetHandleSignalMode(SIGABRT) != kHandleSignalNo) {
-@@ -179,7 +187,13 @@
+@@ -181,7 +189,13 @@
    return isatty(fd) != 0;
  }
  
@@ -341,7 +344,7 @@ conditionals in the Emscripten and Linux files.
  // TODO(glider): different tools may require different altstack size.
  static uptr GetAltStackSize() {
    // Note: since GLIBC_2.31, SIGSTKSZ may be a function call, so this may be
-@@ -339,6 +353,13 @@
+@@ -358,6 +372,13 @@
  bool TryMemCpy(void *dest, const void *src, uptr n) {
    if (!n)
      return true;
@@ -355,7 +358,7 @@ conditionals in the Emscripten and Linux files.
    int fds[2];
    CHECK_EQ(0, pipe(fds));
  
-@@ -378,6 +399,7 @@
+@@ -397,6 +418,7 @@
    }
  
    return true;
@@ -479,12 +482,13 @@ conditionals in the Emscripten and Linux files.
      // You can't run external symbolizers anyway.
 --- a/lib/ubsan/ubsan_platform.h
 +++ b/lib/ubsan/ubsan_platform.h
-@@ -16,7 +16,7 @@
+@@ -16,7 +16,8 @@
  #if defined(__linux__) || defined(__FreeBSD__) || defined(__APPLE__) ||        \
      defined(__NetBSD__) || defined(__DragonFly__) ||                           \
      (defined(__sun__) && defined(__svr4__)) || defined(_WIN32) ||              \
--    defined(__Fuchsia__) || defined(__EMSCRIPTEN__)
-+    defined(__Fuchsia__) || defined(__EMSCRIPTEN__) || defined(__wasi__)
+-    defined(__Fuchsia__) || defined(__HAIKU__) || defined(__EMSCRIPTEN__)
++    defined(__Fuchsia__) || defined(__HAIKU__) || defined(__EMSCRIPTEN__) || \
++    defined(__wasi__)
  #define CAN_SANITIZE_UB 1
  #else
  # define CAN_SANITIZE_UB 0

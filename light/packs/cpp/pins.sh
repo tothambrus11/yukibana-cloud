@@ -1,8 +1,11 @@
 # shellcheck shell=bash disable=SC2034
-# Every pinned input of the C/C++ pack's build, in one place: each build-*.sh
-# and pack-runner.sh sources this file (and build-lib.sh), and none of them
-# names a version, commit or checksum of its own. The Linux VM's pins are
-# vm/pins.txt, which also says where the GPL sources are.
+# Every pinned input of the C/C++ pack's build but the Linux VM's own: each
+# build-*.sh, pack-runner.sh and vm/build-*.sh sources this file (and
+# build-lib.sh), and none of them names a version, commit or checksum of its
+# own. The VM's own pins (QEMU, its dependencies, Linux, strace, firmware)
+# are vm/pins.sh, the vm unit's pins once T4 cuts the units; it also says
+# where the GPL sources are. No input is pinned in both files: the VM takes
+# Emscripten and musl from here.
 #
 # Plain NAME=value assignments only, no commands: sourcing it does nothing but
 # set variables, so any script (or a test) may read it. A download is checked
@@ -10,31 +13,47 @@
 #
 # A change here changes the stamps of the steps that use the value (the
 # compilers' artifacts/*/STAMP hash the LLVM version and their cmake
-# arguments; the cached runtime and framework steps hash this file), so the
-# next build redoes exactly those steps.
+# arguments; the cached runtime and framework steps hash this file; the VM's
+# steps hash vm/pins.sh and name the Emscripten by build-lib.sh's
+# emsdk_made_by, so no other pin here rebuilds QEMU), so the next build
+# redoes exactly those steps.
 
 # LLVM: clangd, cc.wasm, cc-cross.wasm and the demangler are built from this
 # release tarball, and the libc++ headers in sysroot.tar.gz come from it.
 LLVM_VERSION=21.1.8
 LLVM_SHA256=4633a23617fa31a3ea51242586ea7fb1da7140e426bd62fc164261fe036aa142
 
-# musl's headers for sysroot.tar.gz (the Linux targets' libraries are Alpine's
-# build of the same release, below). vm/pins.txt pins the same tarball.
+# musl's headers for sysroot.tar.gz and for the user-mode QEMU's compat
+# directory (vm/build-qemu-user.sh); the Linux targets' libraries are
+# Alpine's build of the same release, below.
 MUSL_VERSION=1.2.5
 MUSL_SHA256=a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4
 
-# Emscripten, for clangd, the compilers and the demangler (the VM uses a newer
-# one, vm/pins.txt says why). The emsdk tag's commit, and the two archives
-# `emsdk install` fetches for it (the toolchain, named by the release revision
-# in that commit's emscripten-releases-tags.json, and node). emsdk checks no
-# checksums itself, so build.sh fetches and checks them and hands them to it
-# as kept downloads.
-EMSDK_VERSION=4.0.22
-EMSDK_COMMIT=15915cad554b707837024dc2758b6a1c5b94b036
-EMSDK_RELEASE=bebaf7e50e31865b0724f17eaa52e161e2dfef5a
-EMSDK_BINARIES_SHA256=81219e78defb2f46d12a67a2fa6d128344d850f1e4375b173a324036236b40ef
-EMSDK_NODE=node-v22.16.0-linux-x64.tar.xz
-EMSDK_NODE_SHA256=f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
+# Emscripten 6.0.13, the one Emscripten of the pack: clangd, cc.wasm,
+# cc-cross.wasm, the demangler and QEMU-Wasm are compiled with it, the
+# sanitizers' WebAssembly runtimes are compiled from its compiler-rt sources,
+# and its llvm-strip and llvm-ar handle the Linux targets' libraries. Not
+# older than 5.0.5, whose proxying fix (emscripten-core/emscripten#26582)
+# clangd and QEMU both need: before it a synchronous proxied call was
+# signalled after its mutex was unlocked, which froze QEMU and made clangd
+# trap on "unaligned accesses" (vm/README.md, README "Emscripten's
+# proxying"). build-lib.sh's emsdk_install installs it into
+# $PACK_CACHE/cpp/emsdk, and nothing patches it there. Pinned here once;
+# T4 moves this block, unchanged, into the pins.sh of the unit that installs
+# it, and every other unit that runs it names that unit in its needs.
+#
+# The emsdk tag's commit, and the two archives `emsdk install` fetches for it
+# (the toolchain, named by the release revision in that commit's
+# emscripten-releases-tags.json, and the node its emsdk_manifest.json names,
+# whose SHA-256 is also nodejs.org's). emsdk checks no checksums itself, so
+# emsdk_install fetches and checks them and hands them to it as kept
+# downloads.
+EMSDK_VERSION=6.0.13
+EMSDK_COMMIT=35659964bc2762fffec0d257997fb61475f765b7
+EMSDK_RELEASE=eb132757325583b787fe9414b09afea9442b72ad
+EMSDK_BINARIES_SHA256=cda6801012ff3319a539111826ed02a9abd7eff135c2ef261c8941caf5a3763e
+EMSDK_NODE=node-v24.19.0-linux-x64.tar.xz
+EMSDK_NODE_SHA256=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647
 
 # wasi-sdk 30, the newest release whose libc++ is LLVM 21 (WASI_SDK_LLVM_VERSION,
 # the same major version as the clang that compiles against it): its native

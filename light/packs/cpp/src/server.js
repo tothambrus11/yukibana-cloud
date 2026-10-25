@@ -172,6 +172,20 @@ function writeFile(uri, text) {
     FS.writeFile(path, text);
 }
 
+/**
+ * Whether the mirror holds a file or directory at `path`: FS.stat throws
+ * only when nothing is there, which is the answer false. (FS.analyzePath,
+ * which said the same, is deprecated since Emscripten 6.0.11.)
+ */
+function exists(path) {
+    try {
+        FS.stat(path);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 /** Applies LSP content changes (full or ranged, UTF-16 positions, which are
  * JavaScript string indices) to a document's text. */
 function applyChanges(text, changes) {
@@ -214,7 +228,7 @@ function mirror(message) {
                 // The app closes a document only when its file is deleted.
                 documents.delete(params.textDocument.uri);
                 const path = pathOf(params.textDocument.uri);
-                if (path && FS.analyzePath(path).exists) FS.unlink(path);
+                if (path && exists(path)) FS.unlink(path);
                 break;
             }
         }

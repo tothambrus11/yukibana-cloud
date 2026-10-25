@@ -2,7 +2,7 @@
 
 **Server:** clangd from LLVM **21.1.8** (upstream:
 <https://github.com/llvm/llvm-project>, release tarball pinned by SHA-256),
-compiled to WebAssembly by `build.sh` with Emscripten **4.0.22**. It is the
+compiled to WebAssembly by `build.sh` with Emscripten **6.0.13**. It is the
 real clangd, built from source here; nothing is a third-party prebuilt.
 
 **Headers:** musl **1.2.5** (`/usr/include`), libc++ from the same LLVM
@@ -128,11 +128,11 @@ detached fallback threads, the compile-database broadcast, a missing
 for stdin, limiting it to Chrome 137+. With threads, upstream needs only
 the three above.
 
-### Emscripten's proxying (`patches/emscripten-proxying-signal-before-unlock.patch`)
+### Emscripten's proxying
 
 clangd's threads read files and write stdout through calls proxied
 synchronously to the Worker that loaded it (`server.js`), and the call's
-context lives on the calling thread's stack. Emscripten 4.0.22's
+context lives on the calling thread's stack. Before Emscripten 5.0.5,
 `emscripten_proxy_finish` set the call DONE, unlocked the context's mutex
 and only then signalled its condition variable. In between, the caller
 could take the mutex, see DONE without waiting, return and reuse its stack;
@@ -142,21 +142,19 @@ where musl's condition variable keeps its waiter list, Wasm trapped on
 handles errors of the language server's Worker, so it was a page error: the
 C++ e2e failed its "no page errors" check about one run in four on a busy
 machine, with every other check passing. With an aligned number it could
-corrupt memory or spin on the condition's lock instead.
+corrupt memory or spin on the condition's lock instead. QEMU froze on the
+same race (vm/README.md, item 2).
 
-Upstream signals before unlocking since 5.0.5 (emscripten-core/emscripten#26582,
-which QEMU's 6.0.13 build already has; see vm/README.md, item 2). `build.sh`
-applies that change to the cached emsdk, deletes the prebuilt `libc-mt*.a`
-so emcc rebuilds them from the patched source, and relinks clangd. The
-relinked `clangd.wasm` differs from the old one in exactly those two
-swapped calls (`emscripten_proxy_finish` and `cancel_ctx`).
-
-`node test-proxying.mjs` checks the emsdk's `proxying.c`: it widens the
-race with delays (the caller takes the lock 10 ms late, the finishing thread
-waits 50 ms between its two last steps and checks the context still says
-DONE) and runs `tests/proxying-race/race.c`. The emsdk's code must finish
-every call; the same code with unlock and signal in the old order must be
-caught, so the test is known to detect the bug.
+Upstream signals before unlocking since 5.0.5 (emscripten-core/emscripten#26582).
+The pack was on 4.0.22 and patched the cached emsdk's `proxying.c` in place,
+deleting the prebuilt `libc-mt*.a` so that emcc rebuilt them, while the VM
+used a second Emscripten, 6.0.13. Now the whole pack, clangd and the VM
+alike, is built with one Emscripten, 6.0.13, installed by `emsdk_install`
+(`build-lib.sh`) and never modified (plan D52), so a fix Emscripten lacks
+is a newer pin, not a patch to a cached tool. Before the patch was dropped,
+its race test (the caller taking the lock 10 ms late, the finishing thread
+waiting 50 ms between its two last steps) passed against 6.0.13's own
+`proxying.c` and still caught the old order.
 
 ## What works, what does not
 
@@ -249,9 +247,10 @@ Does not, or differently from native clangd:
 
 `./build.sh` (idempotent; caches in `~/.cache/yukibana-packs/cpp`, about
 4 GB while building). It fetches LLVM and musl (release tarballs pinned by
-SHA-256) and emsdk (the `4.0.22` tag, checked against its commit; the
+SHA-256) and emsdk (the `6.0.13` tag, checked against its commit; the
 toolchain and node archives `emsdk install` uses are fetched first and
-checked against pinned SHA-256s, since emsdk checks none), applies the
+checked against pinned SHA-256s, since emsdk checks none; `emsdk_install`
+in `build-lib.sh`, which `vm/build-qemu.sh` calls too), applies the
 patch (the source tree records the patch's SHA-256 and is re-extracted
 when the patch changes), builds the native
 table generators, then clangd for wasm (MinSizeRel, X86 target only, no
@@ -265,7 +264,9 @@ Alpine packages per arch) is in **`pins.sh`**, and what the scripts share
 (`step`, `fetch`, `die`, `tarball`, the Alpine fetcher, and the cmake
 arguments `cc.wasm` and `cc-cross.wasm` have in common) is in
 **`build-lib.sh`**; each script sources both. A version bump is one line in
-`pins.sh`. The VM's pins stay in `vm/pins.txt`. `PRINT_STAMP=1
+`pins.sh`. The VM's own pins (QEMU, its dependencies, Linux, strace, the
+firmware) are in `vm/pins.sh`, and no input is pinned in both: the VM takes
+Emscripten and musl from `pins.sh`. `PRINT_STAMP=1
 ./build-runner.sh` (or `./build-cross.sh`) prints a compiler's stamp without
 building, so a change to the scripts can be checked to leave it alone.
 
@@ -292,7 +293,8 @@ Every step that is skipped instead has a stamp of its inputs.
 | `lld-elf-*` | the tarball's pin and `elf-ld-only.patch` |
 | `musl-*` | the tarball's pin |
 | `build-native` | the LLVM tarball, the host's clang, its cmake arguments (configured once); ninja runs every time |
-| `build-wasm`, `build-wasm-cc`, `build-wasm-cross` | the LLVM tarball and the emsdk commit, plus the patches of what each compiles (cmake runs every time, so flags reach it) |
+| `emsdk` | the emsdk commit, and a finished install (`emcc` and `.emscripten`); never modified after it is installed |
+| `build-wasm`, `build-wasm-cc`, `build-wasm-cross` | the LLVM tarball and the Emscripten (`emsdk_made_by`: tag, commit, release and its SHA-256), plus the patches of what each compiles (cmake runs every time, so flags reach it) |
 | `cxx-headers` | the LLVM tarball and its cmake arguments |
 | `wasi/wasi-sdk-*` | the tarball's pin |
 | `artifacts/{cc,cc-cross}/STAMP` | LLVM version and tarball pin, `emcc --version`, the cmake arguments, the lld patch |
@@ -300,7 +302,6 @@ Every step that is skipped instead has a stamp of its inputs.
 | `sanitizers/.built` | `sanitizer_inputs`: the script, `pins.sh`, `build-lib.sh`, the patch, every file of `src/sanitizer-rt/`, `src/targets.json` |
 | `testfw-linux/.built` | `linux_testfw_inputs`: the scripts, `pins.sh`, `build-lib.sh`, `toolchain.js`, `targets.js(on)`, `cc-cross.wasm` and `cc-cross.js`, `sysroot.tar.gz`, the three `include.tar` (it hashed `cc-cross.wasm` and the headers only) |
 | `node_modules` | `package-lock.json` (`npm_deps`) |
-| `qemu-wasm/emsdk-*` | the release and its pin |
 | `qemu-wasm/venv` | the python and the meson and setuptools pins |
 | `qemu-wasm/work/{target,src}` | the dependencies' pins, Emscripten, and the text of `build_deps` |
 | `qemu-wasm/work/build-run` | Emscripten and the dependencies' record; the QEMU tree is checked by commit and patch-id |
@@ -336,7 +337,7 @@ below without a declared need (`needs`, `$DEP_<UNIT>`).
 | `pack-runner.sh` | `cc-cross.wasm`, `targets/x86_64/include.tar` (whether to run the next step); the size of every file it bundles a size of (`sysroot.tar.gz`, `demangle.wasm`, `targets/*/*.tar`, …) | `C/wasi` tarballs, `C/cxx-headers`, `C/eh`, `C/testfw`, `C/artifacts/{cc,cc-cross}`, `C/emsdk/upstream/bin/llvm-strip` | `OUT`: `wasi-sysroot.tar.gz`, `{gtest,catch2,doctest,rapidcheck}.tar`, `cc.*`, `cc-cross.*`, `runner.js`, `runner-linux.js`, `explorer.js`, `sanitizer.js`, licences |
 | `build-test-frameworks-linux.sh` (and `build-test-libs-linux.mjs`, whose `OUT` is still fixed: plan K6) | `cc-cross.{wasm,js}`, `sysroot.tar.gz`, `targets/<arch>/include.tar` | `C/googletest-*.tar.gz`, `C/wasi/wasi-sdk-*/bin/llvm-ar` | `C/testfw-linux`; `OUT/targets/<arch>/{gtest,rapidcheck}.tar` |
 | `build-sanitizers.sh` | | `C/wasi/wasi-sdk-*`; `C/emsdk/upstream/emscripten/system/lib/compiler-rt` (sources) and `upstream/bin`; `C/targets/dl` (Alpine) | `C/sanitizers`; `OUT/{asan,ubsan}.tar`, `OUT/targets/<arch>/{asan,ubsan}.tar` |
-| `build-vm.sh` and `vm/*` | | `Q` (its own emsdk 6.0.13, venv, dependencies, QEMU and Linux trees); `C/targets/sysroot/<arch>` (`cc.sh`, for strace); `C/musl-*/include` (user mode's compat headers) | `Q`, `C/vm-artifacts`; `OUT/vm`, `OUT/user`, `OUT/vm.js`, licences |
+| `build-vm.sh` and `vm/*` | | `C/emsdk` (the pack's one Emscripten, which `vm/build-qemu.sh` installs when `build.sh` has not); `Q` (venv, dependencies, QEMU and Linux trees); `C/targets/sysroot/<arch>` (`cc.sh`, for strace); `C/musl-*/include` (user mode's compat headers) | `Q`, `C/vm-artifacts`; `OUT/vm`, `OUT/user`, `OUT/vm.js`, licences |
 
 So the edges between the parts are these. The Linux test libraries are
 compiled by `cc-cross` (wasm and glue) against `sysroot.tar.gz` and the
@@ -400,7 +401,7 @@ interpreted or simulated, and no server is involved.
 
 * **clang 21.1.8 and wasm-ld (lld 21.1.8)**, built by `build-runner.sh`
   from the same LLVM tarball as clangd (pinned by SHA-256), with Emscripten
-  4.0.22. Only the WebAssembly target (`LLVM_TARGETS_TO_BUILD=WebAssembly`).
+  6.0.13. Only the WebAssembly target (`LLVM_TARGETS_TO_BUILD=WebAssembly`).
   It is one binary, `cc.wasm`: LLVM's multi-call driver
   (`LLVM_TOOL_LLVM_DRIVER_BUILD`, limited to `clang` and `lld` with
   `LLVM_DISTRIBUTION_COMPONENTS`), and `argv[0]` picks the tool. No threads.
@@ -1307,7 +1308,7 @@ compiler-rt has no WASI port, but Emscripten has one of its own
 (`SANITIZER_EMSCRIPTEN`, in Emscripten's tree): AddressSanitizer,
 LeakSanitizer and UBSan on wasm32, where the runtime asks Emscripten's
 JavaScript for what a wasm program cannot do itself. `build-sanitizers.sh`
-builds that port, from emsdk 4.0.22 (LLVM 20.1.8's compiler-rt), for
+builds that port, from emsdk 6.0.13 (LLVM 22.1.8's compiler-rt), for
 wasm32-wasip1 with the pack's own clang (wasi-sdk 30's, the one that
 built `cc.wasm`), compiling the same sources Emscripten's
 `system_libs.py` lists for each library. What Emscripten's JavaScript
