@@ -24,10 +24,10 @@ remove_tree() {
 
 # Exits 2, naming why on stderr, unless pack $1 has a plain name, exists as
 # $LIGHT/packs/$1 (LIGHT is the caller's light/ directory) and is split: has
-# toolchain.paths. 2 is "bad usage or not a split pack" in both store
-# scripts; pack-store.sh once exited 1 for a bad name where
-# pack-toolchain.sh exited 2, so a caller testing for 2 saw two meanings.
-# The message starts with the running script's name.
+# toolchains/. 2 is "bad usage or not a split pack" in both store scripts;
+# pack-store.sh once exited 1 for a bad name where pack-toolchain.sh exited
+# 2, so a caller testing for 2 saw two meanings. The message starts with the
+# running script's name.
 split_pack() {
   local me="${0##*/}"
   if [[ ! "$1" =~ ^[a-z][a-z0-9]*$ ]]; then
@@ -38,8 +38,26 @@ split_pack() {
     echo "$me: no pack $1 (packs/$1)" >&2
     exit 2
   fi
-  if [ ! -f "$LIGHT/packs/$1/toolchain.paths" ]; then
-    echo "$me: $1 has no toolchain (packs/$1/toolchain.paths): it is built whole by its build.sh, and its tree is its key" >&2
+  if [ ! -d "$LIGHT/packs/$1/toolchains" ]; then
+    echo "$me: $1 has no toolchain units (packs/$1/toolchains/): it is built whole by its build.sh, and its tree is its key" >&2
+    exit 2
+  fi
+}
+
+# Exits 2 like split_pack unless $1 names a toolchain unit, <pack>/<unit>,
+# of a split pack: the directory packs/<pack>/toolchains/<unit>/ exists.
+split_unit() {
+  local me="${0##*/}"
+  case "$1" in
+    */*) ;;
+    *)
+      echo "$me: '$1' is not a toolchain unit, <pack>/<unit>" >&2
+      exit 2
+      ;;
+  esac
+  split_pack "${1%%/*}"
+  if [[ ! "${1#*/}" =~ ^[a-z][a-z0-9]*(-[a-z0-9]+)*$ ]] || [ ! -d "$LIGHT/packs/${1%%/*}/toolchains/${1#*/}" ]; then
+    echo "$me: no toolchain unit $1 (packs/${1%%/*}/toolchains/${1#*/}/)" >&2
     exit 2
   fi
 }

@@ -28,44 +28,67 @@
 # The tree a fetched pack came from is written to ../.pack-trees/<pack>, which
 # light/setup.sh reads to skip a pack that is already current.
 #
-# A split pack (one with packs/<pack>/toolchain.paths) is never in this
-# store: `has`, `fetch` and `publish` exit 2 for one. Its toolchain is kept
-# in the toolchain store instead and the pack assembled over it
-# (pack-toolchain.sh), so a glue edit rebuilds nothing:
+# A split pack (one with packs/<pack>/toolchains/) is never in this store:
+# `has`, `fetch` and `publish` exit 2 for one. Its toolchain is one or more
+# units (packs/<pack>/toolchains/<unit>/, named <pack>/<unit>), each kept in
+# the toolchain store under a key of its own inputs, and the pack assembled
+# over all of them (pack-toolchain.sh), so a glue edit rebuilds nothing and
+# a library pin rebuilds only the unit that holds it:
 #
-#   pack-store.sh toolchain-key <pack>    the key of the pack's toolchain,
-#       40 hex digits: the sha256 of its inputs in the worktree, the build
-#       environment (toolchain-build-env.sh) among them, and its set variant
-#       knobs, as toolchain-key.sh defines and documents. So changing
-#       toolchain-build-env.sh rebuilds every toolchain; changing
-#       toolchain-key.sh, this script, pack-lib.sh or pack-toolchain.sh
-#       (assembly) rebuilds none. Exit 2: not split.
-#   pack-store.sh toolchain-key-report <pack> <base>    what changed the key
-#       since commit <base>: the inputs that differ, the env lines then and
-#       now, both keys when toolchain.paths, toolchain.env or the key's
-#       definition (toolchain-key.sh) changed, and a last line `changed` or
-#       `unchanged`. Exit 6 when <base> is not in
-#       this clone.
-#   pack-store.sh toolchain-dirty <pack>  exit 0 naming the inputs with
-#       uncommitted changes, and the pack's toolchain.env when it has any
-#       (no input, but it decides what reaches the build), 1 when there are
+#   pack-store.sh toolchain-units <pack>  the pack's units, <pack>/<unit> one
+#       per line, each after the units of the pack it needs. Exit 2: not
+#       split.
+#   pack-store.sh toolchain-key <unit>    the unit's key, 40 hex digits: the
+#       sha256 of its inputs in the worktree, the build environment
+#       (toolchain-build-env.sh) among them, the keys of the units it needs,
+#       and its set variant knobs, as toolchain-key.sh defines and
+#       documents. So changing toolchain-build-env.sh rebuilds every
+#       toolchain; changing toolchain-key.sh, this script, pack-lib.sh or
+#       pack-toolchain.sh (assembly) rebuilds none. Exit 2: no such unit.
+#   pack-store.sh toolchain-key-report <unit> <base>    what changed the key
+#       since commit <base>: the inputs that differ, the unit's own paths,
+#       env and needs files and the key's definition when they changed, each
+#       needed unit whose key changed, the env lines then and now, both keys,
+#       and a last line `changed` or `unchanged`. Exit 6 when <base> is not
+#       in this clone.
+#   pack-store.sh toolchain-plan [--missing] [--waves <n>]    every unit of
+#       every split pack as lines "<wave> <unit> <key> <needs>", <needs> the
+#       units it needs joined by commas (or -), its wave 1 for a unit that
+#       needs none and one more than the deepest unit it needs otherwise, in
+#       the order to build them. --missing leaves out the units the store
+#       has. --waves fails, naming the unit, when one would be in a wave
+#       after the n-th: light-packs.yml has that many wave jobs.
+#   pack-store.sh toolchain-dirty <unit>  exit 0 naming the files with
+#       uncommitted changes that would make a build of the unit here dirty:
+#       its inputs, its paths, env and needs files (no inputs, but they
+#       decide what reaches the build), and the same for every unit it
+#       needs, as a build over a dirty one is dirty too; 1 when there are
 #       none.
-#   pack-store.sh toolchain-has <pack>    exit 0 when the toolchain store has
-#       the asset toolchain-<pack>-<key>.tar.zst, 3 when it has none.
-#   pack-store.sh toolchain-fetch <pack> [--any] [dir]   downloads it into
-#       dir (default $TOOLCHAIN_CACHE/built/<pack>/<key>), read-only, and
-#       prints dir; exit 3 when there is none. --any takes the pack's newest
-#       toolchain whatever its key, saying which.
-#   pack-store.sh toolchain-publish <pack> <dir>    uploads dir as the
+#   pack-store.sh toolchain-has <unit>    exit 0 when the toolchain store has
+#       the asset toolchain-<pack>-<unit>-<key>.tar.zst, 3 when it has none.
+#   pack-store.sh toolchain-fetch <unit> [--any] [dir]   downloads it into
+#       dir (default $TOOLCHAIN_CACHE/built/<pack>/<unit>/<key>), read-only,
+#       and prints dir; exit 3 when there is none. --any takes the unit's
+#       newest toolchain whatever its key, saying which.
+#   pack-store.sh toolchain-unpack <unit> <archive> [dir]    the same from a
+#       local archive named as a store asset (an artifact of the same CI
+#       run: pack-toolchain.sh ensure --from); its name must carry this
+#       unit and its key.
+#   pack-store.sh toolchain-archive <unit> <dir> <out-dir>    writes dir as
+#       <out-dir>/toolchain-<pack>-<unit>-<key>.tar.zst and prints its path,
+#       refusing exactly what toolchain-publish refuses; for the artifact a
+#       unit's CI job hands its dependents.
+#   pack-store.sh toolchain-publish <unit> <dir>    uploads dir as the
 #       toolchain of HEAD's inputs, refusing one built from anything else.
 #       Never deletes: from 800 assets it warns, at 1000 it fails.
 #
 # A toolchain directory holds toolchain.json, written by its build
 # (pack-toolchain.sh ensure; the format is toolchain-manifest.mjs's): its
-# pack, key, commit, set variant knobs, and every other file with its size,
-# sha256 and mtime. A fetch checks every file against it and records the
-# local mtimes, by which a later run tells an untouched copy without hashing
-# it. A store toolchain names the 40-hex commit it was built at.
+# unit, key, commit, the keys of the units it was built with, its set
+# variant knobs, and every other file with its size, sha256 and mtime. A
+# fetch checks every file against it and records the local mtimes, by which
+# a later run tells an untouched copy without hashing it. A store toolchain
+# names the 40-hex commit it was built at.
 #
 # Environment: LIGHT_PACKS_REPO (default: the origin's GitHub repository, else
 # tothambrus11/yukibana-cloud), LIGHT_PACKS_TAG (light-packs), KEEP (8),
@@ -218,12 +241,12 @@ release_upload() {
   echo "pack-store.sh: ${file##*/} was stored by another run meanwhile"
 }
 
-# Exits 2 when pack $1 is split: its output is assembled over a toolchain
-# from the toolchain store and never kept in this one, where a glue edit
-# would change its tree and rebuild the whole toolchain.
+# Exits 2 when pack $1 is split: its output is assembled over toolchain
+# units from the toolchain store and never kept in this one, where a glue
+# edit would change its tree and rebuild every unit.
 not_split() {
-  if [ -f "$LIGHT/packs/$1/toolchain.paths" ]; then
-    echo "pack-store.sh: $1: split pack: fetch its toolchain and assemble (pack-toolchain.sh)" >&2
+  if [ -d "$LIGHT/packs/$1/toolchains" ]; then
+    echo "pack-store.sh: $1: split pack: fetch its toolchain units and assemble (pack-toolchain.sh)" >&2
     exit 2
   fi
 }
@@ -297,57 +320,67 @@ publish() {
   done <<<"$old"
 }
 
-# ---- Toolchains of split packs ------------------------------------------
+# ---- Toolchain units of split packs --------------------------------------
+
+# The store asset of unit $1 (<pack>/<unit>) and key $2.
+asset_of() {
+  echo "toolchain-${1%%/*}-${1#*/}-$2.tar.zst"
+}
+
+# The local directory of unit $1's toolchain of key $2.
+cache_dir_of() {
+  echo "$TOOLCHAIN_CACHE/built/$1/$2"
+}
+
+toolchain_units_cmd() {
+  split_pack "$1"
+  toolchain_units "$1"
+}
 
 toolchain_key_report() {
-  local pack="$1" base="$2" out key old_key="" f differ=""
-  local -a specs=()
-  split_pack "$pack"
+  local id="$1" base="$2" key old_key f dir why
+  split_unit "$id"
   if ! git -C "$TOOLCHAIN_ROOT" cat-file -e "$base^{commit}" 2>/dev/null; then
     echo "pack-store.sh: base commit $base is not in this clone; fetch it first" >&2
     exit 6
   fi
-  out="$(toolchain_specs "$pack")"
-  mapfile -t specs <<<"$out"
-  key="$(toolchain_key "$pack")"
-  echo "toolchain of $pack against $base:"
-  out="$(git -C "$TOOLCHAIN_ROOT" diff --name-status "$base" -- "${specs[@]}")"
-  # git diff leaves out untracked files, which are inputs all the same (the
-  # key counts them): each is named as added, or the report would say
-  # `unchanged` of a key that changed.
-  local untracked path
-  untracked="$(git -C "$TOOLCHAIN_ROOT" ls-files -o --exclude-standard -- "${specs[@]}")"
-  if [ -n "$untracked" ]; then
-    while IFS= read -r path; do out+="${out:+$'\n'}A"$'\t'"$path"; done <<<"$untracked"
-  fi
-  [ -z "$out" ] || printf '%s\n' "$out"
+  key="$(toolchain_key "$id")"
+  echo "toolchain $id against $base:"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
-  local dir="light/packs/$pack"
-  # The settings then and now: base's toolchain.env read with this
-  # environment, so only a changed declaration shows.
-  git -C "$TOOLCHAIN_ROOT" show "$base:$dir/toolchain.env" >"$tmp/old.env" 2>/dev/null || : >"$tmp/old.env"
-  local old_env new_env
-  old_env="$(toolchain_env_lines "$pack" "$tmp/old.env")"
-  new_env="$(toolchain_env_lines "$pack")"
-  echo "old env: ${old_env:-(none)}" | sed '2,$s/^/         /'
-  echo "new env: ${new_env:-(none)}" | sed '2,$s/^/         /'
-  # toolchain.paths is no input of itself, and toolchain.env is no input
-  # either (toolchain_specs leaves it out): it reaches the key only as the
-  # env lines above. So neither appears in the diff of the inputs, and a
-  # change to either is named here, once, with the key base would have had,
-  # computed from base's own files. So is a change to
-  # toolchain-key.sh, the key's definition, which is no input of any key
-  # either: a bumped format tag or another rule for the key's lines changes
-  # every toolchain's key while no input differs, and a report that said
-  # `unchanged` then would hide a rebuild of every compiler. A comment there
-  # shows both keys, equal, and stays `unchanged`.
-  # Each is named like the inputs above, so the report says what changed.
-  local was now why
-  for f in "$dir/toolchain.paths" "$dir/toolchain.env" light/scripts/toolchain-key.sh; do
+  # The key base had, from base's own files and definition, and the lines
+  # it hashed, next to the lines hashed now. What differs between the two is
+  # what changed the key, and nothing else is: an input whose content or
+  # mode changed (M), a file that became an input, untracked ones included
+  # (A), or stopped being one (D), and a needed unit whose key changed. A
+  # file newly named by the paths file is an input change even when its
+  # content is as it was.
+  old_key="$(old_toolchain_key "$id" "$base" "$tmp/old" "$tmp/old.lines")"
+  toolchain_lines "$id" >"$tmp/new.lines"
+  awk '
+    function path(line) { sub(/^[^ ]+ [^ ]+ /, "", line); return line }
+    $1 ~ /^(100644|100755|120000)$/ {
+      p = path($0)
+      if (FILENAME == ARGV[1]) { old[p] = $1 " " $2; next }
+      if (!(p in old)) print "A\t" p
+      else if (old[p] != $1 " " $2) print "M\t" p
+      seen[p] = 1
+    }
+    END { for (p in old) if (!(p in seen)) print "D\t" p }
+  ' "$tmp/old.lines" "$tmp/new.lines" | LC_ALL=C sort -t $'\t' -k2
+  dir="light/packs/${id%%/*}/toolchains/${id#*/}"
+  # The unit's paths, env and needs files are no inputs of the key, and
+  # neither is toolchain-key.sh, the key's definition: each reaches the key
+  # only through what it decides (which files are inputs, the env lines,
+  # the needs lines, every line). So none appears above, and a change to any
+  # is named here, once. A bumped format tag changes every key while no
+  # input differs; a report that said `unchanged` then would hide a rebuild
+  # of every compiler. A comment in any of them shows both keys, equal, and
+  # stays `unchanged`.
+  local was now
+  for f in "$dir/paths" "$dir/env" "$dir/needs" light/scripts/toolchain-key.sh; do
     was="$(git -C "$TOOLCHAIN_ROOT" show "$base:$f" 2>/dev/null || echo "<absent>")"
     now="$(cat "$TOOLCHAIN_ROOT/$f" 2>/dev/null || echo "<absent>")"
     [ "$was" != "$now" ] || continue
-    differ=1
     why=""
     [ "$f" != light/scripts/toolchain-key.sh ] || why=" (the key's definition)"
     case "$was/$now" in
@@ -356,90 +389,161 @@ toolchain_key_report() {
       *) printf 'M\t%s%s\n' "$f" "$why" ;;
     esac
   done
-  if [ -n "$differ" ]; then
-    old_key="$(old_toolchain_key "$pack" "$base" "$tmp/old")"
-    echo "old key: $old_key"
-    echo "new key: $key"
-  else
-    echo "key: $key"
-  fi
-  rm -rf "$tmp"
+  # A needed unit whose key changed is named by its needs line, as the cause
+  # of a key that changed with no file of this unit touched.
+  local dep k1 k2
+  while IFS= read -r dep; do
+    k1="$(awk -v d="$dep" '$1 == "needs" && $2 == d { print $3 }' "$tmp/old.lines")"
+    k2="$(awk -v d="$dep" '$1 == "needs" && $2 == d { print $3 }' "$tmp/new.lines")"
+    if [ -z "$k1" ]; then
+      printf 'A\tneeds %s\n' "$dep"
+    elif [ -z "$k2" ]; then
+      printf 'D\tneeds %s\n' "$dep"
+    elif [ "$k1" != "$k2" ]; then
+      printf 'M\tneeds %s (its key changed)\n' "$dep"
+    fi
+  done < <(awk '$1 == "needs" { print $2 }' "$tmp/old.lines" "$tmp/new.lines" | LC_ALL=C sort -u)
+  # The settings then and now: base's env file read with this environment,
+  # so only a changed declaration shows.
+  git -C "$TOOLCHAIN_ROOT" show "$base:$dir/env" >"$tmp/old.env" 2>/dev/null || : >"$tmp/old.env"
+  local old_env new_env
+  old_env="$(toolchain_env_lines "$id" "$tmp/old.env")"
+  new_env="$(toolchain_env_lines "$id")"
+  echo "old env: ${old_env:-(none)}" | sed '2,$s/^/         /'
+  echo "new env: ${new_env:-(none)}" | sed '2,$s/^/         /'
+  echo "old key: $old_key"
+  echo "new key: $key"
+  remove_tree "$tmp"
   tmp=""
-  if [ -n "$out" ] || [ "$old_env" != "$new_env" ] || { [ -n "$differ" ] && [ "$old_key" != "$key" ]; }; then
-    echo changed
-  else
-    echo unchanged
-  fi
+  if [ "$old_key" != "$key" ]; then echo changed; else echo unchanged; fi
 }
 
-# Prints the key pack $1's toolchain had at commit $2, or "none (why)": its
-# files, the key's definition and the build environment, and what else
-# base's toolchain.paths names, archived from $2 into the scratch directory
+# Prints the key unit $1 had at commit $2, or "none (why)", and writes the
+# lines it hashed to file $4 (empty with "none"). The units of every split
+# pack of $2 (a unit may need one of another pack), the key's definition
+# and the build environment are archived from $2 into the scratch directory
 # $3, which is made a repository so the key is computed exactly as for a
-# checkout, by base's own toolchain-key.sh. A base from before the key's
-# definition had a file of its own has no key this can compute (its build
-# environment was another file, so every key differs anyway): "none".
+# checkout, by base's own toolchain-key.sh. A base from before units has no
+# key this can compute (every key's format differs anyway): "none".
 old_toolchain_key() {
-  local pack="$1" base="$2" scratch="$3" dir="light/packs/$1" line f
+  local id="$1" base="$2" scratch="$3" keyed="$4" f p
   local def=light/scripts/toolchain-key.sh env=light/scripts/toolchain-build-env.sh
-  git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$dir/toolchain.paths" 2>/dev/null ||
-    { echo "none (no $dir/toolchain.paths at $base)"; return 0; }
+  local -a packs=()
+  : >"$keyed"
+  f="light/packs/${id%%/*}/toolchains/${id#*/}"
+  git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$f" 2>/dev/null || { echo "none (no $f at $base)"; return 0; }
   for f in "$def" "$env"; do
-    git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$f" 2>/dev/null ||
-      { echo "none (no $f at $base)"; return 0; }
+    git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$f" 2>/dev/null || { echo "none (no $f at $base)"; return 0; }
   done
+  while IFS= read -r p; do
+    if git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$p/toolchains" 2>/dev/null; then packs+=("$p"); fi
+  done < <(git -C "$TOOLCHAIN_ROOT" ls-tree -d --name-only "$base" light/packs/)
   mkdir -p "$scratch"
-  git -C "$TOOLCHAIN_ROOT" archive "$base" -- "$dir" "$def" "$env" | tar -x -C "$scratch"
-  while IFS= read -r line || [ -n "$line" ]; do
-    line="${line#"${line%%[![:space:]]*}"}"
-    line="${line%"${line##*[![:space:]]}"}"
-    case "$line" in '' | '#'* | "$dir" | "$dir/"*) continue ;; esac
-    toolchain_spec_excludes "$line" && continue
-    # A pathspec that matched nothing at base fails base's own check below.
-    git -C "$TOOLCHAIN_ROOT" archive "$base" -- "$line" 2>/dev/null | tar -x -C "$scratch" 2>/dev/null || true
-  done <"$scratch/$dir/toolchain.paths"
+  git -C "$TOOLCHAIN_ROOT" archive "$base" -- "${packs[@]}" "$def" "$env" | tar -x -C "$scratch"
   git -C "$scratch" init -q
   git -C "$scratch" add -A -f
   # Base's toolchain-key.sh sets TOOLCHAIN_ROOT to the scratch copy, and
   # defines the key as base did, in this subshell only (shellcheck's SC2031
   # elsewhere is about this, and wanted).
-  (
+  if (
     # shellcheck source=toolchain-key.sh
     source "$scratch/$def"
-    toolchain_key "$pack"
-  ) || echo "unknown (base's toolchain inputs do not resolve)"
+    toolchain_lines "$id" >"$keyed"
+  ); then
+    sha256sum "$keyed" | cut -c1-40
+  else
+    : >"$keyed"
+    echo "unknown (base's toolchain inputs do not resolve)"
+  fi
 }
 
-# Prints the inputs of pack $1's toolchain with uncommitted changes
-# (untracked ones included), one per line, then the pack's toolchain.env when
-# it has uncommitted changes.
+toolchain_plan() {
+  local missing="" waves="" out u d k wave max list here
+  local -a units=() packs=() deps=()
+  local -A depth=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --missing) missing=1 ;;
+      --waves) waves="${2:?--waves <n>}"; shift ;;
+      *) echo "pack-store.sh: toolchain-plan: unknown option $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  for d in "$LIGHT"/packs/*/toolchains/; do
+    [ -d "$d" ] || continue
+    d="${d%/toolchains/}"
+    packs+=("${d##*/}")
+  done
+  [ "${#packs[@]}" -gt 0 ] || return 0
+  for d in "${packs[@]}"; do
+    out="$(toolchain_units "$d")"
+    mapfile -t -O "${#units[@]}" units <<<"$out"
+  done
+  # Every unit once, after what it needs; the units of each pack were in
+  # that order already, and a unit of another pack it needs comes first.
+  out="$(toolchain_order "${units[@]}")"
+  mapfile -t units <<<"$out"
+  [ -z "$missing" ] || list="$(assets "$TOOLCHAINS_TAG")"
+  for u in "${units[@]}"; do
+    out="$(toolchain_needs "$u")"
+    deps=()
+    [ -z "$out" ] || mapfile -t deps <<<"$out"
+    max=0
+    for d in "${deps[@]}"; do
+      [ "${depth[$d]}" -le "$max" ] || max="${depth[$d]}"
+    done
+    wave=$((max + 1))
+    depth[$u]="$wave"
+    if [ -n "$waves" ] && [ "$wave" -gt "$waves" ]; then
+      echo "pack-store.sh: $u would build in wave $wave, after the $waves waves light-packs.yml has (it needs ${deps[*]}); add a wave job there, or flatten its needs" >&2
+      exit 1
+    fi
+    k="$(toolchain_key "$u")"
+    if [ -n "$missing" ] && asset_listed "$(asset_of "$u" "$k")" "$list"; then continue; fi
+    here="${deps[*]}"
+    here="${here// /,}"
+    printf '%s %s %s %s\n' "$wave" "$u" "$k" "${here:--}"
+  done
+}
+
+# Prints the files with uncommitted changes, untracked ones included, one
+# per line, that make a build of unit $1 here dirty: for the unit and every
+# unit it needs, its inputs, and its paths, env and needs files.
 #
-# toolchain.env is no key input (toolchain_specs leaves it out, so a comment
-# rebuilds nothing), but it still decides what reaches toolchain.sh: which
-# knobs pass at all, and which of them are variant and so keyed. An
-# uncommitted edit that declares a new source knob, or turns a set variant
-# knob into a source one, builds with a variable HEAD's toolchain.env would
-# not pass, under HEAD's key. Counting the edit as dirty is what keeps that
-# build from being recorded as HEAD's commit, reused for a clean worktree or
-# published. It is checked on its own, because toolchain_specs excludes it
-# and a pathspec exclusion applies to every pathspec of the same call. A
-# comment-only edit is dirty too until it is committed; the key, and so the
-# toolchain fetched or reused once it is, stays the same.
+# Those three are no key inputs (a comment in them rebuilds nothing), but
+# each decides what reaches toolchain.sh: which files are staged, which
+# knobs pass at all and which of them are variant and so keyed, which
+# dependencies are linked. An uncommitted edit that declares a new source
+# knob, or turns a set variant knob into a source one, builds with a
+# variable HEAD's env would not pass, under HEAD's key. Counting the edit
+# as dirty is what keeps that build from being recorded as HEAD's commit,
+# reused for a clean worktree or published. They are checked on their own,
+# because toolchain_specs excludes them and a pathspec exclusion applies to
+# every pathspec of the same call. A comment-only edit is dirty too until
+# it is committed; the key, and so the toolchain fetched or reused once it
+# is, stays the same. A needed unit's dirty files count, because a build
+# over a dirty dependency is no build of HEAD's either.
 # shellcheck disable=SC2031 # TOOLCHAIN_ROOT is the checkout's here
 toolchain_dirty_paths() {
-  local out
-  local -a specs=()
-  out="$(toolchain_specs "$1")"
-  mapfile -t specs <<<"$out"
-  out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "${specs[@]}")"
-  [ -z "$out" ] || printf '%s\n' "$out" | cut -c4-
-  out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "light/packs/$1/toolchain.env")"
-  [ -z "$out" ] || printf '%s\n' "$out" | cut -c4-
+  local out u dir all=""
+  local -a specs=() units=()
+  out="$(toolchain_order "$1")"
+  mapfile -t units <<<"$out"
+  for u in "${units[@]}"; do
+    out="$(toolchain_specs "$u")"
+    mapfile -t specs <<<"$out"
+    dir="light/packs/${u%%/*}/toolchains/${u#*/}"
+    out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "${specs[@]}")"
+    [ -z "$out" ] || all+="$(printf '%s\n' "$out" | cut -c4-)"$'\n'
+    out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "$dir/paths" "$dir/env" "$dir/needs")"
+    [ -z "$out" ] || all+="$(printf '%s\n' "$out" | cut -c4-)"$'\n'
+  done
+  [ -z "$all" ] || printf '%s' "$all" | LC_ALL=C sort -u
 }
 
 toolchain_dirty() {
   local out
-  split_pack "$1"
+  split_unit "$1"
   out="$(toolchain_dirty_paths "$1")"
   if [ -n "$out" ]; then
     printf '%s\n' "$out"
@@ -449,56 +553,34 @@ toolchain_dirty() {
 }
 
 toolchain_has() {
-  local pack="$1" want list
-  split_pack "$pack"
-  want="toolchain-$pack-$(toolchain_key "$pack").tar.zst"
+  local id="$1" want list
+  split_unit "$id"
+  want="$(toolchain_key "$id")"
+  want="$(asset_of "$id" "$want")"
   list="$(assets "$TOOLCHAINS_TAG")"
   if asset_listed "$want" "$list"; then
-    echo "pack-store.sh: $pack: $want is in $(repo)'s $TOOLCHAINS_TAG release" >&2
+    echo "pack-store.sh: $id: $want is in $(repo)'s $TOOLCHAINS_TAG release" >&2
   else
-    echo "pack-store.sh: $pack: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2
+    echo "pack-store.sh: $id: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2
     exit 3
   fi
 }
 
-toolchain_fetch() {
-  local pack="$1" any="" dir="" key list want name sha url
-  shift
-  split_pack "$pack"
-  if [ "${1:-}" = --any ]; then any=1; shift; fi
-  dir="${1:-}"
-  list="$(assets "$TOOLCHAINS_TAG")"
-  if [ -n "$any" ]; then
-    read -r name sha _ url < <(newest_build "toolchain-$pack-" "$list") || true
-    if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no toolchain-$pack-* in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
-    key="${name#"toolchain-$pack-"}"
-    key="${key%.tar.zst}"
-    echo "pack-store.sh: $pack: taking the newest toolchain, $key (not necessarily of these inputs)" >&2
-  else
-    key="$(toolchain_key "$pack")"
-    want="toolchain-$pack-$key.tar.zst"
-    read -r name sha _ url < <(asset_line "$want" "$list") || true
-    if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
-  fi
-  dir="${dir:-$TOOLCHAIN_CACHE/built/$pack/$key}"
-  [ "$sha" != - ] || die "$name: GitHub records no sha256 for it; refusing an unchecked toolchain"
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
-  echo "pack-store.sh: $pack: downloading $name" >&2
-  curl -sSfL --retry 3 -o "$tmp/$name" "$url"
-  echo "$sha  $tmp/$name" | sha256sum -c --quiet - || die "$name: sha256 mismatch"
+# Extracts the toolchain archive $3 of unit $1 and key $2 into directory $4,
+# replacing what is there: every file is checked against its toolchain.json
+# (size and sha256: an archive's own checksum says only that it is the one
+# named, not that it is honest), each file's local mtime recorded for the
+# cheap reuse check, and every file made read-only. Prints $4.
+unpack_toolchain() {
+  local id="$1" key="$2" archive="$3" dir="$4"
   mkdir -p "$(dirname "$dir")"
   part="$dir.part"
   remove_tree "$part"
   mkdir "$part"
-  tar --zstd -xf "$tmp/$name" -C "$part"
-  rm -rf "$tmp"
-  tmp=""
-  [ -f "$part/toolchain.json" ] || die "$name holds no toolchain.json"
+  tar --zstd -xf "$archive" -C "$part" || die "${archive##*/}: not a toolchain archive"
+  [ -f "$part/toolchain.json" ] || die "${archive##*/} holds no toolchain.json"
   chmod u+w "$part/toolchain.json"
-  # The manifest is checked file by file (size and sha256: the archive's own
-  # sha256 says only that it is the asset, not that the asset is honest),
-  # then each file's local mtime recorded for the cheap reuse check.
-  node "$LIGHT/scripts/toolchain-manifest.mjs" adopt "$part" "$pack" "$key" || die "$name: refused"
+  node "$LIGHT/scripts/toolchain-manifest.mjs" adopt "$part" "$id" "$key" || die "${archive##*/}: refused"
   find "$part" -type f -exec chmod a-w {} +
   remove_tree "$dir"
   mv "$part" "$dir"
@@ -506,30 +588,98 @@ toolchain_fetch() {
   echo "$dir"
 }
 
+toolchain_fetch() {
+  local id="$1" any="" dir="" key list want name sha url
+  shift
+  split_unit "$id"
+  if [ "${1:-}" = --any ]; then any=1; shift; fi
+  dir="${1:-}"
+  list="$(assets "$TOOLCHAINS_TAG")"
+  if [ -n "$any" ]; then
+    read -r name sha _ url < <(newest_build "toolchain-${id%%/*}-${id#*/}-" "$list") || true
+    if [ -z "${name:-}" ]; then echo "pack-store.sh: $id: no $(asset_of "$id" '*') in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
+    key="${name#"toolchain-${id%%/*}-${id#*/}-"}"
+    key="${key%.tar.zst}"
+    echo "pack-store.sh: $id: taking the newest toolchain, $key (not necessarily of these inputs)" >&2
+  else
+    key="$(toolchain_key "$id")"
+    want="$(asset_of "$id" "$key")"
+    read -r name sha _ url < <(asset_line "$want" "$list") || true
+    if [ -z "${name:-}" ]; then echo "pack-store.sh: $id: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
+  fi
+  dir="${dir:-$(cache_dir_of "$id" "$key")}"
+  [ "$sha" != - ] || die "$name: GitHub records no sha256 for it; refusing an unchecked toolchain"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
+  echo "pack-store.sh: $id: downloading $name" >&2
+  curl -sSfL --retry 3 -o "$tmp/$name" "$url"
+  echo "$sha  $tmp/$name" | sha256sum -c --quiet - || die "$name: sha256 mismatch"
+  unpack_toolchain "$id" "$key" "$tmp/$name" "$dir"
+  rm -rf "$tmp"
+  tmp=""
+}
+
+toolchain_unpack() {
+  local id="$1" archive="${2:?archive}" dir="${3:-}" key name
+  split_unit "$id"
+  [ -f "$archive" ] || die "$archive: no such archive"
+  key="$(toolchain_key "$id")"
+  name="$(asset_of "$id" "$key")"
+  [ "${archive##*/}" = "$name" ] || die "$archive is not $name, the toolchain of $id's inputs here"
+  unpack_toolchain "$id" "$key" "$archive" "${dir:-$(cache_dir_of "$id" "$key")}"
+}
+
+# Exits 1, naming why, unless directory $2 is, file for file, the toolchain
+# of unit $1 built from HEAD's committed inputs and settings: what may be
+# stored or handed to another job. Prints its key.
 # shellcheck disable=SC2031 # TOOLCHAIN_ROOT is the checkout's here
-toolchain_publish() {
-  local pack="$1" dir="$2" dirty key head res mcommit name r list n size
-  split_pack "$pack"
+clean_toolchain_key() {
+  local id="$1" dir="$2" dirty key head res mcommit
   [ -f "$dir/toolchain.json" ] || die "$dir holds no toolchain.json"
-  dirty="$(toolchain_dirty_paths "$pack")"
+  dirty="$(toolchain_dirty_paths "$id")"
   if [ -n "$dirty" ]; then
-    die "$pack: not publishing a toolchain built from uncommitted inputs:
+    die "$id: not storing a toolchain built from uncommitted inputs:
 $dirty"
   fi
-  key="$(toolchain_key "$pack")"
+  key="$(toolchain_key "$id")"
   head="$(git -C "$TOOLCHAIN_ROOT" rev-parse HEAD)"
-  # The manifest's one reader checks its pack and key (HEAD's inputs and
+  # The manifest's one reader checks its unit and key (HEAD's inputs and
   # this environment's settings), names the first difference, checks every
   # file is still as listed, and prints "<key> <commit>": only the commit is
   # left to compare.
-  res="$(node "$LIGHT/scripts/toolchain-manifest.mjs" check "$dir" "$pack" "$key")" ||
-    die "$pack: $dir is not, file for file, a toolchain of HEAD's inputs and settings ($key)"
+  res="$(node "$LIGHT/scripts/toolchain-manifest.mjs" check "$dir" "$id" "$key")" ||
+    die "$id: $dir is not, file for file, a toolchain of HEAD's inputs and settings ($key)"
   read -r _ mcommit <<<"$res"
-  [ "$mcommit" = "$head" ] || die "$pack: $dir was built at $mcommit, not at HEAD ($head)"
-  name="toolchain-$pack-$key.tar.zst"
+  [ "$mcommit" = "$head" ] || die "$id: $dir was built at $mcommit, not at HEAD ($head)"
+  echo "$key"
+}
+
+# Writes toolchain directory $3 of unit $1 and key $2 as the archive $4.
+write_archive() {
+  local size
+  tar --zstd -cf "$4" -C "$3" .
+  size="$(stat -c %s "$4")"
+  [ "$size" -le "$MAX_ASSET_BYTES" ] || die "${4##*/} is $size bytes, more than the $MAX_ASSET_BYTES a release asset may safely be"
+  ls -l "$4" >&2
+}
+
+toolchain_archive() {
+  local id="$1" dir="${2:?toolchain directory}" out="${3:?output directory}" key file
+  split_unit "$id"
+  key="$(clean_toolchain_key "$id" "$dir")"
+  mkdir -p "$out"
+  file="$out/$(asset_of "$id" "$key")"
+  write_archive "$id" "$key" "$dir" "$file"
+  echo "$file"
+}
+
+toolchain_publish() {
+  local id="$1" dir="$2" key name r list n
+  split_unit "$id"
+  key="$(clean_toolchain_key "$id" "$dir")"
+  name="$(asset_of "$id" "$key")"
   r="$(repo)"
   release_ensure "$TOOLCHAINS_TAG" "$r" "Yukibana Light toolchains (build store)" \
-    "Toolchains of Yukibana Light's split packs, one asset per pack and key of its inputs: toolchain-<pack>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key). Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh; not a release of the app. Nothing is deleted automatically."
+    "Toolchain units of Yukibana Light's split packs, one asset per unit and key of its inputs: toolchain-<pack>-<unit>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key <pack>/<unit>). Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh; not a release of the app. Nothing is deleted automatically."
   list="$(assets "$TOOLCHAINS_TAG")"
   if asset_listed "$name" "$list"; then
     echo "pack-store.sh: $name is in the store already"
@@ -548,10 +698,7 @@ $dirty"
     [ -z "${GITHUB_ACTIONS:-}" ] || echo "::warning::$TOOLCHAINS_TAG holds $n of at most $MAX_ASSETS assets; evict with gh release delete-asset $TOOLCHAINS_TAG <asset>"
   fi
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
-  tar --zstd -cf "$tmp/$name" -C "$dir" .
-  size="$(stat -c %s "$tmp/$name")"
-  [ "$size" -le "$MAX_ASSET_BYTES" ] || die "$name is $size bytes, more than the $MAX_ASSET_BYTES a release asset may safely be"
-  ls -l "$tmp/$name"
+  write_archive "$id" "$key" "$dir" "$tmp/$name"
   release_upload "$tmp/$name" "$TOOLCHAINS_TAG" "$r"
 }
 
@@ -560,11 +707,15 @@ case "${1:-}" in
   has) has "${2:?pack}" ;;
   fetch) fetch "${2:?pack}" "${3:-}" ;;
   publish) publish "${2:?pack}" ;;
-  toolchain-key) split_pack "${2:?pack}"; toolchain_key "$2" ;;
-  toolchain-key-report) toolchain_key_report "${2:?pack}" "${3:?base commit}" ;;
-  toolchain-dirty) toolchain_dirty "${2:?pack}" ;;
-  toolchain-has) toolchain_has "${2:?pack}" ;;
-  toolchain-fetch) toolchain_fetch "${2:?pack}" "${@:3}" ;;
-  toolchain-publish) toolchain_publish "${2:?pack}" "${3:?toolchain directory}" ;;
+  toolchain-units) toolchain_units_cmd "${2:?pack}" ;;
+  toolchain-key) split_unit "${2:?unit}"; toolchain_key "$2" ;;
+  toolchain-key-report) toolchain_key_report "${2:?unit}" "${3:?base commit}" ;;
+  toolchain-plan) toolchain_plan "${@:2}" ;;
+  toolchain-dirty) toolchain_dirty "${2:?unit}" ;;
+  toolchain-has) toolchain_has "${2:?unit}" ;;
+  toolchain-fetch) toolchain_fetch "${2:?unit}" "${@:3}" ;;
+  toolchain-unpack) toolchain_unpack "${2:?unit}" "${3:?archive}" "${4:-}" ;;
+  toolchain-archive) toolchain_archive "${2:?unit}" "${3:?toolchain directory}" "${4:?output directory}" ;;
+  toolchain-publish) toolchain_publish "${2:?unit}" "${3:?toolchain directory}" ;;
   *) sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
 esac

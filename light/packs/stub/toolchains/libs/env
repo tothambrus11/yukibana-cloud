@@ -1,0 +1,2 @@
+# What reaches the libs build from the caller's environment.
+STUB_LEVEL variant  # the optimisation level: another library

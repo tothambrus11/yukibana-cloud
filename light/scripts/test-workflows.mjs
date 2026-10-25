@@ -1,7 +1,8 @@
-// Tests of the rules light-packs.yml must keep, which no run of it checks
-// until a release, hours in, does the wrong thing: a release never builds or
-// publishes a toolchain, never skips a pack, and every script a toolchain's
-// key reads starts the workflow.
+// Tests of the rules light-packs.yml (and light-toolchain-unit.yml, which
+// only it calls) must keep, which no run of it checks until a release, hours
+// in, does the wrong thing: a release never builds or publishes a toolchain,
+// never skips a pack, and every script a toolchain's key reads starts the
+// workflow; the units build in waves, each with a cache of its own.
 //
 //   node --test scripts/test-workflows.mjs   (from light/; needs only node)
 //
@@ -16,7 +17,6 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const WORKFLOW = path.join(ROOT, '.github/workflows/light-packs.yml');
 
 /**
  * Reads YAML text into plain values: block mappings and sequences (a
@@ -185,54 +185,126 @@ export function readYaml(text) {
     return doc;
 }
 
-const workflow = /** @type {any} */ (readYaml(fs.readFileSync(WORKFLOW, 'utf8')));
-const packSteps = /** @type {Array<Record<string, any>>} */ (workflow.jobs.pack.steps);
-const allSteps = Object.values(workflow.jobs).flatMap((job) => job.steps ?? []);
+const read = (file) => /** @type {any} */ (readYaml(fs.readFileSync(path.join(ROOT, file), 'utf8')));
+const workflow = read('.github/workflows/light-packs.yml');
+const UNIT_WORKFLOW = './.github/workflows/light-toolchain-unit.yml';
+const unitWorkflow = read(UNIT_WORKFLOW);
+const jobs = /** @type {Record<string, Record<string, any>>} */ (workflow.jobs);
+const stepsOf = (job) => /** @type {Array<Record<string, any>>} */ (job.steps ?? []);
+const allSteps = Object.values(jobs).flatMap(stepsOf);
+const unitSteps = stepsOf(unitWorkflow.jobs.unit);
+const waves = Object.entries(jobs).filter(([, job]) => job.uses === UNIT_WORKFLOW);
+const uploads = (steps) => steps.filter((s) => String(s.uses ?? '').startsWith('actions/upload-artifact@')).map((s) => String(s.with?.name));
+// A step that can build a toolchain: ensure without --fetch-only, or a
+// publish.
+const builds = (s) => typeof s.run === 'string' && (/toolchain-publish/.test(s.run) || (/pack-toolchain\.sh ensure/.test(s.run) && !/--fetch-only/.test(s.run)));
 
 test('a release run of the pack workflow cannot reach a step that builds or publishes a toolchain', () => {
-    const risky = allSteps.filter((s) => typeof s.run === 'string' && /--no-fetch|toolchain-publish/.test(s.run));
-    assert.ok(risky.length >= 2, 'the workflow has a step that builds a toolchain and one that publishes it');
-    for (const step of risky) {
+    // The pack workflow itself builds nothing outside a release's reach...
+    for (const step of allSteps.filter(builds)) {
         assert.match(String(step.if ?? ''), /!inputs\.upload/, `step "${step.name}" runs in a release`);
+    }
+    // ...and the unit workflow, which does, is reached only by the wave
+    // jobs, each of which a release skips, and from no event of its own.
+    assert.ok(unitSteps.filter(builds).length >= 2, 'the unit workflow has a step that builds a unit and one that publishes it');
+    assert.deepEqual(Object.keys(unitWorkflow.on), ['workflow_call']);
+    assert.ok(waves.length > 0, 'the pack workflow calls the unit workflow');
+    for (const [name, job] of waves) assert.match(String(job.if), /!inputs\.upload/, `job ${name} runs in a release`);
+    for (const file of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
+        if (file === 'light-packs.yml') continue;
+        const text = fs.readFileSync(path.join(ROOT, '.github/workflows', file), 'utf8');
+        assert.doesNotMatch(text, /uses:\s*\S*light-toolchain-unit\.yml/, `${file} calls the unit workflow`);
     }
 });
 
-test('a release run fails by name when a split pack has no stored toolchain', () => {
-    const step = packSteps.find((s) => s.name === 'A release never builds a compiler');
-    assert.ok(step, 'the pack job has the step');
-    assert.match(String(step.if), /inputs\.upload && steps\.toolchain\.outputs\.toolchain-hit == 'false'/);
+test('a release run fails by name when a unit of a split pack is not in the store', () => {
+    const step = stepsOf(jobs.assemble).find((s) => s.name === 'A release never builds a compiler');
+    assert.ok(step, 'the assemble job has the step');
+    assert.match(String(step.if), /inputs\.upload && steps\.units\.outputs\.missing != ''/);
     assert.match(step.run, /::error title=.*a release never builds a compiler/);
     assert.match(step.run, /exit 1/);
+    // and the units it looks for are fetched, never built
+    const units = stepsOf(jobs.assemble).find((s) => s.id === 'units');
+    assert.match(units.run, /ensure "\$unit" --fetch-only/);
 });
 
 test('a release run never skips a pack', () => {
-    const gates = packSteps.filter((s) => s.uses === './.github/actions/once' && s.with?.paths !== undefined);
-    assert.equal(gates.length, 1, 'the pack job has one once gate');
+    const gates = Object.entries(jobs)
+        .filter(([name]) => name !== 'plan')
+        .flatMap(([, job]) => stepsOf(job))
+        .filter((s) => s.uses === './.github/actions/once' && s.with?.paths !== undefined);
+    assert.equal(gates.length, 1, 'one once gate outside the plan job: the assemble job');
+    assert.ok(stepsOf(jobs.assemble).includes(gates[0]));
     assert.match(String(gates[0].if), /!inputs\.upload/);
 });
 
 test('every script the toolchain key reads starts the pack workflow', () => {
     const scripts = ['toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'pack-store.sh', 'pack-toolchain.sh'];
+    const files = [...scripts.map((name) => `light/scripts/${name}`), '.github/workflows/light-toolchain-unit.yml'];
     for (const event of ['push', 'pull_request']) {
         const paths = workflow.on[event].paths;
-        for (const script of scripts.map((name) => `light/scripts/${name}`)) {
-            assert.ok(paths.includes(script), `${script} is not in on.${event}.paths`);
-        }
+        for (const file of files) assert.ok(paths.includes(file), `${file} is not in on.${event}.paths`);
     }
 });
 
 test('what a pack was made from is uploaded beside it under a name no pack-* pattern takes for a pack', () => {
     // The release downloads pattern pack-* straight into static/packs, so
-    // every artifact the pack job uploads whose name starts with pack- must
-    // be a pack; what it was made from is toolchain-key-<pack>.
-    const names = packSteps.filter((s) => String(s.uses ?? '').startsWith('actions/upload-artifact@')).map((s) => String(s.with?.name));
-    assert.deepEqual(names.filter((n) => n.startsWith('pack-')), ['pack-${{ matrix.pack }}']);
-    assert.ok(names.includes('toolchain-key-${{ matrix.pack }}'), names.join(' '));
+    // every artifact whose name starts with pack- must be a pack; what it
+    // was made from is toolchain-key-<pack>, and a unit's toolchain
+    // toolchain-<pack>-<unit>-<key>.
+    for (const job of ['pack', 'assemble']) {
+        const names = uploads(stepsOf(jobs[job]));
+        assert.deepEqual(names.filter((n) => n.startsWith('pack-')), ['pack-${{ matrix.pack }}'], job);
+        assert.ok(names.includes('toolchain-key-${{ matrix.pack }}'), `${job}: ${names.join(' ')}`);
+    }
+    assert.deepEqual(uploads(unitSteps), ['toolchain-${{ env.PACK }}-${{ env.UNIT_NAME }}-${{ inputs.key }}']);
+});
+
+test('the units build in three waves, each after the one before, and the packs are assembled after all of them', () => {
+    assert.deepEqual(
+        waves.map(([name, job]) => [name, job.needs]),
+        [
+            ['wave-1', ['plan', 'store']],
+            ['wave-2', ['plan', 'store', 'wave-1']],
+            ['wave-3', ['plan', 'store', 'wave-2']],
+        ],
+    );
+    for (const [name, job] of waves) {
+        assert.equal(job.strategy.matrix.include, `\${{ fromJSON(needs.plan.outputs.${name}) }}`);
+        assert.match(String(job.if), new RegExp(`needs\\.plan\\.outputs\\.${name} != '\\[\\]'`));
+        // A wave runs whatever the one before it did, so a unit that does
+        // not need the failed one still builds.
+        assert.match(String(job.if), /!cancelled\(\)/);
+    }
+    assert.deepEqual(jobs.assemble.needs, ['plan', 'store', 'wave-1', 'wave-2', 'wave-3']);
+    // The plan refuses a unit deeper than the waves there are.
+    const plan = stepsOf(jobs.plan).find((s) => s.id === 'units');
+    for (const m of plan.run.matchAll(/toolchain-plan[^\n]*--waves (\d+)/g)) assert.equal(Number(m[1]), waves.length);
+    assert.match(plan.run, /for wave in 1 2 3;/);
+});
+
+test('each unit has its own build cache, under a prefix no other unit or pack starts with', () => {
+    const restore = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/cache/restore@'));
+    const save = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/cache/save@'));
+    const prefix = 'light/${{ inputs.unit }}/';
+    assert.ok(restore.with.key.startsWith(prefix), restore.with.key);
+    assert.equal(save.with.key, restore.with.key);
+    for (const key of restore.with['restore-keys'].trim().split('\n')) {
+        assert.ok(key.startsWith(prefix) && key.endsWith('/'), `restore key ${key}`);
+    }
+    const prune = unitSteps.find((s) => /gh cache delete/.test(String(s.run ?? '')));
+    assert.match(prune.run, /--key "light\/\$UNIT\/"/);
 });
 
 test('the pack workflow names no split pack', () => {
-    const named = packSteps.filter((s) => /matrix\.pack == 'cpp'/.test(String(s.if ?? '')));
+    const named = allSteps.filter((s) => /matrix\.pack == '(cpp|stub)'/.test(String(s.if ?? '')));
     assert.deepEqual(named.map((s) => s.name), []);
+    // The pack job builds unsplit packs whole; a split one is the assemble
+    // job's, from the plan, never listed.
+    const listed = jobs.pack.strategy.matrix.include.map((/** @type {{ pack: string }} */ e) => e.pack);
+    const split = listed.filter((p) => fs.existsSync(path.join(ROOT, 'light/packs', p, 'toolchains')));
+    assert.deepEqual(split, []);
+    assert.equal(jobs.assemble.strategy.matrix.pack, '${{ fromJSON(needs.plan.outputs.split) }}');
 });
 
 test('the workflow reader reads what YAML means and refuses what it does not know', () => {

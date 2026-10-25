@@ -1,0 +1,6 @@
+# The stub pack's glue: what assembly runs and copies, in seconds, over the
+# toolchains of its three units. No unit builds with any of it.
+glue.paths
+glue.sh
+README.md
+src/

@@ -1,8 +1,9 @@
 // Tests of pack-store.sh, which light/setup.sh and every light-packs.yml job
 // rely on, against a server of its own that answers like GitHub's releases
 // API: a throwaway git repository laid out like this one (light/scripts,
-// light/packs/demo, and the split packs light/packs/tool and
-// light/packs/other) gets a copy of the script and of the scripts it
+// light/packs/demo, the split packs light/packs/tool and light/packs/other
+// of one unit each, and a copy of the repository's own three-unit stub,
+// light/packs/stub) gets a copy of the script and of the scripts it
 // sources (toolchain-key.sh, toolchain-build-env.sh, pack-lib.sh), and the
 // stores hold archives made here. The pack store's `publish` writes to
 // GitHub and is exercised by light-packs.yml itself; `toolchain-publish`
@@ -22,6 +23,8 @@ import { fileURLToPath } from 'node:url';
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
 /** The scripts a test repository gets a copy of: pack-store.sh and what it reads. */
 const COPIED = ['pack-store.sh', 'toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'toolchain-manifest.mjs'];
+/** The repository's stub pack, copied into the test repository as it is. */
+const STUB = path.resolve(SCRIPTS, '../packs/stub');
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-store-test-'));
 const light = path.join(root, 'light');
@@ -145,7 +148,7 @@ function storeWith(vars, ...args) {
         PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}`,
         TOOLCHAIN_CACHE: path.join(root, 'cache'),
     };
-    for (const name of ['OPT', 'MIRROR', 'UNDECLARED', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS']) delete env[name];
+    for (const name of ['OPT', 'MIRROR', 'UNDECLARED', 'STUB_LEVEL', 'LTO', 'PROXYLESS', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS']) delete env[name];
     for (const [name, value] of Object.entries(vars)) {
         if (value === undefined) delete env[name];
         else env[name] = value;
@@ -180,18 +183,23 @@ function clean() {
     git('reset', '-q', '--hard');
     git('clean', '-fdq');
 }
-/** The toolchain key of `pack` in an environment with `vars`; asserts it is one. */
-async function key(pack = 'tool', vars = {}) {
-    const r = await storeWith(vars, 'toolchain-key', pack);
+/** The toolchain key of `unit` in an environment with `vars`; asserts it is one. */
+async function key(unit = 'tool/cc', vars = {}) {
+    const r = await storeWith(vars, 'toolchain-key', unit);
     assert.equal(r.code, 0, r.err);
     const k = r.out.trim();
     assert.match(k, /^[0-9a-f]{40}$/);
     return k;
 }
+/** The keys of the stub's three units, by unit name. */
+async function stubKeys(vars = {}) {
+    return { compilers: await key('stub/compilers', vars), vm: await key('stub/vm', vars), libs: await key('stub/libs', vars) };
+}
 /** The toolchain.json fields listing `files` (path -> content), as a build writes them. */
 const listing = (files) => ({
-    format: 1,
+    format: 2,
     knobs: {},
+    needs: {},
     built: '2026-10-01T00:00:00.000Z',
     files: Object.entries(files)
         .sort(([a], [b]) => (a < b ? -1 : 1))
@@ -213,12 +221,12 @@ function toolchainArchive(manifest, files = { 'bin/cc': '#!/bin/sh\necho cc\n' }
     fs.rmSync(file);
     return bytes;
 }
-/** A built toolchain directory of `pack` with `manifest` fields over HEAD's own. */
+/** A built toolchain directory of unit tool/cc with `manifest` fields over HEAD's own. */
 async function builtToolchain(manifest = {}) {
     const dir = fs.mkdtempSync(path.join(root, 'built-'));
     fs.mkdirSync(path.join(dir, 'bin'));
     fs.writeFileSync(path.join(dir, 'bin/cc'), '#!/bin/sh\n');
-    const m = { ...listing({ 'bin/cc': '#!/bin/sh\n' }), pack: 'tool', key: await key(), commit: git('rev-parse', 'HEAD'), ...manifest };
+    const m = { ...listing({ 'bin/cc': '#!/bin/sh\n' }), unit: 'tool/cc', key: await key(), commit: git('rev-parse', 'HEAD'), ...manifest };
     m.files[0].mtime = execFileSync('stat', ['-c', '%.9Y', path.join(dir, 'bin/cc')], { encoding: 'utf8' }).trim();
     fs.writeFileSync(path.join(dir, 'toolchain.json'), JSON.stringify(m));
     return dir;
@@ -240,18 +248,23 @@ fetch(process.env.FAKE_GH, { method: 'POST', body: JSON.stringify(process.argv.s
         0o755,
     );
     put('.gitignore', '/bin/\n/cache/\n/tc-*\n/built-*\n/fetched*\n/out-*\n/light/app/static/packs/\n/light/.pack-trees/\n');
-    // A split pack whose glue is src/glue.js, and one that is all toolchain.
-    put('light/packs/tool/toolchain.paths', '# The compiler is built from the whole pack but its glue.\nlight/packs/tool\n\n:(exclude)light/packs/tool/src/glue.js\n');
-    put('light/packs/tool/toolchain.env', '# What reaches the build.\nOPT variant  # the optimisation level: another compiler\nMIRROR source  # where sources come from; the same bytes\n');
-    put('light/packs/tool/toolchain.sh', '#!/bin/sh\nmake cc\n', 0o755);
-    put('light/packs/tool/toolchain.outputs', 'bin/cc\n');
+    // A split pack of one unit, cc, built from its own directory and the
+    // pack file src/compiler.c; its glue is everything else.
+    put('light/packs/tool/toolchains/cc/paths', '# The compiler is built from its source, besides this directory.\nsrc/compiler.c\n');
+    put('light/packs/tool/toolchains/cc/env', '# What reaches the build.\nOPT variant  # the optimisation level: another compiler\nMIRROR source  # where sources come from; the same bytes\n');
+    put('light/packs/tool/toolchains/cc/toolchain.sh', '#!/bin/sh\nmake cc\n', 0o755);
+    put('light/packs/tool/toolchains/cc/pins.sh', 'CC_VERSION=1.0\n');
+    put('light/packs/tool/toolchains/cc/outputs', 'bin/cc\n');
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 0; }\n');
     put('light/packs/tool/src/glue.js', 'export const glue = 1;\n');
+    put('light/packs/tool/glue.paths', 'glue.sh\nbuild.sh\nrequires.json\nsrc/glue.js\n');
     put('light/packs/tool/glue.sh', '#!/bin/sh\ncp src/glue.js out/\n', 0o755);
     put('light/packs/tool/build.sh', '#!/bin/sh\n', 0o755);
     put('light/packs/tool/requires.json', '{}\n');
-    put('light/packs/other/toolchain.paths', 'light/packs/other\n');
-    put('light/packs/other/toolchain.sh', '#!/bin/sh\n', 0o755);
+    // A split pack that is all toolchain, of one unit with no settings.
+    put('light/packs/other/toolchains/main/toolchain.sh', '#!/bin/sh\n', 0o755);
+    // The repository's own stub: three units, libs built with compilers.
+    fs.cpSync(STUB, path.join(light, 'packs/stub'), { recursive: true });
     git('init', '-q');
     git('config', 'user.email', 'test@example.com');
     git('config', 'user.name', 'test');
@@ -326,7 +339,7 @@ test('a store whose release does not exist yet has no build of anything: exit 3'
     assert.equal(r.code, 3, r.err);
 });
 
-// ---- Toolchains of split packs ----------------------------------------
+// ---- Toolchain units of split packs ------------------------------------
 
 test("a toolchain's key does not change when only its glue changes", async () => {
     commit('toolchains');
@@ -335,20 +348,23 @@ test("a toolchain's key does not change when only its glue changes", async () =>
     put('light/packs/tool/glue.sh', '#!/bin/sh\necho more glue\n', 0o755);
     put('light/packs/tool/build.sh', '#!/bin/sh\necho build\n', 0o755);
     put('light/packs/tool/requires.json', '{"runner":{}}\n');
-    put('light/packs/tool/toolchain.outputs', 'bin/cc\nbin/ld\n');
+    put('light/packs/tool/toolchains/cc/outputs', 'bin/cc\nbin/ld\n');
     assert.equal(await key(), before);
     commit('glue');
     assert.equal(await key(), before);
 });
 
-test("adding a new glue file together with its exclusion keeps the toolchain's key", async () => {
+test('a new pack file is an input of no unit until a unit names it in its paths', async () => {
     const before = await key();
     put('light/packs/tool/src/more-glue.js', 'export {};\n');
-    // Unclassified, a new file is an input: a rebuild, never a stale toolchain.
-    assert.notEqual(await key(), before);
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.paths'), ':(exclude)light/packs/tool/src/more-glue.js\n');
+    // In no key: light/packs/contract.test.mjs names it until someone owns it.
     assert.equal(await key(), before);
-    commit('more glue');
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchains/cc/paths'), 'src/more-glue.js\n');
+    const named = await key();
+    assert.notEqual(named, before);
+    put('light/packs/tool/src/more-glue.js', 'export const more = 1;\n');
+    assert.notEqual(await key(), named);
+    clean();
     assert.equal(await key(), before);
 });
 
@@ -358,61 +374,154 @@ test("a toolchain's key changes when an input, its mode, or the set of inputs ch
     keys.push(await key());
     fs.chmodSync(path.join(root, 'light/packs/tool/src/compiler.c'), 0o755);
     keys.push(await key());
-    put('light/packs/tool/src/opt.c', 'int opt;\n');
+    put('light/packs/tool/toolchains/cc/opt.c', 'int opt;\n');
     keys.push(await key());
-    fs.symlinkSync('opt.c', path.join(root, 'light/packs/tool/src/opt-link.c'));
+    fs.symlinkSync('opt.c', path.join(root, 'light/packs/tool/toolchains/cc/opt-link.c'));
     keys.push(await key());
     assert.equal(new Set(keys).size, keys.length, keys.join(' '));
-    fs.rmSync(path.join(root, 'light/packs/tool/src/opt-link.c'));
-    fs.rmSync(path.join(root, 'light/packs/tool/src/opt.c'));
+    fs.rmSync(path.join(root, 'light/packs/tool/toolchains/cc/opt-link.c'));
+    fs.rmSync(path.join(root, 'light/packs/tool/toolchains/cc/opt.c'));
     assert.equal(await key(), keys[2]);
     clean();
     assert.equal(await key(), keys[0]);
 });
 
+test('changing the compilers unit changes the libs key, and changing a framework pin changes only libs', async () => {
+    const before = await stubKeys();
+    put('light/packs/stub/compiler/cc.sh', '#!/bin/sh\necho another compiler\ncat "$1"\n', 0o755);
+    const compilers = await stubKeys();
+    assert.notEqual(compilers.compilers, before.compilers);
+    assert.notEqual(compilers.libs, before.libs);
+    clean();
+    put('light/packs/stub/toolchains/libs/pins.sh', '# The libs unit\'s pins.\nFRAMEWORK_VERSION=3.1\n');
+    const pin = await stubKeys();
+    assert.equal(pin.compilers, before.compilers);
+    assert.equal(pin.vm, before.vm);
+    assert.notEqual(pin.libs, before.libs);
+    clean();
+});
+
+test('a change to the compilers re-keys libs but not vm', async () => {
+    const before = await stubKeys();
+    put('light/packs/stub/toolchains/compilers/pins.sh', 'CC_VERSION=2.0\n');
+    const after = await stubKeys();
+    assert.notEqual(after.compilers, before.compilers);
+    assert.notEqual(after.libs, before.libs);
+    assert.equal(after.vm, before.vm);
+    // libs carries the compilers' key as a line of its own.
+    const lines = execFileSync('bash', ['-c', 'source light/scripts/toolchain-key.sh; toolchain_lines stub/libs'], { cwd: root, encoding: 'utf8' });
+    assert.match(lines, new RegExp(`^needs stub/compilers ${after.compilers}$`, 'm'));
+    clean();
+});
+
+test("a file under toolchains/libs/ changes neither the compilers' nor vm's key", async () => {
+    const before = await stubKeys();
+    put('light/packs/stub/toolchains/libs/framework.c', 'int framework(void) { return 4; }\n');
+    put('light/packs/stub/toolchains/libs/extra.h', '#define EXTRA 1\n');
+    const after = await stubKeys();
+    assert.equal(after.compilers, before.compilers);
+    assert.equal(after.vm, before.vm);
+    assert.notEqual(after.libs, before.libs);
+    clean();
+});
+
+test('a library both units name re-keys both, and the unit built with one of them through its needs line', async () => {
+    const before = await stubKeys();
+    fs.appendFileSync(path.join(root, 'light/packs/stub/lib.sh'), '# a note\n');
+    const after = await stubKeys();
+    assert.notEqual(after.compilers, before.compilers);
+    assert.notEqual(after.vm, before.vm);
+    assert.notEqual(after.libs, before.libs);
+    clean();
+});
+
+test('a unit cannot name a sibling unit\'s files, a path outside its pack, or a path that is not there', async () => {
+    for (const [line, why] of [
+        ['toolchains/compilers/pins.sh', /'toolchains\/compilers\/pins\.sh' names light\/packs\/stub\/toolchains\/compilers\/pins\.sh, under toolchains\/: .*a sibling's files are never its inputs/],
+        ['*.sh', /'\*\.sh' names light\/packs\/stub\/(compiler\/cc\.sh|toolchains\/\S+), under toolchains\/|'\*\.sh' names light\/packs\/stub\/toolchains\//],
+        ['../tool/src/compiler.c', /'\.\.\/tool\/src\/compiler\.c' climbs out of the pack/],
+        [':(glob)**', /is not a path inside the pack/],
+        ['no-such-dir', /vm\/paths:3: 'no-such-dir' matches no file/],
+    ]) {
+        fs.appendFileSync(path.join(root, 'light/packs/stub/toolchains/vm/paths'), `${line}\n`);
+        const r = await store('toolchain-key', 'stub/vm');
+        assert.notEqual(r.code, 0, line);
+        assert.equal(r.out, '');
+        assert.match(r.err, why);
+        clean();
+    }
+});
+
+test('a cycle of needs is refused by name before any key is computed', async () => {
+    put('light/packs/stub/toolchains/compilers/needs', 'stub/libs  # a cycle\n');
+    for (const unit of ['stub/libs', 'stub/compilers']) {
+        const r = await store('toolchain-key', unit);
+        assert.equal(r.code, 1, r.err);
+        assert.match(r.err, /the needs of these units form a cycle, so none can be built first: stub\/(libs -> stub\/compilers -> stub\/libs|compilers -> stub\/libs -> stub\/compilers)/);
+    }
+    // vm needs neither, and keeps its key.
+    assert.equal((await store('toolchain-key', 'stub/vm')).code, 0);
+    clean();
+});
+
+test('a needs line that is no unit, the unit itself or a repeat is named', async () => {
+    put('light/packs/stub/toolchains/libs/needs', 'stub/compilers\nstub/nosuch\nstub/libs\nstub/compilers\nStub/Vm\n');
+    const r = await store('toolchain-key', 'stub/libs');
+    assert.equal(r.code, 1);
+    assert.match(r.err, /needs:2: no toolchain unit stub\/nosuch/);
+    assert.match(r.err, /needs:3: stub\/libs cannot need itself/);
+    assert.match(r.err, /needs:4: stub\/compilers is listed twice/);
+    assert.match(r.err, /needs:5: 'Stub\/Vm' is not a toolchain unit's name/);
+    clean();
+});
+
 test('a change to the build environment changes every key', async () => {
-    const before = [await key('tool'), await key('other')];
+    const before = [await key('tool/cc'), await key('other/main'), ...Object.values(await stubKeys())];
     // A comment is enough: the file is keyed whole, as what reaches a build.
     fs.appendFileSync(path.join(light, 'scripts/toolchain-build-env.sh'), '# another build environment\n');
-    const after = [await key('tool'), await key('other')];
-    assert.notEqual(after[0], before[0]);
-    assert.notEqual(after[1], before[1]);
+    const after = [await key('tool/cc'), await key('other/main'), ...Object.values(await stubKeys())];
+    for (const [i, k] of after.entries()) assert.notEqual(k, before[i]);
     clean();
 });
 
 test('a comment or helper change in the key or store scripts leaves every toolchain key unchanged', async () => {
-    const before = [await key('tool'), await key('other')];
+    const before = [await key('tool/cc'), await key('other/main'), ...Object.values(await stubKeys())];
+    const now = async () => [await key('tool/cc'), await key('other/main'), ...Object.values(await stubKeys())];
     fs.appendFileSync(path.join(light, 'scripts/toolchain-key.sh'), '# a comment on how keys are made\n');
     fs.appendFileSync(path.join(light, 'scripts/pack-store.sh'), '# a comment on the store\n');
     fs.appendFileSync(path.join(light, 'scripts/pack-lib.sh'), '\n# A new shared helper.\nsay_hello() { echo hello; }\n');
     put('light/scripts/pack-toolchain.sh', '#!/bin/sh\n# assembly\n', 0o755);
-    assert.deepEqual([await key('tool'), await key('other')], before);
+    assert.deepEqual(await now(), before);
     // Nor do they make a build dirty: none of them is an input.
-    const dirty = await store('toolchain-dirty', 'tool');
+    const dirty = await store('toolchain-dirty', 'tool/cc');
     assert.equal(dirty.code, 1, dirty.out + dirty.err);
     commit('scripts');
-    assert.deepEqual([await key('tool'), await key('other')], before);
+    assert.deepEqual(await now(), before);
     git('reset', '-q', '--hard', 'HEAD~1');
 });
 
 /**
- * The lines the key of the golden test's pack hashes, as toolchain-key.sh
- * defines them. `<build env>` stands for toolchain-build-env.sh's blob, which
- * is a line of every key but no part of how keys are computed: the build
- * environment may change without this test noticing, as it should.
+ * The lines the key of the golden test's unit hashes, as toolchain-key.sh
+ * defines them. `<build env>` stands for toolchain-build-env.sh's blob, and
+ * `<dep>` for the key of the unit it needs, which hashes the build
+ * environment too: both are lines of the key but no part of how keys are
+ * computed, so the build environment may change without this test
+ * noticing, as it should.
  */
-const GOLDEN = `yukibana-toolchain/2
-pack fix
+const GOLDEN = `yukibana-toolchain/3
+unit fix/main
+100644 cd911e2352e44b4e43d1e1e4b48f1fe65803c11b light/packs/fix/patches/a.diff
 100644 4e610c04d58371663d95ca8237eea260b08f090c light/packs/fix/src/a.c
 120000 6bc0e647512d2a0bef4f26111e484dc87df7f5ca light/packs/fix/src/link.c
 100644 d8805c92f24d9461a93c9a318ab62da581e3988c light/packs/fix/src/new.c
-100755 666656ac3528feb4be6109698f22ab4d535b0148 light/packs/fix/toolchain.sh
+100644 1968469e71a0313143cb6d757611d881eb321eea light/packs/fix/toolchains/main/pins.sh
+100755 666656ac3528feb4be6109698f22ab4d535b0148 light/packs/fix/toolchains/main/toolchain.sh
 100644 <build env> light/scripts/toolchain-build-env.sh
-100644 cd911e2352e44b4e43d1e1e4b48f1fe65803c11b light/shared/patch.diff
+needs fix/base <dep>
 env LEVEL=3
 `;
 
-test('a fixed pack keeps its exact key lines and key until the format tag yukibana-toolchain/N is bumped', () => {
+test('a fixed unit keeps its exact key lines and key until the format tag yukibana-toolchain/N is bumped', () => {
     // toolchain-key.sh is no input of any key, so nothing else would notice a
     // change of what it computes: a toolchain built under the old meaning
     // would be served for the new one. If this fails and the change is meant,
@@ -428,18 +537,20 @@ test('a fixed pack keeps its exact key lines and key until the format tag yukiba
         fs.mkdirSync(path.join(dir, 'light/scripts'), { recursive: true });
         for (const name of COPIED) fs.copyFileSync(path.join(SCRIPTS, name), path.join(dir, 'light/scripts', name));
         write('.gitignore', '*.o\n');
-        write('light/packs/fix/toolchain.paths', '# The whole pack but its glue, and a shared patch.\nlight/packs/fix\n\n  :(exclude)light/packs/fix/src/glue.js  \nlight/shared/patch.diff\n');
-        write('light/packs/fix/toolchain.env', 'LEVEL variant  # another compiler\nMIRROR source  # the same bytes\nUNSET variant  # never set here\n');
-        write('light/packs/fix/toolchain.sh', '#!/bin/sh\nmake\n', 0o755);
-        write('light/packs/fix/toolchain.outputs', 'bin/cc\n');
+        write('light/packs/fix/toolchains/main/paths', '# Its sources and a patch, besides this directory.\n  src/  \n\npatches/a.diff\n');
+        write('light/packs/fix/toolchains/main/env', 'LEVEL variant  # another compiler\nMIRROR source  # the same bytes\nUNSET variant  # never set here\n');
+        write('light/packs/fix/toolchains/main/needs', '# The base it builds with.\nfix/base  # its headers\n');
+        write('light/packs/fix/toolchains/main/toolchain.sh', '#!/bin/sh\nmake\n', 0o755);
+        write('light/packs/fix/toolchains/main/pins.sh', 'MAIN_VERSION=1\n');
+        write('light/packs/fix/toolchains/main/outputs', 'bin/cc\n');
+        write('light/packs/fix/toolchains/base/toolchain.sh', '#!/bin/sh\n', 0o755);
+        write('light/packs/fix/toolchains/base/outputs', 'include/a.h\n');
         write('light/packs/fix/glue.sh', '#!/bin/sh\n', 0o755);
-        write('light/packs/fix/build.sh', '#!/bin/sh\n', 0o755);
-        write('light/packs/fix/requires.json', '{}\n');
+        write('light/packs/fix/glue.paths', 'glue.sh\nsrc/glue.js\n');
         write('light/packs/fix/src/a.c', 'int a;\n');
-        write('light/packs/fix/src/glue.js', 'export {};\n');
         write('light/packs/fix/src/a.o', 'ignored\n');
         fs.symlinkSync('a.c', path.join(dir, 'light/packs/fix/src/link.c'));
-        write('light/shared/patch.diff', '--- a\n+++ b\n');
+        write('light/packs/fix/patches/a.diff', '--- a\n+++ b\n');
         g('init', '-q');
         g('add', '-A');
         g('-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-q', '-m', 'fixture');
@@ -447,67 +558,64 @@ test('a fixed pack keeps its exact key lines and key until the format tag yukiba
         write('light/packs/fix/src/new.c', 'int n;\n');
         const env = { PATH: process.env.PATH, HOME: process.env.HOME, LEVEL: '3', MIRROR: 'https://mirror.example', UNDECLARED: '1' };
         const build = g('hash-object', 'light/scripts/toolchain-build-env.sh');
-        const lines = execFileSync('bash', ['-c', 'set -eu; source light/scripts/toolchain-key.sh; toolchain_lines fix'], { cwd: dir, env, encoding: 'utf8' });
-        const golden = GOLDEN.replace('<build env>', build);
+        const keyOf = (unit) => execFileSync(path.join(dir, 'light/scripts/pack-store.sh'), ['toolchain-key', unit], { env, encoding: 'utf8' }).trim();
+        const lines = execFileSync('bash', ['-c', 'set -eu; source light/scripts/toolchain-key.sh; toolchain_lines fix/main'], { cwd: dir, env, encoding: 'utf8' });
+        // src/glue.js is no file here and the glue's own business: no unit names it.
+        const golden = GOLDEN.replace('<build env>', build).replace('<dep>', keyOf('fix/base'));
         assert.equal(lines, golden);
-        const k = execFileSync(path.join(dir, 'light/scripts/pack-store.sh'), ['toolchain-key', 'fix'], { env, encoding: 'utf8' }).trim();
-        assert.equal(k, createHash('sha256').update(golden).digest('hex').slice(0, 40));
+        assert.equal(keyOf('fix/main'), createHash('sha256').update(golden).digest('hex').slice(0, 40));
+        const base = execFileSync('bash', ['-c', 'set -eu; source light/scripts/toolchain-key.sh; toolchain_lines fix/base'], { cwd: dir, env, encoding: 'utf8' });
+        assert.equal(base, `yukibana-toolchain/3\nunit fix/base\n100755 ${g('hash-object', 'light/packs/fix/toolchains/base/toolchain.sh')} light/packs/fix/toolchains/base/toolchain.sh\n100644 ${build} light/scripts/toolchain-build-env.sh\n`);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
 
-test('an output-changing setting gives another key, and a setting the pack does not declare does not', async () => {
+test('an output-changing setting gives another key, and a setting the unit does not declare does not', async () => {
     const plain = await key();
-    const o2 = await key('tool', { OPT: '2' });
-    const o3 = await key('tool', { OPT: '3' });
+    const o2 = await key('tool/cc', { OPT: '2' });
+    const o3 = await key('tool/cc', { OPT: '3' });
     assert.equal(new Set([plain, o2, o3]).size, 3);
-    assert.equal(await key('tool', { MIRROR: 'https://mirror.example' }), plain);
-    assert.equal(await key('tool', { UNDECLARED: '1' }), plain);
-    // `other` declares no settings at all.
-    assert.equal(await key('other', { OPT: '2' }), await key('other'));
+    assert.equal(await key('tool/cc', { MIRROR: 'https://mirror.example' }), plain);
+    assert.equal(await key('tool/cc', { UNDECLARED: '1' }), plain);
+    // `other/main` declares no settings at all.
+    assert.equal(await key('other/main', { OPT: '2' }), await key('other/main'));
+    // A setting of the compilers reaches the libraries built with them.
+    const stub = await stubKeys();
+    const level = await stubKeys({ STUB_LEVEL: '2' });
+    assert.equal(level.compilers, stub.compilers);
+    assert.notEqual(level.libs, stub.libs);
 });
 
-test('a comment or a source setting added to toolchain.env rebuilds nothing, and only a set output-changing setting does', async () => {
+test('a comment or a source setting added to a unit\'s env rebuilds nothing, and only a set output-changing setting does', async () => {
     const plain = await key();
-    const opt = await key('tool', { OPT: '2' });
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), '# a note on the settings\nPROXYLESS source  # where sources come from\n');
+    const opt = await key('tool/cc', { OPT: '2' });
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchains/cc/env'), '# a note on the settings\nPROXYLESS source  # where sources come from\n');
     assert.equal(await key(), plain);
-    assert.equal(await key('tool', { OPT: '2', PROXYLESS: '1' }), opt);
+    assert.equal(await key('tool/cc', { OPT: '2', PROXYLESS: '1' }), opt);
     // The key stays, but the build is dirty until the edit is committed: the
     // file is no input, yet it decides which settings reach the build.
-    const dirty = await store('toolchain-dirty', 'tool');
+    const dirty = await store('toolchain-dirty', 'tool/cc');
     assert.equal(dirty.code, 0, dirty.err);
-    assert.equal(dirty.out, 'light/packs/tool/toolchain.env\n');
+    assert.equal(dirty.out, 'light/packs/tool/toolchains/cc/env\n');
     commit('a note on the settings');
     assert.equal(await key(), plain);
-    assert.equal((await store('toolchain-dirty', 'tool')).code, 1);
+    assert.equal((await store('toolchain-dirty', 'tool/cc')).code, 1);
     // A newly declared output-changing setting counts once it is set.
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'LTO variant  # link-time optimisation: another compiler\n');
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchains/cc/env'), 'LTO variant  # link-time optimisation: another compiler\n');
     assert.equal(await key(), plain);
-    assert.notEqual(await key('tool', { LTO: '1' }), plain);
+    assert.notEqual(await key('tool/cc', { LTO: '1' }), plain);
     git('reset', '-q', '--hard', 'HEAD~1');
 });
 
 test('a malformed toolchain setting is named, and no key is given', async () => {
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'lto variant\nJOBS sometimes  # how many\n');
-    const r = await store('toolchain-key', 'tool');
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchains/cc/env'), 'lto variant\nJOBS sometimes  # how many\nDEP_CC variant  # a dependency\'s name\n');
+    const r = await store('toolchain-key', 'tool/cc');
     assert.notEqual(r.code, 0);
     assert.equal(r.out, '');
-    assert.match(r.err, /toolchain\.env:4: 'lto variant' is not 'NAME source\|variant {2}# why'/);
-    assert.match(r.err, /toolchain\.env:5: 'JOBS sometimes {2}# how many'/);
-    clean();
-});
-
-test('a toolchain input list naming a file that is not there is refused', async () => {
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.paths'), 'light/packs/tool/no-such-dir\n');
-    const r = await store('toolchain-key', 'tool');
-    assert.notEqual(r.code, 0);
-    assert.match(r.err, /toolchain\.paths:6: 'light\/packs\/tool\/no-such-dir' matches no file/);
-    put('light/packs/tool/toolchain.paths', ':(exclude)light/packs/tool/src/glue.js\n');
-    const only = await store('toolchain-key', 'tool');
-    assert.notEqual(only.code, 0);
-    assert.match(only.err, /names no input, only exclusions/);
+    assert.match(r.err, /cc\/env:4: 'lto variant' is not 'NAME source\|variant {2}# why'/);
+    assert.match(r.err, /cc\/env:5: 'JOBS sometimes {2}# how many'/);
+    assert.match(r.err, /cc\/env:6: DEP_CC is a variable every build is given/);
     clean();
 });
 
@@ -522,36 +630,52 @@ test('an uncommitted edit to an input gives another key, and the committed one e
     assert.equal(await key(), edited);
 });
 
-test("an uncommitted edit to a pack's glue.sh, build.sh or requires.json leaves its toolchain clean", async () => {
+test("an uncommitted edit to a pack's glue leaves its units clean", async () => {
     const before = await key();
     put('light/packs/tool/glue.sh', '#!/bin/sh\necho edited\n', 0o755);
     put('light/packs/tool/build.sh', '#!/bin/sh\necho edited\n', 0o755);
     put('light/packs/tool/requires.json', '{"edited":true}\n');
     put('light/packs/tool/src/glue.js', 'export const edited = true;\n');
-    const r = await store('toolchain-dirty', 'tool');
+    put('light/packs/stub/src/server.js', 'export const edited = true;\n');
+    const r = await store('toolchain-dirty', 'tool/cc');
     assert.equal(r.code, 1, r.out + r.err);
     assert.equal(r.out, '');
+    for (const unit of ['stub/compilers', 'stub/vm', 'stub/libs']) assert.equal((await store('toolchain-dirty', unit)).code, 1, unit);
     assert.equal(await key(), before);
     clean();
 });
 
-test('a dirty toolchain names the files that make it dirty', async () => {
+test('a dirty toolchain names the files that make it dirty, and a unit built with a dirty one is dirty too', async () => {
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 3; }\n');
-    put('light/packs/tool/src/extra.c', 'int extra;\n');
+    put('light/packs/tool/toolchains/cc/extra.c', 'int extra;\n');
     put('light/packs/tool/src/glue.js', 'export const edited = true;\n');
-    const r = await store('toolchain-dirty', 'tool');
+    const r = await store('toolchain-dirty', 'tool/cc');
     assert.equal(r.code, 0, r.err);
-    assert.deepEqual(r.out.trim().split('\n').sort(), ['light/packs/tool/src/compiler.c', 'light/packs/tool/src/extra.c']);
+    assert.deepEqual(r.out.trim().split('\n'), ['light/packs/tool/src/compiler.c', 'light/packs/tool/toolchains/cc/extra.c']);
     clean();
-    assert.equal((await store('toolchain-dirty', 'tool')).code, 1);
+    assert.equal((await store('toolchain-dirty', 'tool/cc')).code, 1);
+
+    put('light/packs/stub/toolchains/compilers/pins.sh', 'CC_VERSION=9\n');
+    put('light/packs/stub/toolchains/libs/needs', 'stub/compilers\n# reworded\n');
+    assert.equal((await store('toolchain-dirty', 'stub/compilers')).out, 'light/packs/stub/toolchains/compilers/pins.sh\n');
+    assert.equal((await store('toolchain-dirty', 'stub/vm')).code, 1);
+    assert.deepEqual((await store('toolchain-dirty', 'stub/libs')).out.trim().split('\n'), ['light/packs/stub/toolchains/compilers/pins.sh', 'light/packs/stub/toolchains/libs/needs']);
+    clean();
 });
 
-test('a pack without a toolchain keeps its tree as its key', async () => {
-    const r = await store('toolchain-key', 'demo');
+test('a pack without toolchain units keeps its tree as its key', async () => {
+    const r = await store('toolchain-key', 'demo/main');
     assert.equal(r.code, 2);
-    assert.match(r.err, /demo has no toolchain \(packs\/demo\/toolchain\.paths\): it is built whole by its build\.sh, and its tree is its key/);
+    assert.match(r.err, /demo has no toolchain units \(packs\/demo\/toolchains\/\): it is built whole by its build\.sh, and its tree is its key/);
     assert.equal((await store('tree', 'demo')).out.trim(), git('rev-parse', 'HEAD:light/packs/demo'));
-    assert.equal((await store('toolchain-dirty', 'demo')).code, 2);
+    assert.equal((await store('toolchain-dirty', 'demo/main')).code, 2);
+    assert.equal((await store('toolchain-units', 'demo')).code, 2);
+});
+
+test("a split pack's units are listed each after the units it needs", async () => {
+    const r = await store('toolchain-units', 'stub');
+    assert.equal(r.code, 0, r.err);
+    assert.deepEqual(r.out.trim().split('\n'), ['stub/compilers', 'stub/libs', 'stub/vm']);
 });
 
 test('a split pack is never put in the pack store', async () => {
@@ -559,56 +683,126 @@ test('a split pack is never put in the pack store', async () => {
     for (const command of ['has', 'fetch', 'publish']) {
         const r = await store(command, 'tool');
         assert.equal(r.code, 2, `${command}: ${r.err}`);
-        assert.match(r.err, /tool: split pack: fetch its toolchain and assemble \(pack-toolchain\.sh\)/);
+        assert.match(r.err, /tool: split pack: fetch its toolchain units and assemble \(pack-toolchain\.sh\)/);
     }
     assert.equal(exists('light/app/static/packs/tool'), false);
 });
 
-test("a pack's toolchain key report names the file that changed it", async () => {
+test('the plan puts every unit in a wave after the units it needs, and leaves out the ones the store has', async () => {
+    toolchains = new Map();
+    const all = await store('toolchain-plan', '--waves', '3');
+    assert.equal(all.code, 0, all.err);
+    const rows = all.out.trim().split('\n').map((l) => l.split(' '));
+    const stub = await stubKeys();
+    assert.deepEqual(
+        rows.map(([wave, unit, , needs]) => [wave, unit, needs]),
+        [
+            ['1', 'other/main', '-'],
+            ['1', 'stub/compilers', '-'],
+            ['2', 'stub/libs', 'stub/compilers'],
+            ['1', 'stub/vm', '-'],
+            ['1', 'tool/cc', '-'],
+        ],
+    );
+    assert.equal(rows.find(([, unit]) => unit === 'stub/libs')?.[2], stub.libs);
+    // What the store has is not built again.
+    toolchains.set(`toolchain-stub-compilers-${stub.compilers}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-10-01T00:00:00Z' });
+    toolchains.set(`toolchain-tool-cc-${await key()}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-10-01T00:00:00Z' });
+    const missing = await store('toolchain-plan', '--missing');
+    assert.equal(missing.code, 0, missing.err);
+    assert.deepEqual(missing.out.trim().split('\n').map((l) => l.split(' ')[1]), ['other/main', 'stub/libs', 'stub/vm']);
+    toolchains = new Map();
+});
+
+test('a unit deeper than the workflow has waves for is refused by name', async () => {
+    put('light/packs/stub/toolchains/vm/needs', 'stub/libs  # a third wave\n');
+    assert.equal((await store('toolchain-plan', '--waves', '3')).code, 0);
+    const r = await store('toolchain-plan', '--waves', '2');
+    assert.equal(r.code, 1);
+    assert.match(r.err, /stub\/vm would build in wave 3, after the 2 waves light-packs\.yml has \(it needs stub\/libs\)/);
+    clean();
+});
+
+test("a unit's toolchain key report names the file that changed it", async () => {
     const base = git('rev-parse', 'HEAD');
     const baseKey = await key();
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 4; }\n');
     put('light/packs/tool/src/glue.js', 'export const glue = 4;\n');
     commit('compiler 4');
-    const r = await store('toolchain-key-report', 'tool', base);
+    const r = await store('toolchain-key-report', 'tool/cc', base);
     assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^toolchain tool\/cc against [0-9a-f]{40}:$/m);
     assert.match(r.out, /^M\tlight\/packs\/tool\/src\/compiler\.c$/m);
     assert.doesNotMatch(r.out, /glue\.js/);
+    assert.match(r.out, new RegExp(`^old key: ${baseKey}$`, 'm'));
     assert.equal(r.out.trim().split('\n').at(-1), 'changed');
 
     const glueBase = git('rev-parse', 'HEAD');
     put('light/packs/tool/src/glue.js', 'export const glue = 5;\n');
     commit('glue 5');
-    const glue = await store('toolchain-key-report', 'tool', glueBase);
+    const glue = await store('toolchain-key-report', 'tool/cc', glueBase);
     assert.equal(glue.code, 0, glue.err);
-    assert.doesNotMatch(glue.out, /^[AMDR]/m);
+    assert.doesNotMatch(glue.out, /^[AMDR]\t/m);
     assert.equal(glue.out.trim().split('\n').at(-1), 'unchanged');
 
-    // toolchain.paths is no input of itself: the report shows both keys.
+    // The paths file is no input of itself: the report names it.
     const pathsBase = git('rev-parse', 'HEAD');
     const pathsKey = await key();
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.paths'), ':(exclude)light/packs/tool/toolchain.sh\n');
-    commit('toolchain.sh is glue now');
-    const paths = await store('toolchain-key-report', 'tool', pathsBase);
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchains/cc/paths'), 'src/glue.js\n');
+    commit('the compiler reads the glue now');
+    const paths = await store('toolchain-key-report', 'tool/cc', pathsBase);
     assert.equal(paths.code, 0, paths.err);
     assert.match(paths.out, new RegExp(`^old key: ${pathsKey}$`, 'm'));
     assert.match(paths.out, new RegExp(`^new key: ${await key()}$`, 'm'));
-    assert.match(paths.out, /^M\tlight\/packs\/tool\/toolchain\.paths$/m);
+    assert.match(paths.out, /^M\tlight\/packs\/tool\/toolchains\/cc\/paths$/m);
+    assert.match(paths.out, /^A\tlight\/packs\/tool\/src\/glue\.js$/m);
     assert.equal(paths.out.trim().split('\n').at(-1), 'changed');
 
     // A newly declared setting shows as env lines then and now.
     const envBase = git('rev-parse', 'HEAD');
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'LTO variant  # link-time optimisation: another compiler\n');
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchains/cc/env'), 'LTO variant  # link-time optimisation: another compiler\n');
     commit('LTO');
-    const env = await storeWith({ LTO: '1' }, 'toolchain-key-report', 'tool', envBase);
+    const env = await storeWith({ LTO: '1' }, 'toolchain-key-report', 'tool/cc', envBase);
     assert.equal(env.code, 0, env.err);
     assert.match(env.out, /^old env: \(none\)$/m);
     assert.match(env.out, /^new env: env LTO=1$/m);
-    // Named once: toolchain.env is no input, so only the report's own
-    // line for it names it, never the diff of the inputs as well.
-    assert.equal(env.out.match(/^M\tlight\/packs\/tool\/toolchain\.env$/gm)?.length, 1, env.out);
+    // Named once: the env file is no input, so only the report's own line
+    // for it names it, never the diff of the inputs as well.
+    assert.equal(env.out.match(/^M\tlight\/packs\/tool\/toolchains\/cc\/env$/gm)?.length, 1, env.out);
     assert.equal(env.out.trim().split('\n').at(-1), 'changed');
     assert.notEqual(baseKey, await key());
+});
+
+test('a key report names the unit it needs whose key changed, though no file of its own did', async () => {
+    const base = git('rev-parse', 'HEAD');
+    const before = await stubKeys();
+    put('light/packs/stub/toolchains/compilers/pins.sh', 'CC_VERSION=1.1\n');
+    commit('compilers 1.1');
+    try {
+        const r = await store('toolchain-key-report', 'stub/libs', base);
+        assert.equal(r.code, 0, r.err);
+        assert.doesNotMatch(r.out, /^[AMD]\tlight\//m);
+        assert.match(r.out, /^M\tneeds stub\/compilers \(its key changed\)$/m);
+        assert.match(r.out, new RegExp(`^old key: ${before.libs}$`, 'm'));
+        assert.equal(r.out.trim().split('\n').at(-1), 'changed');
+        const vm = await store('toolchain-key-report', 'stub/vm', base);
+        assert.equal(vm.out.trim().split('\n').at(-1), 'unchanged');
+    } finally {
+        git('reset', '-q', '--hard', base);
+    }
+    // A unit new since base has no old key: changed.
+    put('light/packs/stub/toolchains/extra/toolchain.sh', '#!/bin/sh\n', 0o755);
+    put('light/packs/stub/toolchains/extra/needs', 'stub/vm\n');
+    commit('a fourth unit');
+    try {
+        const r = await store('toolchain-key-report', 'stub/extra', base);
+        assert.equal(r.code, 0, r.err);
+        assert.match(r.out, /^old key: none \(no light\/packs\/stub\/toolchains\/extra at [0-9a-f]{40}\)$/m);
+        assert.match(r.out, /^A\tneeds stub\/vm$/m);
+        assert.equal(r.out.trim().split('\n').at(-1), 'changed');
+    } finally {
+        git('reset', '-q', '--hard', base);
+    }
 });
 
 test("a change to the key's definition is named by the key report, with both keys, even though no input changed", async () => {
@@ -626,7 +820,7 @@ test("a change to the key's definition is named by the key report, with both key
     try {
         const newKey = await key();
         assert.notEqual(newKey, baseKey);
-        const r = await store('toolchain-key-report', 'tool', base);
+        const r = await store('toolchain-key-report', 'tool/cc', base);
         assert.equal(r.code, 0, r.err);
         assert.match(r.out, /^M\tlight\/scripts\/toolchain-key\.sh \(the key's definition\)$/m);
         assert.match(r.out, new RegExp(`^old key: ${baseKey}$`, 'm'));
@@ -640,7 +834,7 @@ test("a change to the key's definition is named by the key report, with both key
     fs.appendFileSync(def, '# a comment on how keys are made\n');
     commit('a comment on the key');
     try {
-        const r = await store('toolchain-key-report', 'tool', base);
+        const r = await store('toolchain-key-report', 'tool/cc', base);
         assert.equal(r.code, 0, r.err);
         assert.match(r.out, /^M\tlight\/scripts\/toolchain-key\.sh \(the key's definition\)$/m);
         assert.match(r.out, new RegExp(`^old key: ${baseKey}$`, 'm'));
@@ -656,10 +850,11 @@ test("a change to the key's definition is named by the key report, with both key
  * that the toolchain-key.sh in `scripts` assigns or defines again, when
  * sourced as every store script sources it. Each such name would let an
  * unkeyed file decide what a keyed one claims to (the variables that reach
- * every build, or which names a knob may not take), and an identical copy
- * is no better: the next edit lands in one of the two. Each name is made
- * read-only, in turn, at the end of a scratch copy of the build environment,
- * so any later assignment or definition of it fails where it happens.
+ * every build, which names a knob may not take, where a dependency is
+ * found), and an identical copy is no better: the next edit lands in one of
+ * the two. Each name is made read-only, in turn, at the end of a scratch
+ * copy of the build environment, so any later assignment or definition of
+ * it fails where it happens.
  */
 function redefinedByKey(scripts) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-store-allowlist-'));
@@ -676,7 +871,7 @@ function redefinedByKey(scripts) {
         )
             .split('\n')
             .filter(Boolean);
-        assert.ok(own.includes('TOOLCHAIN_ENV_FIXED') && own.includes('toolchain_env_args'), own.join(' '));
+        assert.ok(own.includes('TOOLCHAIN_ENV_FIXED') && own.includes('toolchain_env_args') && own.includes('toolchain_dep_var'), own.join(' '));
         return own.filter((name) => {
             const kind = execFileSync('bash', ['-c', `source "$1"; declare -F "$2" >/dev/null && echo -f || echo`, 'bash', path.join(scripts, 'toolchain-build-env.sh'), name], { encoding: 'utf8' }).trim();
             fs.writeFileSync(path.join(copy, 'toolchain-build-env.sh'), `${env}\nreadonly ${kind} ${name}\n`);
@@ -700,6 +895,7 @@ test('what reaches every toolchain build is decided only by the keyed build envi
         for (const [added, names] of [
             ['TOOLCHAIN_ENV_FIXED+=(EXTRA=1)\n', ['TOOLCHAIN_ENV_FIXED']],
             [block, ['TOOLCHAIN_ENV_FIXED', 'TOOLCHAIN_ENV_TRANSPORT', 'toolchain_env_reserved']],
+            ['toolchain_dep_var() { echo "DEP_$1"; }\n', ['toolchain_dep_var']],
         ]) {
             fs.copyFileSync(path.join(SCRIPTS, 'toolchain-build-env.sh'), path.join(dir, 'toolchain-build-env.sh'));
             fs.writeFileSync(path.join(dir, 'toolchain-key.sh'), fs.readFileSync(path.join(SCRIPTS, 'toolchain-key.sh'), 'utf8') + added);
@@ -713,12 +909,12 @@ test('what reaches every toolchain build is decided only by the keyed build envi
 test('a key report names a new input nobody has committed yet, as its key does', async () => {
     const base = git('rev-parse', 'HEAD');
     const baseKey = await key();
-    put('light/packs/tool/src/new.c', 'int helper(void) { return 1; }\n');
+    put('light/packs/tool/toolchains/cc/new.c', 'int helper(void) { return 1; }\n');
     try {
         assert.notEqual(await key(), baseKey);
-        const r = await store('toolchain-key-report', 'tool', base);
+        const r = await store('toolchain-key-report', 'tool/cc', base);
         assert.equal(r.code, 0, r.err);
-        assert.match(r.out, /^A\tlight\/packs\/tool\/src\/new\.c$/m);
+        assert.match(r.out, /^A\tlight\/packs\/tool\/toolchains\/cc\/new\.c$/m);
         assert.equal(r.out.trim().split('\n').at(-1), 'changed');
     } finally {
         clean();
@@ -727,13 +923,13 @@ test('a key report names a new input nobody has committed yet, as its key does',
 
 test('a key report against a commit the clone does not have says so', async () => {
     const missing = 'f'.repeat(40);
-    const r = await store('toolchain-key-report', 'tool', missing);
+    const r = await store('toolchain-key-report', 'tool/cc', missing);
     assert.equal(r.code, 6);
     assert.match(r.err, new RegExp(`base commit ${missing} is not in this clone; fetch it first`));
 });
 
-test('a bad pack name is bad usage, exit 2, like a pack that is not split', async () => {
-    for (const args of [['toolchain-key', 'No_Such'], ['toolchain-has', 'nosuch'], ['toolchain-key', 'demo']]) {
+test('a bad pack or unit name is bad usage, exit 2, like a pack that is not split', async () => {
+    for (const args of [['toolchain-key', 'No_Such/x'], ['toolchain-has', 'nosuch/x'], ['toolchain-key', 'demo/x'], ['toolchain-key', 'tool'], ['toolchain-key', 'tool/nosuch'], ['toolchain-key', 'tool/Bad_Name']]) {
         const r = await store(...args);
         assert.equal(r.code, 2, `${args.join(' ')}: ${r.err}`);
         assert.match(r.err, /^pack-store\.sh: /);
@@ -744,27 +940,27 @@ test('a store holding more toolchains than one page of the API lists still finds
     toolchains = new Map();
     // The toolchain asked for is the last of 250: past the list GitHub
     // embeds in the release, and past the first two pages of its assets.
-    for (let i = 0; i < 249; i++) toolchains.set(`toolchain-other-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-01T00:00:00Z' });
+    for (let i = 0; i < 249; i++) toolchains.set(`toolchain-other-main-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-01T00:00:00Z' });
     const k = await key();
-    toolchains.set(`toolchain-tool-${k}.tar.zst`, { bytes: toolchainArchive({ pack: 'tool', key: k, commit: 'b'.repeat(40) }), created: '2026-10-01T00:00:00Z' });
+    toolchains.set(`toolchain-tool-cc-${k}.tar.zst`, { bytes: toolchainArchive({ unit: 'tool/cc', key: k, commit: 'b'.repeat(40) }), created: '2026-10-01T00:00:00Z' });
     assetPages.length = 0;
-    const has = await store('toolchain-has', 'tool');
+    const has = await store('toolchain-has', 'tool/cc');
     assert.equal(has.code, 0, has.err);
     assert.deepEqual(assetPages, [1, 2, 3].map((n) => `/repos/test/repo/releases/2/assets?per_page=100&page=${n}`));
     const dir = path.join(root, 'fetched-paged');
-    const fetched = await store('toolchain-fetch', 'tool', dir);
+    const fetched = await store('toolchain-fetch', 'tool/cc', dir);
     assert.equal(fetched.code, 0, fetched.err);
     assert.equal(fs.readFileSync(path.join(dir, 'bin/cc'), 'utf8'), '#!/bin/sh\necho cc\n');
     // A page of exactly 100 is not taken for the last: the next, empty, is.
-    toolchains.delete(`toolchain-other-${(0).toString(16).padStart(40, '0')}.tar.zst`);
+    toolchains.delete(`toolchain-other-main-${(0).toString(16).padStart(40, '0')}.tar.zst`);
     assetPages.length = 0;
-    assert.equal((await store('toolchain-has', 'tool')).code, 0);
+    assert.equal((await store('toolchain-has', 'tool/cc')).code, 0);
     assert.equal(assetPages.length, 3);
     toolchains = new Map();
 });
 
 test('an asset list GitHub refuses to give is a named failure, never a missing toolchain', async () => {
-    const r = await storeWith({ LIGHT_PACKS_REPO: 'test/limited' }, 'toolchain-has', 'tool');
+    const r = await storeWith({ LIGHT_PACKS_REPO: 'test/limited' }, 'toolchain-has', 'tool/cc');
     assert.equal(r.code, 1, r.err);
     assert.match(r.err, /pack-store\.sh: release light-toolchains of test\/limited: API rate limit exceeded/);
     assert.doesNotMatch(r.err, /no toolchain-tool/);
@@ -772,26 +968,26 @@ test('an asset list GitHub refuses to give is a named failure, never a missing t
 
 test('no toolchain for these inputs exits 3', async () => {
     toolchains = new Map();
-    assert.equal((await store('toolchain-has', 'tool')).code, 3);
-    const r = await store('toolchain-fetch', 'tool');
+    assert.equal((await store('toolchain-has', 'tool/cc')).code, 3);
+    const r = await store('toolchain-fetch', 'tool/cc');
     assert.equal(r.code, 3);
-    assert.match(r.err, /no toolchain-tool-[0-9a-f]{40}\.tar\.zst in test\/repo's light-toolchains release/);
+    assert.match(r.err, /no toolchain-tool-cc-[0-9a-f]{40}\.tar\.zst in test\/repo's light-toolchains release/);
     toolchainsExist = false;
-    assert.equal((await store('toolchain-fetch', 'tool')).code, 3);
+    assert.equal((await store('toolchain-fetch', 'tool/cc')).code, 3);
     toolchainsExist = true;
-    assert.equal(exists(`cache/built/tool`), false);
+    assert.equal(exists(`cache/built/tool/cc`), false);
 });
 
 test('a toolchain is fetched for exactly its inputs, read-only, with each file recorded', async () => {
     const k = await key();
     const commitId = git('rev-parse', 'HEAD');
-    toolchains = new Map([[`toolchain-tool-${k}.tar.zst`, { bytes: toolchainArchive({ pack: 'tool', key: k, commit: commitId }), created: '2026-10-01T00:00:00Z' }]]);
-    const has = await store('toolchain-has', 'tool');
+    toolchains = new Map([[`toolchain-tool-cc-${k}.tar.zst`, { bytes: toolchainArchive({ unit: 'tool/cc', key: k, commit: commitId }), created: '2026-10-01T00:00:00Z' }]]);
+    const has = await store('toolchain-has', 'tool/cc');
     assert.equal(has.code, 0, has.err);
-    assert.equal(exists(`cache/built/tool/${k}`), false);
-    const r = await store('toolchain-fetch', 'tool');
+    assert.equal(exists(`cache/built/tool/cc/${k}`), false);
+    const r = await store('toolchain-fetch', 'tool/cc');
     assert.equal(r.code, 0, r.err);
-    const dir = path.join(root, `cache/built/tool/${k}`);
+    const dir = path.join(root, `cache/built/tool/cc/${k}`);
     assert.equal(r.out.trim(), dir);
     assert.equal(fs.readFileSync(path.join(dir, 'bin/cc'), 'utf8'), '#!/bin/sh\necho cc\n');
     assert.equal(fs.statSync(path.join(dir, 'bin/cc')).mode & 0o222, 0);
@@ -801,27 +997,28 @@ test('a toolchain is fetched for exactly its inputs, read-only, with each file r
         manifest.files.map((f) => [f.path, f.size, f.mtime]),
         [['bin/cc', Number(size), mtime]],
     );
-    assert.equal(exists(`cache/built/tool/${k}.part`), false);
+    assert.equal(exists(`cache/built/tool/cc/${k}.part`), false);
     // Fetching again replaces the read-only copy.
-    const again = await store('toolchain-fetch', 'tool');
+    const again = await store('toolchain-fetch', 'tool/cc');
     assert.equal(again.code, 0, again.err);
 });
 
-test('a fetched toolchain is refused when its manifest names other inputs or other files', async () => {
+test('a fetched toolchain is refused when its manifest names another unit, other inputs or other files', async () => {
     const k = await key();
     const commitId = git('rev-parse', 'HEAD');
     const target = path.join(root, 'fetched-other');
     for (const [manifest, why] of [
-        [{ pack: 'tool', key: 'e'.repeat(40), commit: commitId }, /toolchain\.json names the inputs "e{40}", not [0-9a-f]{40}/],
-        [{ pack: 'other', key: k, commit: commitId }, /toolchain\.json is of pack "other", not tool/],
-        [{ pack: 'tool', key: k, commit: 'HEAD' }, /toolchain\.json names no commit/],
-        [{ pack: 'tool', key: k, commit: 'dirty' }, /a dirty toolchain is never stored/],
-        [{ pack: 'tool', key: k, commit: commitId, files: [] }, /bin\/cc is not listed in toolchain\.json/],
-        [{ pack: 'tool', key: k, commit: commitId, files: listing({ 'bin/cc': 'other bytes\n' }).files }, /bin\/cc is \d+ bytes, not the \d+ listed/],
-        [{ pack: 'tool', key: k, commit: commitId, files: listing({ 'bin/cc': '#!/bin/sh\necho CC\n' }).files }, /bin\/cc does not have the sha256 listed/],
+        [{ unit: 'tool/cc', key: 'e'.repeat(40), commit: commitId }, /toolchain\.json names the inputs "e{40}", not [0-9a-f]{40}/],
+        [{ unit: 'other/main', key: k, commit: commitId }, /toolchain\.json is of unit "other\/main", not tool\/cc/],
+        [{ unit: 'tool/cc', key: k, commit: commitId, format: 1 }, /toolchain\.json is of format 1, not 2/],
+        [{ unit: 'tool/cc', key: k, commit: 'HEAD' }, /toolchain\.json names no commit/],
+        [{ unit: 'tool/cc', key: k, commit: 'dirty' }, /a dirty toolchain is never stored/],
+        [{ unit: 'tool/cc', key: k, commit: commitId, files: [] }, /bin\/cc is not listed in toolchain\.json/],
+        [{ unit: 'tool/cc', key: k, commit: commitId, files: listing({ 'bin/cc': 'other bytes\n' }).files }, /bin\/cc is \d+ bytes, not the \d+ listed/],
+        [{ unit: 'tool/cc', key: k, commit: commitId, files: listing({ 'bin/cc': '#!/bin/sh\necho CC\n' }).files }, /bin\/cc does not have the sha256 listed/],
     ]) {
-        toolchains = new Map([[`toolchain-tool-${k}.tar.zst`, { bytes: toolchainArchive(manifest), created: '2026-10-01T00:00:00Z' }]]);
-        const r = await store('toolchain-fetch', 'tool', target);
+        toolchains = new Map([[`toolchain-tool-cc-${k}.tar.zst`, { bytes: toolchainArchive(manifest), created: '2026-10-01T00:00:00Z' }]]);
+        const r = await store('toolchain-fetch', 'tool/cc', target);
         assert.notEqual(r.code, 0);
         assert.match(r.err, why);
         assert.equal(fs.existsSync(target), false);
@@ -833,76 +1030,100 @@ test('a download that does not match its recorded sha256 is refused', async () =
     const k = await key();
     toolchains = new Map([
         [
-            `toolchain-tool-${k}.tar.zst`,
-            { bytes: toolchainArchive({ pack: 'tool', key: k, commit: git('rev-parse', 'HEAD') }), created: '2026-10-01T00:00:00Z', digest: `sha256:${'0'.repeat(64)}` },
+            `toolchain-tool-cc-${k}.tar.zst`,
+            { bytes: toolchainArchive({ unit: 'tool/cc', key: k, commit: git('rev-parse', 'HEAD') }), created: '2026-10-01T00:00:00Z', digest: `sha256:${'0'.repeat(64)}` },
         ],
     ]);
     const target = path.join(root, 'fetched-tampered');
-    const r = await store('toolchain-fetch', 'tool', target);
+    const r = await store('toolchain-fetch', 'tool/cc', target);
     assert.notEqual(r.code, 0);
     assert.match(r.err, /sha256 mismatch/);
     assert.equal(fs.existsSync(target), false);
 });
 
-test('asking for any toolchain fetches the newest and says which', async () => {
+test('asking for any toolchain fetches the newest of that unit and says which', async () => {
     const [older, newer, current] = ['1', '2', await key()].map((c) => (c.length === 40 ? c : c.repeat(40)));
     const commitId = git('rev-parse', 'HEAD');
     toolchains = new Map([
-        [`toolchain-tool-${older}.tar.zst`, { bytes: toolchainArchive({ pack: 'tool', key: older, commit: commitId }, { 'which': 'older' }), created: '2026-10-01T00:00:00Z' }],
-        [`toolchain-tool-${newer}.tar.zst`, { bytes: toolchainArchive({ pack: 'tool', key: newer, commit: commitId }, { 'which': 'newer' }), created: '2026-10-05T00:00:00Z' }],
-        [`toolchain-other-${'3'.repeat(40)}.tar.zst`, { bytes: toolchainArchive({ pack: 'other', key: '3'.repeat(40), commit: commitId }), created: '2026-10-09T00:00:00Z' }],
+        [`toolchain-tool-cc-${older}.tar.zst`, { bytes: toolchainArchive({ unit: 'tool/cc', key: older, commit: commitId }, { 'which': 'older' }), created: '2026-10-01T00:00:00Z' }],
+        [`toolchain-tool-cc-${newer}.tar.zst`, { bytes: toolchainArchive({ unit: 'tool/cc', key: newer, commit: commitId }, { 'which': 'newer' }), created: '2026-10-05T00:00:00Z' }],
+        [`toolchain-other-main-${'3'.repeat(40)}.tar.zst`, { bytes: toolchainArchive({ unit: 'other/main', key: '3'.repeat(40), commit: commitId }), created: '2026-10-09T00:00:00Z' }],
     ]);
-    assert.equal((await store('toolchain-fetch', 'tool')).code, 3, `no ${current} yet`);
+    assert.equal((await store('toolchain-fetch', 'tool/cc')).code, 3, `no ${current} yet`);
     const target = path.join(root, 'fetched-any');
-    const r = await store('toolchain-fetch', 'tool', '--any', target);
+    const r = await store('toolchain-fetch', 'tool/cc', '--any', target);
     assert.equal(r.code, 0, r.err);
     assert.match(r.err, new RegExp(`taking the newest toolchain, ${newer}`));
     assert.equal(fs.readFileSync(path.join(target, 'which'), 'utf8'), 'newer');
 
     // The manifest must still be the one its name says.
-    toolchains.set(`toolchain-tool-${'4'.repeat(40)}.tar.zst`, {
-        bytes: toolchainArchive({ pack: 'tool', key: newer, commit: commitId }),
+    toolchains.set(`toolchain-tool-cc-${'4'.repeat(40)}.tar.zst`, {
+        bytes: toolchainArchive({ unit: 'tool/cc', key: newer, commit: commitId }),
         created: '2026-10-07T00:00:00Z',
     });
-    const wrong = await store('toolchain-fetch', 'tool', '--any', path.join(root, 'fetched-any-wrong'));
+    const wrong = await store('toolchain-fetch', 'tool/cc', '--any', path.join(root, 'fetched-any-wrong'));
     assert.notEqual(wrong.code, 0);
     assert.match(wrong.err, /names the inputs/);
 });
 
-test('a toolchain built from uncommitted inputs or a changed setting is never published', async () => {
+test("a unit's archive from the same run is taken only when its name and manifest are this unit's inputs", async () => {
+    const k = await key();
+    const out = fs.mkdtempSync(path.join(root, 'out-'));
+    const archived = await store('toolchain-archive', 'tool/cc', await builtToolchain(), out);
+    assert.equal(archived.code, 0, archived.err);
+    const file = path.join(out, `toolchain-tool-cc-${k}.tar.zst`);
+    assert.equal(archived.out.trim(), file);
+    const target = path.join(root, 'fetched-unpacked');
+    const r = await store('toolchain-unpack', 'tool/cc', file, target);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out.trim(), target);
+    assert.equal(fs.statSync(path.join(target, 'bin/cc')).mode & 0o222, 0);
+    // Another unit's name, or another key's, is refused before it is read.
+    const renamed = path.join(out, `toolchain-tool-cc-${'e'.repeat(40)}.tar.zst`);
+    fs.copyFileSync(file, renamed);
+    const wrong = await store('toolchain-unpack', 'tool/cc', renamed, path.join(root, 'fetched-renamed'));
+    assert.notEqual(wrong.code, 0);
+    assert.match(wrong.err, /is not toolchain-tool-cc-[0-9a-f]{40}\.tar\.zst, the toolchain of tool\/cc's inputs here/);
+    assert.equal((await store('toolchain-unpack', 'other/main', file)).code, 1);
+});
+
+test('a toolchain built from uncommitted inputs or a changed setting is never published or handed on', async () => {
     toolchains = new Map();
     ghCalls.length = 0;
     const built = await builtToolchain();
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 6; }\n');
-    const dirty = await store('toolchain-publish', 'tool', built);
-    assert.notEqual(dirty.code, 0);
-    assert.match(dirty.err, /not publishing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/src\/compiler\.c/);
+    for (const args of [['toolchain-publish', 'tool/cc', built], ['toolchain-archive', 'tool/cc', built, path.join(root, 'out-dirty')]]) {
+        const dirty = await store(...args);
+        assert.notEqual(dirty.code, 0);
+        assert.match(dirty.err, /not storing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/src\/compiler\.c/);
+    }
+    assert.equal(exists('out-dirty'), false);
     clean();
 
-    const setting = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool', built);
+    const setting = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool/cc', built);
     assert.notEqual(setting.code, 0);
     assert.match(setting.err, /toolchain\.json names the inputs "[0-9a-f]{40}", not [0-9a-f]{40}/);
     assert.match(setting.err, /is not, file for file, a toolchain of HEAD's inputs and settings \([0-9a-f]{40}\)/);
 
-    const otherPack = await store('toolchain-publish', 'tool', await builtToolchain({ pack: 'other' }));
-    assert.notEqual(otherPack.code, 0);
-    assert.match(otherPack.err, /toolchain\.json is of pack "other", not tool/);
+    const otherUnit = await store('toolchain-publish', 'tool/cc', await builtToolchain({ unit: 'other/main' }));
+    assert.notEqual(otherUnit.code, 0);
+    assert.match(otherUnit.err, /toolchain\.json is of unit "other\/main", not tool\/cc/);
 
     const changed = await builtToolchain();
     fs.appendFileSync(path.join(changed, 'bin/cc'), '# changed after the build\n');
-    const tampered = await store('toolchain-publish', 'tool', changed);
+    const tampered = await store('toolchain-publish', 'tool/cc', changed);
     assert.notEqual(tampered.code, 0);
     assert.match(tampered.err, /bin\/cc changed size/);
 
-    // An uncommitted toolchain.env leaves the key as it is, yet it decides
-    // what reached the build: OPT, made a source setting, passes unkeyed.
-    fs.writeFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'OPT source  # no longer another compiler\n');
-    const reclassified = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool', built);
+    // An uncommitted env leaves the key as it is, yet it decides what
+    // reached the build: OPT, made a source setting, passes unkeyed.
+    fs.writeFileSync(path.join(root, 'light/packs/tool/toolchains/cc/env'), 'OPT source  # no longer another compiler\n');
+    const reclassified = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool/cc', built);
     assert.notEqual(reclassified.code, 0);
-    assert.match(reclassified.err, /not publishing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/toolchain\.env/);
+    assert.match(reclassified.err, /not storing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/toolchains\/cc\/env/);
     clean();
 
-    const elsewhere = await store('toolchain-publish', 'tool', await builtToolchain({ commit: 'a'.repeat(40) }));
+    const elsewhere = await store('toolchain-publish', 'tool/cc', await builtToolchain({ commit: 'a'.repeat(40) }));
     assert.notEqual(elsewhere.code, 0);
     assert.match(elsewhere.err, /was built at a{40}, not at HEAD/);
 
@@ -914,11 +1135,11 @@ test('publishing a toolchain never removes another, and a full release is refuse
     toolchains = new Map();
     toolchainsExist = false;
     ghCalls.length = 0;
-    const first = await store('toolchain-publish', 'tool', await builtToolchain());
+    const first = await store('toolchain-publish', 'tool/cc', await builtToolchain());
     assert.equal(first.code, 0, first.err);
     const create = ghCalls.find(([, verb]) => verb === 'create');
     assert.ok(create?.includes('--prerelease') && create.includes('--latest=false'), JSON.stringify(create));
-    const name = `toolchain-tool-${await key()}.tar.zst`;
+    const name = `toolchain-tool-cc-${await key()}.tar.zst`;
     assert.ok(toolchains.has(name));
     // What was stored is the toolchain, manifest included.
     const out = fs.mkdtempSync(path.join(root, 'out-'));
@@ -926,27 +1147,27 @@ test('publishing a toolchain never removes another, and a full release is refuse
     execFileSync('tar', ['--zstd', '-xf', path.join(out, 'a.tar.zst'), '-C', out]);
     assert.equal(JSON.parse(fs.readFileSync(path.join(out, 'toolchain.json'), 'utf8')).key, await key());
 
-    const again = await store('toolchain-publish', 'tool', await builtToolchain());
+    const again = await store('toolchain-publish', 'tool/cc', await builtToolchain());
     assert.equal(again.code, 0, again.err);
     assert.match(again.out, /is in the store already/);
     assert.equal(ghCalls.filter(([, verb]) => verb === 'upload').length, 1);
 
     // Nearly full: a warning naming how to evict, and nothing evicted.
-    for (let i = 0; toolchains.size < 850; i++) toolchains.set(`toolchain-other-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-01T00:00:00Z' });
+    for (let i = 0; toolchains.size < 850; i++) toolchains.set(`toolchain-other-main-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-01T00:00:00Z' });
     const kept = new Set(toolchains.keys());
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 7; }\n');
     commit('compiler 7');
-    const warned = await store('toolchain-publish', 'tool', await builtToolchain());
+    const warned = await store('toolchain-publish', 'tool/cc', await builtToolchain());
     assert.equal(warned.code, 0, warned.err);
     assert.match(warned.err, /holds 850 of at most 1000 assets; evict toolchains no branch needs with gh release delete-asset light-toolchains <asset>/);
     for (const old of kept) assert.ok(toolchains.has(old), old);
     assert.equal(toolchains.size, 851);
 
     // Full: refused by name, still nothing evicted.
-    for (let i = 1000; toolchains.size < 1000; i++) toolchains.set(`toolchain-other-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-02T00:00:00Z' });
+    for (let i = 1000; toolchains.size < 1000; i++) toolchains.set(`toolchain-other-main-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-02T00:00:00Z' });
     put('light/packs/tool/src/compiler.c', 'int main(void) { return 8; }\n');
     commit('compiler 8');
-    const full = await store('toolchain-publish', 'tool', await builtToolchain());
+    const full = await store('toolchain-publish', 'tool/cc', await builtToolchain());
     assert.notEqual(full.code, 0);
     assert.match(full.err, /holds 1000 assets, GitHub's cap of 1000; nothing is evicted automatically: remove toolchains no branch needs with gh release delete-asset light-toolchains <asset>/);
     assert.equal(toolchains.size, 1000);

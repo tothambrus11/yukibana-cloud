@@ -1,35 +1,37 @@
 # shellcheck shell=bash
-# This file is the build environment of every toolchain. Its blob is a line
-# of every toolchain's key, so changing it, a comment included, rebuilds all
+# This file is the build environment of every toolchain unit. Its blob is a
+# line of every unit's key, so changing it, a comment included, rebuilds all
 # of them. Keep in it only what reaches a toolchain.sh.
 #
-# What reaches a split pack's toolchain build: the variables passed through
-# from the caller (fixed, transport and declared knobs), the one value
-# derived from them for the JVM, and the stage the build runs in. These shape
-# what a build produces, and nothing else records them, so they are keyed as
-# a file: an honest rebuild when the environment changes, never a toolchain
-# built in one environment served for another.
+# What reaches a unit's toolchain build: the variables passed through from
+# the caller (fixed, transport and declared knobs), the directories of the
+# units it declares it needs (DEP_<UNIT>), the one value derived from the
+# transport variables for the JVM, and the stage the build runs in. These
+# shape what a build produces, and nothing else records them, so they are
+# keyed as a file: an honest rebuild when the environment changes, never a
+# toolchain built in one environment served for another.
 #
-# What a toolchain is built from (its inputs, its knobs, the key's lines) is
-# not here but in toolchain-key.sh, which is not keyed by blob: everything
-# it computes is already in the key as resolved lines, so a comment or a
-# refactor there rebuilds nothing, and a deliberate change of what it
-# computes bumps the key's format tag. Helpers shared by the store scripts
-# are in pack-lib.sh, which is part of no key. A helper added here would
-# rebuild every toolchain, cpp's hours-long compilers included: put it in
-# one of those two instead unless a build reads it.
+# What a unit is built from (its inputs, its needs, its knobs, the key's
+# lines) is not here but in toolchain-key.sh, which is not keyed by blob:
+# everything it computes is already in the key as resolved lines, so a
+# comment or a refactor there rebuilds nothing, and a deliberate change of
+# what it computes bumps the key's format tag. Helpers shared by the store
+# scripts are in pack-lib.sh, which is part of no key. A helper added here
+# would rebuild every toolchain, cpp's hours-long compilers included: put it
+# in one of those two instead unless a build reads it.
 #
 # Sourced, never run: by toolchain-key.sh (and so by pack-store.sh and
 # pack-toolchain.sh), and by a toolchain.sh from its staged copy for
 # toolchain_jvm_proxy_opts, which therefore needs nothing but this file.
-# toolchain_env_args and toolchain_stage call toolchain_knobs and
-# toolchain_specs, so they need toolchain-key.sh sourced as well; a staged
-# toolchain.sh calls neither. This file sets no variable but the two arrays
-# below, so it cannot clash with a toolchain's own scripts.
+# toolchain_env_args and toolchain_stage call toolchain_knobs,
+# toolchain_needs and toolchain_specs, so they need toolchain-key.sh sourced
+# as well; a staged toolchain.sh calls neither. This file sets no variable
+# but the two arrays below, so it cannot clash with a toolchain's own
+# scripts.
 #
 # Functions return non-zero after naming what is wrong on stderr; with
-# `set -e` and `shopt -s inherit_errexit`, `x=$(toolchain_env_args p)` stops
-# the caller there.
+# `set -e` and `shopt -s inherit_errexit`, `x=$(toolchain_env_args p/u s)`
+# stops the caller there.
 
 # The variables of the caller's environment that reach every toolchain
 # build, by name when they are set, and the ones set to a fixed value
@@ -57,29 +59,53 @@ TOOLCHAIN_ENV_TRANSPORT=(
   npm_config_https_proxy npm_config_proxy npm_config_cafile
 )
 
-# Whether $1 names a fixed or transport variable (one a knob may not be).
+# Whether $1 names a variable every build is given, which a knob may not
+# be: a fixed or transport variable, or any DEP_ name (a dependency's).
 toolchain_env_reserved() {
   local v
+  case "$1" in DEP_*) return 0 ;; esac
   for v in "${TOOLCHAIN_ENV_FIXED[@]}" "${TOOLCHAIN_ENV_TRANSPORT[@]}"; do
     [ "${v%%=*}" != "$1" ] || return 0
   done
   return 1
 }
 
-# Prints the arguments that, after `env -i`, give pack $1's toolchain.sh its
-# whole environment, one NAME=value per line: the fixed variables (those set
-# here, and LANG=C.UTF-8), the transport variables that are set, and every
-# declared knob that is set, source and variant alike. Nothing else reaches a
-# build: a variable the pack does not declare is dropped, so it can neither
-# change an output behind the key's back nor leak into a log. OUT is among
-# the fixed variables, so the caller adds its own OUT=... after these.
+# Prints the variable that gives a build the directory of the unit $1 it
+# needs: DEP_ and the unit's own name, upper-cased, `-` made `_`
+# (cpp/compilers is DEP_COMPILERS, haskell/ghc-wasm DEP_GHC_WASM). The pack
+# is not in it, so a toolchain.sh reads the same name whichever pack
+# provides it; two needed units of the same name are refused by
+# toolchain_env_args instead.
+toolchain_dep_var() {
+  local unit="${1#*/}"
+  unit="${unit^^}"
+  printf 'DEP_%s\n' "${unit//-/_}"
+}
+
+# Prints where in stage $1 the build finds the unit $2 it needs:
+# <stage>/deps/<pack>/<unit>, the value of its DEP_ variable.
+toolchain_dep_dir() {
+  printf '%s/deps/%s\n' "$1" "$2"
+}
+
+# Prints the arguments that, after `env -i`, give unit $1's toolchain.sh,
+# staged in $2, its whole environment, one NAME=value per line: the fixed
+# variables (those set here, and LANG=C.UTF-8), the transport variables that
+# are set, every declared knob that is set, source and variant alike, and
+# DEP_<UNIT> for each unit it needs (toolchain_dep_var, toolchain_dep_dir),
+# where toolchain_stage puts that unit's files. Nothing else reaches a
+# build: a variable the unit does not declare is dropped, so it can neither
+# change an output behind the key's back nor leak into a log, and a unit it
+# does not need has no variable at all. OUT is among the fixed variables,
+# so the caller adds its own OUT=... after these.
 #
 # Read with `mapfile -t`; a value holding a newline cannot be one line and is
-# refused (returns 1), as is a malformed toolchain.env.
+# refused (returns 1), as are a malformed env or needs file and two needed
+# units that would share one DEP_ variable.
 toolchain_env_args() {
-  local pack="${1:?pack}" out v name
-  local -a names=()
-  out="$(toolchain_knobs "$pack")" || return 1
+  local id="${1:?unit}" stage="${2:?stage directory}" out v name dep seen=" "
+  local -a names=() deps=()
+  out="$(toolchain_knobs "$id")" || return 1
   for v in "${TOOLCHAIN_ENV_FIXED[@]}"; do
     case "$v" in *=*) printf '%s\n' "$v"; continue ;; esac
     names+=("$v")
@@ -94,6 +120,18 @@ toolchain_env_args() {
       *$'\n'*) echo "toolchain-build-env.sh: $name holds a newline; it cannot reach a toolchain build" >&2; return 1 ;;
     esac
     printf '%s=%s\n' "$name" "${!name}"
+  done
+  out="$(toolchain_needs "$id")" || return 1
+  [ -z "$out" ] || mapfile -t deps <<<"$out"
+  for dep in "${deps[@]}"; do
+    name="$(toolchain_dep_var "$dep")"
+    if [[ "$seen" == *" $name="* ]]; then
+      v="${seen#*" $name="}"
+      echo "toolchain-build-env.sh: $id needs ${v%% *} and $dep, which would both be $name; a build tells its dependencies apart by unit name" >&2
+      return 1
+    fi
+    seen+="$name=$dep "
+    printf '%s=%s\n' "$name" "$(toolchain_dep_dir "$stage" "$dep")"
   done
 }
 
@@ -188,18 +226,51 @@ toolchain_jvm_proxy_opts() {
   printf '%s\n' "$opts"
 }
 
-# Copies into directory $2 (made if missing) exactly the files of pack $1's
-# toolchain: those `toolchain_specs` names, untracked ones included and
-# ignored ones not, at their paths from the repository root, with their
-# modes and symlinks. A toolchain.sh runs in such a copy, so a file it reads
-# that is no input (the glue, build.sh) is simply not there and the build
+# Copies into directory $2 (made if missing) exactly the files of unit $1:
+# those `toolchain_specs` names, untracked ones included and ignored ones
+# not, at their paths from the repository root, with their modes and
+# symlinks. A toolchain.sh runs in such a copy, so a file it reads that is no
+# input (the glue, a sibling unit's files) is simply not there and the build
 # fails, rather than the key missing an input. A file deleted in the
-# worktree is no longer an input and is not copied. The repository is the one
-# TOOLCHAIN_ROOT names (toolchain-key.sh).
+# worktree is no longer an input and is not copied. The repository is the
+# one TOOLCHAIN_ROOT names (toolchain-key.sh).
+#
+# Then each unit it needs goes where its DEP_ variable says
+# (toolchain_dep_dir), from the arguments after $2, each <pack>/<unit>=<dir>
+# of a toolchain directory: one argument for every unit `needs` lists and
+# none for any other, or it returns 1 naming the unit. Its files are hard
+# links to the toolchain's own, which are read-only, or copies where links
+# are impossible, and every directory of the copy is made read-only, so the
+# build reads what it needs and can write nothing into it.
 toolchain_stage() {
-  local pack="${1:?pack}" dest="${2:?stage directory}" out
-  local -a specs=()
-  out="$(toolchain_specs "$pack")" || return 1
+  local id="${1:?unit}" dest="${2:?stage directory}" out arg dep dir to
+  local -a specs=() deps=()
+  local -A given=()
+  shift 2
+  for arg in "$@"; do
+    dep="${arg%%=*}"
+    dir="${arg#*=}"
+    if [ "$dep" = "$arg" ] || [ ! -d "$dir" ]; then
+      echo "toolchain-build-env.sh: '$arg' is not <pack>/<unit>=<toolchain directory>" >&2
+      return 1
+    fi
+    given[$dep]="$dir"
+  done
+  out="$(toolchain_needs "$id")" || return 1
+  [ -z "$out" ] || mapfile -t deps <<<"$out"
+  for dep in "${deps[@]}"; do
+    if [ -z "${given[$dep]+x}" ]; then
+      echo "toolchain-build-env.sh: $id needs $dep, and no toolchain of it was given to stage" >&2
+      return 1
+    fi
+  done
+  for dep in "${!given[@]}"; do
+    if [[ " ${deps[*]} " != *" $dep "* ]]; then
+      echo "toolchain-build-env.sh: $id does not need $dep; a unit sees only what its needs file declares" >&2
+      return 1
+    fi
+  done
+  out="$(toolchain_specs "$id")" || return 1
   mapfile -t specs <<<"$out"
   mkdir -p "$dest" || return 1
   (
@@ -210,5 +281,14 @@ toolchain_stage() {
       done |
       tar -C "$TOOLCHAIN_ROOT" --null --no-recursion -T - -cf - |
       tar -C "$dest" -xf -
-  ) || { echo "toolchain-build-env.sh: could not stage the toolchain of $pack in $dest" >&2; return 1; }
+  ) || { echo "toolchain-build-env.sh: could not stage the toolchain unit $id in $dest" >&2; return 1; }
+  for dep in "${deps[@]}"; do
+    to="$(toolchain_dep_dir "$dest" "$dep")"
+    mkdir -p "$(dirname "$to")" || return 1
+    if ! cp -al "${given[$dep]}" "$to" 2>/dev/null; then
+      rm -rf "$to"
+      cp -a "${given[$dep]}" "$to" || { echo "toolchain-build-env.sh: could not stage $dep for $id" >&2; return 1; }
+    fi
+    find "$to" -type d -exec chmod a-w {} + || return 1
+  done
 }

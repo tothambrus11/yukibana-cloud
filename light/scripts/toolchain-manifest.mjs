@@ -1,14 +1,17 @@
-// The manifest of a toolchain directory, toolchain.json, and the sidecar of a
-// pack assembled from one: the one place their format is written and read.
-// pack-toolchain.sh writes a manifest when it builds a toolchain and checks
-// it before reusing or assembling one; pack-store.sh adopts the manifest of a
-// toolchain it fetched. Part of assembly, not of any toolchain's key.
+// The manifest of a toolchain unit's directory, toolchain.json, and the
+// sidecar of a pack assembled from its units: the one place their format is
+// written and read. pack-toolchain.sh writes a manifest when it builds a
+// unit and checks it before reusing or assembling one; pack-store.sh adopts
+// the manifest of a unit it fetched. Part of assembly, not of any key.
 //
-//   node toolchain-manifest.mjs write <dir> <pack> <key> <commit> <knobs-json>
-//   node toolchain-manifest.mjs check <dir> <pack> <key|->     prints "<key> <commit>"
-//   node toolchain-manifest.mjs adopt <dir> <pack> <key>
-//   node toolchain-manifest.mjs linked <dir> <pack> <out> <sidecar> <0|1>
-//   node toolchain-manifest.mjs sidecar <file>                 prints "<pack> <key> <commit> <0|1>"
+//   node toolchain-manifest.mjs write <dir> <unit> <key> <commit> <knobs-json> <needs-json>
+//   node toolchain-manifest.mjs check <dir> <unit> <key|->     prints "<key> <commit>"
+//   node toolchain-manifest.mjs adopt <dir> <unit> <key>
+//   node toolchain-manifest.mjs overlap <dir>...               refuses two units writing one path
+//   node toolchain-manifest.mjs linked <pack> <out> <sidecar> <0|1> <dir>...
+//   node toolchain-manifest.mjs sidecar <file>                 prints "<pack> <0|1>", then "<unit> <key> <commit>" per unit
+//
+// A unit is named <pack>/<unit> (cpp/compilers), as everywhere else.
 //
 // Every failure is one line on stderr naming the file at fault, and exit 1.
 import { createHash } from 'node:crypto';
@@ -34,17 +37,22 @@ import { pathToFileURL } from 'node:url';
  */
 
 /**
- * toolchain.json, the manifest at the root of every toolchain directory.
+ * toolchain.json, the manifest at the root of every toolchain unit's
+ * directory.
  *
- * `format` is 1. `pack` and `key` name the toolchain (pack-store.sh
- * toolchain-key). `commit` is the 40-hex commit it was built at, or 'dirty'
- * when it was built from uncommitted inputs or with a set variant knob: such
- * a toolchain is used locally and never published. `knobs` maps each variant
- * knob that was set to its value. `built` is an ISO 8601 time. `files` and
- * `links` list everything in the directory but toolchain.json itself,
- * sorted by path; a fetch rewrites each `mtime` to the local copy's, as an
- * archive keeps whole seconds at best.
- * @typedef {{ format: 1, pack: string, key: string, commit: string, knobs: Record<string, string>, built: string, files: ToolchainFile[], links: ToolchainLink[] }} Manifest
+ * `format` is 2 (1 named a whole pack, `pack`, before toolchains were
+ * units). `unit` and `key` name the toolchain (pack-store.sh toolchain-key
+ * <unit>). `commit` is the 40-hex commit it was built at, or 'dirty' when it
+ * was built from uncommitted inputs, with a set variant knob, or over a
+ * dirty unit it needs: such a toolchain is used locally and never
+ * published. `knobs` maps each variant knob that was set to its value.
+ * `needs` maps each unit it was built with to that unit's key, as a record
+ * of what it was built over; the key already covers them, so nothing checks
+ * it. `built` is an ISO 8601 time. `files` and `links` list everything in
+ * the directory but toolchain.json itself, sorted by path; a fetch rewrites
+ * each `mtime` to the local copy's, as an archive keeps whole seconds at
+ * best.
+ * @typedef {{ format: 2, unit: string, key: string, commit: string, knobs: Record<string, string>, needs: Record<string, string>, built: string, files: ToolchainFile[], links: ToolchainLink[] }} Manifest
  */
 
 const MANIFEST = 'toolchain.json';
@@ -111,12 +119,12 @@ function sha256Of(/** @type {string} */ file) {
 }
 
 /**
- * Reads and shape-checks `dir`/toolchain.json against `pack` and, unless it
- * is '-', `key`. A manifest of another format, pack or key is refused by
+ * Reads and shape-checks `dir`/toolchain.json against `unit` and, unless it
+ * is '-', `key`. A manifest of another format, unit or key is refused by
  * name: it describes some other toolchain.
  * @returns {Manifest}
  */
-export function readManifest(/** @type {string} */ dir, /** @type {string} */ pack, /** @type {string} */ key) {
+export function readManifest(/** @type {string} */ dir, /** @type {string} */ unit, /** @type {string} */ key) {
     /** @type {unknown} */
     let m;
     try {
@@ -126,11 +134,11 @@ export function readManifest(/** @type {string} */ dir, /** @type {string} */ pa
     }
     if (m === null || typeof m !== 'object' || Array.isArray(m)) refuse(`${MANIFEST} is not an object`);
     const o = /** @type {Record<string, unknown>} */ (m);
-    if (o.pack !== pack) refuse(`${MANIFEST} is of pack ${JSON.stringify(o.pack)}, not ${pack}`);
+    if (o.format !== 2) refuse(`${MANIFEST} is of format ${JSON.stringify(o.format)}, not 2`);
+    if (o.unit !== unit) refuse(`${MANIFEST} is of unit ${JSON.stringify(o.unit)}, not ${unit}`);
     if (key !== '-' && o.key !== key) refuse(`${MANIFEST} names the inputs ${JSON.stringify(o.key)}, not ${key}`);
     if (typeof o.key !== 'string' || !/^[0-9a-f]{40}$/.test(o.key)) refuse(`${MANIFEST} names no key (${JSON.stringify(o.key)})`);
     if (typeof o.commit !== 'string' || !/^([0-9a-f]{40}|dirty)$/.test(o.commit)) refuse(`${MANIFEST} names no commit (${JSON.stringify(o.commit)})`);
-    if (o.format !== 1) refuse(`${MANIFEST} is of format ${JSON.stringify(o.format)}, not 1`);
     if (!Array.isArray(o.files) || !Array.isArray(o.links)) refuse(`${MANIFEST} lists no files and links`);
     for (const f of o.files) {
         if (typeof f?.path !== 'string' || !Number.isSafeInteger(f.size) || typeof f.sha256 !== 'string' || typeof f.mtime !== 'string') {
@@ -170,21 +178,36 @@ function compare(m, found, same) {
     for (const p of links.keys()) refuse(`${p} is not listed in ${MANIFEST}`);
 }
 
+/**
+ * The unit `dir`/toolchain.json names, unchecked, for the commands that take
+ * whichever units they are given; readManifest then checks the rest.
+ */
+function readUnit(/** @type {string} */ dir) {
+    try {
+        const u = JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8'))?.unit;
+        if (typeof u === 'string') return u;
+    } catch {
+        // Named below, by readManifest.
+    }
+    return '?';
+}
+
 /** `size` and `mtime` agree, the cheap check that a file was not touched. */
 const untouched = (/** @type {ToolchainFile} */ f, /** @type {Omit<ToolchainFile, 'sha256'>} */ h) =>
     f.size !== h.size ? `changed size (${f.size} bytes listed, ${h.size} found)` : f.mtime !== h.mtime ? `changed (modified at ${h.mtime}, listed at ${f.mtime})` : null;
 
 const commands = {
     /** Writes the manifest of the freshly built toolchain `dir`. */
-    write(/** @type {string[]} */ [dir, pack, key, commit, knobs]) {
+    write(/** @type {string[]} */ [dir, unit, key, commit, knobs, needs]) {
         const found = walk(dir);
         /** @type {Manifest} */
         const m = {
-            format: 1,
-            pack,
+            format: 2,
+            unit,
             key,
             commit,
             knobs: JSON.parse(knobs),
+            needs: JSON.parse(needs),
             built: new Date().toISOString(),
             files: found.files.map((f) => ({ path: f.path, size: f.size, sha256: sha256Of(path.join(dir, f.path)), mtime: f.mtime })),
             links: found.links,
@@ -192,14 +215,14 @@ const commands = {
         fs.writeFileSync(path.join(dir, MANIFEST), `${JSON.stringify(m, null, 1)}\n`);
     },
     /** Whether `dir` is still exactly the toolchain its manifest lists, by size and mtime; prints its key and commit. */
-    check(/** @type {string[]} */ [dir, pack, key]) {
-        const m = readManifest(dir, pack, key);
+    check(/** @type {string[]} */ [dir, unit, key]) {
+        const m = readManifest(dir, unit, key);
         compare(m, walk(dir), untouched);
         console.log(`${m.key} ${m.commit}`);
     },
     /** Checks a fetched toolchain's every file by size and sha256, then records the local mtimes. */
-    adopt(/** @type {string[]} */ [dir, pack, key]) {
-        const m = readManifest(dir, pack, key);
+    adopt(/** @type {string[]} */ [dir, unit, key]) {
+        const m = readManifest(dir, unit, key);
         if (m.commit === 'dirty') refuse(`${MANIFEST} names no commit ("dirty"): a dirty toolchain is never stored`);
         const found = walk(dir);
         compare(m, found, (f, h) =>
@@ -209,29 +232,62 @@ const commands = {
         for (const f of m.files) f.mtime = /** @type {string} */ (local.get(f.path));
         fs.writeFileSync(path.join(dir, MANIFEST), `${JSON.stringify(m, null, 1)}\n`);
     },
-    /** Checks that assembly left every toolchain file in `out` as it is in `dir`, and writes the sidecar. */
-    linked(/** @type {string[]} */ [dir, pack, out, sidecar, other]) {
-        const m = readManifest(dir, pack, '-');
-        if (fs.existsSync(path.join(out, MANIFEST))) refuse(`the assembled pack holds a ${MANIFEST}; it is the toolchain's, not the pack's`);
-        /** @type {ToolchainFile[]} */
-        const files = [];
-        for (const f of m.files) {
-            let s;
-            try {
-                s = fs.lstatSync(path.join(out, f.path), { bigint: true });
-            } catch {
-                refuse(`${f.path}, a file of the toolchain, is missing from the assembled pack (did glue.sh remove it?)`);
+    /**
+     * Refuses units whose toolchains `dirs` would write one path of the
+     * assembled pack twice: the same file or link in two, or a file in one
+     * where another has a directory. Assembly links every unit into one
+     * tree, so either would leave one unit's file silently in place of
+     * another's.
+     */
+    overlap(/** @type {string[]} */ dirs) {
+        /** @type {Map<string, string>} */
+        const owner = new Map();
+        /** @type {Map<string, string>} */
+        const dirOwner = new Map();
+        for (const dir of dirs) {
+            const m = readManifest(dir, readUnit(dir), '-');
+            for (const p of [...m.files, ...m.links].map((f) => f.path)) {
+                const other = owner.get(p);
+                if (other) refuse(`${p} is written by both ${other} and ${m.unit}; units of one pack may not write the same path`);
+                owner.set(p, m.unit);
+                const parts = p.split('/');
+                for (let i = 1; i < parts.length; i++) {
+                    const d = parts.slice(0, i).join('/');
+                    if (!dirOwner.has(d)) dirOwner.set(d, m.unit);
+                }
             }
-            if (!s.isFile()) refuse(`${f.path}, a file of the toolchain, is no longer a file in the assembled pack`);
-            const why = untouched(f, { path: f.path, size: Number(s.size), mtime: mtimeOf(s) });
-            if (why) refuse(`${f.path}, a file of the toolchain, ${why} in the assembled pack: glue.sh must not change it`);
-            files.push({ ...f, mtime: mtimeOf(s) });
         }
-        const record = { format: 1, pack: m.pack, key: m.key, commit: m.commit, otherToolchain: other === '1', toolchain: path.resolve(dir), files };
+        for (const [p, unit] of owner) {
+            const d = dirOwner.get(p);
+            if (d) refuse(`${p} is a file of ${unit} and a directory of ${d}; units of one pack may not write the same path`);
+        }
+    },
+    /** Checks that assembly left every file of the units `dirs` in `out` as it is in its toolchain, and writes the sidecar. */
+    linked(/** @type {string[]} */ [pack, out, sidecar, other, ...dirs]) {
+        if (fs.existsSync(path.join(out, MANIFEST))) refuse(`the assembled pack holds a ${MANIFEST}; it is a toolchain's, not the pack's`);
+        const units = dirs.map((dir) => {
+            const m = readManifest(dir, readUnit(dir), '-');
+            /** @type {ToolchainFile[]} */
+            const files = [];
+            for (const f of m.files) {
+                let s;
+                try {
+                    s = fs.lstatSync(path.join(out, f.path), { bigint: true });
+                } catch {
+                    refuse(`${f.path}, a file of ${m.unit}, is missing from the assembled pack (did glue.sh remove it?)`);
+                }
+                if (!s.isFile()) refuse(`${f.path}, a file of ${m.unit}, is no longer a file in the assembled pack`);
+                const why = untouched(f, { path: f.path, size: Number(s.size), mtime: mtimeOf(s) });
+                if (why) refuse(`${f.path}, a file of ${m.unit}, ${why} in the assembled pack: glue.sh must not change it`);
+                files.push({ ...f, mtime: mtimeOf(s) });
+            }
+            return { unit: m.unit, key: m.key, commit: m.commit, toolchain: path.resolve(dir), files };
+        });
+        const record = { format: 2, pack, otherToolchain: other === '1', units };
         fs.mkdirSync(path.dirname(sidecar), { recursive: true });
         fs.writeFileSync(sidecar, `${JSON.stringify(record, null, 1)}\n`);
     },
-    /** Prints a sidecar's pack, key, commit and whether another commit's toolchain was allowed. */
+    /** Prints a sidecar's pack and whether another commit's toolchain was allowed, then each unit's name, key and commit. */
     sidecar(/** @type {string[]} */ [file]) {
         /** @type {unknown} */
         let s;
@@ -241,8 +297,12 @@ const commands = {
             refuse(`${file} cannot be read: ${e instanceof Error ? e.message : String(e)}`);
         }
         const o = /** @type {Record<string, unknown>} */ (s ?? {});
-        if (o.format !== 1 || typeof o.pack !== 'string' || typeof o.key !== 'string' || typeof o.commit !== 'string') refuse(`${file} is not a sidecar of format 1`);
-        console.log(`${o.pack} ${o.key} ${o.commit} ${o.otherToolchain === true ? 1 : 0}`);
+        if (o.format !== 2 || typeof o.pack !== 'string' || !Array.isArray(o.units)) refuse(`${file} is not a sidecar of format 2`);
+        console.log(`${o.pack} ${o.otherToolchain === true ? 1 : 0}`);
+        for (const u of o.units) {
+            if (typeof u?.unit !== 'string' || typeof u.key !== 'string' || typeof u.commit !== 'string') refuse(`${file} has a malformed unit: ${JSON.stringify(u)}`);
+            console.log(`${u.unit} ${u.key} ${u.commit}`);
+        }
     },
 };
 
@@ -250,7 +310,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     const [command, ...args] = process.argv.slice(2);
     const run = commands[/** @type {keyof typeof commands} */ (command)];
     if (!run) {
-        console.error(`toolchain-manifest.mjs: no command ${JSON.stringify(command)} (write, check, adopt, linked, sidecar)`);
+        console.error(`toolchain-manifest.mjs: no command ${JSON.stringify(command)} (write, check, adopt, overlap, linked, sidecar)`);
         process.exit(2);
     }
     try {

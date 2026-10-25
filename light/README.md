@@ -57,36 +57,55 @@ tests is kept as `<pack>-<tree>.tar.zst` on the repository's rolling
 `light-packs` prerelease, where `<tree>` is the git tree id of
 `packs/<pack>` (`scripts/pack-store.sh tree <pack>`).
 
-A split pack (one with `packs/<pack>/toolchain.paths`) is never kept there.
-Its toolchain, the part that takes hours, is kept on the `light-toolchains`
-prerelease as `toolchain-<pack>-<key>.tar.zst`, where `<key>` hashes exactly
-the inputs `toolchain_specs <pack>` in `scripts/toolchain-key.sh` names and
-the output-changing settings of its `toolchain.env` that are set
-(`scripts/pack-store.sh toolchain-key <pack>`), so a glue edit keeps the
-key, and so does a comment in `toolchain.env`, which is no input itself.
-An uncommitted `toolchain.env` still makes the build dirty until it is
-committed, because it decides which settings reach the build.
-`scripts/pack-store.sh toolchain-key-report <pack> <base>` says what
-changed a key. Of the scripts, only `scripts/toolchain-build-env.sh`, what
-reaches a build, is an input of every key, so changing it rebuilds every
-toolchain; `toolchain-key.sh` is pinned by a test instead and changes what
-it computes only with a new format tag, and the shared helpers in
-`scripts/pack-lib.sh` are part of no key.
+A split pack (one with `packs/<pack>/toolchains/`) is never kept there.
+Its toolchain, the part that takes hours, is one or more units, each a
+directory `packs/<pack>/toolchains/<unit>/` named `<pack>/<unit>`: its
+`toolchain.sh` and `pins.sh`, `paths` (the pack files it is also built
+from: its sub-scripts, patches, a shared library), `outputs` (what it must
+produce), `env` (the settings that may reach its build) and `needs` (the
+units it is built with, `<pack>/<unit>` each). Each unit is kept on the
+`light-toolchains` prerelease as `toolchain-<pack>-<unit>-<key>.tar.zst`,
+where `<key>` hashes exactly the inputs `toolchain_specs <pack>/<unit>` in
+`scripts/toolchain-key.sh` names, the keys of the units it needs, and its
+output-changing settings that are set (`scripts/pack-store.sh toolchain-key
+<pack>/<unit>`). A sibling unit's files are never an input: a library pin
+rebuilds its unit alone, a compiler change rebuilds the compilers and the
+units that need them, and a glue edit (the files `glue.paths` names)
+rebuilds nothing. A comment in `env` is no input; an uncommitted `env`
+still makes the build dirty until it is committed, because it decides
+which settings reach the build. `scripts/pack-store.sh toolchain-key-report
+<pack>/<unit> <base>` says what changed a key. Of the scripts, only
+`scripts/toolchain-build-env.sh`, what reaches a build, is an input of every
+key, so changing it rebuilds every toolchain; `toolchain-key.sh` is pinned
+by a test instead and changes what it computes only with a new format tag,
+and the shared helpers in `scripts/pack-lib.sh` are part of no key.
+`packs/contract.test.mjs` names any file of a split pack that no unit and
+no `glue.paths` owns, a pin set outside its unit's `pins.sh`, and a glue
+that runs a compiler. `packs/stub` is a split pack of three units that
+builds in milliseconds, so all of this runs on every change to it.
 
 `scripts/pack-toolchain.sh` is the one way from those inputs to a pack:
-`ensure <pack>` reuses the local toolchain, fetches it from the store, or
-builds it (its `toolchain.sh` run in a copy of only its inputs, under
-`env -i` with only the variables `toolchain-build-env.sh` lets through, and its
-declared `toolchain.outputs` checked), and prints its directory; uncommitted
-inputs or a set output-changing setting are built only with `--build-dirty`
-and never published. `assemble <pack> <dir>` links the read-only toolchain
-into `app/static/packs/<pack>` and runs the pack's `glue.sh` over it, in
-seconds. Its header has the glossary and the pin rule.
+`ensure <pack>/<unit>` reuses the unit's local toolchain, takes it from
+another job of the same CI run (`--from`), fetches it from the store, or
+builds it (after the units it needs; its `toolchain.sh` run in a copy of
+only its inputs with each unit it needs read-only at `$DEP_<UNIT>`, under
+`env -i` with only the variables `toolchain-build-env.sh` lets through, and
+its declared `outputs` checked), and prints its directory; `ensure <pack>`
+does so for every unit. Uncommitted inputs or a set output-changing setting
+are built only with `--build-dirty` and never published. `assemble <pack>
+<dir>...` links every unit's read-only toolchain into one tree at
+`app/static/packs/<pack>` (two units writing one path is refused) and runs
+the pack's `glue.sh` over it, in seconds. Its header has the glossary and
+the pin rule.
 
 * `.github/workflows/light-packs.yml` runs on every push that touches a pack.
-  A pack whose tree has a build already is only looked up; a pack that
-  changed is built and tested by its `build.sh` and stored. So a pack is
-  tested on the push that changed it, and on no other.
+  An unsplit pack whose tree has a build already is only looked up; one
+  that changed is built and tested by its `build.sh` and stored. The units
+  the store lacks are built one per job, in three waves by depth, each
+  handing its toolchain to the next as an artifact of the run
+  (`light-toolchain-unit.yml`), and each split pack is then assembled over
+  its units and tested. So a pack is tested on the push that changed it,
+  and on no other.
 * `.github/workflows/light-ci.yml` checks the app (types, unit tests, the
   JavaScript pack end to end) when the app, or a pack file its tests read,
   changed. Every job in the repository's CI runs only when the inputs its
@@ -97,9 +116,9 @@ seconds. Its header has the glossary and the pin rule.
   packs as above (normally all downloaded), the app built with all of them
   and smoke-tested in Chromium, and the GitHub release of the tag with
   `yukibana-light-<tag>.zip`, `packs.json` (what each pack was made from:
-  `{"toolchain": <key>}` for a split pack, `{"tree": <git tree id>}` for
-  any other) and `toolchains.json` (the split packs' toolchain keys
-  alone). Run by hand, it only uploads the archive as the run's artifact.
+  `{"toolchains": {<unit>: <key>}}` for a split pack, `{"tree": <git tree
+  id>}` for any other) and `toolchains.json` (the units' keys alone, by
+  `<pack>/<unit>`). Run by hand, it only uploads the archive as the run's artifact.
   On a tag it also deploys the build to https://light.yukibana.dev
   (`deploy/deploy.sh`: a Worker with the build as its static assets, COOP
   and COEP on every response, the `.br` copy of each file, and the few pack
