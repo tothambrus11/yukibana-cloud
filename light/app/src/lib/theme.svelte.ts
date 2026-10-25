@@ -4,8 +4,8 @@
  * the same palette, every text colour at least 7:1 against the editor
  * (palette.ts). The choice follows the system until the user toggles it.
  */
-import { vs, vs_dark } from 'monaco-editor/editor/standalone/common/themes';
 import { monaco } from './monaco';
+import { internals } from './monaco-internals';
 import { EDITOR, LINE_NUMBERS, OWN_RULES, raise, raisedRules, TEXT_CONTRAST, viewText, type Hex, type Theme } from './palette';
 
 export type { Theme };
@@ -19,8 +19,8 @@ const KEY = 'yukibana.code.theme';
  * (vs-dark's registers, `variable.predefined`, at 3.3:1) are raised too.
  */
 export const THEME_RULES: Record<Theme, monaco.editor.ITokenThemeRule[]> = {
-	dark: raisedRules(vs_dark.rules, OWN_RULES.dark, EDITOR.dark.background),
-	light: raisedRules(vs.rules, OWN_RULES.light, EDITOR.light.background),
+	dark: raisedRules(internals.themeRules.dark, OWN_RULES.dark, EDITOR.dark.background),
+	light: raisedRules(internals.themeRules.light, OWN_RULES.light, EDITOR.light.background),
 };
 
 /** The line numbers, raised like the tokens. */

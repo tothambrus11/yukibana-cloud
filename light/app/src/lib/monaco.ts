@@ -20,24 +20,13 @@ import CssWorker from 'monaco-editor/languages/features/css/css.worker?worker';
 import { jsonDefaults } from 'monaco-editor/languages/features/json/register';
 import 'monaco-editor/languages/features/html/register';
 import 'monaco-editor/languages/features/css/register';
-import { StandaloneNotificationService, StandaloneServices } from 'monaco-editor/editor/standalone/browser/standaloneServices';
-import { MessageController } from 'monaco-editor/editor/contrib/message/browser/messageController';
-import { OneReference } from 'monaco-editor/editor/contrib/gotoSymbol/browser/referencesModel';
-import { ICommandService } from 'monaco-editor/platform/commands/common/commands';
-import { IQuickInputService } from 'monaco-editor/platform/quickinput/common/quickInput';
-import { IListService } from 'monaco-editor/platform/list/browser/listService';
+import type { FocusedList, MonacoNotification, QuickPick, QuickPickItem } from '@yukibana/monaco';
+import { internals } from './monaco-internals';
 import { WORKSPACE } from './project';
 import { AppDialogService, WorkspaceBulkEditService } from './workspace-edits';
 import { projectNotice } from './undo-text';
 
-/** The part of Monaco's internal list and tree widgets the references peek's keys use. */
-type List = {
-	getFocus(): unknown[];
-	setSelection(elements: unknown[], browserEvent: KeyboardEvent): void;
-	getInput?(): unknown;
-	expand?(element: unknown): Promise<boolean>;
-	onDidChangeModel?(listener: () => void): { dispose(): void };
-};
+export type { QuickPick, QuickPickItem };
 
 // How Monaco names a file to people: the references peek's title and file
 // rows, for example. Standalone Monaco's label service shows a file URI as
@@ -50,39 +39,35 @@ type List = {
 // Monaco's notifications are shown too. Standalone Monaco writes them to the
 // console only, so a rename the language server refused after the new name
 // was typed (Phpactor's class rename, clangd's "the chosen name is a
-// keyword") looked like a rename that did nothing. This service also shows
+// keyword") looked like a rename that did nothing. The app also shows
 // each one as the inline message of the editor with focus, the place a
 // rename refused before the name was typed already says why. A notice that
 // an undo across files was done in one file only (workspace-edits.ts) comes
 // just before that undo, which moves the caret and would close a message
 // shown at once: so the message is shown once the current task is done,
 // where the caret then is, and names files by their project paths.
-class EditorNotificationService extends StandaloneNotificationService {
-	override notify(notification: { severity: number; message: unknown }): unknown {
-		const shown = super.notify(notification);
-		const m = notification.message;
-		const text = projectNotice(typeof m === 'string' ? m : m instanceof Error ? m.message : '', WORKSPACE.path);
-		// Severity 0 is Ignore.
-		const editor = monaco.editor.getEditors().find((e) => e.hasWidgetFocus());
-		if (!text || notification.severity <= 0 || !editor) return shown;
-		setTimeout(() => {
-			const position = editor.getPosition();
-			if (position) MessageController.get(editor)?.showMessage(text, position);
-		});
-		return shown;
-	}
+function showNotification(notification: MonacoNotification): void {
+	const m = notification.message;
+	const text = projectNotice(typeof m === 'string' ? m : m instanceof Error ? m.message : '', WORKSPACE.path);
+	// Severity 0 is Ignore.
+	const editor = monaco.editor.getEditors().find((e) => e.hasWidgetFocus());
+	if (!text || notification.severity <= 0 || !editor) return;
+	setTimeout(() => {
+		const position = editor.getPosition();
+		if (position) internals.showMessage(editor, text, position);
+	});
 }
 // Workspace edits (rename, code actions) as one undo step across their
 // files, and the dialog that asks whether to undo one: workspace-edits.ts.
-// The keys are Monaco's service ids.
-StandaloneServices.initialize({
-	labelService: {
+// startServices throws, naming it, if Monaco did not take one of these.
+internals.startServices({
+	label: {
 		getUriLabel: (uri: monaco.Uri) => WORKSPACE.pathOf(uri) ?? (uri.scheme === 'file' ? uri.fsPath : uri.path),
 		getUriBasenameLabel: (uri: monaco.Uri) => uri.path.slice(uri.path.lastIndexOf('/') + 1),
 	},
-	notificationService: new EditorNotificationService(),
-	IWorkspaceEditService: new WorkspaceBulkEditService(),
-	dialogService: new AppDialogService(),
+	onNotification: showNotification,
+	bulkEdit: new WorkspaceBulkEditService(),
+	dialog: new AppDialogService(),
 });
 
 /** The editors' font stack; the first entry is the bundled web font. */
@@ -200,7 +185,7 @@ jsonDefaults.setDiagnosticsOptions({
 // expanded, once per peek (as soon as the tree has them).
 const expanded = new WeakSet<object>();
 /** Expands every file of the peek's references, once; false while the tree has none yet. */
-function expandFiles(list: List): boolean {
+function expandFiles(list: FocusedList): boolean {
 	const input = list.getInput?.();
 	if (typeof input !== 'object' || input === null) return false;
 	if (expanded.has(input)) return true;
@@ -212,7 +197,7 @@ function expandFiles(list: List): boolean {
 }
 window.addEventListener('focusin', (e) => {
 	if (!(e.target instanceof Element) || !e.target.closest('.reference-zone-widget .ref-tree')) return;
-	const list = (StandaloneServices.get(IListService) as { lastFocusedList?: List }).lastFocusedList;
+	const list = internals.focusedList();
 	if (!list || expandFiles(list) || !list.onDidChangeModel) return;
 	// Focused before its references arrived: expand them when they do.
 	const listener = list.onDidChangeModel(() => {
@@ -224,15 +209,15 @@ window.addEventListener(
 	(e) => {
 		if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 		if (!(e.target instanceof Element) || !e.target.closest('.reference-zone-widget .ref-tree')) return;
-		const list = (StandaloneServices.get(IListService) as { lastFocusedList?: List }).lastFocusedList;
+		const list = internals.focusedList();
 		if (!list) return;
 		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
 			// The tree moves its focus as usual; the focused reference is selected once it has.
 			setTimeout(() => list.setSelection(list.getFocus(), e));
-		} else if (e.key === 'Enter' && list.getFocus()[0] instanceof OneReference) {
+		} else if (e.key === 'Enter' && internals.isReference(list.getFocus()[0])) {
 			e.preventDefault();
 			e.stopPropagation();
-			void (StandaloneServices.get(ICommandService) as { executeCommand(id: string): Promise<unknown> }).executeCommand('openReference');
+			void internals.executeCommand('openReference');
 		}
 	},
 	true,
@@ -251,36 +236,7 @@ void document.fonts.load(`13.5px ${EDITOR_FONT.split(',')[0]}`).then(() => monac
  * focus. For a command that found nothing to do at the caret.
  */
 export function showEditorMessage(editor: monaco.editor.ICodeEditor, text: string, position: monaco.IPosition): void {
-	MessageController.get(editor)?.showMessage(text, position);
-}
-
-/** A row of a quick pick: its text, its icon, and which letters of the label to highlight. */
-export interface QuickPickItem {
-	label: string;
-	description?: string;
-	iconClasses?: string[];
-	/** Ranges of the label in UTF-16 units, `end` excluded. */
-	highlights?: { label?: { start: number; end: number }[] };
-}
-
-/** The part of Monaco's quick pick the app uses (its `IQuickPick`). */
-export interface QuickPick<T extends QuickPickItem> {
-	items: readonly T[];
-	/** The row Enter would choose. */
-	readonly activeItems: readonly T[];
-	placeholder: string | undefined;
-	/** Shows a progress bar while true. */
-	busy: boolean;
-	/** Whether Monaco filters and highlights the rows by the label, the description, or sorts them by the label; all on by default. */
-	matchOnLabel: boolean;
-	matchOnDescription: boolean;
-	sortByLabel: boolean;
-	onDidChangeValue(listener: (value: string) => void): monaco.IDisposable;
-	onDidAccept(listener: () => void): monaco.IDisposable;
-	onDidHide(listener: () => void): monaco.IDisposable;
-	show(): void;
-	hide(): void;
-	dispose(): void;
+	internals.showMessage(editor, text, position);
 }
 
 /**
@@ -291,7 +247,7 @@ export interface QuickPick<T extends QuickPickItem> {
  * editor, and throws without one.
  */
 export function createQuickPick<T extends QuickPickItem>(): QuickPick<T> {
-	return (StandaloneServices.get(IQuickInputService) as { createQuickPick(): QuickPick<T> }).createQuickPick();
+	return internals.createQuickPick<T>();
 }
 
 export { monaco };

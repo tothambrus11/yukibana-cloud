@@ -37,7 +37,40 @@ Three things a conversion cannot make without the host's Monaco, and how
   host's too, for the same reason: Light's app leaves out a `file:` link
   to a file it has no model for.
 
+| `internals.ts` | the one adapter over Monaco's internals, the things a host needs that Monaco has no public API for: replacing editor services (file labels, notifications, the bulk edit service, dialogs), the inline message, the quick pick, the references peek's tree, commands, undo steps across files, and the built-in themes' rules |
+
 Its tests are `../tests/convert.test.mjs`, run with the other modules'.
+
+## Monaco's internals
+
+A host makes the adapter with `monacoInternals(modules)`, passing the
+exports `INTERNALS` lists, imported by name from its own Monaco, under
+`INTERNALS`'s keys (Light's app does it in
+`app/src/lib/monaco-internals.ts`).
+That keeps H1: the adapter never imports Monaco, so a host never ends up
+with a second copy of Monaco's services. `INTERNALS` lists every internal
+the adapter relies on, as data: its module under `monaco-editor/esm/vs/`,
+the export, the members called, and why it is needed.
+
+* **Checked when made.** `monacoInternals` throws `MonacoInternalsError`
+  naming every module or export that is missing or is not what it was. A
+  service's own methods are checked the first time it is used, because
+  asking Monaco for a service creates it.
+* **Nothing is ignored without a word.** Monaco takes replacement services
+  once, before its services start, and ignores a late one or an unknown id
+  silently; `startServices` checks that each replacement is now the
+  service, and throws, naming it, when it is not.
+* **The upgrade canary.** `../tests/internals.test.mjs` reads the installed
+  monaco-editor's sources for every entry of `INTERNALS` and fails, naming
+  the entry, when one has moved, stopped being exported, become another
+  service, or lost a member. It also fails on any version but
+  `CHECKED_WITH`, since an internal can keep its name and change what it
+  does: a person reads each entry's `why` against the new source, then
+  changes `CHECKED_WITH`.
+
+The editor features a host imports for their side effects
+(`monaco-editor/editor/contrib/...`) are internal paths too; one that moves
+fails the host's build by name, so they are not listed here.
 
 ## Allowed imports
 

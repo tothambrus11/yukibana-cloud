@@ -39,16 +39,9 @@
  * it sees any change: a `didChange` per file.
  */
 import * as monaco from 'monaco-editor/editor/editor.api';
-import { StandaloneServices } from 'monaco-editor/editor/standalone/browser/standaloneServices';
-import { IUndoRedoService } from 'monaco-editor/platform/undoRedo/common/undoRedo';
-import { MultiModelEditStackElement, SingleModelEditStackElement } from 'monaco-editor/editor/common/model/editStack';
-import { IBulkEditService, ResourceEdit, ResourceTextEdit, type BulkEditOptions, type BulkEditResult } from 'monaco-editor/editor/browser/services/bulkEditService';
+import type { BulkEditOptions, BulkEditResult, BulkEditService, Confirmation, DialogService, Prompt, PromptButton } from '@yukibana/monaco';
+import { internals } from './monaco-internals';
 import { buttonLabel } from './undo-text';
-
-type UndoRedoService = {
-	pushElement(element: unknown, group?: unknown, source?: unknown): void;
-	removeElements(resource: monaco.Uri): void;
-};
 
 /** The undo element's code when the caller gives none, as VS Code's. */
 const DEFAULT_CODE = 'undoredo.workspaceEdit';
@@ -59,7 +52,7 @@ const DEFAULT_CODE = 'undoredo.workspaceEdit';
  * rename, delete) is refused with an error, as standalone Monaco's does;
  * the language client says which it could not apply before it gets here.
  */
-export class WorkspaceBulkEditService {
+export class WorkspaceBulkEditService implements BulkEditService {
 	/** The refactoring preview (VS Code's Refactor Preview panel) does not exist here. */
 	hasPreviewHandler(): boolean {
 		return false;
@@ -73,15 +66,13 @@ export class WorkspaceBulkEditService {
 	 * prompt quotes.
 	 */
 	async apply(editsIn: unknown, options?: BulkEditOptions): Promise<BulkEditResult> {
-		const edits = Array.isArray(editsIn) ? (editsIn as unknown[]) : ResourceEdit.convert(editsIn);
 		const byModel = new Map<monaco.editor.ITextModel, monaco.editor.IIdentifiedSingleEditOperation[]>();
-		for (const edit of edits) {
-			if (!(edit instanceof ResourceTextEdit)) throw new Error('only text edits are supported');
+		for (const edit of internals.textEditsOf(editsIn)) {
 			const model = monaco.editor.getModel(edit.resource);
 			if (!model) throw new Error(`no such file: ${edit.resource.toString()}`);
 			if (typeof edit.versionId === 'number' && model.getVersionId() !== edit.versionId) throw new Error(`${edit.resource.toString()} changed in the meantime`);
 			const list = byModel.get(model) ?? [];
-			list.push({ range: monaco.Range.lift(edit.textEdit.range), text: edit.textEdit.text, forceMoveMarkers: true });
+			list.push({ range: monaco.Range.lift(edit.range), text: edit.text, forceMoveMarkers: true });
 			byModel.set(model, list);
 		}
 		if (byModel.size === 0) return { ariaSummary: 'Made no edits', isApplied: false };
@@ -91,11 +82,10 @@ export class WorkspaceBulkEditService {
 		const label = options?.quotableLabel ?? options?.label ?? 'Workspace edit';
 		const code = options?.code ?? DEFAULT_CODE;
 		const editor = options?.editor;
-		const steps = [...byModel.keys()].map((model) => new SingleModelEditStackElement(label, code, model, editor?.getModel() === model ? editor.getSelections() : null));
 		// One file: an ordinary undo step in it. More: one element in every
 		// file's stack, which the undo service undoes as one.
-		const element = steps.length === 1 ? steps[0]! : new MultiModelEditStackElement(label, code, steps);
-		undoRedo().pushElement(element, options?.undoRedoGroup, options?.undoRedoSource);
+		const files = [...byModel.keys()].map((model) => ({ model, selections: editor?.getModel() === model ? editor.getSelections() : null }));
+		const element = internals.pushUndoStep(label, code, files, options?.undoRedoGroup, options?.undoRedoSource);
 		let count = 0;
 		try {
 			// Each model's edit stack appends to the open element pushed
@@ -117,8 +107,7 @@ export class WorkspaceBulkEditService {
  * when a file has no model.
  */
 export async function applyWorkspaceEdit(edit: monaco.languages.WorkspaceEdit, label: string): Promise<boolean> {
-	const service = StandaloneServices.get(IBulkEditService) as { apply(edit: unknown, options: BulkEditOptions): Promise<BulkEditResult> };
-	return (await service.apply(edit, { label, quotableLabel: label, code: DEFAULT_CODE })).isApplied;
+	return (await internals.applyWorkspaceEdit(edit, { label, quotableLabel: label, code: DEFAULT_CODE })).isApplied;
 }
 
 /**
@@ -131,24 +120,8 @@ export async function applyWorkspaceEdit(edit: monaco.languages.WorkspaceEdit, l
  * deleted file too, only to refuse once chosen.
  */
 export function forgetUndo(uri: monaco.Uri): void {
-	undoRedo().removeElements(uri);
+	internals.forgetUndo(uri);
 }
-
-function undoRedo(): UndoRedoService {
-	return StandaloneServices.get(IUndoRedoService) as UndoRedoService;
-}
-
-/** A button of a Monaco prompt: its label, and what choosing it answers. */
-type PromptButton = { label: string; run(context: { checkboxChecked: boolean }): unknown };
-
-/** The questions Monaco's services ask (VS Code's `IPrompt`, `IConfirmation`). */
-type Prompt = {
-	message: string;
-	detail?: unknown;
-	buttons?: PromptButton[];
-	cancelButton?: boolean | string | PromptButton;
-};
-type Confirmation = { message: string; detail?: unknown; primaryButton?: string; cancelButton?: string };
 
 /**
  * Monaco's dialog service, as an in-app modal dialog. Monaco's undo service
@@ -156,7 +129,7 @@ type Confirmation = { message: string; detail?: unknown; primaryButton?: string;
  * features this app loads asks anything. Escape, or a click outside,
  * cancels.
  */
-export class AppDialogService {
+export class AppDialogService implements DialogService {
 	async prompt(prompt: Prompt): Promise<{ result?: unknown }> {
 		const buttons = [...(prompt.buttons ?? [])];
 		const cancel = prompt.cancelButton;

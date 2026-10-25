@@ -11,8 +11,9 @@
  * editor's own have started: creating the next editor then fails with
  * "depends on UNKNOWN service ICodeLensCache" (seen before monaco.ts
  * imported code lenses itself; any other late service fails the same way).
- * Look again on a Monaco upgrade: once `workers.js` no longer imports
- * contributions, this file and the plugin in vite.config.ts can go.
+ * Once `workers.js` no longer imports contributions, this file and the
+ * plugin in vite.config.ts can go: tests/unit/monaco-workers.test.mjs
+ * fails on the Monaco upgrade that does it.
  *
  * This is the same function without the side effects: the worker comes from
  * `MonacoEnvironment.getWorker` (set in monaco.ts), is sent the two messages
