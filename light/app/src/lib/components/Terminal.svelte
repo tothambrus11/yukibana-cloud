@@ -48,12 +48,22 @@
 		switch (s.kind) {
 			case 'idle':
 				return '';
-			case 'loading':
-				return `Downloading ${s.label}${s.total ? ` ${Math.round((100 * s.loaded) / s.total)}%` : ''}`;
+			case 'queued':
+				return `Waiting for ${s.behind.snippet} to finish${s.behind.waitingForInput ? ', which is waiting for input' : ''}`;
+			case 'loading': {
+				const p = s.progress;
+				return p === null ? 'Starting…' : `Downloading ${p.label}${p.total ? ` ${Math.round((100 * p.loaded) / p.total)}%` : ''}`;
+			}
 			case 'running':
 				return s.waiting ? 'Waiting for input' : `${s.phase}…`;
 			case 'ended':
-				return `${s.code === null ? 'Stopped' : `Exited with code ${s.code}`} after ${s.seconds.toFixed(1)} s`;
+				return `Exited with code ${s.code} after ${s.seconds.toFixed(1)} s`;
+			case 'stopped':
+				return `Stopped after ${s.seconds.toFixed(1)} s`;
+			case 'unavailable':
+				return 'Cannot run on this page';
+			case 'failed':
+				return s.failure.kind === 'replaced' ? 'Reload the page to run' : 'The runner failed';
 		}
 	});
 </script>
@@ -76,7 +86,7 @@
 		</label>
 	{/if}
 	<div class="footer">
-		<span class="status" class:failed={runner.state.kind === 'ended' && runner.state.code !== 0}>{status}</span>
+		<span class="status" class:failed={(runner.state.kind === 'ended' && runner.state.code !== 0) || runner.state.kind === 'failed' || runner.state.kind === 'unavailable'}>{status}</span>
 		<button class="clear" title="Clear the terminal" onclick={() => runner.clear()}>Clear</button>
 	</div>
 </div>

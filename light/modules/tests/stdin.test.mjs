@@ -5,7 +5,7 @@
 //   node --test light/modules/          (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DATA_BYTES, DATA_OFFSET, STDIN_BUFFER_BYTES, StdinState, readStdin, rearmStdin, writeStdin } from '../protocol/stdin.ts';
+import { DATA_BYTES, DATA_OFFSET, STDIN_BUFFER_BYTES, StdinState, readStdin, writeStdin } from '../protocol/stdin.ts';
 
 const decode = (bytes) => (bytes === null ? null : new TextDecoder().decode(bytes));
 const stateOf = (buffer) => Atomics.load(new Int32Array(buffer, 0, 2), 0);
@@ -30,7 +30,7 @@ test('a line the user types arrives in the program, newline and all', () => {
 	assert.equal(stateOf(buffer), StdinState.idle, 'the runner is ready to ask again');
 });
 
-test('Ctrl-D is end of file for every read after it, without asking again, until the transport re-arms it', () => {
+test('after Ctrl-D the program can read on, and a line typed then reaches it, as at a terminal', () => {
 	const buffer = new SharedArrayBuffer(STDIN_BUFFER_BYTES);
 	let asked = 0;
 	const ask = (answer) => () => {
@@ -38,11 +38,9 @@ test('Ctrl-D is end of file for every read after it, without asking again, until
 		writeStdin(buffer, answer);
 	};
 	assert.equal(readStdin(buffer, ask(null)), null);
-	assert.equal(readStdin(buffer, ask('never asked\n')), null);
-	assert.equal(asked, 1, 'a second read at end of file does not ask');
-	rearmStdin(buffer);
+	assert.equal(stateOf(buffer), StdinState.idle, 'end of file answers one read');
 	assert.equal(decode(readStdin(buffer, ask('more\n'))), 'more\n');
-	assert.equal(asked, 2);
+	assert.equal(asked, 2, 'the read after end of file asks again');
 });
 
 test('a line longer than the buffer is cut where it fits, never in the middle of a character', () => {

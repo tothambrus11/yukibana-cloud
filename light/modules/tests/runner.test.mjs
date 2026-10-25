@@ -1,11 +1,11 @@
 // The messages between a host and a pack's runner (protocol/runner.ts):
-// what a host accepts from the worker a program runs in, and how output
-// is batched on its way to the page.
+// what a host accepts from the worker a program runs in. How output is
+// batched on its way to the page is the runtime's (run-session.test.mjs).
 //
 //   node --test light/modules/          (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { batchOutput, isFromPage, isFromRunner, isPage, readFromRunner } from '../protocol/runner.ts';
+import { isFromPage, isFromRunner, isPage, readFromRunner } from '../protocol/runner.ts';
 
 test('a message without a type is rejected and says so', () => {
 	for (const data of [{ text: 'hello' }, { type: 3, text: 'hello' }, null, 'stdout', [{ type: 'exit', code: 0 }]]) {
@@ -26,7 +26,6 @@ test('every message of the contract is accepted as runners send it today', () =>
 		{ type: 'phase', text: 'Compiling' },
 		{ type: 'stdout', text: 'Hello\n' },
 		{ type: 'stderr', text: 'warning\n' },
-		{ type: 'output', stream: 'stdout', lines: ['a\n', 'b\n'] },
 		{ type: 'stdin' },
 		{ type: 'stdin', streaming: true },
 		{ type: 'exit', code: 139 },
@@ -44,8 +43,6 @@ test('every message of the contract is accepted as runners send it today', () =>
 test('a known message with a wrong field is rejected, naming its type', () => {
 	for (const message of [
 		{ type: 'stdout', text: 42 },
-		{ type: 'output', stream: 'stdin', lines: ['a'] },
-		{ type: 'output', stream: 'stdout', lines: 'a' },
 		{ type: 'exit', code: '0' },
 		{ type: 'exit', code: 0, reusable: 'yes' },
 		{ type: 'loading', label: 'x', loaded: -1, total: 0 },
@@ -64,32 +61,8 @@ test('a test report with an outcome the protocol does not know is rejected', () 
 	assert.ok(!isFromRunner({ type: 'test-report', tests: [{ name: 'adds' }] }));
 });
 
-test('output lines of one stream arrive in the order they were printed', () => {
-	const printed = Array.from({ length: 1000 }, (_, i) => ({ type: 'stdout', text: `line ${i}\n` }));
-	const batched = batchOutput(printed);
-	assert.equal(batched.length, 1);
-	assert.deepEqual(batched[0], { type: 'output', stream: 'stdout', lines: printed.map((m) => m.text) });
-});
-
-test('output of two streams keeps its interleaving, and other messages keep their place', () => {
-	const batched = batchOutput([
-		{ type: 'stdout', text: 'Name? ' },
-		{ type: 'stdin' },
-		{ type: 'stdout', text: 'Hello, Ada\n' },
-		{ type: 'output', stream: 'stdout', lines: ['Bye\n'] },
-		{ type: 'stderr', text: 'warning: unused\n' },
-		{ type: 'stdout', text: '' },
-		{ type: 'stdout', text: 'done\n' },
-		{ type: 'exit', code: 0 },
-	]);
-	assert.deepEqual(batched, [
-		{ type: 'output', stream: 'stdout', lines: ['Name? '] },
-		{ type: 'stdin' },
-		{ type: 'output', stream: 'stdout', lines: ['Hello, Ada\n', 'Bye\n'] },
-		{ type: 'output', stream: 'stderr', lines: ['warning: unused\n'] },
-		{ type: 'output', stream: 'stdout', lines: ['done\n'] },
-		{ type: 'exit', code: 0 },
-	]);
+test("output is only ever stdout and stderr pieces: a batch is the transport's, never a message a runner sends", () => {
+	assert.deepEqual(readFromRunner({ type: 'output', stream: 'stdout', lines: ['a\n'] }), { kind: 'unknown', type: 'output' });
 });
 
 test("the previewed page's console is told from anything else posted to the window", () => {

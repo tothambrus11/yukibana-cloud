@@ -28,8 +28,11 @@ import {
 	parseRequires,
 	protocolProblem,
 	PROTOCOL_MAJOR,
+	requirementLimitation,
 	requirementProblem,
+	type Need,
 	type RequirementProblem,
+	type Starting,
 	type Requires,
 	type RunnerCall,
 	type StartingContext,
@@ -556,23 +559,39 @@ export interface PageContext {
  * same-origin, since it came with the page.
  */
 export function sourceProblem(source: SessionSource, worker: WorkerKind, page: PageContext, call: RunnerCall = {}): RequirementProblem | null {
+	const { need, starting, context } = startingOf(source, worker, page, call);
+	return requirementProblem(need, starting, context);
+}
+
+/**
+ * What `source`'s `worker` will not be able to do on `page` although it
+ * may start ({@link requirementLimitation}: today, read what is typed on a
+ * page that is not cross-origin isolated), as a sentence a host shows
+ * beside the program, or null. Ask it only after {@link sourceProblem}
+ * said null.
+ */
+export function sourceLimitation(source: SessionSource, worker: WorkerKind, page: PageContext, call: RunnerCall = {}): string | null {
+	const { need, starting, context } = startingOf(source, worker, page, call);
+	return need === null ? null : requirementLimitation(need, starting, context);
+}
+
+/** The arguments requirements.ts takes, for `source`'s `worker` on `page`. */
+function startingOf(source: SessionSource, worker: WorkerKind, page: PageContext, call: RunnerCall): { need: Need | null; starting: Starting; context: StartingContext } {
 	const served = 'pack' in source;
 	const requires = served ? source.pack.requires : source.requires;
-	const need = worker === 'runner' ? needFor(requires, 'runner', call) : needFor(requires, worker);
-	const context: StartingContext = {
-		crossOriginIsolated: page.crossOriginIsolated,
-		packsSameOrigin: served ? source.locator.base.origin === page.origin : true,
-	};
-	return requirementProblem(
-		need,
-		{
+	return {
+		need: worker === 'runner' ? needFor(requires, 'runner', call) : needFor(requires, worker),
+		starting: {
 			pack: served ? source.pack.name : source.name,
 			worker,
 			...(worker === 'runner' ? { call } : {}),
 			protocol: served ? source.pack.protocol : PROTOCOL_MAJOR,
 		},
-		context,
-	);
+		context: {
+			crossOriginIsolated: page.crossOriginIsolated,
+			packsSameOrigin: served ? source.locator.base.origin === page.origin : true,
+		},
+	};
 }
 
 /**

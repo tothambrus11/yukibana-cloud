@@ -1,14 +1,16 @@
 /**
- * Runs the project with its pack's runner (`packs/<id>/runner.js`, see
- * packs/CONTRACT.md, "Running a program") and keeps what the terminal shows:
- * the program's output, what the user typed, and how it ended.
+ * The terminal: a Svelte view of the project's run. Running is the
+ * runtime's (@yukibana/runtime: a RunnerPool of the page, a session per
+ * runner, the in-page worker transport); this keeps what the terminal
+ * shows of it: the program's output, what the user typed, and how the run
+ * ended. The app is the pool's first caller and has one snippet, the
+ * project, so it holds one run at a time; a docs page holds one of these
+ * per snippet over the same pool.
  */
-import { readFromRunner, STDIN_BUFFER_BYTES, writeStdin, type FromRunner, type OutputStream, type RunMessage, type RunMode } from '@yukibana/protocol';
-import type { PackId } from '@yukibana/runtime';
+import type { OutputStream, RunMode, RunnerOptions } from '@yukibana/protocol';
+import { RunnerPool, workerTransport, type RunEvent, type RunHandle, type RunState, type SessionSource } from '@yukibana/runtime';
 import { AnsiStream } from './ansi';
-import { appPacks } from './packs';
 import type { Files } from './languages';
-import type { RunOptions } from './cpp-targets';
 
 /**
  * One stretch of terminal text in one style; consecutive text of one kind
@@ -26,15 +28,12 @@ export interface Chunk {
 }
 
 /**
- * `waiting`: the program is blocked reading its input (a runner asked with a
- * plain `stdin`); a runner that streams input (`stdin` with `streaming`, an
- * emulated machine) takes lines while running without ever setting it.
+ * What the terminal shows of the run: nothing yet (`idle`), or the run's
+ * own state (@yukibana/runtime, run-session.ts): `queued`, `loading`,
+ * `running` (`waiting` while the program is blocked reading input; a
+ * runner that streams input never sets it), and how it ended.
  */
-export type RunState =
-	| { kind: 'idle' }
-	| { kind: 'loading'; label: string; loaded: number; total: number }
-	| { kind: 'running'; phase: string; waiting: boolean }
-	| { kind: 'ended'; code: number | null; seconds: number };
+export type TerminalState = { kind: 'idle' } | RunState;
 
 /**
  * Where a runner's messages that are not the program's own go: the guest
@@ -48,178 +47,110 @@ export interface RunnerLog {
 	problem(text: string): void;
 }
 
-/**
- * What a runner is asked to do: run the program, run its tests, or
- * mutation-test it (languages with `tests` and `mutates`).
- */
-export type { RunMode } from '@yukibana/protocol';
-
 /** More terminal text than this drops the oldest; a runaway loop must not exhaust memory. */
 const MAX_CHARS = 2_000_000;
 
-/** Whether `data` is a runner's download progress, which a spare's early messages leave out. */
-const isLoading = (data: unknown): boolean => typeof data === 'object' && data !== null && (data as { type?: unknown }).type === 'loading';
+/** The app's one snippet, as the pool names it. */
+const PROJECT = 'project';
 
 export class Runner {
-	state = $state<RunState>({ kind: 'idle' });
+	state = $state<TerminalState>({ kind: 'idle' });
 	chunks = $state<Chunk[]>([]);
 
-	private worker: Worker | null = null;
-	/** The pack of the worker running now (or last), for `warm`. */
-	private pack: PackId | null = null;
-	/** The pack whose runner is kept started ahead of the next Run (`keepWarm`), or null. */
-	private warm: PackId | null = null;
-	/**
-	 * A runner started ahead of a Run, waiting for its message: what it
-	 * posted meanwhile is kept, to be read when a Run takes it.
-	 */
-	private spare: { pack: PackId; worker: Worker; early: unknown[] } | null = null;
-	private stdin: SharedArrayBuffer | null = null;
-	private started = 0;
-	private nextId = 0;
-	private chars = 0;
-	/** Lines typed before the program asked for them, oldest first. */
-	private typedAhead: string[] = [];
-	/**
-	 * The runner has asked for input (stored 1 in the state word) and has had
-	 * no answer yet. Separate from `state.waiting`, which is what the terminal
-	 * shows: a streaming request is outstanding while the program runs.
-	 */
-	private asked = false;
+	/** The page's runners, made on first use: making them reads the page's origin, which a prerendered page has not. */
+	#pool: RunnerPool | null = null;
+	/** The run the terminal shows; events of any other (a run it replaced) are dropped. */
+	#run: RunHandle | null = null;
+	/** The source kept warm (`keepWarm`), or null. */
+	#warm: SessionSource | null = null;
+	/** Whether the run being stopped is noted in the terminal ("Stopped."). */
+	#say = true;
+	#nextId = 0;
+	#chars = 0;
 	/**
 	 * The terminal state of each output stream. Two, not one as on a real
-	 * terminal: stdout and stderr arrive as separate messages here, and a
+	 * terminal: stdout and stderr arrive as separate pieces here, and a
 	 * colour left on in one must not leak into the other.
 	 */
-	private ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
+	#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 	/** The kernel's text after its last newline, not yet a line. */
-	private kernelRest = '';
+	#kernelRest = '';
 
 	/** `log` receives what the Output panel shows of a run; without it, that is dropped. */
 	constructor(private readonly log: RunnerLog | null = null) {}
 
-	/** True while a program is loading or running. */
+	get #runners(): RunnerPool {
+		this.#pool ??= new RunnerPool({ transport: workerTransport() });
+		return this.#pool;
+	}
+
+	/** True while a program is queued, loading or running. */
 	get busy(): boolean {
-		return this.state.kind === 'loading' || this.state.kind === 'running';
+		const kind = this.state.kind;
+		return kind === 'queued' || kind === 'loading' || kind === 'running';
 	}
 
 	/**
-	 * Starts `entry` of `files` with the runner of `pack` (located by the
-	 * app's packs, packs.ts), stopping any program still running; `mode`
-	 * 'test' runs the project's tests instead, 'mutate' mutation-tests it.
-	 * Output from the previous run is cleared. `options` go to the runner as
-	 * they are (packs/CONTRACT.md: how a C++ program built for Linux is
-	 * emulated, or the optimisation level a Swift program is compiled at; a
-	 * runner that has no use for them ignores them).
+	 * Runs `entry` of `files` with `source`'s runner, stopping the run the
+	 * terminal shows; `mode` 'test' runs the project's tests instead,
+	 * 'mutate' mutation-tests it. Output from the previous run is cleared.
+	 * `options` go to the runner as they are (packs/CONTRACT.md: how a C++
+	 * program built for Linux is emulated, or the optimisation level a
+	 * Swift program is compiled at; a runner with no use for them ignores
+	 * them).
 	 */
-	start(pack: PackId, files: Files, entry: string, mode: RunMode = 'run', options?: RunOptions | { optimization: string }): void {
-		this.stop(false);
+	start(source: SessionSource, files: Files, entry: string, mode: RunMode = 'run', options?: RunnerOptions): void {
 		this.chunks = [];
-		this.chars = 0;
-		this.typedAhead = [];
-		this.asked = false;
-		this.kernelRest = '';
-		this.ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
-		this.started = performance.now();
-		this.state = { kind: 'running', phase: 'Starting', waiting: false };
-		// The buffer is made here, beside the worker, as the in-page transport
-		// will (@yukibana/protocol, stdin.ts: never across a frame boundary).
-		this.stdin = crossOriginIsolated ? new SharedArrayBuffer(STDIN_BUFFER_BYTES) : null;
-		if (!this.stdin) this.append('info', 'This page is not cross-origin isolated, so programs cannot read input.\n');
-
-		const spare = this.spare?.pack === pack ? this.spare : null;
-		if (spare) this.spare = null;
-		const url = appPacks().url(pack, 'runner.js');
-		const worker = spare?.worker ?? new Worker(url, { type: 'module' });
-		this.worker = worker;
-		this.pack = pack;
-		worker.onmessage = (e: MessageEvent<unknown>) => {
-			if (this.worker === worker) this.receive(e.data);
-		};
-		// What a spare said while it waited, but its download progress: that
-		// is over, and would show as this run's.
-		for (const m of spare?.early ?? []) if (!isLoading(m)) this.receive(m);
-		worker.onerror = (e) => {
-			if (this.worker !== worker) return;
-			e.preventDefault();
-			// A runner that fails to load at all is most likely not built.
-			void fetch(url, { method: 'HEAD' }).then(
-				(r) => this.finish(null, r.ok ? `The runner failed: ${e.message || 'unknown error'}` : `Running ${pack} is not available: its runner is not installed (${url.pathname}).`),
-				() => this.finish(null, `The runner failed: ${e.message || 'unknown error'}`),
-			);
-		};
-		const message: RunMessage = { type: mode, files: { ...files }, entry, stdin: this.stdin, ...(options ? { options: { ...options } } : {}) };
-		worker.postMessage(message);
+		this.#chars = 0;
+		this.#kernelRest = '';
+		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
+		this.#say = true;
+		const request = { type: mode, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}) };
+		// The handle is not known until run() returns, and the first events
+		// arrive before; they belong to the run asked for here all the same.
+		let handle: RunHandle | null = null;
+		const early: RunEvent[] = [];
+		this.#run = null;
+		handle = this.#runners.run({
+			snippet: PROJECT,
+			source,
+			request,
+			onEvent: (event) => {
+				if (handle === null) early.push(event);
+				else if (handle === this.#run) this.#event(event);
+			},
+		});
+		this.#run = handle;
+		for (const event of early) this.#event(event);
 	}
 
 	/**
-	 * Keeps a runner of `pack` started ahead of each Run, null none: a
+	 * Keeps a runner of `source` started ahead of each Run, null none: a
 	 * runner whose own start (loading a compiler, as Haskell's GHC) is most
-	 * of a run's time then answers Run at once. The first starts now; each
-	 * Run takes it, and when that run ends its worker is kept for the next
-	 * when it says it takes another (`reusable`), or a new one starts, so
-	 * two never compete for the processor. packs/CONTRACT.md: a runner may
-	 * receive its message long after it started.
+	 * of a run's time then answers Run at once. The page's pool starts it
+	 * now, and another after a run whose runner could not be kept (H8: a
+	 * warm runner only where the host asks; the app asks for languages
+	 * with `warmRunner`). null stops that and lets an idle one go, so it
+	 * does not compete with the language server's own download.
 	 */
-	keepWarm(pack: PackId | null): void {
-		this.warm = pack;
-		if (this.spare && this.spare.pack !== pack) {
-			this.spare.worker.terminate();
-			this.spare = null;
-		}
-		if (pack && !this.busy) this.prewarm(pack);
+	keepWarm(source: SessionSource | null): void {
+		if (this.#warm !== null && this.#pool !== null) this.#pool.cool(this.#warm);
+		this.#warm = source;
+		if (source !== null) this.#runners.warm(source);
 	}
 
-	private prewarm(pack: PackId): void {
-		if (this.spare?.pack === pack) return;
-		const worker = new Worker(appPacks().url(pack, 'runner.js'), { type: 'module' });
-		const spare = { pack, worker, early: [] as unknown[] };
-		this.keep(spare);
-	}
-
-	/**
-	 * Lets the worker that just exited go: kept as the spare when it said it
-	 * takes another run (`reusable`) and its pack is kept warm, terminated
-	 * otherwise. A reused runner is warmer than a fresh one, so it replaces
-	 * a spare that is still starting.
-	 */
-	private release(reusable: boolean): void {
-		const worker = this.worker;
-		this.worker = null;
-		if (!worker) return;
-		const pack = this.pack;
-		if (!reusable || !pack || this.warm !== pack) {
-			worker.terminate();
-			return;
-		}
-		this.spare?.worker.terminate();
-		this.keep({ pack, worker, early: [] });
-	}
-
-	/** Makes `spare` the spare, keeping what it posts until a Run takes it. */
-	private keep(spare: { pack: PackId; worker: Worker; early: unknown[] }): void {
-		const { worker } = spare;
-		worker.onmessage = (e: MessageEvent<unknown>) => {
-			spare.early.push(e.data);
-		};
-		worker.onerror = (e) => {
-			// A spare that fails is dropped; the Run that would have taken it
-			// starts its own, and reports what goes wrong.
-			e.preventDefault();
-			worker.terminate();
-			if (this.spare === spare) this.spare = null;
-		};
-		this.spare = spare;
+	/** Stops `source`'s runs and lets its runners go: the project of its language was closed. */
+	release(source: SessionSource): void {
+		if (this.#warm !== null && this.#pool !== null) this.#pool.cool(this.#warm);
+		this.#warm = null;
+		this.#pool?.forget(source);
 	}
 
 	/** Stops the running program; `say` notes it in the terminal. */
 	stop(say = true): void {
-		if (!this.worker) return;
-		this.worker.terminate();
-		this.worker = null;
-		if (!this.busy) return;
-		if (say) this.finish(null, 'Stopped.');
-		else this.state = { kind: 'idle' };
+		if (this.#run === null || !this.busy) return;
+		this.#say = say;
+		this.#run.stop();
 	}
 
 	/**
@@ -227,17 +158,15 @@ export class Runner {
 	 * program is not waiting, it is kept until the program asks.
 	 */
 	input(line: string): void {
-		if (!this.busy) return;
-		this.append('stdin', line + '\n');
-		this.typedAhead.push(line + '\n');
-		this.feed();
+		if (this.#run === null || !this.busy) return;
+		this.#append('stdin', line + '\n');
+		this.#run.input(line);
 	}
 
 	/** Ends the program's input (Ctrl-D): its next read sees end of file. */
 	endInput(): void {
-		if (!this.busy) return;
-		this.typedAhead.push('');
-		this.feed();
+		if (this.#run === null || !this.busy) return;
+		this.#run.endInput();
 	}
 
 	/**
@@ -247,145 +176,134 @@ export class Runner {
 	 */
 	attach(note: string): void {
 		this.stop(false);
+		this.#run = null;
 		this.clear();
 		// A colour or half-read escape left by the last program must not tint the page's console.
-		this.ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
+		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 		this.state = { kind: 'idle' };
-		this.append('info', note + '\n');
+		this.#append('info', note + '\n');
 	}
 
 	/** Shows text from a source that is not a runner, such as a previewed page's console. */
 	print(kind: 'stdout' | 'stderr' | 'info', text: string): void {
-		if (kind === 'info') this.append('info', text);
-		else for (const span of this.ansi[kind].feed(text)) this.append(kind, span.text, span.css);
+		if (kind === 'info') this.#append('info', text);
+		else this.#output(kind, [text]);
 	}
 
 	/** Empties the terminal; a running program keeps running. */
 	clear(): void {
 		this.chunks = [];
-		this.chars = 0;
+		this.#chars = 0;
 	}
 
-	/**
-	 * Takes one message the runner posted. It comes from the worker the
-	 * program runs in, so it is read as data: a message the contract does
-	 * not allow is named in the Output panel (the terminal, without one)
-	 * and otherwise ignored, and a type it does not know (a newer
-	 * runner's) is ignored, as the contract says.
-	 */
-	private receive(data: unknown): void {
-		const read = readFromRunner(data);
-		if (read.kind === 'known') this.handle(read.message);
-		else if (read.kind === 'rejected') {
-			const text = `The runner sent a message the pack contract does not allow, and it was ignored: ${read.reason}.`;
-			// Without an Output panel, the terminal says it: never nowhere.
-			if (this.log) this.log.problem(text);
-			else this.append('info', text + '\n');
-		}
-	}
-
-	private handle(m: FromRunner): void {
-		switch (m.type) {
-			case 'loading':
-				this.state = { kind: 'loading', label: m.label, loaded: m.loaded, total: m.total };
-				break;
-			case 'phase':
-				// A new phase does not answer an outstanding request for input.
-				this.state = { kind: 'running', phase: m.text, waiting: this.state.kind === 'running' && this.state.waiting };
-				break;
-			case 'stdout':
-			case 'stderr':
-				this.output(m.type, [m.text]);
+	/** One event of the run the terminal shows. */
+	#event(event: RunEvent): void {
+		switch (event.type) {
+			case 'state':
+				this.#state(event.state);
 				break;
 			case 'output':
-				this.output(m.stream, m.lines);
-				break;
-			case 'stdin':
-				this.asked = true;
-				// A streaming runner takes input whenever it comes; the program
-				// is not known to be blocked, so the terminal does not say so.
-				if (!m.streaming) {
-					if (this.state.kind === 'running') this.state = { ...this.state, waiting: true };
-					else this.state = { kind: 'running', phase: 'Running', waiting: true };
-				}
-				this.feed();
+				this.#output(event.stream, event.pieces);
 				break;
 			case 'trace':
-				if (this.state.kind === 'loading') this.state = { kind: 'running', phase: 'Running', waiting: false };
-				this.append('trace', m.text);
+				this.#append('trace', event.text);
 				break;
 			case 'kernel':
-				this.kernel(m.text);
+				this.#kernel(event.text);
 				break;
 			case 'mark':
-				this.log?.mark(m.name, m.ms);
+				this.log?.mark(event.name, event.ms);
 				break;
-			case 'exit':
-				this.release(m.reusable === true);
-				this.kernel('\n');
-				// No note of the app's own: a program's non-zero status is its
-				// own business, and a VM that failed already said where its
-				// kernel log is (vm.js, CONTRACT.md "Running a program").
-				this.finish(m.code, null);
+			case 'notice':
+				this.#append('info', event.text + '\n');
+				break;
+			case 'problem':
+				// Without an Output panel, the terminal says it: never nowhere.
+				if (this.log) this.log.problem(event.text);
+				else this.#append('info', event.text + '\n');
 				break;
 			case 'test-report':
 				// Reserved for grading; the terminal already shows the report the runner printed.
 				break;
-			case 'page':
-				// A preview's answer, which only Preview asks for.
+		}
+	}
+
+	#state(state: RunState): void {
+		switch (state.kind) {
+			case 'ended':
+				this.#kernel('\n');
+				// No note of the app's own: a program's non-zero status is its
+				// own business, and a VM that failed already said where its
+				// kernel log is (vm.js, CONTRACT.md "Running a program").
+				this.state = state;
 				break;
+			case 'stopped':
+				if (this.#say) {
+					this.#note('Stopped.');
+					this.state = state;
+				} else this.state = { kind: 'idle' };
+				break;
+			case 'unavailable':
+				this.#note(state.problem.reason);
+				this.state = state;
+				break;
+			case 'failed': {
+				this.#note(state.failure.reason);
+				this.state = state;
+				const { kind, url } = state.failure;
+				// A runner that fails to load at all is most likely not built.
+				if (kind === 'load' && url !== null) {
+					const run = this.#run;
+					void fetch(url, { method: 'HEAD' }).then(
+						(response) => {
+							if (!response.ok && run === this.#run) this.#note(`Its runner is not installed (${url.pathname}): build the pack.`);
+						},
+						() => {},
+					);
+				}
+				break;
+			}
+			default:
+				this.state = state;
 		}
 	}
 
 	/** Shows the program's output, `pieces` of one stream in the order printed. */
-	private output(stream: OutputStream, pieces: readonly string[]): void {
-		if (this.state.kind === 'loading') this.state = { kind: 'running', phase: 'Running', waiting: false };
-		for (const piece of pieces) for (const span of this.ansi[stream].feed(piece)) this.append(stream, span.text, span.css);
+	#output(stream: OutputStream, pieces: readonly string[]): void {
+		for (const piece of pieces) for (const span of this.#ansi[stream].feed(piece)) this.#append(stream, span.text, span.css);
 	}
 
 	/** Passes the kernel's text on a line at a time; a newline flushes what is left. */
-	private kernel(text: string): void {
-		const lines = (this.kernelRest + text).split(/\r?\n/);
-		this.kernelRest = lines.pop() ?? '';
+	#kernel(text: string): void {
+		const lines = (this.#kernelRest + text).split(/\r?\n/);
+		this.#kernelRest = lines.pop() ?? '';
 		for (const line of lines) {
 			if (!line.trim()) continue;
 			this.log?.kernel(line);
 		}
 	}
 
-	/** Hands the oldest typed-ahead line to a runner that has asked for input. */
-	private feed(): void {
-		const buffer = this.stdin;
-		if (!buffer || !this.busy || !this.asked) return;
-		const line = this.typedAhead.shift();
-		if (line === undefined) return;
-		writeStdin(buffer, line === '' ? null : line);
-		this.asked = false;
-		if (this.state.kind === 'running') this.state = { ...this.state, waiting: false };
+	/** A line of the terminal's own, on a line of its own. */
+	#note(text: string): void {
+		this.#append('info', (this.chunks.at(-1)?.text.endsWith('\n') === false ? '\n' : '') + text + '\n');
 	}
 
-	private finish(code: number | null, note: string | null): void {
-		if (note) this.append('info', (this.chunks.at(-1)?.text.endsWith('\n') === false ? '\n' : '') + note + '\n');
-		this.state = { kind: 'ended', code, seconds: (performance.now() - this.started) / 1000 };
-		if (this.warm && this.warm === this.pack) this.prewarm(this.warm);
-	}
-
-	private append(kind: Chunk['kind'], text: string, style = ''): void {
+	#append(kind: Chunk['kind'], text: string, style = ''): void {
 		if (!text) return;
 		const last = this.chunks.at(-1);
 		if (last && last.kind === kind && last.style === style) last.text += text;
-		else this.chunks.push({ id: this.nextId++, kind, text, style });
-		this.chars += text.length;
-		while (this.chars > MAX_CHARS) {
+		else this.chunks.push({ id: this.#nextId++, kind, text, style });
+		this.#chars += text.length;
+		while (this.#chars > MAX_CHARS) {
 			const first = this.chunks[0];
 			if (!first) break;
-			const excess = this.chars - MAX_CHARS;
+			const excess = this.#chars - MAX_CHARS;
 			if (this.chunks.length > 1 && first.text.length <= excess) {
 				this.chunks.shift();
-				this.chars -= first.text.length;
+				this.#chars -= first.text.length;
 			} else {
 				first.text = first.text.slice(excess);
-				this.chars -= excess;
+				this.#chars -= excess;
 			}
 		}
 	}

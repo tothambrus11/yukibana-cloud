@@ -18,10 +18,18 @@
  *   `exit` with `reusable: true`) and must not depend on when it arrives.
  * - With `stdin: null` every read is end of file at once; it never blocks
  *   waiting for a person who is not there.
- * - Everything the program prints arrives as output messages, in the order
- *   printed, and `exit` is the last message of a run. A driver may stop it
- *   at any time by terminating the worker; a runner must not depend on
- *   finishing cleanly.
+ * - Everything the program prints arrives as `stdout` and `stderr`
+ *   messages, in the order printed, and `exit` is the last message of a
+ *   run.
+ * - A driver stops a run by sending {@link CancelMessage}. A runner that
+ *   understands it stops the program, keeps what it loaded (a compiler)
+ *   and answers `exit` with `reusable: true`; one that does not ignores
+ *   it. A driver that has no `exit` within its grace period (the runtime's
+ *   `cancelGraceMs`, one second by default) terminates the worker, so a
+ *   runner that ignores the message, or a program looping in the runner's
+ *   own thread where no message is read, still stops. A runner must
+ *   therefore never depend on finishing cleanly, and a `cancel` that
+ *   arrives when no run is in progress is ignored, with no answer.
  * - A test run's verdict is its exit code (0 only when every test passed).
  *   The report on stdout is for people; a runner that can say more for a
  *   machine may also send a {@link TestReport}, which is reserved for
@@ -33,20 +41,15 @@ import { isLoadingProgress, type LoadingProgress } from './loading.ts';
 export type RunMode = 'run' | 'test' | 'mutate';
 
 /**
- * How a C or C++ program built for Linux is emulated (packs/CONTRACT.md):
- * the machine (`system`, QEMU's system emulation, or `user` mode), its CPUs
- * (system mode only) and whether its system calls are traced.
+ * How a pack is asked to run a program, as the pack defines it in its
+ * README: plain JSON values by name. The protocol carries them and never
+ * reads them, since it names no pack; the C++ pack's emulation settings
+ * and the Swift and Scala packs' optimisation level are the app's types
+ * (cpp-targets.ts, optimization.ts in light/app), not this module's
+ * (finding #26 of the architecture review). A runner ignores a name it
+ * has no use for.
  */
-export interface EmulationOptions {
-	emulation: 'system' | 'user';
-	cpus: 1 | 2 | 4;
-	strace: boolean;
-}
-
-/** The optimisation level of a language whose level no project file holds (Swift, Scala), as the pack names it. */
-export interface OptimizationOptions {
-	optimization: string;
-}
+export type RunnerOptions = Readonly<Record<string, string | number | boolean>>;
 
 /**
  * The transport's message to its runner worker: run (or test, or mutate)
@@ -64,7 +67,7 @@ export interface RunMessage {
 	entry: string;
 	stdin: SharedArrayBuffer | null;
 	/** Absent: the runner's defaults. A runner with no use for them ignores them. */
-	options?: EmulationOptions | OptimizationOptions;
+	options?: RunnerOptions;
 }
 
 /**
@@ -80,8 +83,25 @@ export interface PreviewMessage {
 	entry: string;
 }
 
+/**
+ * Stop the run in progress, and keep the worker if you can (the headless
+ * contract above says what a runner and a driver each do). Optional for a
+ * runner: one that does not know it ignores it, as it ignores any type it
+ * does not know, and is terminated after the driver's grace period, as
+ * every runner was before this message existed.
+ *
+ * Why it exists (RR3-1 in the architecture plan): a driver could stop a
+ * run only by terminating the worker, and a runner the host bundles itself
+ * (Hylo's) holds a compiler and starts a worker of its own for the
+ * program. Terminating it on every re-run, stop or endless loop threw the
+ * warm compiler away, so a page of many snippets loaded it again and again.
+ */
+export interface CancelMessage {
+	type: 'cancel';
+}
+
 /** What a host (through its transport) sends a runner. */
-export type ToRunner = RunMessage | PreviewMessage;
+export type ToRunner = RunMessage | PreviewMessage | CancelMessage;
 
 /** The two output streams of a program. */
 export type OutputStream = 'stdout' | 'stderr';
@@ -138,24 +158,27 @@ export interface Page {
 /**
  * What a runner posts, any number of times, `exit` last.
  *
- * Output comes in two forms. A runner posts `stdout` and `stderr`
- * messages, one piece of `text` each, as the program produces it (never
- * buffered to the end). A transport delivers them batched ({@link
- * batchOutput}): consecutive pieces of one stream travel as one `output`
- * message whose `lines` are the pieces in the order printed (E1: relaying
- * a 1000-line burst a message a line added 16-20 ms; batched it costs
- * about 1.5 µs a line). A runner may also post `output` itself. Each piece
- * is text as printed, normally one line with its "\n" (a prompt without
- * one is a piece of its own), and the stream's text is the pieces joined
- * with nothing between them. Order across the two streams is the order of
- * the messages.
+ * Output is `stdout` and `stderr` messages, one piece of `text` each, as
+ * the program produces it (never buffered to the end). Each piece is text
+ * as printed, normally one line with its "\n" (a prompt without one is a
+ * piece of its own), and the stream's text is the pieces joined with
+ * nothing between them. Order across the two streams is the order of the
+ * messages.
+ *
+ * Batching is not a runner's business. A transport carries what a runner
+ * posted in one task to the page together (E1: relaying a 1000-line burst
+ * a message a line added 16-20 ms across a frame; batched it costs about
+ * 1.5 µs a line), and the runtime's session hands a host consecutive
+ * pieces of one stream as one event. An `output` message that runners
+ * could post was tried, and removed: it made every host handle a second
+ * form of the same thing, and broke the batch at every switch between
+ * streams (finding #25 of the architecture review).
  */
 export type FromRunner =
 	| ({ type: 'loading' } & LoadingProgress)
 	/** "Compiling", "Linking", "Running": shown in the status bar. */
 	| { type: 'phase'; text: string }
 	| { type: OutputStream; text: string }
-	| { type: 'output'; stream: OutputStream; lines: string[] }
 	/** The runner is waiting for a line; `streaming`: it asks for the whole run and may not be blocked. */
 	| { type: 'stdin'; streaming?: boolean }
 	/** The last message of a run; 0 is success. `reusable`: the worker takes another run. */
@@ -223,8 +246,6 @@ export function readFromRunner(data: unknown): RunnerMessage {
 		case 'trace':
 		case 'kernel':
 			return fine(isString(data['text']), 'has no text');
-		case 'output':
-			return fine(isStream(data['stream']) && isStrings(data['lines']), 'needs a stream (stdout or stderr) and lines of text');
 		case 'stdin':
 			return fine(optional(data, 'streaming', isBoolean), 'has a streaming flag that is not true or false');
 		case 'exit':
@@ -262,42 +283,6 @@ export function isPage(data: unknown): data is Page {
 		isStrings(data['styles']) &&
 		isStrings(data['errors'])
 	);
-}
-
-/**
- * `messages` as a transport delivers them: each run of consecutive output
- * of one stream (`stdout`, `stderr` or `output` messages) becomes one
- * `output` message with every piece in order, and every other message
- * keeps its place. Empty pieces are dropped, and a run with none left
- * sends nothing. A transport calls it on what one task received, so a
- * burst of output crosses to the page as a few messages, not thousands.
- */
-export function batchOutput(messages: readonly FromRunner[]): FromRunner[] {
-	const batched: FromRunner[] = [];
-	let open: { type: 'output'; stream: OutputStream; lines: string[] } | null = null;
-	for (const message of messages) {
-		let stream: OutputStream;
-		let pieces: readonly string[];
-		if (message.type === 'stdout' || message.type === 'stderr') {
-			stream = message.type;
-			pieces = [message.text];
-		} else if (message.type === 'output') {
-			stream = message.stream;
-			pieces = message.lines;
-		} else {
-			open = null;
-			batched.push(message);
-			continue;
-		}
-		const kept = pieces.filter((piece) => piece !== '');
-		if (kept.length === 0) continue;
-		if (open === null || open.stream !== stream) {
-			open = { type: 'output', stream, lines: [] };
-			batched.push(open);
-		}
-		open.lines.push(...kept);
-	}
-	return batched;
 }
 
 /**

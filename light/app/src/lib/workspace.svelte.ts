@@ -6,9 +6,10 @@
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
-import { LanguageClient, type ClientState, type LoadingProgress, type LogLevel } from './lsp/client';
+import type { LoadingProgress, RunMode } from '@yukibana/protocol';
+import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
 import { isLanguageId, languageOf, LANGUAGES, type ExploreKind, type LanguageId } from './languages';
-import { Runner, type RunMode } from './run.svelte';
+import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
 import { exportProject } from './export';
@@ -21,7 +22,7 @@ import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
-import { appPacks, packOf } from './packs';
+import { appPacks, packOf, runnerSourceOf } from './packs';
 import { loadLanguage, loadProject, sampleProject, saveLanguage, saveProject, WORKSPACE, type Project } from './project';
 
 /** The model URI of a project path. */
@@ -243,7 +244,7 @@ export class Workspace {
 		this.host?.showTerminal();
 		// A C++ runner reads its level from compile_flags.txt; Swift's is sent.
 		const level = this.language !== 'cpp' && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
-		this.runner.start(packOf(language), files, entry, mode, this.language === 'cpp' ? { ...this.runOptions } : level ? { optimization: level } : undefined);
+		this.runner.start(runnerSourceOf(language), files, entry, mode, this.language === 'cpp' ? { ...this.runOptions } : level ? { optimization: level } : undefined);
 	}
 
 	/**
@@ -622,6 +623,7 @@ export class Workspace {
 	/** Saves the project, stops its server, and removes its files from the editor. */
 	private async closeProject(): Promise<void> {
 		this.runner.stop(false);
+		this.runner.release(runnerSourceOf(languageOf(this.language)));
 		this.runner.clear();
 		this.preview.stop();
 		this.host?.hidePreview();
@@ -671,7 +673,7 @@ export class Workspace {
 		this.runner.keepWarm(null);
 		client.start(() => this.models.values()).then(
 			() => {
-				if (this.client === client && language.warmRunner && language.runs) this.runner.keepWarm(packOf(language));
+				if (this.client === client && language.warmRunner && language.runs) this.runner.keepWarm(runnerSourceOf(language));
 			},
 			async (e: unknown) => {
 				if (this.client !== client) return;

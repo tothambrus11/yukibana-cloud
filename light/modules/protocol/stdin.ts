@@ -28,9 +28,17 @@
 /**
  * The values of the state word. `idle`: nobody is waiting; `waiting`: the
  * runner asked and is blocked; `ready`: a line is in the data area;
- * `eof`: the user ended input (Ctrl-D). `eof` is sticky: a runner that
- * finds it returns end of file again without asking, until the transport
- * side calls {@link rearmStdin}.
+ * `eof`: the user ended input (Ctrl-D). End of file answers one read: the
+ * runner stores `idle` after it, and its next read asks again, as a
+ * terminal does after Ctrl-D, so a line typed after Ctrl-D still reaches a
+ * program that reads on.
+ *
+ * It was once sticky in the buffer (a runner found `eof` and returned end
+ * of file without asking, until the transport side "re-armed" it), while
+ * the runners in this repository asked again. The contract allowed both,
+ * no host re-armed, and a host could tell them apart: after Ctrl-D, lines
+ * typed ahead never reached a runner built on the sticky reader (finding
+ * #24 of the architecture review). There is now one behaviour.
  */
 export const StdinState = { idle: 0, waiting: 1, ready: 2, eof: 3 } as const;
 /** One of {@link StdinState}'s values. */
@@ -82,30 +90,24 @@ export function writeStdin(buffer: SharedArrayBuffer, line: string | null): numb
  * answer (a copy, so it may be decoded with `TextDecoder`), or null at end
  * of file. `ask` is called after the state says `waiting` and before
  * blocking; it posts `{ type: 'stdin' }` (and flushes stdout first, so a
- * prompt shows). At sticky end of file it returns null at once, without
- * asking. A length word outside the data area is clamped to it.
+ * prompt shows). Every call asks, end of file included: after one, the
+ * state is `idle` again ({@link StdinState}). A length word outside the
+ * data area is clamped to it.
  *
  * It blocks with `Atomics.wait`, so it runs only where that is allowed: a
  * worker (or Node), never a page's main thread.
  */
 export function readStdin(buffer: SharedArrayBuffer, ask: () => void): Uint8Array | null {
 	const words = wordsOf(buffer);
-	if (Atomics.load(words, 0) === StdinState.eof) return null;
 	Atomics.store(words, 0, StdinState.waiting);
 	ask();
 	Atomics.wait(words, 0, StdinState.waiting);
-	if (Atomics.load(words, 0) === StdinState.eof) return null;
+	if (Atomics.load(words, 0) === StdinState.eof) {
+		Atomics.store(words, 0, StdinState.idle);
+		return null;
+	}
 	const length = Math.min(Math.max(Atomics.load(words, 1), 0), DATA_BYTES);
 	const bytes = new Uint8Array(buffer, DATA_OFFSET, length).slice();
 	Atomics.store(words, 0, StdinState.idle);
 	return bytes;
-}
-
-/**
- * Transport side: ends a sticky end of file, so the runner's next read
- * asks again. For a buffer reused by a new run of a `reusable` runner, or a
- * terminal that lets the user type after Ctrl-D.
- */
-export function rearmStdin(buffer: SharedArrayBuffer): void {
-	Atomics.store(wordsOf(buffer), 0, StdinState.idle);
 }

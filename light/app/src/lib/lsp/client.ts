@@ -33,9 +33,6 @@ import { whenLanguage, type CallDirection } from './call-hierarchy';
 import { toInlayHint } from './inlay-hints';
 import { symbolRows, type SymbolRow } from './workspace-symbols';
 
-/** What a pack reports while it downloads, from the `yukibana/loading` notification (@yukibana/protocol, loading.ts). */
-export type { LoadingProgress };
-
 /** Lifecycle of a client as the status bar shows it. */
 export type ClientState =
 	| { kind: 'starting' }

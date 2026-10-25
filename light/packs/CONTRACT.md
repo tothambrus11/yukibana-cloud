@@ -89,8 +89,8 @@ simply not used. Positions are UTF-16 (the LSP default).
 
 A pack may also run the project. It does so with a second, independent
 module worker, `app/static/packs/<id>/runner.js`, which the app starts when
-the user presses **Run** (and terminates on **Stop** or when the program
-ends). A runner shares nothing with `server.js` at run time, so the language
+the user presses **Run** (and stops on **Stop**, see "Cancelling", or
+terminates when the program ends without saying it is reusable). A runner shares nothing with `server.js` at run time, so the language
 server's download is never a prerequisite for running and vice versa; the
 two may of course share files (a toolchain's wasm, headers) by URL so the
 browser and service worker cache them once.
@@ -107,9 +107,10 @@ A runner that can run again after its program ends says so with
 `reusable: true` on its `exit`, and must then accept another `run` or
 `test` message, with new files and a new stdin buffer, as if it had just
 started; a run it has not finished must not be disturbed by one that
-arrives. The app keeps such a worker as the next run's (for a language
-with `warmRunner`) instead of starting another, and terminates it on Stop
-as any other. The Haskell runner does: GHC, linked and warm, then answers
+arrives. A page keeps such a worker for the next run instead of starting
+another (`RunnerPool` in `light/modules/runtime/run-pool.ts`: one runner
+per pack per page, shared by its snippets), and the app also starts one
+ahead of the first run for a language with `warmRunner`. The Haskell runner does: GHC, linked and warm, then answers
 in a fraction of a second, and Chromium compiles the wasm of only a few
 new workers in a row while the language server's GHC is alive.
 
@@ -117,18 +118,26 @@ new workers in a row while the language server's GHC is alive.
 
 Every message is a plain object with a `type`.
 
-App to runner, once:
+App to runner, once per run:
 
 ```ts
 { type: 'run',
   files: Record<string, string>,  // the project: relative path -> text
   entry: string,                  // the entry file, e.g. "main.py"
   stdin: SharedArrayBuffer | null,
-  options?: { emulation: 'system' | 'user'; cpus: 1 | 2 | 4; strace: boolean }
-          | { optimization: string } }
+  options?: Record<string, string | number | boolean> }  // the pack's own, below
 ```
 
-`options` are how a program is emulated, for a runner that runs it in an
+and, at any time, understood or ignored (see "Cancelling"):
+
+```ts
+{ type: 'cancel' }
+```
+
+`options` are named values a pack defines in its README; the protocol
+carries them and never reads them (`RunnerOptions`). Light's packs use two
+kinds. The C and C++ packs' `{ emulation: 'system' | 'user', cpus: 1 | 2 |
+4, strace: boolean }` are how a program is emulated, for a runner that runs it in an
 emulator. The app sends them for C and C++ projects only (the project's
 Run options, saved with it; `app/src/lib/cpp-targets.ts`), and the C++
 runner uses them only for a Linux target (`--target=` in
@@ -177,8 +186,6 @@ Runner to app, any number of times:
 { type: 'phase', text: string }        // "Compiling", "Linking", "Running": shown in the status bar
 { type: 'stdout', text: string }       // program output, as it is produced (not buffered to the end)
 { type: 'stderr', text: string }       // program errors, and compiler diagnostics
-{ type: 'output', stream: 'stdout' | 'stderr', lines: string[] }
-                                       // several pieces of one stream at once (see "Output")
 { type: 'exit', code: number, reusable?: boolean }
                                        // last message; 0 = success. Compile errors exit non-zero
                                        // after printing them to stderr. reusable: the worker
@@ -223,14 +230,14 @@ A runner posts each piece of output as the program produces it, one
 prompt without one is a piece of its own). It must not hold output back
 until the program ends.
 
-On its way to the page, the host's transport batches it: what it receives
-from the runner in one task, consecutive pieces of one stream become one
-`output` message whose `lines` are the pieces in the order printed, and
-every other message keeps its place (`batchOutput` in
-`light/modules/protocol/runner.ts`). Relayed a message a line, a
-1000-line burst cost 16 to 20 ms more across a frame; batched it costs
-about 1.5 µs a line (measured for runner isolation, E1). A runner may post
-`output` itself when it has several pieces at hand. Either way:
+Batching is the host's business, not the runner's: the transport carries
+what a runner posted in one task to the page together, and the session
+hands consecutive pieces of one stream to the terminal as one event
+(`light/modules/runtime/transport.ts` and `run-session.ts`). Relayed a
+message a line, a 1000-line burst cost 16 to 20 ms more across a frame;
+batched it costs about 1.5 µs a line (measured for runner isolation, E1).
+There is no message for several pieces at once: one was tried, and it made
+every host handle two forms of the same output. So:
 
 * a stream's text is its pieces joined with nothing between them; nothing
   is added, and an empty piece means nothing;
@@ -265,7 +272,33 @@ test, CI or a grader can run it with no terminal and no person:
   for input nobody will type;
 * all the program prints arrives as output messages, in order, and `exit`
   is the last message of a run;
-* it can be ended at any moment by terminating its worker.
+* it can be stopped at any moment: by `cancel` if it understands it, and
+  otherwise, or when it does not answer in time, by terminating its worker
+  (see "Cancelling").
+
+## Cancelling
+
+A driver stops a run by posting `{ type: 'cancel' }`. A runner that
+understands it stops the program (a runner that runs its program in a
+worker of its own terminates that worker), keeps whatever it loaded (a
+compiler, a standard library), and answers with `exit` (any code; 130, as
+for Ctrl-C, by convention) and `reusable: true`. It then takes the next
+`run` as after any reusable exit. A `cancel` that arrives when no run is in
+progress is ignored, with no answer.
+
+Understanding it is optional. A runner that does not knows no such type and
+ignores it, and the driver terminates its worker when no `exit` has come
+within its grace period (`cancelGraceMs`, one second by default). The same
+happens to a runner that understands it but cannot read the message,
+because the program is looping in the runner's own thread. So a runner
+must still never depend on finishing cleanly.
+
+Why it exists: a driver could stop a run only by terminating the worker,
+so a runner that holds a compiler (Hylo's, which its site bundles itself)
+lost it on every re-run, Stop or endless loop, and a page of many snippets
+loaded the compiler again and again (RR3-1 in the architecture plan). None
+of Light's runners understands it yet; each is terminated after the grace
+period, as before, until its pack next changes.
 
 ## Standard input
 
@@ -298,12 +331,17 @@ buffered input left:
    input line in the terminal),
 2. blocks with `Atomics.wait(state, 0, 1)`,
 3. on 2 reads `length` bytes of data, stores 0 in `state` and continues;
-   on 3 treats it as end of file.
+   on 3 stores 0 in `state` and returns end of file for this read.
 
-End of file is sticky: a runner may leave 3 in `state` and answer every
-later read with end of file without asking (`readStdin` does), until the
-transport side stores 0 again (`rearmStdin`). A runner that keeps the end
-of file itself and stores 0 is just as correct.
+End of file answers one read, as at a terminal after Ctrl-D: the next read
+asks again (step 1), so a line typed after Ctrl-D reaches a program that
+reads on (`readStdin` does this). The contract once also allowed a sticky
+end of file, which a host could tell apart: lines typed after Ctrl-D never
+reached such a runner, and no host re-armed it (finding #24 of the
+architecture review). The Rust and Swift runners still remember end of
+file themselves and answer later reads without asking; that is now a
+deviation, to be removed when those packs are next changed (T5, T6), so
+that this clarification does not rebuild them.
 
 The app writes the data, then stores 2 (or 3 for Ctrl-D) in `state` and
 calls `Atomics.notify`. A runner must flush its stdout before waiting, so a
@@ -330,8 +368,9 @@ kind.
   default: entry `main.py`, `main.js`, `main.cpp` (with every `.cpp` of the
   project compiled and linked), `main.swift`, `Main.scala` (`@main` or
   `object Main { def main }`).
-* A program that runs forever must be stoppable: the app terminates the
-  worker, so a runner must not depend on finishing cleanly. Workers the
+* A program that runs forever must be stoppable: the app sends `cancel` and
+  terminates the worker after the grace period, so a runner must not
+  depend on finishing cleanly. Workers the
   runner starts (an emulator's threads) end with it.
 
 # Showing compiler output (optional)

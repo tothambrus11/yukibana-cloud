@@ -28,6 +28,16 @@ credentials).
 * A session starts from a `SessionSource`: a served pack (its pack.json and
   the locator it came from) or a worker the host bundled itself, with its
   needs inline. Both are checked (`sourceProblem`) before anything starts.
+* Where a runner lives is a `RunnerTransport`, never assumed: the in-page
+  `workerTransport` for a host that holds no credentials, a frame on
+  another site for one that does (still to come). Standard input and
+  batching are the transport's, since a frame boundary lies between them
+  and the session.
+* A page's runners are shared through one `RunnerPool`: one runner per
+  source (`maxConcurrent`, default 1), a `RunHandle` per run that gets
+  only that run's events, re-runs that stop the previous run with
+  `cancel` and keep the runner, other snippets `queued` with the run they
+  wait for named. Warm runners only when the host asks (`warm`).
 
 ## Files
 
@@ -36,7 +46,13 @@ credentials).
 * `packs.ts`: `PackId`, `PackLocator` (`unpinned`, `pinned`, with
   `file`, `packInfo` and `stillCurrent`), pack.json and index.json readers,
   `WorkerFactory` (`moduleWorkerFactory`, `blobTrampolineFactory`,
-  `factoryFor`), `SessionSource`, `sourceProblem` and `startWorker`.
+  `factoryFor`), `SessionSource`, `sourceProblem`, `sourceLimitation`
+  and `startWorker`.
+* `transport.ts`: `RunnerTransport`, `RunnerHandle` and `workerTransport`.
+* `run-session.ts`: `RunSession` (one runner of one source and its run),
+  `RunState`, `RunEvent`, `RunFailure`, and the silence and cancel
+  timeouts.
+* `run-pool.ts`: `RunnerPool` and `RunHandle`.
 
 ## Allowed imports
 
