@@ -64,6 +64,19 @@ export function targetById(id: CppTargetId): CppTarget {
 	return TARGETS.find((t) => t.id === id) ?? DEFAULT_TARGET;
 }
 
+/**
+ * Each target's short name, for places with room for a word: the Build
+ * chip's summary (`x86-64 · -O2`) and a compiler output view's header. Kept
+ * beside TARGETS, not in it, because TARGETS is the pack's targets.json
+ * field for field and the pack has no use for it.
+ */
+export const TARGET_SHORT: Readonly<Record<CppTargetId, string>> = {
+	'wasm32-wasi': 'WASI',
+	'x86_64-linux': 'x86-64',
+	'aarch64-linux': 'AArch64',
+	'riscv64-linux': 'RISC-V',
+};
+
 /** Whether `value` is a target id, for values read from storage or a form. */
 export function isCppTargetId(value: unknown): value is CppTargetId {
 	return TARGETS.some((t) => t.id === value);

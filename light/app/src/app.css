@@ -9,6 +9,9 @@
 	--font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	--nav-height: 3.5rem;
 	--tab-bar-height: 2.35rem;
+	/* The edge of a control that must be seen against its background (WCAG's 3:1 for components). */
+	--control-border: var(--gray-4);
+	--focus-ring: 2px solid var(--accent-high);
 
 	--white: oklch(90% 0.008 var(--hue-base));
 	--gray-1: oklch(80% 0.018 var(--hue-base));
@@ -89,12 +92,20 @@
 	--ansi-13: oklch(58% 0.18 330);
 	--ansi-14: oklch(58% 0.1 205);
 	--ansi-15: oklch(72% 0.008 var(--hue-base));
+	--control-border: oklch(62% 0.013 var(--hue-base));
 	color-scheme: light;
 }
 
 @media (width >= 50em) {
 	:root {
 		--nav-height: 4rem;
+	}
+}
+
+/* A landscape phone: every row of chrome costs the editor a line or two. */
+@media (height < 30em) {
+	:root {
+		--nav-height: 3rem;
 	}
 }
 
@@ -106,15 +117,263 @@ html,
 body {
 	height: 100%;
 	margin: 0;
+	/*
+	 * clip, not hidden: nothing can make the document wider than the window,
+	 * and neither focus nor scrollIntoView can scroll it sideways, which
+	 * `hidden` still allows (a focused control off the right edge of the top
+	 * bar used to shift the whole app left, with no way back).
+	 */
+	overflow: clip;
 }
 
 body {
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
+	/* The visible area: viewport.ts sets --app-height from the visual viewport, for a phone's on-screen keyboard. */
+	height: var(--app-height, 100dvh);
 	background: var(--black);
 	color: var(--white);
-	font: 15px/1.5 var(--font);
+	/* In rem, so a larger default font in the browser makes the app larger. */
+	font: 0.9375rem/1.5 var(--font);
+}
+
+/*
+ * Shared controls. A control's text never wraps: a label that does not fit
+ * is shortened by a rule, or the control moves into a menu (the top bar's
+ * folding, +page.svelte), never squeezed onto two lines. Text that can be
+ * any length (a file name, a summary, a status) goes in a `.truncate`
+ * span, with its full text in the control's title and accessible name.
+ * Heights are minimums, so a larger font grows a control instead of
+ * spilling out of it.
+ */
+.btn {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 0.4rem;
+	min-width: 0;
+	min-height: 2rem;
+	padding: 0 0.8rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.35rem;
+	background: var(--gray-6);
+	color: var(--gray-2);
+	font: inherit;
+	font-size: 0.85rem;
+	line-height: 1.2;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.btn:hover,
+.btn:focus-visible {
+	border-color: var(--control-border);
+	color: var(--white);
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.btn svg {
+	flex: none;
+	width: 0.85rem;
+	height: 0.85rem;
+}
+.btn.primary {
+	border-color: var(--accent);
+	color: var(--white);
+	font-weight: 600;
+}
+/* A toggle that is on: a fill and a check, not only a border colour. */
+.btn[aria-pressed='true'],
+.chip[aria-pressed='true'] {
+	border-color: var(--accent);
+	background: var(--accent-low);
+	color: var(--white);
+}
+.icon-btn {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	min-width: 2rem;
+	min-height: 2rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.35rem;
+	background: none;
+	color: var(--gray-2);
+	font: inherit;
+	cursor: pointer;
+}
+.icon-btn:hover,
+.icon-btn:focus-visible {
+	color: var(--accent-high);
+}
+.icon-btn svg {
+	width: 1.1rem;
+	height: 1.1rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.chip {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 0.3rem;
+	min-height: 1.5rem;
+	padding: 0 0.5rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.35rem;
+	background: var(--gray-6);
+	color: var(--gray-3);
+	font: inherit;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.chip:hover {
+	color: var(--white);
+}
+.truncate {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+/* Read by screen readers, not shown. */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+:where(button, select, input, a, [tabindex]):focus-visible,
+.dv-tab:focus-visible {
+	outline: var(--focus-ring);
+	outline-offset: 1px;
+}
+
+/*
+ * Popovers (Popover.svelte, anchor.ts): in the top layer, beside their
+ * toggle, never larger than the window; a bottom sheet on a phone.
+ */
+.yk-popover {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	max-width: calc(100vw - 1rem);
+	max-height: calc(var(--app-height, 100dvh) - var(--nav-height) - 1rem);
+	overflow: auto;
+	padding: 0.4rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.5rem;
+	background: var(--gray-6);
+	box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.3);
+	color: var(--white);
+	font-size: 0.85rem;
+}
+.yk-popover.anchored {
+	position-area: block-end span-inline-end;
+	position-try-fallbacks: flip-inline, flip-block;
+	margin-block: 4px;
+	max-height: min(calc(var(--app-height, 100dvh) - var(--nav-height) - 1rem), 100%);
+}
+@media (width < 40em) {
+	.yk-popover,
+	.yk-popover.anchored {
+		position-area: none;
+		inset: auto 0 0 0;
+		width: 100%;
+		max-width: none;
+		margin: 0;
+		border-radius: 0.75rem 0.75rem 0 0;
+		padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+	}
+}
+/* A menu (the ⋯ menu, a view's Options): rows of actions, dividers between sections. */
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+	min-height: 2rem;
+	padding: 0 0.6rem;
+	border: 0;
+	border-radius: 0.3rem;
+	background: none;
+	color: var(--white);
+	font: inherit;
+	text-align: start;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+	background: var(--gray-5);
+	outline: none;
+}
+.menu-item .check {
+	flex: none;
+	width: 1rem;
+	color: var(--accent-high);
+	text-align: center;
+}
+.menu-item .hint {
+	margin-left: auto;
+	padding-left: 1rem;
+	color: var(--gray-3);
+	font-size: 0.75rem;
+}
+.menu-item.danger {
+	color: var(--red-high);
+}
+.menu-divider {
+	height: 1px;
+	margin: 0.3rem 0.2rem;
+	background: var(--gray-5);
+}
+.menu-heading {
+	padding: 0.3rem 0.6rem 0.1rem;
+	color: var(--gray-3);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+/* A finger needs a bigger target than a pointer: 44 px for controls, 32 px for a tab's close. */
+@media (pointer: coarse) {
+	.btn,
+	.icon-btn,
+	.menu-item {
+		min-height: 2.75rem;
+	}
+	.icon-btn {
+		min-width: 2.75rem;
+	}
+	.dock-tab-close {
+		width: 2rem !important;
+		height: 2rem !important;
+	}
+	:root {
+		--tab-bar-height: 2.75rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
 }
 
 .monaco-editor {

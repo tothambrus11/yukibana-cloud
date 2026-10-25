@@ -150,6 +150,65 @@ export function shortFlags(flags: readonly string[]): string[] {
 	return shown;
 }
 
+/**
+ * The flags the person chose, out of clang's arguments for a view: those of
+ * `shortFlags`, less the ones the toolchain adds on its own and that say
+ * nothing about the project (packs/cpp/src/toolchain.js `compileArgs`): the
+ * WebAssembly exceptions flags (`-fwasm-exceptions`, `-mllvm` and its
+ * value), libc++'s hardening mode when it is the toolchain's default
+ * (`-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST`), the Intel
+ * syntax the view's own toggle asks for (`-masm=`), and the frame pointer
+ * AddressSanitizer needs. What is left is what a person would write in
+ * compile_flags.txt: `-O2 -std=c++20 -Wall`. The view's details show these
+ * beside the full command.
+ */
+export function userFlags(flags: readonly string[]): string[] {
+	const shown = shortFlags(flags);
+	const asan = flags.some((f) => /^-fsanitize=.*\baddress\b/.test(f));
+	const out: string[] = [];
+	for (let i = 0; i < shown.length; i++) {
+		const f = shown[i]!;
+		if (f === '-mllvm') {
+			i++;
+			continue;
+		}
+		if (f === '-fwasm-exceptions' || f === '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST' || f.startsWith('-masm=')) continue;
+		if (asan && f === '-fno-omit-frame-pointer') continue;
+		out.push(f);
+	}
+	return out;
+}
+
+/** What a view's header says its output was made with, in short (`viewSummary`). */
+export interface ViewSummary {
+	/** The optimisation level, the last `-O` flag (`-O2`), or null when there is none. */
+	opt: string | null;
+	/** The sanitizers on: `ASan`, `UBSan`, `ASan + UBSan`, or null. */
+	sanitizers: string | null;
+	/** The language standard set with `-std=` (`c++20`), or null for clang's default. */
+	std: string | null;
+}
+
+/**
+ * The choices a view's header shows as chips, read from clang's arguments:
+ * the optimisation level, the sanitizers and the language standard (the
+ * target is the view's own field). Later flags win, as in clang.
+ */
+export function viewSummary(flags: readonly string[]): ViewSummary {
+	let opt: string | null = null;
+	let std: string | null = null;
+	const sanitize = new Set<string>();
+	for (const f of flags) {
+		if (/^-O(\d|s|z|fast|g)?$/.test(f)) opt = f;
+		else if (f.startsWith('-std=')) std = f.slice('-std='.length);
+		else if (f.startsWith('-fsanitize=')) for (const s of f.slice('-fsanitize='.length).split(',')) sanitize.add(s);
+		else if (f.startsWith('-fno-sanitize=')) for (const s of f.slice('-fno-sanitize='.length).split(',')) sanitize.delete(s);
+	}
+	const asan = sanitize.has('address');
+	const ubsan = sanitize.has('undefined');
+	return { opt, std, sanitizers: asan && ubsan ? 'ASan + UBSan' : asan ? 'ASan' : ubsan ? 'UBSan' : null };
+}
+
 /** `file:line`, the key a source line goes by in `hueGroups`. */
 export const lineKey = (file: string, line: number) => `${file}:${line}`;
 

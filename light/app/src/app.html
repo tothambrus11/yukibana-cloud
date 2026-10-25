@@ -2,7 +2,8 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<!-- resizes-content: Chrome for Android shrinks the layout with the on-screen keyboard (viewport.ts does it elsewhere). -->
+		<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
 		<!-- The window colour of the installed app, per system theme; theme.svelte.ts follows the toggle. -->
 		<meta name="theme-color" content="#121111" media="(prefers-color-scheme: dark)" />
 		<meta name="theme-color" content="#fbfafa" media="(prefers-color-scheme: light)" />

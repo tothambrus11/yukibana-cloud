@@ -8,7 +8,7 @@
 //   node --test tests/unit/explorer-map.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { hueGroups, isStatement, isViewSource, linesWithoutCode, lineKey, outputLinesFor, partAt, partFromChain, runIndex, runsOf, runToReveal, stepRun, shortFlags, sourceOf, viewSourceFor } from '../../src/lib/explorer-map.ts';
+import { hueGroups, isStatement, isViewSource, linesWithoutCode, lineKey, outputLinesFor, partAt, partFromChain, runIndex, runsOf, runToReveal, stepRun, shortFlags, sourceOf, userFlags, viewSourceFor, viewSummary } from '../../src/lib/explorer-map.ts';
 
 // main:                      1  null
 //   push rbp                 2  main.cpp:6
@@ -181,4 +181,23 @@ test('a statement with code only without optimisation is one the optimised outpu
 	const ir = [{ file: 'main.cpp', line: 4, column: 12 }];
 	assert.deepEqual([...linesWithoutCode([o0, o0], [asm, ir], textOf)], [['main.cpp:2', 1], ['main.cpp:3', 1]]);
 	assert.equal(linesWithoutCode([], [asm], textOf).size, 0);
+});
+
+test("a view's details name the flags the person chose, not the ones the toolchain adds on its own", () => {
+	const wasm = ['--target=wasm32-wasip1', '--sysroot=/wasi', '-resource-dir=/usr/lib/clang/21', '-O2', '-fwasm-exceptions', '-mllvm', '-wasm-use-legacy-eh=false', '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST', '-std=c++20', '-Wall', '-Wextra', '-I.', '-gline-tables-only', '-fno-discard-value-names', '-S', '-emit-llvm'];
+	assert.deepEqual(userFlags(wasm), ['-O2', '-std=c++20', '-Wall', '-Wextra']);
+	const x86 = ['--target=x86_64-linux-musl', '-resource-dir=/usr/lib/clang/21', '-O0', '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST', '-gline-tables-only', '-fno-omit-frame-pointer', '--target=x86_64-linux-musl', '-fsanitize=address', '-std=c++20', '-masm=intel', '-S'];
+	assert.deepEqual(userFlags(x86), ['-O0', '-fsanitize=address', '-std=c++20']);
+	// A hardening mode the project chose itself is the person's.
+	assert.deepEqual(userFlags(['-O1', '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG']), ['-O1', '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG']);
+	// Without AddressSanitizer, a frame pointer asked for is the person's too.
+	assert.deepEqual(userFlags(['-O2', '-fno-omit-frame-pointer']), ['-O2', '-fno-omit-frame-pointer']);
+});
+
+test("a view's header sums up the optimisation, the sanitizers and the standard, the last flag winning", () => {
+	assert.deepEqual(viewSummary(['-O2', '-std=c++20']), { opt: '-O2', std: 'c++20', sanitizers: null });
+	assert.deepEqual(viewSummary(['-O2', '-O0', '-fsanitize=address']), { opt: '-O0', std: null, sanitizers: 'ASan' });
+	assert.deepEqual(viewSummary(['-fsanitize=address,undefined']), { opt: null, std: null, sanitizers: 'ASan + UBSan' });
+	assert.deepEqual(viewSummary(['-fsanitize=address', '-fsanitize=undefined', '-fno-sanitize=address', '-Os']), { opt: '-Os', std: null, sanitizers: 'UBSan' });
+	assert.deepEqual(viewSummary([]), { opt: null, std: null, sanitizers: null });
 });

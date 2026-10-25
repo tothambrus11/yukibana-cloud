@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { asmLanguageOf, runOptionsOf, TARGETS, targetOf, withTarget } from '../../src/lib/cpp-targets.ts';
+import { asmLanguageOf, runOptionsOf, TARGET_SHORT, TARGETS, targetOf, withTarget } from '../../src/lib/cpp-targets.ts';
 
 const pack = new URL('../../../packs/cpp/', import.meta.url);
 const said = (choice) => (choice.kind === 'unsupported' ? { kind: choice.kind, triple: choice.triple } : { kind: choice.kind, id: choice.target.id });
@@ -105,4 +105,9 @@ test("the app reads compile_flags.txt as the pack's runner and explorer do", { s
 	const cases = JSON.parse(readFileSync(fixtures, 'utf8'));
 	assert.ok(cases.length > 0);
 	for (const c of cases) assert.deepEqual(said(targetOf(c.flags)), c.expect, c.name);
+});
+
+test('every target has a short name for the Build chip and the view headers', () => {
+	for (const t of TARGETS) assert.ok(TARGET_SHORT[t.id] && TARGET_SHORT[t.id].length <= 8, `${t.id}: ${TARGET_SHORT[t.id]}`);
+	assert.deepEqual(TARGETS.map((t) => TARGET_SHORT[t.id]), ['WASI', 'x86-64', 'AArch64', 'RISC-V']);
 });
