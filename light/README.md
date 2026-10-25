@@ -89,8 +89,10 @@ seconds. Its header has the glossary and the pin rule.
 * Pushing a `light-v*` tag runs `.github/workflows/light-release.yml`: the
   packs as above (normally all downloaded), the app built with all of them
   and smoke-tested in Chromium, and the GitHub release of the tag with
-  `yukibana-light-<tag>.zip` and `packs.json` (the tree each pack was built
-  from). Run by hand, it only uploads the archive as the run's artifact.
+  `yukibana-light-<tag>.zip`, `packs.json` (what each pack was made from:
+  `{"toolchain": <key>}` for a split pack, `{"tree": <git tree id>}` for
+  any other) and `toolchains.json` (the split packs' toolchain keys
+  alone). Run by hand, it only uploads the archive as the run's artifact.
   On a tag it also deploys the build to https://light.yukibana.dev
   (`deploy/deploy.sh`: a Worker with the build as its static assets, COOP
   and COEP on every response, the `.br` copy of each file, and the few pack
