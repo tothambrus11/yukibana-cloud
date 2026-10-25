@@ -18,9 +18,22 @@ on:
 jobs:
   drift:
     runs-on: ubuntu-latest
+    # The secrets are on the "default" environment, as for database.yml, and a
+    # job sees them only if it names it. Without this line SUPABASE_DB_URL was
+    # empty, every command below fell back to a local socket, and the job
+    # failed every night without ever reaching production.
+    environment: default
     permissions:
       contents: read
     steps:
+      - name: The database secret is set
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::SUPABASE_DB_URL is empty: set it on the \"default\" environment (see database.yml)"
+            exit 1
+          fi
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
