@@ -1,0 +1,660 @@
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule3_r1ix_bytes" {
+     $trModule3_r1ix_bytes:
+         I8[] "Main"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule1_r1iv_bytes" {
+     $trModule1_r1iv_bytes:
+         I8[] "main"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule2_r1iw_closure" {
+     $trModule2_r1iw_closure:
+         const TrNameS_con_info;
+         const $trModule1_r1iv_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule4_r1iy_closure" {
+     $trModule4_r1iy_closure:
+         const TrNameS_con_info;
+         const $trModule3_r1ix_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule_closure" {
+     $trModule_closure:
+         const Module_con_info;
+         const $trModule2_r1iw_closure+1;
+         const $trModule4_r1iy_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[square_rIK_entry() { //  [R2]
+         { info_tbls: [(c1iU,
+                        label: square_rIK_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Just $fNumInt_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1iU: // c1iR
+           unwind Sp = Just Sp + 0;
+           _s1iA::P32 = R2;
+           if ((Sp + 4) - 16 < SpLim) (likely: False) goto c1iV; else goto c1iW;
+       c1iV: // c1iR
+           unwind Sp = Just Sp + 0;
+           R2 = _s1iA::P32;
+           R1 = square_rIK_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       c1iW: // c1iR
+           unwind Sp = Just Sp + 0;
+           //tick src</workspace/Main.hs:6:1-16>
+           //tick src</workspace/Main.hs:6:12>
+           //tick src</workspace/Main.hs:6:16>
+           R2 = $fNumInt_closure;
+           I32[Sp - 12] = stg_ap_pp_info;
+           P32[Sp - 8] = _s1iA::P32;
+           P32[Sp - 4] = _s1iA::P32;
+           Sp = Sp - 12;
+           unwind Sp = Just Sp + 12;
+           call *_entry(R2) args: 16, res: 0, upd: 4;
+     }
+ },
+ section ""data" . square_rIK_closure" {
+     square_rIK_closure:
+         const square_rIK_info;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u0_srt" {
+     _u0_srt:
+         const stg_SRT_3_info;
+         const square_rIK_closure;
+         const map_closure;
+         const $fEnumInt_closure;
+         const 0;
+ },
+ total_sat_s1iD_entry() { //  [R1]
+         { info_tbls: [(c1j7,
+                        label: total_sat_s1iD_info
+                        rep: HeapRep { Thunk }
+                        srt: Just $fEnumInt_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1j7: // c1iY/c1j5
+           unwind Sp = Just Sp + 0;
+           _s1iD::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto c1j8; else goto c1j9;
+       c1j8: // c1iY/c1j5
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iD::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1j9: // c1iY/c1j5
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _s1iD::P32;
+           //tick src</workspace/Main.hs:10:31-39>
+           //tick src</workspace/Main.hs:10:32>
+           R2 = $fEnumInt_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = stg_INTLIKE_closure+137;
+           P32[Sp - 12] = stg_INTLIKE_closure+209;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call enumFromTo_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ total_sat_s1iE_entry() { //  [R1]
+         { info_tbls: [(c1ja,
+                        label: total_sat_s1iE_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u0_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1ja: // c1iY
+           unwind Sp = Just Sp + 0;
+           _s1iE::P32 = R1;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto c1jb; else goto c1jc;
+       c1jc: // c1iY
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 8;
+           if (Hp > HpLim) (likely: False) goto c1je; else goto c1jd;
+       c1je: // c1iY
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 8;
+           goto c1jb;
+       c1jb: // c1iY
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iE::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1jd: // c1iY
+           unwind Sp = Just Sp + 0;
+           (_c1j0::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, _s1iE::P32);
+           if (_c1j0::I32 == 0) goto c1j2; else goto c1j1;
+       c1j2: // c1iY
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![_s1iE::P32]])() args: 4, res: 0, upd: 4;
+       c1j1: // c1iY
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1j0::I32;
+           //tick src</workspace/Main.hs:10:7-40>
+           //tick src</workspace/Main.hs:10:15-40>
+           I32[Hp - 4] = total_sat_s1iD_info;
+           _c1j3::P32 = Hp - 4;
+           //tick src</workspace/Main.hs:10:24-29>
+           R3 = _c1j3::P32;
+           R2 = square_rIK_closure+1;
+           R1 = map_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pp_fast(R3, R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . total_sat_s1iE_closure" {
+     total_sat_s1iE_closure:
+         const total_sat_s1iE_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u1_srt" {
+     _u1_srt:
+         const stg_SRT_3_info;
+         const total_sat_s1iE_closure;
+         const $fFoldableList_closure;
+         const $fNumInt_closure;
+         const 0;
+ },
+ total_r1iz_entry() { //  [R1]
+         { info_tbls: [(c1jl,
+                        label: total_r1iz_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u1_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1jl: // c1jg
+           unwind Sp = Just Sp + 0;
+           _r1iz::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto c1jm; else goto c1jn;
+       c1jm: // c1jg
+           unwind Sp = Just Sp + 0;
+           R1 = _r1iz::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1jn: // c1jg
+           unwind Sp = Just Sp + 0;
+           (_c1ji::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, _r1iz::P32);
+           if (_c1ji::I32 == 0) goto c1jk; else goto c1jj;
+       c1jk: // c1jg
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![_r1iz::P32]])() args: 4, res: 0, upd: 4;
+       c1jj: // c1jg
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1ji::I32;
+           //tick src</workspace/Main.hs:10:7-40>
+           //tick src</workspace/Main.hs:10:15-40>
+           R2 = $fFoldableList_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = $fNumInt_closure;
+           P32[Sp - 12] = total_sat_s1iE_closure;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call sum_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ section ""data" . total_r1iz_closure" {
+     total_r1iz_closure:
+         const total_r1iz_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u2_srt" {
+     _u2_srt:
+         const stg_SRT_2_info;
+         const total_r1iz_closure;
+         const $fNumInt_closure;
+         const 0;
+ },
+ section ""data" . _u3_srt" {
+     _u3_srt:
+         const stg_SRT_3_info;
+         const $fShowInt_closure;
+         const print_closure;
+         const _u2_srt;
+         const 0;
+ },
+ section ""data" . _u4_srt" {
+     _u4_srt:
+         const stg_SRT_3_info;
+         const $fShowDouble_closure;
+         const print_closure;
+         const norm_closure;
+         const 0;
+ },
+ section ""data" . _u5_srt" {
+     _u5_srt:
+         const stg_SRT_3_info;
+         const $fMonadIO_closure;
+         const _u3_srt;
+         const _u4_srt;
+         const 0;
+ },
+ main_sat_s1iL_entry() { //  [R1]
+         { info_tbls: [(c1jI,
+                        label: main_sat_s1iL_info
+                        rep: HeapRep { Thunk }
+                        srt: Just norm_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1jI: // c1jp/c1jw/c1jD
+           unwind Sp = Just Sp + 0;
+           _s1iL::P32 = R1;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto c1jJ; else goto c1jK;
+       c1jK: // c1jp/c1jw/c1jD
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 36;
+           if (Hp > HpLim) (likely: False) goto c1jM; else goto c1jL;
+       c1jM: // c1jp/c1jw/c1jD
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 36;
+           goto c1jJ;
+       c1jJ: // c1jp/c1jw/c1jD
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iL::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1jL: // c1jp/c1jw/c1jD
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _s1iL::P32;
+           //tick src</workspace/Main.hs:13:9-26>
+           I32[Hp - 32] = D#_con_info;
+           F64[Hp - 28] = 4.0 :: W64;
+           _c1jF::P32 = Hp - 31;
+           //tick src</workspace/Main.hs:13:22>
+           I32[Hp - 20] = D#_con_info;
+           F64[Hp - 16] = 3.0 :: W64;
+           _c1jG::P32 = Hp - 19;
+           I32[Hp - 8] = Point_con_info;
+           P32[Hp - 4] = _c1jG::P32;
+           P32[Hp] = _c1jF::P32;
+           _c1jH::P32 = Hp - 7;
+           R2 = _c1jH::P32;
+           R1 = norm_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_p_fast(R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ main_sat_s1iM_entry() { //  [R1]
+         { info_tbls: [(c1jN,
+                        label: main_sat_s1iM_info
+                        rep: HeapRep { Thunk }
+                        srt: Just _u4_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1jN: // c1jp/c1jw
+           unwind Sp = Just Sp + 0;
+           _s1iM::P32 = R1;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto c1jO; else goto c1jP;
+       c1jP: // c1jp/c1jw
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 8;
+           if (Hp > HpLim) (likely: False) goto c1jR; else goto c1jQ;
+       c1jR: // c1jp/c1jw
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 8;
+           goto c1jO;
+       c1jO: // c1jp/c1jw
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iM::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1jQ: // c1jp/c1jw
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _s1iM::P32;
+           //tick src</workspace/Main.hs:13:3-26>
+           I32[Hp - 4] = main_sat_s1iL_info;
+           _c1jB::P32 = Hp - 4;
+           R3 = _c1jB::P32;
+           R2 = $fShowDouble_closure;
+           R1 = print_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pp_fast(R3, R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ main_sat_s1iG_entry() { //  [R1]
+         { info_tbls: [(c1jX,
+                        label: main_sat_s1iG_info
+                        rep: HeapRep { Thunk }
+                        srt: Just _u2_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1jX: // c1jp/c1jz/c1jV
+           unwind Sp = Just Sp + 0;
+           _s1iG::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto c1jY; else goto c1jZ;
+       c1jY: // c1jp/c1jz/c1jV
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iG::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1jZ: // c1jp/c1jz/c1jV
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _s1iG::P32;
+           //tick src</workspace/Main.hs:12:9-22>
+           //tick src</workspace/Main.hs:6:1-16>
+           //tick src</workspace/Main.hs:6:12>
+           //tick src</workspace/Main.hs:12:17-21>
+           //tick src</workspace/Main.hs:6:16>
+           //tick src</workspace/Main.hs:12:17-21>
+           R2 = $fNumInt_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = total_r1iz_closure;
+           P32[Sp - 12] = total_r1iz_closure;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call *_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ main_sat_s1iH_entry() { //  [R1]
+         { info_tbls: [(c1k0,
+                        label: main_sat_s1iH_info
+                        rep: HeapRep { Thunk }
+                        srt: Just _u3_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1k0: // c1jp/c1jz
+           unwind Sp = Just Sp + 0;
+           _s1iH::P32 = R1;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto c1k1; else goto c1k2;
+       c1k2: // c1jp/c1jz
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 8;
+           if (Hp > HpLim) (likely: False) goto c1k4; else goto c1k3;
+       c1k4: // c1jp/c1jz
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 8;
+           goto c1k1;
+       c1k1: // c1jp/c1jz
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iH::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1k3: // c1jp/c1jz
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _s1iH::P32;
+           I32[Hp - 4] = main_sat_s1iG_info;
+           _c1jT::P32 = Hp - 4;
+           R3 = _c1jT::P32;
+           R2 = $fShowInt_closure;
+           R1 = print_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pp_fast(R3, R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ main_sat_s1iN_entry() { //  [R1]
+         { info_tbls: [(c1k5,
+                        label: main_sat_s1iN_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u5_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1k5: // c1jp
+           unwind Sp = Just Sp + 0;
+           _s1iN::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto c1k6; else goto c1k7;
+       c1k7: // c1jp
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 16;
+           if (Hp > HpLim) (likely: False) goto c1k9; else goto c1k8;
+       c1k9: // c1jp
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 16;
+           goto c1k6;
+       c1k6: // c1jp
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iN::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1k8: // c1jp
+           unwind Sp = Just Sp + 0;
+           (_c1jr::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, _s1iN::P32);
+           if (_c1jr::I32 == 0) goto c1jt; else goto c1js;
+       c1jt: // c1jp
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![_s1iN::P32]])() args: 4, res: 0, upd: 4;
+       c1js: // c1jp
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1jr::I32;
+           //tick src</workspace/Main.hs:(9,1)-(13,26)>
+           I32[Hp - 12] = main_sat_s1iM_info;
+           _c1ju::P32 = Hp - 12;
+           I32[Hp - 4] = main_sat_s1iH_info;
+           _c1jx::P32 = Hp - 4;
+           R2 = $fMonadIO_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = _c1jx::P32;
+           P32[Sp - 12] = _c1ju::P32;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call >>_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_sat_s1iN_closure" {
+     main_sat_s1iN_closure:
+         const main_sat_s1iN_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u6_srt" {
+     _u6_srt:
+         const stg_SRT_3_info;
+         const total_r1iz_closure;
+         const $fShowInt_closure;
+         const print_closure;
+         const 0;
+ },
+ main_sat_s1iF_entry() { //  [R1]
+         { info_tbls: [(c1kg,
+                        label: main_sat_s1iF_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u6_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1kg: // c1kb
+           unwind Sp = Just Sp + 0;
+           _s1iF::P32 = R1;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto c1kh; else goto c1ki;
+       c1kh: // c1kb
+           unwind Sp = Just Sp + 0;
+           R1 = _s1iF::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1ki: // c1kb
+           unwind Sp = Just Sp + 0;
+           (_c1kd::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, _s1iF::P32);
+           if (_c1kd::I32 == 0) goto c1kf; else goto c1ke;
+       c1kf: // c1kb
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![_s1iF::P32]])() args: 4, res: 0, upd: 4;
+       c1ke: // c1kb
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1kd::I32;
+           //tick src</workspace/Main.hs:(9,1)-(13,26)>
+           //tick src</workspace/Main.hs:11:9-13>
+           R3 = total_r1iz_closure;
+           R2 = $fShowInt_closure;
+           R1 = print_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pp_fast(R3, R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_sat_s1iF_closure" {
+     main_sat_s1iF_closure:
+         const main_sat_s1iF_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u7_srt" {
+     _u7_srt:
+         const stg_SRT_3_info;
+         const main_sat_s1iF_closure;
+         const main_sat_s1iN_closure;
+         const $fMonadIO_closure;
+         const 0;
+ },
+ main_entry() { //  [R1]
+         { info_tbls: [(c1kp,
+                        label: main_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u7_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1kp: // c1kk
+           unwind Sp = Just Sp + 0;
+           _rIL::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto c1kq; else goto c1kr;
+       c1kq: // c1kk
+           unwind Sp = Just Sp + 0;
+           R1 = _rIL::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1kr: // c1kk
+           unwind Sp = Just Sp + 0;
+           (_c1km::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, _rIL::P32);
+           if (_c1km::I32 == 0) goto c1ko; else goto c1kn;
+       c1ko: // c1kk
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![_rIL::P32]])() args: 4, res: 0, upd: 4;
+       c1kn: // c1kk
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1km::I32;
+           //tick src</workspace/Main.hs:(9,1)-(13,26)>
+           R2 = $fMonadIO_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = main_sat_s1iF_closure;
+           P32[Sp - 12] = main_sat_s1iN_closure;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call >>_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_closure" {
+     main_closure:
+         const main_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u8_srt" {
+     _u8_srt:
+         const stg_SRT_2_info;
+         const runMainIO_closure;
+         const main_closure;
+         const 0;
+ },
+ main_entry() { //  [R1]
+         { info_tbls: [(c1ky,
+                        label: main_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u8_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1ky: // c1kt
+           unwind Sp = Just Sp + 0;
+           _48_1D::P32 = R1;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto c1kz; else goto c1kA;
+       c1kz: // c1kt
+           unwind Sp = Just Sp + 0;
+           R1 = _48_1D::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1kA: // c1kt
+           unwind Sp = Just Sp + 0;
+           (_c1kv::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, _48_1D::P32);
+           if (_c1kv::I32 == 0) goto c1kx; else goto c1kw;
+       c1kx: // c1kt
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![_48_1D::P32]])() args: 4, res: 0, upd: 4;
+       c1kw: // c1kt
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1kv::I32;
+           R2 = main_closure;
+           R1 = runMainIO_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_p_fast(R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_closure" {
+     main_closure:
+         const main_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+

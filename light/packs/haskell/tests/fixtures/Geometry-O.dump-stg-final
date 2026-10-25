@@ -1,0 +1,88 @@
+
+==================== Final STG: ====================
+
+$tc'Point3 :: Addr# = "'Point"#;
+
+$tcPoint2 :: Addr# = "Point"#;
+
+$trModule2 :: Addr# = "Geometry"#;
+
+$trModule4 :: Addr# = "main"#;
+
+Point :: Double %1 -> Double %1 -> Point =
+    {} \r [eta_B0 eta_B1]
+        src</workspace/Geometry.hs:4:14-47> Point [eta_B0 eta_B1];
+
+py :: Point -> Double =
+    {} \r [ds_sJM]
+        src</workspace/Geometry.hs:4:35-36>
+        case ds_sJM of wild_sJN { Point _ ds2_sJP -> ds2_sJP; };
+
+px :: Point -> Double =
+    {} \r [ds_sJQ]
+        src</workspace/Geometry.hs:4:21-22>
+        case ds_sJQ of wild_sJR { Point ds1_sJS _ -> ds1_sJS; };
+
+$trModule3 :: TrName = TrNameS! [$trModule4];
+
+$trModule1 :: TrName = TrNameS! [$trModule2];
+
+$trModule :: Module = Module! [$trModule3 $trModule1];
+
+$krep_rJJ :: KindRep = KindRepTyConApp! [$tcDouble []];
+
+$tcPoint1 :: TrName = TrNameS! [$tcPoint2];
+
+$tcPoint :: TyCon =
+    TyCon! [14465664668707857508#Word64
+            10791344104965576672#Word64
+            $trModule
+            $tcPoint1
+            0#
+            krep$*];
+
+$krep1_rJK :: KindRep = KindRepTyConApp! [$tcPoint []];
+
+$krep2_rJL :: KindRep = KindRepFun! [$krep_rJJ $krep1_rJK];
+
+$tc'Point1 :: KindRep = KindRepFun! [$krep_rJJ $krep2_rJL];
+
+$tc'Point2 :: TrName = TrNameS! [$tc'Point3];
+
+$tc'Point :: TyCon =
+    TyCon! [8859752923274051943#Word64
+            14799879522436965057#Word64
+            $trModule
+            $tc'Point2
+            0#
+            $tc'Point1];
+
+norm :: Point -> Double =
+    {} \r [ds_sJU]
+        src</workspace/Geometry.hs:7:1-39>
+        case ds_sJU of wild_sJV {
+        Point x_sJW y_sJX ->
+        src</workspace/Geometry.hs:7:20-39>
+        case x_sJW of wild1_sJY {
+        D# x1_sJZ ->
+        src</workspace/Geometry.hs:7:30>
+        src</workspace/Geometry.hs:7:34>
+        case y_sJX of wild2_sK0 {
+        D# x2_sK1 ->
+        src</workspace/Geometry.hs:7:38>
+        case *## [x2_sK1 x2_sK1] of norm_sat_sK3 {
+        __DEFAULT ->
+        case *## [x1_sJZ x1_sJZ] of norm_sat_sK2 {
+        __DEFAULT ->
+        case +## [norm_sat_sK2 norm_sat_sK3] of norm_sat_sK4 {
+        __DEFAULT ->
+        case sqrtDouble# [norm_sat_sK4] of norm_sat_sK5 {
+        __DEFAULT -> D# [norm_sat_sK5];
+        };
+        };
+        };
+        };
+        };
+        };
+        };
+

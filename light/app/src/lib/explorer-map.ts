@@ -116,12 +116,13 @@ export function isViewSource(path: string): boolean {
 
 /**
  * The source a view shows once the editor shows `active`: `active` itself
- * when it is a C or C++ source, else (a header, any other file, no file) the
- * source shown before, `previous`, which may be null: the view then asks for
- * a source to be opened.
+ * when it is a source the views can show (`isSource`: the language's,
+ * explore-views.ts; a C or C++ source by default), else (a header, any
+ * other file, no file) the source shown before, `previous`, which may be
+ * null: the view then asks for a source to be opened.
  */
-export function viewSourceFor(active: string | null, previous: string | null): string | null {
-	return active !== null && isViewSource(active) ? active : previous;
+export function viewSourceFor(active: string | null, previous: string | null, isSource: (path: string) => boolean = isViewSource): string | null {
+	return active !== null && isSource(active) ? active : previous;
 }
 
 /**
@@ -181,7 +182,7 @@ export function userFlags(flags: readonly string[]): string[] {
 
 /** What a view's header says its output was made with, in short (`viewSummary`). */
 export interface ViewSummary {
-	/** The optimisation level, the last `-O` flag (`-O2`), or null when there is none. */
+	/** The optimisation level, the last `-O` flag (`-O2`, Swift's `-Onone`; rustc's `-C opt-level=3`), or null when there is none. */
 	opt: string | null;
 	/** The sanitizers on: `ASan`, `UBSan`, `ASan + UBSan`, or null. */
 	sanitizers: string | null;
@@ -199,7 +200,8 @@ export function viewSummary(flags: readonly string[]): ViewSummary {
 	let std: string | null = null;
 	const sanitize = new Set<string>();
 	for (const f of flags) {
-		if (/^-O(\d|s|z|fast|g)?$/.test(f)) opt = f;
+		if (/^-O(\d|s|z|fast|g|none|size)?$/.test(f)) opt = f;
+		else if (/^-Copt-level=/.test(f)) opt = `-C ${f.slice(2)}`;
 		else if (f.startsWith('-std=')) std = f.slice('-std='.length);
 		else if (f.startsWith('-fsanitize=')) for (const s of f.slice('-fsanitize='.length).split(',')) sanitize.add(s);
 		else if (f.startsWith('-fno-sanitize=')) for (const s of f.slice('-fno-sanitize='.length).split(',')) sanitize.delete(s);

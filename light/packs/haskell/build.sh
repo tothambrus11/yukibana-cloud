@@ -164,7 +164,7 @@ for s in br gz; do
 done
 cp "$ART/prelude.mjs" "$ART/post-link.mjs" "$OUT/"
 node "$HERE/scripts/patch-dyld.mjs" "$ART/dyld.mjs" "$OUT/dyld.mjs"
-cp "$HERE"/src/ghc.js "$HERE"/src/server.js "$HERE"/src/symbols.js "$HERE"/src/text.js "$HERE"/src/runner.js "$OUT/"
+cp "$HERE"/src/ghc.js "$HERE"/src/server.js "$HERE"/src/symbols.js "$HERE"/src/text.js "$HERE"/src/runner.js "$HERE"/src/explorer.js "$HERE"/src/dumps.js "$OUT/"
 for l in "$ART"/LICENSE-*.txt; do [ -f "$l" ] && cp "$l" "$OUT/"; done
 cp "$SHIM/LICENSE-MIT" "$OUT/LICENSE-browser_wasi_shim.txt"
 cp "$HERE/src/tools.js" "$OUT/"

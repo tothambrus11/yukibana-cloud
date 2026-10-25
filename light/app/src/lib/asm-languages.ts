@@ -1,8 +1,11 @@
 /**
  * Monaco languages for the compiler output views (compiler-view.ts): LLVM
- * IR (`llvm-ir`) and the assembly of each target clang prints for
+ * IR (`llvm-ir`), the assembly of each target clang prints for
  * (`asm-x86_64` in AT&T or Intel syntax, `asm-aarch64`, `asm-riscv64`,
- * `asm-wasm32`). Monaco has none of them. Each is a Monarch tokenizer and a
+ * `asm-wasm32`, which Swift's and GHC's wasm assembly is too), Swift's SIL
+ * (`sil`), Rust's MIR (`mir`), GHC's Core and STG (`ghc-core`), Cmm
+ * (`cmm`), CPython's bytecode (`py-bytecode`) and the JVM's, as javap lists
+ * it (`jvm-bytecode`). Monaco has none of them. Each is a Monarch tokenizer and a
  * language configuration (comments, brackets), and nothing else: the views
  * are read only and no server answers for them.
  *
@@ -176,6 +179,100 @@ function irTokenizer(): Monaco.languages.IMonarchLanguage {
 	};
 }
 
+/**
+ * The intermediate forms other than LLVM IR, coloured coarsely: what is a
+ * keyword, a value, a type or a block's label, which is what a reader looks
+ * for in them. `values`, `globals` and `types` are tried in that order after
+ * comments and strings.
+ */
+interface FormTokens {
+	lineComment: string;
+	keywords: readonly string[];
+	/** SSA values and locals (`%3`, `_2`, `x_sJW`). */
+	values?: RegExp;
+	/** Functions and globals (`@$s4main6squareyS2iF`, `Main.square`). */
+	globals?: RegExp;
+	/** Types (`$Int`, `i32`, `P32`). */
+	types?: RegExp;
+	/** A block's label at the start of a line (`bb0:`, `c1iS:`). */
+	labels?: RegExp;
+	/** Instructions named by a pattern rather than listed (CPython's opcodes). */
+	mnemonics?: RegExp;
+}
+
+function formTokenizer(f: FormTokens): Monaco.languages.IMonarchLanguage {
+	const comment = f.lineComment.replace(/[-/]/g, '\\$&');
+	const rules: Rule[] = [
+		[new RegExp(`${comment}.*$`), 'comment'],
+		[/"(?:[^"\\]|\\.)*"/, 'string'],
+		...(f.labels ? [[f.labels, 'type'] as Rule] : []),
+		...(f.mnemonics ? [[f.mnemonics, 'keyword'] as Rule] : []),
+		...(f.values ? [[f.values, 'variable'] as Rule] : []),
+		...(f.globals ? [[f.globals, 'variable.predefined'] as Rule] : []),
+		...(f.types ? [[f.types, 'type'] as Rule] : []),
+		[/-?0x[0-9A-Fa-f]+\b/, 'number'],
+		[/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?#*/, 'number'],
+		[/[A-Za-z_][\w']*/, { cases: { '@keywords': 'keyword', '@default': 'identifier' } }],
+		[/[()[\]{}<>]/, '@brackets'],
+		[/[ \t]+/, 'white'],
+	];
+	return { defaultToken: '', keywords: [...f.keywords], tokenizer: { root: rules } };
+}
+
+const SIL: FormTokens = {
+	lineComment: '//',
+	keywords: ['sil', 'sil_stage', 'sil_global', 'sil_vtable', 'sil_witness_table', 'sil_default_witness_table', 'sil_property', 'sil_scope', 'canonical', 'raw', 'hidden', 'private', 'shared', 'public', 'public_external', 'shared_external', 'import', 'class', 'struct', 'enum', 'protocol', 'func', 'var', 'let', 'init', 'deinit', 'case', 'extension', 'typealias', 'static', 'final', 'guaranteed', 'owned', 'unowned', 'inout', 'trivial', 'copy', 'take', 'assign', 'init', 'to', 'loc', 'scope', 'parent', 'inlined_at', 'apply', 'partial_apply', 'try_apply', 'begin_apply', 'function_ref', 'witness_method', 'class_method', 'struct_extract', 'struct_element_addr', 'tuple', 'struct', 'enum', 'load', 'store', 'alloc_stack', 'dealloc_stack', 'alloc_ref', 'alloc_box', 'project_box', 'begin_access', 'end_access', 'begin_borrow', 'end_borrow', 'copy_value', 'destroy_value', 'destroy_addr', 'retain_value', 'release_value', 'strong_retain', 'strong_release', 'br', 'cond_br', 'switch_enum', 'return', 'unreachable', 'integer_literal', 'float_literal', 'string_literal', 'builtin', 'debug_value', 'mark_uninitialized', 'global_addr', 'metatype', 'upcast', 'unchecked_ref_cast', 'init_existential_addr', 'open_existential_addr', 'move_value', 'mark_dependence', 'yield', 'end_apply', 'abort_apply'],
+	values: /%[\w.]+/,
+	globals: /@(?:"(?:[^"\\]|\\.)*"|[\w.$]+)/,
+	types: /\$[*@]?[\w.<>]+/,
+	labels: /^\s*bb\d+(?=[(:])/,
+};
+const MIR: FormTokens = {
+	lineComment: '//',
+	keywords: ['fn', 'let', 'mut', 'const', 'static', 'promoted', 'scope', 'debug', 'goto', 'return', 'switchInt', 'otherwise', 'unwind', 'continue', 'terminate', 'cleanup', 'drop', 'assert', 'move', 'copy', 'unreachable', 'resume', 'as', 'discriminant', 'StorageLive', 'StorageDead', 'Len', 'Add', 'Sub', 'Mul', 'Div', 'Rem', 'Eq', 'Ne', 'Lt', 'Le', 'Gt', 'Ge', 'Offset', 'AddWithOverflow', 'SubWithOverflow', 'MulWithOverflow', 'Not', 'Neg', 'PtrToPtr', 'Transmute', 'true', 'false', 'unsafe', 'impl', 'for', 'in', 'ref', 'raw', 'deref_copy'],
+	values: /\b_\d+\b/,
+	types: /\b(?:i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|str|String|Vec|Option|Result|Self)\b/,
+	labels: /^\s*bb\d+(?=[ :])/,
+};
+const GHC_CORE: FormTokens = {
+	lineComment: '--',
+	keywords: ['case', 'of', 'let', 'letrec', 'in', 'join', 'joinrec', 'jump', 'forall', 'DEFAULT', '__DEFAULT', 'Rec', 'NonRec', 'cast', 'src'],
+	globals: /\$?[A-Z][\w']*(?:\.[A-Z][\w']*)*\.[\w'$]+/,
+	types: /@[\w'$]+/,
+};
+const CMM: FormTokens = {
+	lineComment: '//',
+	keywords: ['if', 'else', 'goto', 'call', 'jump', 'return', 'switch', 'case', 'default', 'likely', 'True', 'False', 'section', 'const', 'offset', 'args', 'res', 'upd', 'unwind', 'returns', 'to', 'info_tbls', 'stack_info', 'label', 'rep', 'srt', 'arg_space'],
+	values: /\b(?:R\d+|Sp|SpLim|Hp|HpLim|HpAlloc|BaseReg|CurrentTSO|CurrentNursery|F\d+|D\d+|L\d+)\b/,
+	types: /\b(?:[IFPWB](?:8|16|32|64|128)|bits(?:8|16|32|64))\b/,
+	labels: /^\s*[a-z]\w*(?=: )/,
+};
+
+const PY_BYTECODE: FormTokens = {
+	lineComment: '#',
+	keywords: [],
+	labels: /^(?:L\d+:|\S[^:]*:$)/,
+	mnemonics: /\b[A-Z][A-Z0-9_]+\b/,
+};
+
+/** The JVM's opcodes and the modifiers of a javap listing's declarations. */
+const JVM: FormTokens = {
+	lineComment: '//',
+	keywords: (
+		'nop aconst_null iconst_m1 iconst_0 iconst_1 iconst_2 iconst_3 iconst_4 iconst_5 lconst_0 lconst_1 fconst_0 fconst_1 fconst_2 dconst_0 dconst_1 bipush sipush ldc ldc_w ldc2_w ' +
+		'iload lload fload dload aload iload_0 iload_1 iload_2 iload_3 lload_0 lload_1 lload_2 lload_3 fload_0 fload_1 fload_2 fload_3 dload_0 dload_1 dload_2 dload_3 aload_0 aload_1 aload_2 aload_3 ' +
+		'iaload laload faload daload aaload baload caload saload istore lstore fstore dstore astore istore_0 istore_1 istore_2 istore_3 lstore_0 lstore_1 lstore_2 lstore_3 ' +
+		'fstore_0 fstore_1 fstore_2 fstore_3 dstore_0 dstore_1 dstore_2 dstore_3 astore_0 astore_1 astore_2 astore_3 iastore lastore fastore dastore aastore bastore castore sastore ' +
+		'pop pop2 dup dup_x1 dup_x2 dup2 dup2_x1 dup2_x2 swap iadd ladd fadd dadd isub lsub fsub dsub imul lmul fmul dmul idiv ldiv fdiv ddiv irem lrem frem drem ineg lneg fneg dneg ' +
+		'ishl lshl ishr lshr iushr lushr iand land ior lor ixor lxor iinc i2l i2f i2d l2i l2f l2d f2i f2l f2d d2i d2l d2f i2b i2c i2s lcmp fcmpl fcmpg dcmpl dcmpg ' +
+		'ifeq ifne iflt ifge ifgt ifle if_icmpeq if_icmpne if_icmplt if_icmpge if_icmpgt if_icmple if_acmpeq if_acmpne goto jsr ret tableswitch lookupswitch ireturn lreturn freturn dreturn areturn return ' +
+		'getstatic putstatic getfield putfield invokevirtual invokespecial invokestatic invokeinterface invokedynamic new newarray anewarray arraylength athrow checkcast instanceof ' +
+		'monitorenter monitorexit wide multianewarray ifnull ifnonnull goto_w jsr_w public private protected static final abstract synchronized native transient volatile class interface enum record default'
+	).split(' '),
+	labels: /^\s*\d+:/,
+	types: /\b(?:void|boolean|byte|char|short|int|long|float|double)\b/,
+};
+
 const BRACKETS: Monaco.languages.CharacterPair[] = [
 	['(', ')'],
 	['[', ']'],
@@ -184,7 +281,7 @@ const BRACKETS: Monaco.languages.CharacterPair[] = [
 ];
 
 /** Every language registered here, with what it is called. */
-export const OUTPUT_LANGUAGES = ['llvm-ir', 'asm-x86_64', 'asm-aarch64', 'asm-riscv64', 'asm-wasm32'] as const;
+export const OUTPUT_LANGUAGES = ['llvm-ir', 'asm-x86_64', 'asm-aarch64', 'asm-riscv64', 'asm-wasm32', 'sil', 'mir', 'ghc-core', 'cmm', 'py-bytecode', 'jvm-bytecode'] as const;
 
 /**
  * Registers every language of OUTPUT_LANGUAGES with `monaco`: its id, its
@@ -202,4 +299,10 @@ export function registerOutputLanguages(monaco: MonacoApi): void {
 	register('asm-aarch64', 'AArch64 assembly', asmTokenizer(DIALECTS['asm-aarch64']), DIALECTS['asm-aarch64'].lineComment);
 	register('asm-riscv64', 'RISC-V assembly', asmTokenizer(DIALECTS['asm-riscv64']), DIALECTS['asm-riscv64'].lineComment);
 	register('asm-wasm32', 'WebAssembly assembly', wasmTokenizer(), DIALECTS['asm-wasm32'].lineComment);
+	register('sil', 'SIL', formTokenizer(SIL), SIL.lineComment);
+	register('mir', 'MIR', formTokenizer(MIR), MIR.lineComment);
+	register('ghc-core', 'GHC Core', formTokenizer(GHC_CORE), GHC_CORE.lineComment);
+	register('cmm', 'Cmm', formTokenizer(CMM), CMM.lineComment);
+	register('py-bytecode', 'CPython bytecode', formTokenizer(PY_BYTECODE), PY_BYTECODE.lineComment);
+	register('jvm-bytecode', 'JVM bytecode', formTokenizer(JVM), JVM.lineComment);
 }

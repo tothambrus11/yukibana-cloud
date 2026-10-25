@@ -8,7 +8,8 @@ import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
 import type { LoadingProgress, RunMode } from '@yukibana/protocol';
 import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
-import { isLanguageId, languageOf, LANGUAGES, type ExploreKind, type LanguageId } from './languages';
+import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
+import { viewOf, viewsOf, type ExploreKind } from './explore-views';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
@@ -139,7 +140,7 @@ export class Workspace {
 		problem: (text) => this.write('warning', text),
 	});
 	/**
-	 * The compiler output views' client (languages with `explores`), loaded
+	 * The compiler output views' client (languages with views, explore-views.ts), loaded
 	 * with the views the first time one opens: null until then, so the app
 	 * shell carries none of it.
 	 */
@@ -259,10 +260,10 @@ export class Workspace {
 
 	/**
 	 * Opens a compiler output view of the active C or C++ source (languages
-	 * with `explores`); does nothing for another language.
+	 * with that view, explore-views.ts); does nothing for another language.
 	 */
 	async showView(kind: ExploreKind): Promise<void> {
-		if (!languageOf(this.language).explores?.includes(kind)) return;
+		if (!viewOf(this.language, kind)) return;
 		const generation = this.generation;
 		try {
 			await this.loadExplorer();
@@ -297,11 +298,14 @@ export class Workspace {
 	private loadExplorer(): Promise<Explorer> {
 		this.explorerLoad ??= import('./explorer.svelte').then(({ Explorer }) => {
 			const explorer = new Explorer({
-				pack: () => {
-					const language = languageOf(this.language);
-					return language.explores?.length ? packOf(language) : null;
-				},
+				language: () => this.language,
+				pack: () => (viewsOf(this.language) ? packOf(languageOf(this.language)) : null),
 				files: () => this.currentFiles(),
+				// C++ views read the level from compile_flags.txt, as its runner does; Swift's is sent, as with Run.
+				options: () => {
+					const o = this.optimization;
+					return this.language !== 'cpp' && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
+				},
 			});
 			explorer.activeChanged(this.active);
 			this.explorer = explorer;
@@ -364,6 +368,7 @@ export class Workspace {
 			this.write('info', `Optimization: ${level.label}, for ${what}${level.default ? ' (the default)' : ''}.`);
 		}
 		this.refreshOptimization();
+		this.explorer?.settingsChanged();
 		this.scheduleSave();
 	}
 

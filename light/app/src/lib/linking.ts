@@ -43,7 +43,7 @@ import type { monaco as Monaco } from './monaco';
 import { hueGroups, lineKey, linesWithoutCode, partAt, partFromChain, runIndex, runsOf, runToReveal, samePart, stepRun, type LineCode, type LineMap, type MappedLine, type Part, type ServerRange, type SourceLine } from './explorer-map';
 import { HUES, linkStyleSheet, rulerColour } from './link-colours';
 import type { Hex, Theme } from './palette';
-import type { ExploreKind } from './languages';
+import type { ExploreKind } from './explore-views';
 
 type Editor = Monaco.editor.ICodeEditor;
 

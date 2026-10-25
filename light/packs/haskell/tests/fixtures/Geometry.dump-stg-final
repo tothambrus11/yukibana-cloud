@@ -1,0 +1,85 @@
+
+==================== Final STG: ====================
+
+$tc'Point1_rIq :: Addr# = "'Point"#;
+
+$tcPoint1_rIl :: Addr# = "Point"#;
+
+$trModule3_rIi :: Addr# = "Geometry"#;
+
+$trModule1_rIg :: Addr# = "main"#;
+
+Point :: Double %1 -> Double %1 -> Point =
+    {} \r [eta_B0 eta_B1]
+        src</workspace/Geometry.hs:4:14-47> Point [eta_B0 eta_B1];
+
+py :: Point -> Double =
+    {} \r [ds_sIs]
+        src</workspace/Geometry.hs:4:35-36>
+        case ds_sIs of { Point _ ds2_sIv -> ds2_sIv; };
+
+px :: Point -> Double =
+    {} \r [ds_sIw]
+        src</workspace/Geometry.hs:4:21-22>
+        case ds_sIw of { Point ds1_sIy _ -> ds1_sIy; };
+
+$trModule2_rIh :: TrName = TrNameS! [$trModule1_rIg];
+
+$trModule4_rIj :: TrName = TrNameS! [$trModule3_rIi];
+
+$trModule :: Module = Module! [$trModule2_rIh $trModule4_rIj];
+
+$krep_rIk :: KindRep = KindRepTyConApp! [$tcDouble []];
+
+$tcPoint2_rIm :: TrName = TrNameS! [$tcPoint1_rIl];
+
+$tcPoint :: TyCon =
+    TyCon! [14465664668707857508#Word64
+            10791344104965576672#Word64
+            $trModule
+            $tcPoint2_rIm
+            0#
+            krep$*];
+
+$krep1_rIn :: KindRep = KindRepTyConApp! [$tcPoint []];
+
+$krep2_rIo :: KindRep = KindRepFun! [$krep_rIk $krep1_rIn];
+
+$krep3_rIp :: KindRep = KindRepFun! [$krep_rIk $krep2_rIo];
+
+$tc'Point2_rIr :: TrName = TrNameS! [$tc'Point1_rIq];
+
+$tc'Point :: TyCon =
+    TyCon! [8859752923274051943#Word64
+            14799879522436965057#Word64
+            $trModule
+            $tc'Point2_rIr
+            0#
+            $krep3_rIp];
+
+norm :: Point -> Double =
+    {} \r [ds_sIA]
+        src</workspace/Geometry.hs:7:1-39>
+        case ds_sIA of {
+        Point x_sIC y_sID ->
+        src</workspace/Geometry.hs:7:20-39>
+        let {
+          norm_sat_sIG :: Double =
+              {x_sIC, y_sID} \u []
+                  src</workspace/Geometry.hs:7:25-39>
+                  let {
+                    norm_sat_sIF :: Double =
+                        {y_sID} \u []
+                            src</workspace/Geometry.hs:7:34-38>
+                            src</workspace/Geometry.hs:7:34>
+                            src</workspace/Geometry.hs:7:38> * $fNumDouble y_sID y_sID; } in
+                  let {
+                    norm_sat_sIE :: Double =
+                        {x_sIC} \u []
+                            src</workspace/Geometry.hs:7:26-30>
+                            src</workspace/Geometry.hs:7:26>
+                            src</workspace/Geometry.hs:7:30> * $fNumDouble x_sIC x_sIC;
+                  } in  + $fNumDouble norm_sat_sIE norm_sat_sIF;
+        } in  sqrt $fFloatingDouble norm_sat_sIG;
+        };
+

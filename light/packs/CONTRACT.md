@@ -381,13 +381,18 @@ kind.
 # Showing compiler output (optional)
 
 A pack whose language compiles to something worth reading may show it, as
-Compiler Explorer does: the app's **IR** and **Asm** buttons (and the
-editor's "Show LLVM IR" and "Show Assembly" commands) open read-only
-panels with the LLVM IR or the assembly of the active source file, next
-to the editors. The app offers them for languages with `explores` in
-`app/src/lib/languages.ts` (`explores: ['llvm-ir', 'asm']` for C and
-C++), and starts the pack's third worker, `app/static/packs/<id>/explorer.js`
-(a module worker), the first time a panel opens; it is stopped when the
+Compiler Explorer does: the app's view buttons in the top bar (and the
+editor's "Show …" commands) open read-only panels with a form of the
+active source file next to the editors, one panel per kind of output. The
+kinds are `llvm-ir` and `asm` (C and C++; Swift; Haskell's is `asm` only),
+`sil` (Swift), `mir` (Rust), `core`, `stg` and `cmm` (Haskell), `typed`
+and `lowered` (Scala's trees after typer and before the back end) and
+`bytecode` (Python's, and the JVM's for Java). Which views a language has, which files they show,
+what the compiler is called and the toggles each view's header offers are
+`app/src/lib/explore-views.ts`, a table and nothing else: a language gains
+a view by an entry there and an `explorer.js` that answers for it. The app
+starts the pack's third worker, `app/static/packs/<id>/explorer.js` (a
+module worker), the first time a panel opens; it is stopped when the
 language changes or the project is reset. Nothing of it is downloaded
 before.
 
@@ -395,21 +400,36 @@ App to explorer, any number of times:
 
 ```ts
 { type: 'emit', id: number,           // increases with every request
-  emit: 'llvm-ir' | 'asm',
+  emit: string,                       // the view's kind: 'llvm-ir', 'asm', 'sil', 'mir', 'core', …
   files: Record<string, string>,      // the project, as for a run
   path: string,                       // the source to compile: a project path
-  options: { demangle: boolean;       // demangled symbols
-             intel: boolean;          // x86-64 assembly in Intel syntax
-             directives: boolean;     // assembler directives and unused labels kept
-             library: boolean } }     // functions only from headers outside the project kept
+  options: Record<string, boolean | string> }   // the view's toggles, and the project's level
 ```
 
+`options` holds one boolean per toggle of the view (explore-views.ts),
+by the name the pack reads, and, for a language whose optimisation level
+is the project's rather than the view's (Swift), that level as Run gets
+it (`optimization: '-O'`). The names the packs share mean the same in
+each: `demangle` (names as written), `directives` (assembler directives
+and labels nothing uses kept), `library` (code that is not the project's
+kept), `optimize` (the optimiser's output; a view toggle, for a language
+the project has no level for), `details` (what the compiler prints that
+only its developers read). The others are a pack's own and its README
+says what they do: C++'s `intel`, Swift's `raw`, Haskell's `ticks`,
+Python's `offsets`; Java's `details` shows javap's constant pool
+indices. A pack ignores an option it does not know.
+
 The app asks when a panel opens, when the active editor shows another
-source (a header keeps the source shown before), when an option changes,
-and 500 ms after the last edit of any project file, and only for a panel
-that is in front: a panel behind another tab asks when it comes back. The
-options start as `{demangle: true, intel: false, directives: false,
-library: false}` for assembly and with `demangle: false` for IR.
+source (one the views cannot show, such as a header, keeps the source
+shown before), when an option or the project's level changes, and 500 ms
+after the last edit of any project file, and only for a panel that is in
+front: a panel behind another tab asks when it comes back. Each toggle
+starts as explore-views.ts says (C++: `{demangle: true, intel: false,
+directives: false, library: false}` for assembly, `demangle: false` for
+IR), and keeps its state for the session, per language. A toggle marked
+`shared` there is set in every view of the language at once: Haskell's
+`optimize` and `details`, which change the one compile all four of its
+views come from.
 
 Explorer to app:
 
@@ -423,8 +443,9 @@ Explorer to app:
           } | null)[],
   unoptimized?: { file: string; line: number;       // when the output is optimised: the project lines
                   count: number }[],               //   with code without optimisation, and how much
-  target: string,                                   // the target's id (C/C++: cpp-targets.ts)
-  triple: string, flags: string[],                  // what the toolbar shows: the triple, clang's arguments
+  target: string,                                   // the target's id (cpp-targets.ts when it is one, as for every
+                                                    //   pack with a WebAssembly or Linux target), or a name (`CPython`, `JVM`)
+  triple: string, flags: string[],                  // what the toolbar shows: the triple, the compiler's arguments
   ms: number }                                      // how long the compile took
 { type: 'result', id, emit, ok: false,
   error: string,                                    // the compiler's messages, project-relative paths
@@ -448,3 +469,14 @@ app maps the caret both ways with `lines` (the source line's output lines
 are highlighted, and the output line's source line), tells the parts of a
 line apart with `column` (the language server's selection ranges at that
 column), and Ctrl/Cmd+click on an output line opens its source line.
+
+Where each pack's `lines` come from (its README, "Compiler output views",
+says more): C and C++, the `.loc` directives and `DILocation`s of `-g`;
+Swift, SIL's `loc` annotations, and for IR and assembly the C++ pack's
+filter (a copy: a pack's tree is its own directory); Rust, the spans
+`-Zmir-include-spans` prints; Haskell, the source notes of `-g` in Core
+and STG, Cmm's `//tick` lines, and for the assembly the Cmm procedure
+each function was made from; Python, the positions CPython records for
+each instruction (`co_positions`); Java, each method's LineNumberTable;
+Scala, the line numbers `-print-lines` puts on every printed line that
+names something from the source.

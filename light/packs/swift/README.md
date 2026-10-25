@@ -534,6 +534,38 @@ type checking and ran `-emit-sil` in a second worker when sourcekitd found
 no error; that worker (`typecheck.js`) never added a diagnostic and is
 gone.
 
+## Compiler output views (src/explorer.js, src/views.js)
+
+The app's **SIL**, **LLVM IR** and **Assembly** buttons show the active
+file compiled by the runner's swift-frontend (../CONTRACT.md, "Showing
+compiler output") at the project's optimisation level (the top bar's, as
+for Run): `-emit-sil` (or `-emit-silgen` with **Raw SIL**), `-emit-ir`
+and `-S`, the file as the primary file and the rest of its module as
+secondary ones, as `swift build` compiles it. Compile only: the linker is
+never downloaded.
+
+* Mapping: SIL with `-g` gives every instruction a `loc "main.swift":7:5`,
+  which becomes its mapping and leaves the text; a function's header and
+  its blocks' labels map to the function's first location. IR and
+  assembly are compiled with `-gline-tables-only` and filtered by the C++
+  pack's emit-filter.js, a byte-identical copy (a pack's tree hash covers
+  only its own directory; test-emit.mjs checks that the two match).
+* **Demangle** has no demangler to call (swift-frontend exports none): it
+  compiles the SIL too and takes the names SIL prints above each function
+  (`// Circle.area.getter`), so the IR and assembly read as Swift.
+* **Library** keeps what the file does not define (the standard library's
+  inlinable code and other files' functions the compiler copies in);
+  **Details** keeps SIL's `debug_value`s, scopes and the ids and users of
+  each value.
+* At `-O` the views also mark the statements with no code left: the
+  worker compiles the IR at `-Onone` too and sends its lines as
+  `unoptimized`.
+* SIL takes about 3 s, IR and assembly about 2 s, once the frontend and
+  the sysroot are loaded; the first view of a session loads them.
+
+`test-emit.mjs` checks the filters on what the shipped frontend printed for
+`tests/fixtures/sample.json` (`tests/fixtures/gen.mjs`, under node).
+
 ## Limits
 
 * **Rename edits base names only.** `moved(by:_:)` can be renamed to

@@ -87,6 +87,18 @@ for (const [marker, value] of [
 fs.writeFileSync(out, text);
 ' "$HERE/runner/runner.js" "$OUT/runner.js" "$info" "$PYTEST_ZIP" "$HYPOTHESIS_ZIP"
 
+# 4b. The bytecode view's worker (explorer.js) with the same `info`, and the
+#     Python it runs in Pyodide (bytecode.py), as they are.
+node -e '
+const fs = require("fs");
+const [src, out, info] = process.argv.slice(1);
+const marker = "/* LOCK_INFO */ { info: {}, packages: {} }";
+const text = fs.readFileSync(src, "utf8");
+if (!text.includes(marker)) throw new Error(`marker ${marker} missing in ${src}`);
+fs.writeFileSync(out, text.replace(marker, `{ info: ${info}, packages: {} }`));
+' "$HERE/runner/explorer.js" "$OUT/explorer.js" "$info"
+cp "$HERE/runner/bytecode.py" "$OUT/bytecode.py"
+
 # 5. Licences (cached, so a build with a warm cache makes no request) and
 #    precompressed siblings.
 licence() { # name url sha256
@@ -102,4 +114,4 @@ licence() { # name url sha256
 }
 licence LICENSE-pyodide.txt "https://raw.githubusercontent.com/pyodide/pyodide/$PYODIDE_VERSION/LICENSE" "$PYODIDE_LICENSE_SHA256"
 licence LICENSE-cpython.txt "https://raw.githubusercontent.com/python/cpython/$CPYTHON_TAG/LICENSE" "$CPYTHON_LICENSE_SHA256"
-nice -n 10 node "$HERE/scripts/compress.mjs" "$OUT/runner.js" "$OUT/pyodide.mjs" "$OUT/pyodide.asm.mjs" "$OUT/pyodide.asm.wasm" "$OUT/python_stdlib.zip" "$OUT/$PYTEST_ZIP" "$OUT/$HYPOTHESIS_ZIP"
+nice -n 10 node "$HERE/scripts/compress.mjs" "$OUT/runner.js" "$OUT/explorer.js" "$OUT/bytecode.py" "$OUT/pyodide.mjs" "$OUT/pyodide.asm.mjs" "$OUT/pyodide.asm.wasm" "$OUT/python_stdlib.zip" "$OUT/$PYTEST_ZIP" "$OUT/$HYPOTHESIS_ZIP"

@@ -8,6 +8,8 @@
 #                  wasm32-unknown-wasip1 with the swift.org 6.4.1 Wasm SDK,
 #                  stripped and wasm-opt -Oz: formatting and semantic tokens
 #   runner.js      the runner (../CONTRACT.md "Running a program")
+#   explorer.js    the compiler output views' worker (../CONTRACT.md "Showing
+#                  compiler output"): SIL, LLVM IR and Wasm assembly of a file
 #   swift-frontend-lsp.wasm
 #                  the Swift 6.3.3 compiler frontend and sourcekitd (with
 #                  sourcekit-lsp-lite) in one wasm32-wasip1 reactor, built by
@@ -208,10 +210,10 @@ if [ ! -f "$XCT" ] || [ -n "$(find "$HERE/xctest/XCTest" "$HERE/tools/build-xcte
 fi
 cp -p "$XCT" "$OUT/swift-xctest.tar"
 
-step "server.js, runner.js"
+step "server.js, runner.js, explorer.js"
 size() { stat -c %s "$OUT/$1"; }
 SIZES="{\"swift-frontend-lsp.wasm\":$(size swift-frontend-lsp.wasm),\"wasm-ld.wasm\":$(size wasm-ld.wasm),\"swift-sysroot.tar\":$(size swift-sysroot.tar),\"swift-xctest.tar\":$(size swift-xctest.tar),\"SwiftMacroPlugins.wasm\":$(size SwiftMacroPlugins.wasm),\"swift-testing.tar\":$(size swift-testing.tar)}"
-for entry in server runner; do
+for entry in server runner explorer; do
   "$HERE/node_modules/.bin/esbuild" "$HERE/src/$entry.js" --bundle --minify --format=esm --target=es2022 \
     --define:__SWIFT_TOOLCHAIN_SIZES__="$SIZES" --legal-comments=none --outfile="$OUT/$entry.js" --log-level=warning
 done

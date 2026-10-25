@@ -1,0 +1,1222 @@
+
+==================== Asm Code ====================
+
+# /workspace/Main.hs
+
+
+
+
+==================== Asm Code ====================
+
+	.globaltype __R1, i32
+	.globaltype __R2, i32
+	.globaltype __R3, i32
+	.globaltype __R4, i32
+	.globaltype __R5, i32
+	.globaltype __R6, i32
+	.globaltype __R7, i32
+	.globaltype __R8, i32
+	.globaltype __R9, i32
+	.globaltype __R10, i32
+	.globaltype __F1, f32
+	.globaltype __F2, f32
+	.globaltype __F3, f32
+	.globaltype __F4, f32
+	.globaltype __F5, f32
+	.globaltype __F6, f32
+	.globaltype __D1, f64
+	.globaltype __D2, f64
+	.globaltype __D3, f64
+	.globaltype __D4, f64
+	.globaltype __D5, f64
+	.globaltype __D6, f64
+	.globaltype __L1, i64
+	.globaltype __Sp, i32
+	.globaltype __SpLim, i32
+	.globaltype __Hp, i32
+	.globaltype __HpLim, i32
+
+	.functype __stg_gc_enter_1 () -> (i32)
+	.functype __stg_gc_fun () -> (i32)
+	.functype ghczminternal_GHCziInternalziBase_zgzg_entry () -> (i32)
+	.functype ghczminternal_GHCziInternalziDataziFoldable_sum_entry () -> (i32)
+	.functype ghczminternal_GHCziInternalziEnum_enumFromTo_entry () -> (i32)
+	.functype ghczminternal_GHCziInternalziNum_zt_entry () -> (i32)
+	.functype newCAF (i32, i32) -> (i32)
+	.functype stg_ap_p_fast () -> (i32)
+	.functype stg_ap_pp_fast () -> (i32)
+
+	.hidden Main_main_entry
+	.globl Main_main_entry
+	.section .text.Main_main_entry,"",@
+Main_main_entry:
+	.functype Main_main_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		i32.const MainCapability
+		i32.const 16
+		i32.add
+		local.get 0
+		call newCAF
+		local.set 1
+		local.get 1
+		i32.const 0
+		i32.eq
+		if i32
+			local.get 0
+			i32.load 0
+			i32.load 0
+			return
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_bh_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 1
+			i32.store 0
+			i32.const ghczminternal_GHCziInternalziBase_zdfMonadIO_closure
+			global.set __R2
+			global.get __Sp
+			i32.const -20
+			i32.add
+			i32.const stg_ap_pp_info
+			i32.store 0
+			global.get __Sp
+			i32.const -16
+			i32.add
+			i32.const s1iF_closure
+			i32.store 0
+			global.get __Sp
+			i32.const -12
+			i32.add
+			i32.const s1iN_closure
+			i32.store 0
+			global.get __Sp
+			i32.const -20
+			i32.add
+			global.set __Sp
+			i32.const ghczminternal_GHCziInternalziBase_zgzg_entry
+			return
+		end_if
+	end_if
+	end_function
+
+	.hidden ZCMain_main_entry
+	.globl ZCMain_main_entry
+	.section .text.ZCMain_main_entry,"",@
+ZCMain_main_entry:
+	.functype ZCMain_main_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		i32.const MainCapability
+		i32.const 16
+		i32.add
+		local.get 0
+		call newCAF
+		local.set 1
+		local.get 1
+		i32.const 0
+		i32.eq
+		if i32
+			local.get 0
+			i32.load 0
+			i32.load 0
+			return
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_bh_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 1
+			i32.store 0
+			i32.const Main_main_closure
+			global.set __R2
+			i32.const ghczminternal_GHCziInternalziTopHandler_runMainIO_closure
+			global.set __R1
+			global.get __Sp
+			i32.const -8
+			i32.add
+			global.set __Sp
+			i32.const stg_ap_p_fast
+			return
+		end_if
+	end_if
+	end_function
+
+	.section .text.r1iz_entry,"",@
+r1iz_entry:
+	.functype r1iz_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		i32.const MainCapability
+		i32.const 16
+		i32.add
+		local.get 0
+		call newCAF
+		local.set 1
+		local.get 1
+		i32.const 0
+		i32.eq
+		if i32
+			local.get 0
+			i32.load 0
+			i32.load 0
+			return
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_bh_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 1
+			i32.store 0
+			i32.const ghczminternal_GHCziInternalziDataziFoldable_zdfFoldableList_closure
+			global.set __R2
+			global.get __Sp
+			i32.const -20
+			i32.add
+			i32.const stg_ap_pp_info
+			i32.store 0
+			global.get __Sp
+			i32.const -16
+			i32.add
+			i32.const ghczminternal_GHCziInternalziNum_zdfNumInt_closure
+			i32.store 0
+			global.get __Sp
+			i32.const -12
+			i32.add
+			i32.const s1iE_closure
+			i32.store 0
+			global.get __Sp
+			i32.const -20
+			i32.add
+			global.set __Sp
+			i32.const ghczminternal_GHCziInternalziDataziFoldable_sum_entry
+			return
+		end_if
+	end_if
+	end_function
+
+	.section .text.rIK_entry,"",@
+rIK_entry:
+	.functype rIK_entry () -> (i32)
+	.local i32
+	global.get __R2
+	local.set 0
+	global.get __Sp
+	i32.const -12
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R2
+		i32.const rIK_closure
+		global.set __R1
+		i32.const __stg_gc_fun
+		return
+	else
+		i32.const ghczminternal_GHCziInternalziNum_zdfNumInt_closure
+		global.set __R2
+		global.get __Sp
+		i32.const -12
+		i32.add
+		i32.const stg_ap_pp_info
+		i32.store 0
+		global.get __Sp
+		i32.const -8
+		i32.add
+		local.get 0
+		i32.store 0
+		global.get __Sp
+		i32.const -4
+		i32.add
+		local.get 0
+		i32.store 0
+		global.get __Sp
+		i32.const -12
+		i32.add
+		global.set __Sp
+		i32.const ghczminternal_GHCziInternalziNum_zt_entry
+		return
+	end_if
+	end_function
+
+	.section .text.s1iD_entry,"",@
+s1iD_entry:
+	.functype s1iD_entry () -> (i32)
+	.local i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		global.get __Sp
+		i32.const -8
+		i32.add
+		i32.const stg_upd_frame_info
+		i32.store 0
+		global.get __Sp
+		i32.const -4
+		i32.add
+		local.get 0
+		i32.store 0
+		i32.const ghczminternal_GHCziInternalziEnum_zdfEnumInt_closure
+		global.set __R2
+		global.get __Sp
+		i32.const -20
+		i32.add
+		i32.const stg_ap_pp_info
+		i32.store 0
+		global.get __Sp
+		i32.const -16
+		i32.add
+		i32.const stg_INTLIKE_closure
+		i32.const 137
+		i32.add
+		i32.store 0
+		global.get __Sp
+		i32.const -12
+		i32.add
+		i32.const stg_INTLIKE_closure
+		i32.const 209
+		i32.add
+		i32.store 0
+		global.get __Sp
+		i32.const -20
+		i32.add
+		global.set __Sp
+		i32.const ghczminternal_GHCziInternalziEnum_enumFromTo_entry
+		return
+	end_if
+	end_function
+
+	.section .text.s1iE_entry,"",@
+s1iE_entry:
+	.functype s1iE_entry () -> (i32)
+	.local i32, i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if
+	else
+		global.get __Hp
+		i32.const 8
+		i32.add
+		global.set __Hp
+		global.get __Hp
+		global.get __HpLim
+		i32.gt_u
+		if
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			i32.const 8
+			i32.store 828
+		else
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			local.get 0
+			call newCAF
+			local.set 1
+			local.get 1
+			i32.const 0
+			i32.eq
+			if
+				local.get 0
+				i32.load 0
+				i32.load 0
+				return
+			else
+				global.get __Sp
+				i32.const -8
+				i32.add
+				i32.const stg_bh_upd_frame_info
+				i32.store 0
+				global.get __Sp
+				i32.const -4
+				i32.add
+				local.get 1
+				i32.store 0
+				global.get __Hp
+				i32.const -4
+				i32.add
+				i32.const s1iD_info
+				i32.store 0
+				global.get __Hp
+				i32.const -4
+				i32.add
+				local.set 2
+				local.get 2
+				global.set __R3
+				i32.const rIK_closure
+				i32.const 1
+				i32.add
+				global.set __R2
+				i32.const ghczminternal_GHCziInternalziBase_map_closure
+				global.set __R1
+				global.get __Sp
+				i32.const -8
+				i32.add
+				global.set __Sp
+				i32.const stg_ap_pp_fast
+				return
+			end_if
+		end_if
+	end_if
+	local.get 0
+	global.set __R1
+	i32.const __stg_gc_enter_1
+	return
+	end_function
+
+	.section .text.s1iF_entry,"",@
+s1iF_entry:
+	.functype s1iF_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		i32.const MainCapability
+		i32.const 16
+		i32.add
+		local.get 0
+		call newCAF
+		local.set 1
+		local.get 1
+		i32.const 0
+		i32.eq
+		if i32
+			local.get 0
+			i32.load 0
+			i32.load 0
+			return
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_bh_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 1
+			i32.store 0
+			i32.const r1iz_closure
+			global.set __R3
+			i32.const ghczminternal_GHCziInternalziShow_zdfShowInt_closure
+			global.set __R2
+			i32.const ghczminternal_GHCziInternalziSystemziIO_print_closure
+			global.set __R1
+			global.get __Sp
+			i32.const -8
+			i32.add
+			global.set __Sp
+			i32.const stg_ap_pp_fast
+			return
+		end_if
+	end_if
+	end_function
+
+	.section .text.s1iG_entry,"",@
+s1iG_entry:
+	.functype s1iG_entry () -> (i32)
+	.local i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		global.get __Sp
+		i32.const -8
+		i32.add
+		i32.const stg_upd_frame_info
+		i32.store 0
+		global.get __Sp
+		i32.const -4
+		i32.add
+		local.get 0
+		i32.store 0
+		i32.const ghczminternal_GHCziInternalziNum_zdfNumInt_closure
+		global.set __R2
+		global.get __Sp
+		i32.const -20
+		i32.add
+		i32.const stg_ap_pp_info
+		i32.store 0
+		global.get __Sp
+		i32.const -16
+		i32.add
+		i32.const r1iz_closure
+		i32.store 0
+		global.get __Sp
+		i32.const -12
+		i32.add
+		i32.const r1iz_closure
+		i32.store 0
+		global.get __Sp
+		i32.const -20
+		i32.add
+		global.set __Sp
+		i32.const ghczminternal_GHCziInternalziNum_zt_entry
+		return
+	end_if
+	end_function
+
+	.section .text.s1iH_entry,"",@
+s1iH_entry:
+	.functype s1iH_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if
+	else
+		global.get __Hp
+		i32.const 8
+		i32.add
+		global.set __Hp
+		global.get __Hp
+		global.get __HpLim
+		i32.gt_u
+		if
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			i32.const 8
+			i32.store 828
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 0
+			i32.store 0
+			global.get __Hp
+			i32.const -4
+			i32.add
+			i32.const s1iG_info
+			i32.store 0
+			global.get __Hp
+			i32.const -4
+			i32.add
+			local.set 1
+			local.get 1
+			global.set __R3
+			i32.const ghczminternal_GHCziInternalziShow_zdfShowInt_closure
+			global.set __R2
+			i32.const ghczminternal_GHCziInternalziSystemziIO_print_closure
+			global.set __R1
+			global.get __Sp
+			i32.const -8
+			i32.add
+			global.set __Sp
+			i32.const stg_ap_pp_fast
+			return
+		end_if
+	end_if
+	local.get 0
+	global.set __R1
+	i32.const __stg_gc_enter_1
+	return
+	end_function
+
+	.section .text.s1iL_entry,"",@
+s1iL_entry:
+	.functype s1iL_entry () -> (i32)
+	.local i32, i32, i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if
+	else
+		global.get __Hp
+		i32.const 36
+		i32.add
+		global.set __Hp
+		global.get __Hp
+		global.get __HpLim
+		i32.gt_u
+		if
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			i32.const 36
+			i32.store 828
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 0
+			i32.store 0
+			global.get __Hp
+			i32.const -32
+			i32.add
+			i32.const ghczminternal_GHCziInternalziTypes_Dzh_con_info
+			i32.store 0
+			global.get __Hp
+			i32.const -28
+			i32.add
+			i64.const 4616189618054758400
+			f64.reinterpret_i64
+			f64.store 0
+			global.get __Hp
+			i32.const -31
+			i32.add
+			local.set 1
+			global.get __Hp
+			i32.const -20
+			i32.add
+			i32.const ghczminternal_GHCziInternalziTypes_Dzh_con_info
+			i32.store 0
+			global.get __Hp
+			i32.const -16
+			i32.add
+			i64.const 4613937818241073152
+			f64.reinterpret_i64
+			f64.store 0
+			global.get __Hp
+			i32.const -19
+			i32.add
+			local.set 2
+			global.get __Hp
+			i32.const -8
+			i32.add
+			i32.const Geometry_Point_con_info
+			i32.store 0
+			global.get __Hp
+			i32.const -4
+			i32.add
+			local.get 2
+			i32.store 0
+			global.get __Hp
+			local.get 1
+			i32.store 0
+			global.get __Hp
+			i32.const -7
+			i32.add
+			local.set 3
+			local.get 3
+			global.set __R2
+			i32.const Geometry_norm_closure
+			global.set __R1
+			global.get __Sp
+			i32.const -8
+			i32.add
+			global.set __Sp
+			i32.const stg_ap_p_fast
+			return
+		end_if
+	end_if
+	local.get 0
+	global.set __R1
+	i32.const __stg_gc_enter_1
+	return
+	end_function
+
+	.section .text.s1iM_entry,"",@
+s1iM_entry:
+	.functype s1iM_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if
+	else
+		global.get __Hp
+		i32.const 8
+		i32.add
+		global.set __Hp
+		global.get __Hp
+		global.get __HpLim
+		i32.gt_u
+		if
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			i32.const 8
+			i32.store 828
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 0
+			i32.store 0
+			global.get __Hp
+			i32.const -4
+			i32.add
+			i32.const s1iL_info
+			i32.store 0
+			global.get __Hp
+			i32.const -4
+			i32.add
+			local.set 1
+			local.get 1
+			global.set __R3
+			i32.const ghczminternal_GHCziInternalziFloat_zdfShowDouble_closure
+			global.set __R2
+			i32.const ghczminternal_GHCziInternalziSystemziIO_print_closure
+			global.set __R1
+			global.get __Sp
+			i32.const -8
+			i32.add
+			global.set __Sp
+			i32.const stg_ap_pp_fast
+			return
+		end_if
+	end_if
+	local.get 0
+	global.set __R1
+	i32.const __stg_gc_enter_1
+	return
+	end_function
+
+	.section .text.s1iN_entry,"",@
+s1iN_entry:
+	.functype s1iN_entry () -> (i32)
+	.local i32, i32, i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if
+	else
+		global.get __Hp
+		i32.const 16
+		i32.add
+		global.set __Hp
+		global.get __Hp
+		global.get __HpLim
+		i32.gt_u
+		if
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			i32.const 16
+			i32.store 828
+		else
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			local.get 0
+			call newCAF
+			local.set 1
+			local.get 1
+			i32.const 0
+			i32.eq
+			if
+				local.get 0
+				i32.load 0
+				i32.load 0
+				return
+			else
+				global.get __Sp
+				i32.const -8
+				i32.add
+				i32.const stg_bh_upd_frame_info
+				i32.store 0
+				global.get __Sp
+				i32.const -4
+				i32.add
+				local.get 1
+				i32.store 0
+				global.get __Hp
+				i32.const -12
+				i32.add
+				i32.const s1iM_info
+				i32.store 0
+				global.get __Hp
+				i32.const -12
+				i32.add
+				local.set 2
+				global.get __Hp
+				i32.const -4
+				i32.add
+				i32.const s1iH_info
+				i32.store 0
+				global.get __Hp
+				i32.const -4
+				i32.add
+				local.set 3
+				i32.const ghczminternal_GHCziInternalziBase_zdfMonadIO_closure
+				global.set __R2
+				global.get __Sp
+				i32.const -20
+				i32.add
+				i32.const stg_ap_pp_info
+				i32.store 0
+				global.get __Sp
+				i32.const -16
+				i32.add
+				local.get 3
+				i32.store 0
+				global.get __Sp
+				i32.const -12
+				i32.add
+				local.get 2
+				i32.store 0
+				global.get __Sp
+				i32.const -20
+				i32.add
+				global.set __Sp
+				i32.const ghczminternal_GHCziInternalziBase_zgzg_entry
+				return
+			end_if
+		end_if
+	end_if
+	local.get 0
+	global.set __R1
+	i32.const __stg_gc_enter_1
+	return
+	end_function
+
+
+	.hidden Main_main_closure
+	.globl Main_main_closure
+	.section .data.Main_main_closure,"",@
+	.p2align 2
+	.size Main_main_closure, 16
+Main_main_closure:
+	.int32 Main_main_info
+	.int32 0x0
+	.int32 0x0
+	.int32 0x0
+
+	.hidden Main_main_info
+	.globl Main_main_info
+	.section .rodata.Main_main_info,"",@
+	.p2align 2
+	.size Main_main_info, 16
+Main_main_info:
+	.int32 Main_main_entry
+	.int32 0x0
+	.int16 0x15
+	.int16 0x1
+	.int32 _u7_srt
+
+	.hidden Main_zdtrModule_closure
+	.globl Main_zdtrModule_closure
+	.section .data.Main_zdtrModule_closure,"",@
+	.p2align 2
+	.size Main_zdtrModule_closure, 16
+Main_zdtrModule_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_Module_con_info
+	.int32 r1iw_closure+1
+	.int32 r1iy_closure+1
+	.int32 0x3
+
+	.hidden ZCMain_main_closure
+	.globl ZCMain_main_closure
+	.section .data.ZCMain_main_closure,"",@
+	.p2align 2
+	.size ZCMain_main_closure, 16
+ZCMain_main_closure:
+	.int32 ZCMain_main_info
+	.int32 0x0
+	.int32 0x0
+	.int32 0x0
+
+	.hidden ZCMain_main_info
+	.globl ZCMain_main_info
+	.section .rodata.ZCMain_main_info,"",@
+	.p2align 2
+	.size ZCMain_main_info, 16
+ZCMain_main_info:
+	.int32 ZCMain_main_entry
+	.int32 0x0
+	.int16 0x15
+	.int16 0x1
+	.int32 _u8_srt
+
+	.section .data._u0_srt,"",@
+	.p2align 2
+	.size _u0_srt, 20
+_u0_srt:
+	.int32 stg_SRT_3_info
+	.int32 rIK_closure
+	.int32 ghczminternal_GHCziInternalziBase_map_closure
+	.int32 ghczminternal_GHCziInternalziEnum_zdfEnumInt_closure
+	.int32 0x0
+
+	.section .data._u1_srt,"",@
+	.p2align 2
+	.size _u1_srt, 20
+_u1_srt:
+	.int32 stg_SRT_3_info
+	.int32 s1iE_closure
+	.int32 ghczminternal_GHCziInternalziDataziFoldable_zdfFoldableList_closure
+	.int32 ghczminternal_GHCziInternalziNum_zdfNumInt_closure
+	.int32 0x0
+
+	.section .data._u2_srt,"",@
+	.p2align 2
+	.size _u2_srt, 16
+_u2_srt:
+	.int32 stg_SRT_2_info
+	.int32 r1iz_closure
+	.int32 ghczminternal_GHCziInternalziNum_zdfNumInt_closure
+	.int32 0x0
+
+	.section .data._u3_srt,"",@
+	.p2align 2
+	.size _u3_srt, 20
+_u3_srt:
+	.int32 stg_SRT_3_info
+	.int32 ghczminternal_GHCziInternalziShow_zdfShowInt_closure
+	.int32 ghczminternal_GHCziInternalziSystemziIO_print_closure
+	.int32 _u2_srt
+	.int32 0x0
+
+	.section .data._u4_srt,"",@
+	.p2align 2
+	.size _u4_srt, 20
+_u4_srt:
+	.int32 stg_SRT_3_info
+	.int32 ghczminternal_GHCziInternalziFloat_zdfShowDouble_closure
+	.int32 ghczminternal_GHCziInternalziSystemziIO_print_closure
+	.int32 Geometry_norm_closure
+	.int32 0x0
+
+	.section .data._u5_srt,"",@
+	.p2align 2
+	.size _u5_srt, 20
+_u5_srt:
+	.int32 stg_SRT_3_info
+	.int32 ghczminternal_GHCziInternalziBase_zdfMonadIO_closure
+	.int32 _u3_srt
+	.int32 _u4_srt
+	.int32 0x0
+
+	.section .data._u6_srt,"",@
+	.p2align 2
+	.size _u6_srt, 20
+_u6_srt:
+	.int32 stg_SRT_3_info
+	.int32 r1iz_closure
+	.int32 ghczminternal_GHCziInternalziShow_zdfShowInt_closure
+	.int32 ghczminternal_GHCziInternalziSystemziIO_print_closure
+	.int32 0x0
+
+	.section .data._u7_srt,"",@
+	.p2align 2
+	.size _u7_srt, 20
+_u7_srt:
+	.int32 stg_SRT_3_info
+	.int32 s1iF_closure
+	.int32 s1iN_closure
+	.int32 ghczminternal_GHCziInternalziBase_zdfMonadIO_closure
+	.int32 0x0
+
+	.section .data._u8_srt,"",@
+	.p2align 2
+	.size _u8_srt, 16
+_u8_srt:
+	.int32 stg_SRT_2_info
+	.int32 ghczminternal_GHCziInternalziTopHandler_runMainIO_closure
+	.int32 Main_main_closure
+	.int32 0x0
+
+	.section .rodata.r1iv_bytes,"",@
+	.size r1iv_bytes, 5
+r1iv_bytes:
+	.asciz "main"
+
+	.section .data.r1iw_closure,"",@
+	.p2align 2
+	.size r1iw_closure, 8
+r1iw_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TrNameS_con_info
+	.int32 r1iv_bytes
+
+	.section .rodata.r1ix_bytes,"",@
+	.size r1ix_bytes, 5
+r1ix_bytes:
+	.asciz "Main"
+
+	.section .data.r1iy_closure,"",@
+	.p2align 2
+	.size r1iy_closure, 8
+r1iy_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TrNameS_con_info
+	.int32 r1ix_bytes
+
+	.section .data.r1iz_closure,"",@
+	.p2align 2
+	.size r1iz_closure, 16
+r1iz_closure:
+	.int32 r1iz_info
+	.int32 0x0
+	.int32 0x0
+	.int32 0x0
+
+	.section .rodata.r1iz_info,"",@
+	.p2align 2
+	.size r1iz_info, 16
+r1iz_info:
+	.int32 r1iz_entry
+	.int32 0x0
+	.int16 0x15
+	.int16 0x1
+	.int32 _u1_srt
+
+	.section .data.rIK_closure,"",@
+	.p2align 2
+	.size rIK_closure, 8
+rIK_closure:
+	.int32 rIK_info
+	.int32 0x0
+
+	.section .rodata.rIK_info,"",@
+	.p2align 2
+	.size rIK_info, 20
+rIK_info:
+	.int32 rIK_entry
+	.int32 0x0
+	.int16 0xe
+	.int16 0x1
+	.int32 0x10005
+	.int32 ghczminternal_GHCziInternalziNum_zdfNumInt_closure
+
+	.section .rodata.s1iD_info,"",@
+	.p2align 2
+	.size s1iD_info, 16
+s1iD_info:
+	.int32 s1iD_entry
+	.int32 0x0
+	.int16 0xf
+	.int16 0x1
+	.int32 ghczminternal_GHCziInternalziEnum_zdfEnumInt_closure
+
+	.section .data.s1iE_closure,"",@
+	.p2align 2
+	.size s1iE_closure, 16
+s1iE_closure:
+	.int32 s1iE_info
+	.int32 0x0
+	.int32 0x0
+	.int32 0x0
+
+	.section .rodata.s1iE_info,"",@
+	.p2align 2
+	.size s1iE_info, 16
+s1iE_info:
+	.int32 s1iE_entry
+	.int32 0x0
+	.int16 0x15
+	.int16 0x1
+	.int32 _u0_srt
+
+	.section .data.s1iF_closure,"",@
+	.p2align 2
+	.size s1iF_closure, 16
+s1iF_closure:
+	.int32 s1iF_info
+	.int32 0x0
+	.int32 0x0
+	.int32 0x0
+
+	.section .rodata.s1iF_info,"",@
+	.p2align 2
+	.size s1iF_info, 16
+s1iF_info:
+	.int32 s1iF_entry
+	.int32 0x0
+	.int16 0x15
+	.int16 0x1
+	.int32 _u6_srt
+
+	.section .rodata.s1iG_info,"",@
+	.p2align 2
+	.size s1iG_info, 16
+s1iG_info:
+	.int32 s1iG_entry
+	.int32 0x0
+	.int16 0xf
+	.int16 0x1
+	.int32 _u2_srt
+
+	.section .rodata.s1iH_info,"",@
+	.p2align 2
+	.size s1iH_info, 16
+s1iH_info:
+	.int32 s1iH_entry
+	.int32 0x0
+	.int16 0xf
+	.int16 0x1
+	.int32 _u3_srt
+
+	.section .rodata.s1iL_info,"",@
+	.p2align 2
+	.size s1iL_info, 16
+s1iL_info:
+	.int32 s1iL_entry
+	.int32 0x0
+	.int16 0xf
+	.int16 0x1
+	.int32 Geometry_norm_closure
+
+	.section .rodata.s1iM_info,"",@
+	.p2align 2
+	.size s1iM_info, 16
+s1iM_info:
+	.int32 s1iM_entry
+	.int32 0x0
+	.int16 0xf
+	.int16 0x1
+	.int32 _u4_srt
+
+	.section .data.s1iN_closure,"",@
+	.p2align 2
+	.size s1iN_closure, 16
+s1iN_closure:
+	.int32 s1iN_info
+	.int32 0x0
+	.int32 0x0
+	.int32 0x0
+
+	.section .rodata.s1iN_info,"",@
+	.p2align 2
+	.size s1iN_info, 16
+s1iN_info:
+	.int32 s1iN_entry
+	.int32 0x0
+	.int16 0x15
+	.int16 0x1
+	.int32 _u5_srt
+
+
+	.section .custom_section.producers,"",@
+	.int8 1
+	.int8 12
+	.ascii "processed-by"
+	.int8 1
+	.int8 3
+	.ascii "ghc"
+	.int8 15
+	.ascii "9.14.1.20260731"
+	.section .custom_section.target_features,"",@
+	.int8 5
+	.int8 0x2b
+	.int8 11
+	.ascii "bulk-memory"
+	.int8 0x2b
+	.int8 15
+	.ascii "mutable-globals"
+	.int8 0x2b
+	.int8 19
+	.ascii "nontrapping-fptoint"
+	.int8 0x2b
+	.int8 15
+	.ascii "reference-types"
+	.int8 0x2b
+	.int8 8
+	.ascii "sign-ext"
+
+

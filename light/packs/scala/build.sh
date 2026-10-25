@@ -14,6 +14,8 @@
 #   runner.js        the worker that runs a program (src/runner.js): compiles
 #                    with scalac.js and -scalajs, links with sjslinker.js,
 #                    runs the linked module (README, "Running")
+#   explorer.js      the tree views' worker: scalac.js up to a phase, its trees
+#                    as -Vprint prints them (README, "The tree views")
 #   sjslinker.js     the Scala.js $SCALAJS_VERSION linker compiled with Scala.js
 #                    (scalajs-linker_sjs1), fullLinkJS, minified by esbuild
 #   sjsir.bin        the Scala.js IR of everything a program links against:
@@ -205,5 +207,6 @@ cp "$CACHE/scalacheck-$SCALACHECK_VERSION-classpath.bin" "$CACHE/scalacheck-$SCA
 cp "$CACHE/LICENSE-scalacheck-$SCALACHECK_VERSION.txt" "$OUT/LICENSE-scalacheck.txt"
 cp "$HERE/src/server.js" "$OUT/server.js"
 cp "$HERE/src/runner.js" "$OUT/runner.js"
+cp "$HERE/src/explorer.js" "$OUT/explorer.js"
 node "$HERE/scripts/finish.mjs" "$OUT" "$SCALA_VERSION" "$JDK_VERSION" "$SCALAJS_VERSION" "$SCALACHECK_VERSION"
 ls -l "$OUT"

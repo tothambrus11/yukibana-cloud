@@ -115,6 +115,7 @@ included; a script drives both workers, as test.mjs does):
 | `dyld.mjs`, `prelude.mjs`, `post-link.mjs` | 57 KB | 19 KB | 17 KB | GHC's wasm dynamic linker (patched, `scripts/patch-dyld.mjs`) |
 | `wasi.js` | 32 KB | 9 KB | 8 KB | browser_wasi_shim (the haskell-wasm fork), bundled |
 | `ghc.js`, `server.js`, `symbols.js`, `text.js`, `runner.js`, `tools.js` | 97 KB | 33 KB | 28 KB | ours |
+| `explorer.js`, `dumps.js` | 24 KB | 9 KB | 8 KB | the compiler output views' worker and filters, fetched only when a view opens |
 | `ormolu.wasm` | 16.5 MB | 4.9 MB | 3.4 MB | ormolu 0.9.0.0, a WASI command |
 | `hlint.wasm`, `hlint-data.json` | 15.7 MB | 4.8 MB | 3.4 MB | hlint 3.10 (on ghc-lib-parser 9.14) and its hint files |
 | `LICENSE-*.txt`, `manifest.json` | | | | licences; versions and sizes |
@@ -239,6 +240,46 @@ not finish in 600 s. Compiling to wasm code instead (`-fobject-code`) would
 need a linker and a code generator per Run in the browser, which this pack
 does not have. So the app's Optimization select is not shown for Haskell;
 Download's cabal project builds with cabal's default, `-O1`.
+
+## Compiler output views (src/explorer.js, src/dumps.js)
+
+The app's **Core**, **STG**, **Cmm** and **Assembly** buttons show GHC's
+own dumps of the active module (../CONTRACT.md, "Showing compiler output"):
+Core after the simplifier (`-ddump-simpl`), the final STG, Cmm, and the
+WebAssembly assembly GHC's wasm backend writes, each line mapped to the
+source it came from.
+
+* How a module is compiled without a linker: the worker starts a runner's
+  session (the other modules are interpreted, as for Run) and puts
+  `{-# OPTIONS_GHC -fobject-code -O0 #-}` (or `-O`) in front of the shown
+  module's first line, so that it alone goes through STG, Cmm and the code
+  generator, with `-g` and every dump written to a file. GHC then stops at
+  the assembler, which a browser has not, after the last dump: that
+  failure is the expected end of every compile, and any other message is
+  the project's. `-O` goes in the pragma because GHC ignores it on the
+  command line of an interpreter's session. Columns of line 1 are shifted
+  back by the pragma's length.
+* One compile writes all four dumps, so **-O** and **Details** are one
+  setting for the four views (`shared` in the app's explore-views.ts) and
+  switching between them compiles nothing.
+* Mapping: Core and STG through the source notes `-g` puts in them
+  (`src<Main.hs:6:12>`), a note covering the lines under it; Cmm through
+  its `//tick` lines; the assembly through the Cmm procedure each function
+  was made from. Uniques are kept (`sat_s1ix`), because they are how a
+  local closure is found again in the assembly (`s1ix_entry`): with
+  `-dsuppress-uniques` every local procedure is `sat_entry`.
+* **Source notes** keeps the notes in the text (the colours show the same
+  without them). **Details** keeps IdInfo, coercions, module prefixes, the
+  size reports and the Typeable bindings (`$trModule`, `$tc…`, `$krep…`)
+  every module has. **Demangle** Z-decodes the assembly's symbols
+  (`ghczminternal_GHCziInternalziBase_zgzg_entry` is
+  `ghc-internal_GHC.Internal.Base_>>_entry`).
+* About 10 s for a module the first time (GHC starts), then a few seconds;
+  the other views of the same compile answer at once.
+
+`test-dumps.mjs` checks the filters on what the shipped GHC dumped for
+`tests/fixtures/sample.json`, both modules at -O0 and -O
+(`tests/fixtures/gen.mjs` makes them again, in Chromium).
 
 ## Licences
 

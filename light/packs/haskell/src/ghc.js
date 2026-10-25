@@ -146,7 +146,7 @@ function dirOf(dir, parts) {
  * 'runner' (GHC's bytecode interpreter). `fds` replaces the program's
  * stdin, stdout and stderr (default: lines to `log`). Answers
  * { request(lines) -> Promise<object>, write(path, text), remove(path),
- *   versions, timings }.
+ *   read(path) -> string | null, versions, timings }.
  */
 export async function startGhc({ mode, report, log = () => {}, fds = null, flags = [] }) {
     const timings = {};
@@ -190,6 +190,13 @@ export async function startGhc({ mode, report, log = () => {}, fds = null, flags
             const parts = projectParts(rel);
             const dir = dirOf(root.dir, [...ROOT.split('/').filter(Boolean), ...parts.slice(0, -1)]);
             dir.contents.delete(parts.at(-1));
+        },
+        /** The text of a file at its path under ROOT (one GHC wrote, a dump), or null when there is none. */
+        read(rel) {
+            const parts = projectParts(rel);
+            const dir = dirOf(root.dir, [...ROOT.split('/').filter(Boolean), ...parts.slice(0, -1)]);
+            const file = dir.contents.get(parts.at(-1));
+            return file instanceof File ? new TextDecoder().decode(file.data) : null;
         },
     };
 }

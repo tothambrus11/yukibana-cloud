@@ -1,0 +1,910 @@
+
+==================== Asm Code ====================
+
+# /workspace/Geometry.hs
+
+
+
+
+==================== Asm Code ====================
+
+	.globaltype __R1, i32
+	.globaltype __R2, i32
+	.globaltype __R3, i32
+	.globaltype __R4, i32
+	.globaltype __R5, i32
+	.globaltype __R6, i32
+	.globaltype __R7, i32
+	.globaltype __R8, i32
+	.globaltype __R9, i32
+	.globaltype __R10, i32
+	.globaltype __F1, f32
+	.globaltype __F2, f32
+	.globaltype __F3, f32
+	.globaltype __F4, f32
+	.globaltype __F5, f32
+	.globaltype __F6, f32
+	.globaltype __D1, f64
+	.globaltype __D2, f64
+	.globaltype __D3, f64
+	.globaltype __D4, f64
+	.globaltype __D5, f64
+	.globaltype __D6, f64
+	.globaltype __L1, i64
+	.globaltype __Sp, i32
+	.globaltype __SpLim, i32
+	.globaltype __Hp, i32
+	.globaltype __HpLim, i32
+
+	.functype __stg_gc_enter_1 () -> (i32)
+	.functype __stg_gc_fun () -> (i32)
+	.functype ghczminternal_GHCziInternalziFloat_sqrt_entry () -> (i32)
+	.functype ghczminternal_GHCziInternalziNum_zp_entry () -> (i32)
+	.functype ghczminternal_GHCziInternalziNum_zt_entry () -> (i32)
+	.functype stg_gc_unpt_r1 () -> (i32)
+
+	.hidden Geometry_Point_con_entry
+	.globl Geometry_Point_con_entry
+	.section .text.Geometry_Point_con_entry,"",@
+Geometry_Point_con_entry:
+	.functype Geometry_Point_con_entry () -> (i32)
+	global.get __R1
+	i32.const 1
+	i32.add
+	global.set __R1
+	global.get __Sp
+	i32.load 0
+	i32.load 0
+	return
+	end_function
+
+	.hidden Geometry_Point_entry
+	.globl Geometry_Point_entry
+	.section .text.Geometry_Point_entry,"",@
+Geometry_Point_entry:
+	.functype Geometry_Point_entry () -> (i32)
+	.local i32, i32, i32
+	global.get __R3
+	local.set 0
+	global.get __R2
+	local.set 1
+	global.get __Hp
+	i32.const 12
+	i32.add
+	global.set __Hp
+	global.get __Hp
+	global.get __HpLim
+	i32.gt_u
+	if i32
+		i32.const MainCapability
+		i32.const 16
+		i32.add
+		i32.const 12
+		i32.store 828
+		local.get 0
+		global.set __R3
+		local.get 1
+		global.set __R2
+		i32.const Geometry_Point_closure
+		global.set __R1
+		i32.const __stg_gc_fun
+		return
+	else
+		global.get __Hp
+		i32.const -8
+		i32.add
+		i32.const Geometry_Point_con_info
+		i32.store 0
+		global.get __Hp
+		i32.const -4
+		i32.add
+		local.get 1
+		i32.store 0
+		global.get __Hp
+		local.get 0
+		i32.store 0
+		global.get __Hp
+		i32.const -7
+		i32.add
+		local.set 2
+		local.get 2
+		global.set __R1
+		global.get __Sp
+		i32.load 0
+		i32.load 0
+		return
+	end_if
+	end_function
+
+	.hidden Geometry_norm_entry
+	.globl Geometry_norm_entry
+	.section .text.Geometry_norm_entry,"",@
+Geometry_norm_entry:
+	.functype Geometry_norm_entry () -> (i32)
+	.local i32
+	global.get __R2
+	local.set 0
+	global.get __Sp
+	i32.const -8
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R2
+		i32.const Geometry_norm_closure
+		global.set __R1
+		i32.const __stg_gc_fun
+		return
+	else
+		global.get __Sp
+		i32.const -4
+		i32.add
+		i32.const cJn_info
+		i32.store 0
+		local.get 0
+		global.set __R1
+		global.get __Sp
+		i32.const -4
+		i32.add
+		global.set __Sp
+		global.get __R1
+		i32.const 3
+		i32.and
+		i32.const 0
+		i32.ne
+		if i32
+			i32.const _blk_cJn
+			return
+		else
+			global.get __R1
+			i32.load 0
+			i32.load 0
+			return
+		end_if
+	end_if
+	end_function
+
+	.hidden Geometry_zdfldZCPointZCpx_entry
+	.globl Geometry_zdfldZCPointZCpx_entry
+	.section .text.Geometry_zdfldZCPointZCpx_entry,"",@
+Geometry_zdfldZCPointZCpx_entry:
+	.functype Geometry_zdfldZCPointZCpx_entry () -> (i32)
+	.local i32
+	global.get __R2
+	local.set 0
+	global.get __Sp
+	i32.const -4
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R2
+		i32.const Geometry_zdfldZCPointZCpx_closure
+		global.set __R1
+		i32.const __stg_gc_fun
+		return
+	else
+		global.get __Sp
+		i32.const -4
+		i32.add
+		i32.const cJa_info
+		i32.store 0
+		local.get 0
+		global.set __R1
+		global.get __Sp
+		i32.const -4
+		i32.add
+		global.set __Sp
+		global.get __R1
+		i32.const 3
+		i32.and
+		i32.const 0
+		i32.ne
+		if i32
+			i32.const _blk_cJa
+			return
+		else
+			global.get __R1
+			i32.load 0
+			i32.load 0
+			return
+		end_if
+	end_if
+	end_function
+
+	.hidden Geometry_zdfldZCPointZCpy_entry
+	.globl Geometry_zdfldZCPointZCpy_entry
+	.section .text.Geometry_zdfldZCPointZCpy_entry,"",@
+Geometry_zdfldZCPointZCpy_entry:
+	.functype Geometry_zdfldZCPointZCpy_entry () -> (i32)
+	.local i32
+	global.get __R2
+	local.set 0
+	global.get __Sp
+	i32.const -4
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R2
+		i32.const Geometry_zdfldZCPointZCpy_closure
+		global.set __R1
+		i32.const __stg_gc_fun
+		return
+	else
+		global.get __Sp
+		i32.const -4
+		i32.add
+		i32.const cIX_info
+		i32.store 0
+		local.get 0
+		global.set __R1
+		global.get __Sp
+		i32.const -4
+		i32.add
+		global.set __Sp
+		global.get __R1
+		i32.const 3
+		i32.and
+		i32.const 0
+		i32.ne
+		if i32
+			i32.const _blk_cIX
+			return
+		else
+			global.get __R1
+			i32.load 0
+			i32.load 0
+			return
+		end_if
+	end_if
+	end_function
+
+	.section .text._blk_cIX,"",@
+_blk_cIX:
+	.functype _blk_cIX () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	local.get 0
+	i32.load 7
+	local.set 1
+	local.get 1
+	i32.const 4294967292
+	i32.and
+	global.set __R1
+	global.get __Sp
+	i32.const 4
+	i32.add
+	global.set __Sp
+	global.get __R1
+	i32.load 0
+	i32.load 0
+	return
+	end_function
+
+	.section .text._blk_cJa,"",@
+_blk_cJa:
+	.functype _blk_cJa () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	local.get 0
+	i32.load 3
+	local.set 1
+	local.get 1
+	i32.const 4294967292
+	i32.and
+	global.set __R1
+	global.get __Sp
+	i32.const 4
+	i32.add
+	global.set __Sp
+	global.get __R1
+	i32.load 0
+	i32.load 0
+	return
+	end_function
+
+	.section .text._blk_cJn,"",@
+_blk_cJn:
+	.functype _blk_cJn () -> (i32)
+	.local i32, i32, i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Hp
+	i32.const 16
+	i32.add
+	global.set __Hp
+	global.get __Hp
+	global.get __HpLim
+	i32.gt_u
+	if i32
+		i32.const MainCapability
+		i32.const 16
+		i32.add
+		i32.const 16
+		i32.store 828
+		local.get 0
+		global.set __R1
+		i32.const stg_gc_unpt_r1
+		return
+	else
+		local.get 0
+		i32.load 3
+		local.set 1
+		local.get 0
+		i32.load 7
+		local.set 2
+		global.get __Hp
+		i32.const -12
+		i32.add
+		i32.const sIG_info
+		i32.store 0
+		global.get __Hp
+		i32.const -4
+		i32.add
+		local.get 1
+		i32.store 0
+		global.get __Hp
+		local.get 2
+		i32.store 0
+		global.get __Hp
+		i32.const -12
+		i32.add
+		local.set 3
+		i32.const ghczminternal_GHCziInternalziFloat_zdfFloatingDouble_closure
+		global.set __R2
+		global.get __Sp
+		i32.const -4
+		i32.add
+		i32.const stg_ap_p_info
+		i32.store 0
+		global.get __Sp
+		local.get 3
+		i32.store 0
+		global.get __Sp
+		i32.const -4
+		i32.add
+		global.set __Sp
+		i32.const ghczminternal_GHCziInternalziFloat_sqrt_entry
+		return
+	end_if
+	end_function
+
+	.section .text.sIE_entry,"",@
+sIE_entry:
+	.functype sIE_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		global.get __Sp
+		i32.const -8
+		i32.add
+		i32.const stg_upd_frame_info
+		i32.store 0
+		global.get __Sp
+		i32.const -4
+		i32.add
+		local.get 0
+		i32.store 0
+		local.get 0
+		i32.load 8
+		local.set 1
+		i32.const ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+		global.set __R2
+		global.get __Sp
+		i32.const -20
+		i32.add
+		i32.const stg_ap_pp_info
+		i32.store 0
+		global.get __Sp
+		i32.const -16
+		i32.add
+		local.get 1
+		i32.store 0
+		global.get __Sp
+		i32.const -12
+		i32.add
+		local.get 1
+		i32.store 0
+		global.get __Sp
+		i32.const -20
+		i32.add
+		global.set __Sp
+		i32.const ghczminternal_GHCziInternalziNum_zt_entry
+		return
+	end_if
+	end_function
+
+	.section .text.sIF_entry,"",@
+sIF_entry:
+	.functype sIF_entry () -> (i32)
+	.local i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if i32
+		local.get 0
+		global.set __R1
+		i32.const __stg_gc_enter_1
+		return
+	else
+		global.get __Sp
+		i32.const -8
+		i32.add
+		i32.const stg_upd_frame_info
+		i32.store 0
+		global.get __Sp
+		i32.const -4
+		i32.add
+		local.get 0
+		i32.store 0
+		local.get 0
+		i32.load 8
+		local.set 1
+		i32.const ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+		global.set __R2
+		global.get __Sp
+		i32.const -20
+		i32.add
+		i32.const stg_ap_pp_info
+		i32.store 0
+		global.get __Sp
+		i32.const -16
+		i32.add
+		local.get 1
+		i32.store 0
+		global.get __Sp
+		i32.const -12
+		i32.add
+		local.get 1
+		i32.store 0
+		global.get __Sp
+		i32.const -20
+		i32.add
+		global.set __Sp
+		i32.const ghczminternal_GHCziInternalziNum_zt_entry
+		return
+	end_if
+	end_function
+
+	.section .text.sIG_entry,"",@
+sIG_entry:
+	.functype sIG_entry () -> (i32)
+	.local i32, i32, i32, i32, i32
+	global.get __R1
+	local.set 0
+	global.get __Sp
+	i32.const -20
+	i32.add
+	global.get __SpLim
+	i32.lt_u
+	if
+	else
+		global.get __Hp
+		i32.const 24
+		i32.add
+		global.set __Hp
+		global.get __Hp
+		global.get __HpLim
+		i32.gt_u
+		if
+			i32.const MainCapability
+			i32.const 16
+			i32.add
+			i32.const 24
+			i32.store 828
+		else
+			global.get __Sp
+			i32.const -8
+			i32.add
+			i32.const stg_upd_frame_info
+			i32.store 0
+			global.get __Sp
+			i32.const -4
+			i32.add
+			local.get 0
+			i32.store 0
+			local.get 0
+			i32.load 8
+			local.set 1
+			local.get 0
+			i32.load 12
+			local.set 2
+			global.get __Hp
+			i32.const -20
+			i32.add
+			i32.const sIF_info
+			i32.store 0
+			global.get __Hp
+			i32.const -12
+			i32.add
+			local.get 2
+			i32.store 0
+			global.get __Hp
+			i32.const -20
+			i32.add
+			local.set 3
+			global.get __Hp
+			i32.const -8
+			i32.add
+			i32.const sIE_info
+			i32.store 0
+			global.get __Hp
+			local.get 1
+			i32.store 0
+			global.get __Hp
+			i32.const -8
+			i32.add
+			local.set 4
+			i32.const ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+			global.set __R2
+			global.get __Sp
+			i32.const -20
+			i32.add
+			i32.const stg_ap_pp_info
+			i32.store 0
+			global.get __Sp
+			i32.const -16
+			i32.add
+			local.get 4
+			i32.store 0
+			global.get __Sp
+			i32.const -12
+			i32.add
+			local.get 3
+			i32.store 0
+			global.get __Sp
+			i32.const -20
+			i32.add
+			global.set __Sp
+			i32.const ghczminternal_GHCziInternalziNum_zp_entry
+			return
+		end_if
+	end_if
+	local.get 0
+	global.set __R1
+	i32.const __stg_gc_enter_1
+	return
+	end_function
+
+
+	.hidden Geometry_Point_closure
+	.globl Geometry_Point_closure
+	.section .data.Geometry_Point_closure,"",@
+	.p2align 2
+	.size Geometry_Point_closure, 4
+Geometry_Point_closure:
+	.int32 Geometry_Point_info
+
+	.hidden Geometry_Point_con_info
+	.globl Geometry_Point_con_info
+	.section .rodata.Geometry_Point_con_info,"",@
+	.p2align 2
+	.size Geometry_Point_con_info, 16
+Geometry_Point_con_info:
+	.int32 Geometry_Point_con_entry
+	.int32 0x2
+	.int16 0x4
+	.int16 0x0
+	.int32 i4_str
+
+	.hidden Geometry_Point_info
+	.globl Geometry_Point_info
+	.section .rodata.Geometry_Point_info,"",@
+	.p2align 2
+	.size Geometry_Point_info, 16
+Geometry_Point_info:
+	.int32 Geometry_Point_entry
+	.int32 0x0
+	.int16 0xe
+	.int16 0x0
+	.int32 0x2000f
+
+	.hidden Geometry_norm_closure
+	.globl Geometry_norm_closure
+	.section .data.Geometry_norm_closure,"",@
+	.p2align 2
+	.size Geometry_norm_closure, 8
+Geometry_norm_closure:
+	.int32 Geometry_norm_info
+	.int32 0x0
+
+	.hidden Geometry_norm_info
+	.globl Geometry_norm_info
+	.section .rodata.Geometry_norm_info,"",@
+	.p2align 2
+	.size Geometry_norm_info, 20
+Geometry_norm_info:
+	.int32 Geometry_norm_entry
+	.int32 0x0
+	.int16 0xe
+	.int16 0x1
+	.int32 0x10005
+	.int32 _u3_srt
+
+	.hidden Geometry_zdfldZCPointZCpx_closure
+	.globl Geometry_zdfldZCPointZCpx_closure
+	.section .data.Geometry_zdfldZCPointZCpx_closure,"",@
+	.p2align 2
+	.size Geometry_zdfldZCPointZCpx_closure, 4
+Geometry_zdfldZCPointZCpx_closure:
+	.int32 Geometry_zdfldZCPointZCpx_info
+
+	.hidden Geometry_zdfldZCPointZCpx_info
+	.globl Geometry_zdfldZCPointZCpx_info
+	.section .rodata.Geometry_zdfldZCPointZCpx_info,"",@
+	.p2align 2
+	.size Geometry_zdfldZCPointZCpx_info, 16
+Geometry_zdfldZCPointZCpx_info:
+	.int32 Geometry_zdfldZCPointZCpx_entry
+	.int32 0x0
+	.int16 0xe
+	.int16 0x0
+	.int32 0x10005
+
+	.hidden Geometry_zdfldZCPointZCpy_closure
+	.globl Geometry_zdfldZCPointZCpy_closure
+	.section .data.Geometry_zdfldZCPointZCpy_closure,"",@
+	.p2align 2
+	.size Geometry_zdfldZCPointZCpy_closure, 4
+Geometry_zdfldZCPointZCpy_closure:
+	.int32 Geometry_zdfldZCPointZCpy_info
+
+	.hidden Geometry_zdfldZCPointZCpy_info
+	.globl Geometry_zdfldZCPointZCpy_info
+	.section .rodata.Geometry_zdfldZCPointZCpy_info,"",@
+	.p2align 2
+	.size Geometry_zdfldZCPointZCpy_info, 16
+Geometry_zdfldZCPointZCpy_info:
+	.int32 Geometry_zdfldZCPointZCpy_entry
+	.int32 0x0
+	.int16 0xe
+	.int16 0x0
+	.int32 0x10005
+
+	.hidden Geometry_zdtcPoint_closure
+	.globl Geometry_zdtcPoint_closure
+	.section .data.Geometry_zdtcPoint_closure,"",@
+	.p2align 2
+	.size Geometry_zdtcPoint_closure, 40
+Geometry_zdtcPoint_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TyCon_con_info
+	.int32 Geometry_zdtrModule_closure+1
+	.int32 rIm_closure+1
+	.int32 ghczminternal_GHCziInternalziTypes_krepzdzt_closure
+	.int64 0xc8c05d5fb2402464
+	.int64 0x95c28e49d97a97e0
+	.int32 0x0
+	.int32 0x0
+
+	.hidden Geometry_zdtczqPoint_closure
+	.globl Geometry_zdtczqPoint_closure
+	.section .data.Geometry_zdtczqPoint_closure,"",@
+	.p2align 2
+	.size Geometry_zdtczqPoint_closure, 40
+Geometry_zdtczqPoint_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TyCon_con_info
+	.int32 Geometry_zdtrModule_closure+1
+	.int32 rIr_closure+1
+	.int32 rIp_closure+3
+	.int64 0x7af42a57bd7a8167
+	.int64 0xcd63bc03356ee2c1
+	.int32 0x0
+	.int32 0x0
+
+	.hidden Geometry_zdtrModule_closure
+	.globl Geometry_zdtrModule_closure
+	.section .data.Geometry_zdtrModule_closure,"",@
+	.p2align 2
+	.size Geometry_zdtrModule_closure, 16
+Geometry_zdtrModule_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_Module_con_info
+	.int32 rIh_closure+1
+	.int32 rIj_closure+1
+	.int32 0x3
+
+	.section .data._u3_srt,"",@
+	.p2align 2
+	.size _u3_srt, 16
+_u3_srt:
+	.int32 stg_SRT_2_info
+	.int32 ghczminternal_GHCziInternalziFloat_zdfFloatingDouble_closure
+	.int32 ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+	.int32 0x0
+
+	.section .rodata.cIX_info,"",@
+	.p2align 2
+	.size cIX_info, 12
+cIX_info:
+	.int32 _blk_cIX
+	.int32 0x0
+	.int16 0x1e
+	.int16 0x0
+
+	.section .rodata.cJa_info,"",@
+	.p2align 2
+	.size cJa_info, 12
+cJa_info:
+	.int32 _blk_cJa
+	.int32 0x0
+	.int16 0x1e
+	.int16 0x0
+
+	.section .rodata.cJn_info,"",@
+	.p2align 2
+	.size cJn_info, 16
+cJn_info:
+	.int32 _blk_cJn
+	.int32 0x0
+	.int16 0x1e
+	.int16 0x1
+	.int32 _u3_srt
+
+	.section .rodata.i4_str,"",@
+	.size i4_str, 20
+i4_str:
+	.asciz "main:Geometry.Point"
+
+	.section .rodata.rIg_bytes,"",@
+	.size rIg_bytes, 5
+rIg_bytes:
+	.asciz "main"
+
+	.section .data.rIh_closure,"",@
+	.p2align 2
+	.size rIh_closure, 8
+rIh_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TrNameS_con_info
+	.int32 rIg_bytes
+
+	.section .rodata.rIi_bytes,"",@
+	.size rIi_bytes, 9
+rIi_bytes:
+	.asciz "Geometry"
+
+	.section .data.rIj_closure,"",@
+	.p2align 2
+	.size rIj_closure, 8
+rIj_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TrNameS_con_info
+	.int32 rIi_bytes
+
+	.section .data.rIk_closure,"",@
+	.p2align 2
+	.size rIk_closure, 16
+rIk_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_KindRepTyConApp_con_info
+	.int32 ghczminternal_GHCziInternalziTypes_zdtcDouble_closure
+	.int32 ghczminternal_GHCziInternalziTypes_ZMZN_closure+1
+	.int32 0x0
+
+	.section .rodata.rIl_bytes,"",@
+	.size rIl_bytes, 6
+rIl_bytes:
+	.asciz "Point"
+
+	.section .data.rIm_closure,"",@
+	.p2align 2
+	.size rIm_closure, 8
+rIm_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TrNameS_con_info
+	.int32 rIl_bytes
+
+	.section .data.rIn_closure,"",@
+	.p2align 2
+	.size rIn_closure, 16
+rIn_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_KindRepTyConApp_con_info
+	.int32 Geometry_zdtcPoint_closure+1
+	.int32 ghczminternal_GHCziInternalziTypes_ZMZN_closure+1
+	.int32 0x0
+
+	.section .data.rIo_closure,"",@
+	.p2align 2
+	.size rIo_closure, 16
+rIo_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_KindRepFun_con_info
+	.int32 rIk_closure+1
+	.int32 rIn_closure+1
+	.int32 0x0
+
+	.section .data.rIp_closure,"",@
+	.p2align 2
+	.size rIp_closure, 16
+rIp_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_KindRepFun_con_info
+	.int32 rIk_closure+1
+	.int32 rIo_closure+3
+	.int32 0x0
+
+	.section .rodata.rIq_bytes,"",@
+	.size rIq_bytes, 7
+rIq_bytes:
+	.asciz "'Point"
+
+	.section .data.rIr_closure,"",@
+	.p2align 2
+	.size rIr_closure, 8
+rIr_closure:
+	.int32 ghczminternal_GHCziInternalziTypes_TrNameS_con_info
+	.int32 rIq_bytes
+
+	.section .rodata.sIE_info,"",@
+	.p2align 2
+	.size sIE_info, 16
+sIE_info:
+	.int32 sIE_entry
+	.int32 0x1
+	.int16 0x10
+	.int16 0x1
+	.int32 ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+
+	.section .rodata.sIF_info,"",@
+	.p2align 2
+	.size sIF_info, 16
+sIF_info:
+	.int32 sIF_entry
+	.int32 0x1
+	.int16 0x10
+	.int16 0x1
+	.int32 ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+
+	.section .rodata.sIG_info,"",@
+	.p2align 2
+	.size sIG_info, 16
+sIG_info:
+	.int32 sIG_entry
+	.int32 0x2
+	.int16 0x12
+	.int16 0x1
+	.int32 ghczminternal_GHCziInternalziFloat_zdfNumDouble_closure
+
+
+	.section .custom_section.producers,"",@
+	.int8 1
+	.int8 12
+	.ascii "processed-by"
+	.int8 1
+	.int8 3
+	.ascii "ghc"
+	.int8 15
+	.ascii "9.14.1.20260731"
+	.section .custom_section.target_features,"",@
+	.int8 5
+	.int8 0x2b
+	.int8 11
+	.ascii "bulk-memory"
+	.int8 0x2b
+	.int8 15
+	.ascii "mutable-globals"
+	.int8 0x2b
+	.int8 19
+	.ascii "nontrapping-fptoint"
+	.int8 0x2b
+	.int8 15
+	.ascii "reference-types"
+	.int8 0x2b
+	.int8 8
+	.ascii "sign-ext"
+
+

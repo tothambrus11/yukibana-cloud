@@ -1,0 +1,87 @@
+
+==================== Final STG: ====================
+
+$trModule3_r1ix :: Addr# = "Main"#;
+
+$trModule1_r1iv :: Addr# = "main"#;
+
+$trModule2_r1iw :: TrName = TrNameS! [$trModule1_r1iv];
+
+$trModule4_r1iy :: TrName = TrNameS! [$trModule3_r1ix];
+
+$trModule :: Module = Module! [$trModule2_r1iw $trModule4_r1iy];
+
+square_rIK :: Int -> Int =
+    {} \r [x_s1iA]
+        src</workspace/Main.hs:6:1-16>
+        src</workspace/Main.hs:6:12>
+        src</workspace/Main.hs:6:16> * $fNumInt x_s1iA x_s1iA;
+
+total_sat_s1iE :: [Int] =
+    {} \u []
+        src</workspace/Main.hs:10:7-40>
+        src</workspace/Main.hs:10:15-40>
+        let {
+          total_sat_s1iD :: [Int] =
+              {} \u []
+                  src</workspace/Main.hs:10:31-39>
+                  let { total_sat_s1iC :: Int = I#! [10#];
+                  } in 
+                    src</workspace/Main.hs:10:32>
+                    let { total_sat_s1iB :: Int = I#! [1#];
+                    } in  enumFromTo $fEnumInt total_sat_s1iB total_sat_s1iC;
+        } in 
+          src</workspace/Main.hs:10:24-29> map square_rIK total_sat_s1iD;
+
+total_r1iz :: Int =
+    {} \u []
+        src</workspace/Main.hs:10:7-40>
+        src</workspace/Main.hs:10:15-40>
+        sum $fFoldableList $fNumInt total_sat_s1iE;
+
+main_sat_s1iN :: IO () =
+    {} \u []
+        src</workspace/Main.hs:(9,1)-(13,26)>
+        let {
+          main_sat_s1iM :: IO () =
+              {} \u []
+                  src</workspace/Main.hs:13:3-26>
+                  let {
+                    main_sat_s1iL :: Double =
+                        {} \u []
+                            src</workspace/Main.hs:13:9-26>
+                            let { main_sat_s1iJ :: Double = D#! [4.0##];
+                            } in 
+                              src</workspace/Main.hs:13:22>
+                              let { main_sat_s1iI :: Double = D#! [3.0##]; } in
+                              let {
+                                main_sat_s1iK :: Point = Point! [main_sat_s1iI main_sat_s1iJ];
+                              } in  norm main_sat_s1iK;
+                  } in  print $fShowDouble main_sat_s1iL; } in
+        let {
+          main_sat_s1iH :: IO () =
+              {} \u []
+                  let {
+                    main_sat_s1iG :: Int =
+                        {} \u []
+                            src</workspace/Main.hs:12:9-22>
+                            src</workspace/Main.hs:6:1-16>
+                            src</workspace/Main.hs:6:12>
+                            src</workspace/Main.hs:12:17-21>
+                            src</workspace/Main.hs:6:16>
+                            src</workspace/Main.hs:12:17-21> * $fNumInt total_r1iz total_r1iz;
+                  } in  print $fShowInt main_sat_s1iG;
+        } in  >> $fMonadIO main_sat_s1iH main_sat_s1iM;
+
+main_sat_s1iF :: IO () =
+    {} \u []
+        src</workspace/Main.hs:(9,1)-(13,26)>
+        src</workspace/Main.hs:11:9-13> print $fShowInt total_r1iz;
+
+main :: IO () =
+    {} \u []
+        src</workspace/Main.hs:(9,1)-(13,26)>
+        >> $fMonadIO main_sat_s1iF main_sat_s1iN;
+
+main :: IO () = {} \u [] runMainIO main;
+

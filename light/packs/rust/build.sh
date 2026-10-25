@@ -12,6 +12,7 @@
 #   std-src  core, alloc and std from rust-src 1.98.0 (static.rust-lang.org)
 #   runner   Miri compiled to wasm32-wasip1 and its sysroot, from the rubri
 #            project at a pinned commit (sha256 of every file checked)
+#   explorer the MIR view's worker (src/explorer.js): that Miri as rustc
 #   crates   quickcheck and its dependencies from crates.io (crates/Cargo.lock
 #            pins versions and checksums), compiled with that Miri for the
 #            runner and packed as sources for the server
@@ -108,9 +109,13 @@ size() { stat -c %s "$OUT/$1"; }
 "$HERE/node_modules/.bin/esbuild" "$HERE/src/runner.js" --bundle --format=esm --minify --target=es2022 --log-level=warning \
     --loader:.rs=text --define:MIRI_WASM_SIZE="$(size miri.wasm)" --define:SYSROOT_SIZE="$(size sysroot.tar)" \
     --define:CRATES_FILE="\"$CRATES.tar\"" --define:CRATES_SIZE="$(size "$CRATES.tar")" --define:CRATES_DIRECT="$CRATES_DIRECT" --outfile="$OUT/runner.js"
+# The MIR view's worker: the same Miri, as rustc, and the same downloads.
+"$HERE/node_modules/.bin/esbuild" "$HERE/src/explorer.js" --bundle --format=esm --minify --target=es2022 --log-level=warning \
+    --define:MIRI_WASM_SIZE="$(size miri.wasm)" --define:SYSROOT_SIZE="$(size sysroot.tar)" \
+    --define:CRATES_FILE="\"$CRATES.tar\"" --define:CRATES_SIZE="$(size "$CRATES.tar")" --define:CRATES_DIRECT="$CRATES_DIRECT" --outfile="$OUT/explorer.js"
 
 # 6. Licences and precompressed siblings.
 cp "$HERE/LICENSES.txt" "$OUT/LICENSES.txt"
-node "$HERE/scripts/compress.mjs" "$OUT/server.js" "$OUT/runner.js" "$OUT/rust-analyzer.wasm" "$OUT/std-src.tar" "$OUT/miri.wasm" "$OUT/sysroot.tar" \
+node "$HERE/scripts/compress.mjs" "$OUT/server.js" "$OUT/runner.js" "$OUT/explorer.js" "$OUT/rust-analyzer.wasm" "$OUT/std-src.tar" "$OUT/miri.wasm" "$OUT/sysroot.tar" \
     "$OUT/$CRATES.tar" "$OUT/$CRATES-src.tar"
 echo "built $(du -sh "$OUT" | cut -f1) into $OUT"

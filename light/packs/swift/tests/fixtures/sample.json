@@ -1,0 +1,4 @@
+{
+  "main.swift": "let shapes: [Shape] = [Circle(radius: 1), Square(side: 2)]\nvar total = 0.0\nfor shape in shapes {\n    total += shape.area\n}\nprint(\"total area \\(total)\")\nprint(square(7))\n",
+  "Shapes.swift": "protocol Shape {\n    var area: Double { get }\n}\n\nstruct Circle: Shape {\n    let radius: Double\n    var area: Double { .pi * radius * radius }\n}\n\nstruct Square: Shape {\n    let side: Double\n    var area: Double { side * side }\n}\n\nfunc square(_ x: Int) -> Int {\n    x * x\n}\n"
+}

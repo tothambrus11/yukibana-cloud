@@ -209,4 +209,68 @@ final class ScalaJSCompiler(bundles: js.Array[Int8Array]) {
     val ordered = (mains.filter(_._1) ++ mains.filterNot(_._1)).map(_._2).distinct
     js.Dynamic.literal(diagnostics = diagnostics, ir = ir, mains = js.Array(ordered.toSeq*))
   }
+
+  /** The trees of `path` (one of `files`) as the compiler prints them after
+   *  `phase` (a phase name, `typer` or `repeatableAnnotations`), for the
+   *  compiler output views (explorer.js). Returns `{ text, diagnostics }`:
+   *  `text` is null when the project does not get that far (the errors are
+   *  in `diagnostics`, as `compile` reports them); otherwise it is what
+   *  `-Vprint:<phase> -print-lines` prints for that file, each line that
+   *  comes from the source prefixed with `<first>[-<last>]|`, the source
+   *  lines it was printed from, counted from 1. That is upstream's printer
+   *  through upstream's flag, echoed to the reporter: printing the unit's
+   *  tree here would need the context Run prints it in, which it does not
+   *  hand out. Nothing is generated: the run stops after `phase`. */
+  @JSExport def explore(files: js.Dictionary[String], path: String, phase: String): js.Object = {
+    val cp = classPath
+    val base: ContextBase = new ContextBase {
+      override protected def newPlatform(using Context) = new SJSPlatform() {
+        override def classPath(using Context): ClassPath = cp
+      }
+    }
+    val init = base.initialCtx.fresh
+    init.setSetting(init.settings.scalajs, true)
+    init.setSetting(init.settings.outputDir, new VirtualDirectory("(output)", None))
+    init.setSetting(init.settings.color, "never")
+    init.setSetting(init.settings.Vprint, List(phase))
+    init.setSetting(init.settings.YstopAfter, List(phase))
+    init.setSetting(init.settings.printLines, true)
+    dotty.tools.dotc.core.MacroClassLoader.init(init)
+    dotty.tools.dotc.ast.Positioned.init(using init)
+    init.initialize()(using init)
+
+    val reporter = new StoreReporter(null) with UniqueMessagePositions with HideNonSensicalMessages
+    val runCtx = init.fresh.setReporter(reporter)
+    val run = new BrowserSJSCompiler().newRun(using runCtx)
+    val sources = files.keys.toList.filter(_.endsWith(".scala")).sorted.map(p => SourceFile.virtual(p, files(p)))
+    val diagnostics = js.Array[js.Object]()
+    try run.compileSources(sources)
+    catch {
+      case ex: Throwable =>
+        diagnostics.push(js.Dynamic.literal(path = path, line = 0, column = 0, severity = "error",
+          message = "the compiler crashed: " + ex.toString, lineText = ""))
+    }
+    // Run.printTree's header, then the tree: "[[syntax trees at end of
+    // <phase, padded>]] // <file>\n<tree>". A fused phase prints as
+    // MegaPhase{…, <phase>, …}, so only the file is matched.
+    val header = "]] // " + path + "\n"
+    var text: String | Null = null
+    for (d <- reporter.removeBufferedMessages(using runCtx)) {
+      val message = d.message
+      val at = message.indexOf(header)
+      if (message.startsWith("[[syntax trees at end of") && at >= 0) text = message.substring(at + header.length)
+      else if (d.level != dotty.tools.dotc.interfaces.Diagnostic.INFO) {
+        val severity = if (d.level == dotty.tools.dotc.interfaces.Diagnostic.ERROR) "error" else "warning"
+        val p = d.pos
+        if (p.exists)
+          diagnostics.push(js.Dynamic.literal(path = p.source.file.path, line = p.line + 1, column = p.column + 1,
+            severity = severity, message = message, lineText = p.lineContent.stripLineEnd))
+        else
+          diagnostics.push(js.Dynamic.literal(path = "", line = 0, column = 0, severity = severity,
+            message = message, lineText = ""))
+      }
+    }
+    if (diagnostics.exists(_.asInstanceOf[js.Dynamic].severity.asInstanceOf[String] == "error")) text = null
+    js.Dynamic.literal(text = text.asInstanceOf[js.Any], diagnostics = diagnostics)
+  }
 }

@@ -67,16 +67,7 @@ export interface Language {
 	 * reloaded as files change) instead of running `entry` in the terminal.
 	 */
 	preview?: string;
-	/**
-	 * The compiler output views the pack's `explorer.js` serves
-	 * (packs/CONTRACT.md, "Showing compiler output"): LLVM IR, assembly. The
-	 * top bar offers a button for each.
-	 */
-	explores?: readonly ExploreKind[];
 }
-
-/** A compiler output view: the LLVM IR or the assembly of the active source. */
-export type ExploreKind = 'llvm-ir' | 'asm';
 
 /** A language's short name: `short` when it has one, else its label. */
 export const shortLabel = (language: Language): string => language.short ?? language.label;
@@ -640,7 +631,6 @@ function draw() {
 		extension: '.cpp',
 		runs: true,
 		tests: true,
-		explores: ['llvm-ir', 'asm'],
 		sample: {
 			'main.cpp': `#include <cstdio>
 #include <vector>

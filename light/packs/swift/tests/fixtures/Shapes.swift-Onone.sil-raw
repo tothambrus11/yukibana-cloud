@@ -1,0 +1,187 @@
+sil_stage raw
+
+import Builtin
+import Swift
+import SwiftShims
+
+protocol Shape {
+  var area: Double { get }
+}
+
+struct Circle : Shape {
+  @_hasStorage let radius: Double { get }
+  var area: Double { get }
+  init(radius: Double)
+}
+
+struct Square : Shape {
+  @_hasStorage let side: Double { get }
+  var area: Double { get }
+  init(side: Double)
+}
+
+func square(_ x: Int) -> Int
+
+sil_scope 1 { loc "/workspace/Shapes.swift":6:9 parent @$s4main6CircleV6radiusSdvg : $@convention(method) (Circle) -> Double }
+
+// Circle.radius.getter, loc "/workspace/Shapes.swift":6:9, scope 1
+// Isolation: unspecified
+sil hidden [transparent] [ossa] @$s4main6CircleV6radiusSdvg : $@convention(method) (Circle) -> Double {
+// %0 "self"                                      // users: %2, %1
+bb0(%0 : $Circle):
+  debug_value %0, let, name "self", argno 1, loc "/workspace/Shapes.swift":6:9, scope 1 // id: %1
+  %2 = struct_extract %0, #Circle.radius, scope 1 // user: %3
+  return %2, loc "/workspace/Shapes.swift":6:9, scope 1 // id: %3
+} // end sil function '$s4main6CircleV6radiusSdvg'
+
+sil_scope 2 { loc "/workspace/Shapes.swift":7:22 parent @$s4main6CircleV4areaSdvg : $@convention(method) (Circle) -> Double }
+
+// Circle.area.getter, loc "/workspace/Shapes.swift":7:22, scope 2
+// Isolation: unspecified
+sil hidden [ossa] @$s4main6CircleV4areaSdvg : $@convention(method) (Circle) -> Double {
+// %0 "self"                                      // users: %10, %7, %1
+bb0(%0 : $Circle):
+  debug_value %0, let, name "self", argno 1, loc "/workspace/Shapes.swift":7:22, scope 2 // id: %1
+  %2 = metatype $@thin Double.Type, loc "/workspace/Shapes.swift":7:37, scope 2 // user: %12
+  %3 = metatype $@thin Double.Type, loc "/workspace/Shapes.swift":7:28, scope 2 // user: %9
+  %4 = metatype $@thin Double.Type, loc "/workspace/Shapes.swift":7:24, scope 2 // user: %6
+  // function_ref static Double.pi.getter
+  %5 = function_ref @$sSd2piSdvgZ : $@convention(method) (@thin Double.Type) -> Double, loc "/workspace/Shapes.swift":7:25, scope 2 // user: %6
+  %6 = apply %5(%4) : $@convention(method) (@thin Double.Type) -> Double, loc "/workspace/Shapes.swift":7:25, scope 2 // user: %9
+  %7 = struct_extract %0, #Circle.radius, loc "/workspace/Shapes.swift":7:30, scope 2 // user: %9
+  // function_ref static Double.* infix(_:_:)
+  %8 = function_ref @$sSd1moiyS2d_SdtFZ : $@convention(method) (Double, Double, @thin Double.Type) -> Double, loc "/workspace/Shapes.swift":7:28, scope 2 // user: %9
+  %9 = apply %8(%6, %7, %3) : $@convention(method) (Double, Double, @thin Double.Type) -> Double, loc "/workspace/Shapes.swift":7:28, scope 2 // user: %12
+  %10 = struct_extract %0, #Circle.radius, loc "/workspace/Shapes.swift":7:39, scope 2 // user: %12
+  // function_ref static Double.* infix(_:_:)
+  %11 = function_ref @$sSd1moiyS2d_SdtFZ : $@convention(method) (Double, Double, @thin Double.Type) -> Double, loc "/workspace/Shapes.swift":7:37, scope 2 // user: %12
+  %12 = apply %11(%9, %10, %2) : $@convention(method) (Double, Double, @thin Double.Type) -> Double, loc "/workspace/Shapes.swift":7:37, scope 2 // user: %13
+  return %12, loc "/workspace/Shapes.swift":7:46, scope 2 // id: %13
+} // end sil function '$s4main6CircleV4areaSdvg'
+
+
+// static Double.pi.getter, scope 0
+// Isolation: unspecified
+sil [serialized] @$sSd2piSdvgZ : $@convention(method) (@thin Double.Type) -> Double
+
+
+// static Double.* infix(_:_:), scope 0
+// Isolation: unspecified
+sil [transparent] [serialized] @$sSd1moiyS2d_SdtFZ : $@convention(method) (Double, Double, @thin Double.Type) -> Double
+
+sil_scope 3 { loc "/workspace/Shapes.swift":5:8 parent @$s4main6CircleV6radiusACSd_tcfC : $@convention(method) (Double, @thin Circle.Type) -> Circle }
+
+// Circle.init(radius:), loc "/workspace/Shapes.swift":5:8, scope 3
+// Isolation: unspecified
+sil hidden [ossa] @$s4main6CircleV6radiusACSd_tcfC : $@convention(method) (Double, @thin Circle.Type) -> Circle {
+// %0 "$implicit_value"                           // user: %2
+// %1 "$metatype"
+bb0(%0 : $Double, %1 : $@thin Circle.Type):
+  %2 = struct $Circle (%0), loc * "/workspace/Shapes.swift":5:8, scope 3 // user: %3
+  return %2, loc * "/workspace/Shapes.swift":5:8, scope 3 // id: %3
+} // end sil function '$s4main6CircleV6radiusACSd_tcfC'
+
+sil_scope 4 { loc "/workspace/Shapes.swift":7:22 parent @$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW : $@convention(witness_method: Shape) (@in_guaranteed Circle) -> Double }
+
+// protocol witness for Shape.area.getter in conformance Circle, loc "/workspace/Shapes.swift":7:22, scope 4
+// Isolation: unspecified
+sil private [transparent] [thunk] [ossa] @$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW : $@convention(witness_method: Shape) (@in_guaranteed Circle) -> Double {
+// %0                                             // user: %1
+bb0(%0 : $*Circle):
+  %1 = load [trivial] %0, loc * "/workspace/Shapes.swift":7:22, scope 4 // user: %3
+  // function_ref Circle.area.getter
+  %2 = function_ref @$s4main6CircleV4areaSdvg : $@convention(method) (Circle) -> Double, loc * "/workspace/Shapes.swift":7:22, scope 4 // user: %3
+  %3 = apply %2(%1) : $@convention(method) (Circle) -> Double, loc * "/workspace/Shapes.swift":7:22, scope 4 // user: %4
+  return %3, loc * "/workspace/Shapes.swift":7:22, scope 4 // id: %4
+} // end sil function '$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW'
+
+sil_scope 5 { loc "/workspace/Shapes.swift":11:9 parent @$s4main6SquareV4sideSdvg : $@convention(method) (Square) -> Double }
+
+// Square.side.getter, loc "/workspace/Shapes.swift":11:9, scope 5
+// Isolation: unspecified
+sil hidden [transparent] [ossa] @$s4main6SquareV4sideSdvg : $@convention(method) (Square) -> Double {
+// %0 "self"                                      // users: %2, %1
+bb0(%0 : $Square):
+  debug_value %0, let, name "self", argno 1, loc "/workspace/Shapes.swift":11:9, scope 5 // id: %1
+  %2 = struct_extract %0, #Square.side, scope 5   // user: %3
+  return %2, loc "/workspace/Shapes.swift":11:9, scope 5 // id: %3
+} // end sil function '$s4main6SquareV4sideSdvg'
+
+sil_scope 6 { loc "/workspace/Shapes.swift":12:22 parent @$s4main6SquareV4areaSdvg : $@convention(method) (Square) -> Double }
+
+// Square.area.getter, loc "/workspace/Shapes.swift":12:22, scope 6
+// Isolation: unspecified
+sil hidden [ossa] @$s4main6SquareV4areaSdvg : $@convention(method) (Square) -> Double {
+// %0 "self"                                      // users: %4, %3, %1
+bb0(%0 : $Square):
+  debug_value %0, let, name "self", argno 1, loc "/workspace/Shapes.swift":12:22, scope 6 // id: %1
+  %2 = metatype $@thin Double.Type, loc "/workspace/Shapes.swift":12:29, scope 6 // user: %6
+  %3 = struct_extract %0, #Square.side, loc "/workspace/Shapes.swift":12:24, scope 6 // user: %6
+  %4 = struct_extract %0, #Square.side, loc "/workspace/Shapes.swift":12:31, scope 6 // user: %6
+  // function_ref static Double.* infix(_:_:)
+  %5 = function_ref @$sSd1moiyS2d_SdtFZ : $@convention(method) (Double, Double, @thin Double.Type) -> Double, loc "/workspace/Shapes.swift":12:29, scope 6 // user: %6
+  %6 = apply %5(%3, %4, %2) : $@convention(method) (Double, Double, @thin Double.Type) -> Double, loc "/workspace/Shapes.swift":12:29, scope 6 // user: %7
+  return %6, loc "/workspace/Shapes.swift":12:36, scope 6 // id: %7
+} // end sil function '$s4main6SquareV4areaSdvg'
+
+sil_scope 7 { loc "/workspace/Shapes.swift":10:8 parent @$s4main6SquareV4sideACSd_tcfC : $@convention(method) (Double, @thin Square.Type) -> Square }
+
+// Square.init(side:), loc "/workspace/Shapes.swift":10:8, scope 7
+// Isolation: unspecified
+sil hidden [ossa] @$s4main6SquareV4sideACSd_tcfC : $@convention(method) (Double, @thin Square.Type) -> Square {
+// %0 "$implicit_value"                           // user: %2
+// %1 "$metatype"
+bb0(%0 : $Double, %1 : $@thin Square.Type):
+  %2 = struct $Square (%0), loc * "/workspace/Shapes.swift":10:8, scope 7 // user: %3
+  return %2, loc * "/workspace/Shapes.swift":10:8, scope 7 // id: %3
+} // end sil function '$s4main6SquareV4sideACSd_tcfC'
+
+sil_scope 8 { loc "/workspace/Shapes.swift":12:22 parent @$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW : $@convention(witness_method: Shape) (@in_guaranteed Square) -> Double }
+
+// protocol witness for Shape.area.getter in conformance Square, loc "/workspace/Shapes.swift":12:22, scope 8
+// Isolation: unspecified
+sil private [transparent] [thunk] [ossa] @$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW : $@convention(witness_method: Shape) (@in_guaranteed Square) -> Double {
+// %0                                             // user: %1
+bb0(%0 : $*Square):
+  %1 = load [trivial] %0, loc * "/workspace/Shapes.swift":12:22, scope 8 // user: %3
+  // function_ref Square.area.getter
+  %2 = function_ref @$s4main6SquareV4areaSdvg : $@convention(method) (Square) -> Double, loc * "/workspace/Shapes.swift":12:22, scope 8 // user: %3
+  %3 = apply %2(%1) : $@convention(method) (Square) -> Double, loc * "/workspace/Shapes.swift":12:22, scope 8 // user: %4
+  return %3, loc * "/workspace/Shapes.swift":12:22, scope 8 // id: %4
+} // end sil function '$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW'
+
+sil_scope 9 { loc "/workspace/Shapes.swift":15:6 parent @$s4main6squareyS2iF : $@convention(thin) (Int) -> Int }
+
+// square(_:), loc "/workspace/Shapes.swift":15:6, scope 9
+// Isolation: unspecified
+sil hidden [ossa] @$s4main6squareyS2iF : $@convention(thin) (Int) -> Int {
+// %0 "x"                                         // users: %4, %4, %1
+bb0(%0 : $Int):
+  debug_value %0, let, name "x", argno 1, loc "/workspace/Shapes.swift":15:15, scope 9 // id: %1
+  %2 = metatype $@thin Int.Type, loc "/workspace/Shapes.swift":16:7, scope 9 // user: %4
+  // function_ref static Int.* infix(_:_:)
+  %3 = function_ref @$sSi1moiyS2i_SitFZ : $@convention(method) (Int, Int, @thin Int.Type) -> Int, loc "/workspace/Shapes.swift":16:7, scope 9 // user: %4
+  %4 = apply %3(%0, %0, %2) : $@convention(method) (Int, Int, @thin Int.Type) -> Int, loc "/workspace/Shapes.swift":16:7, scope 9 // user: %5
+  return %4, loc "/workspace/Shapes.swift":17:1, scope 9 // id: %5
+} // end sil function '$s4main6squareyS2iF'
+
+
+// static Int.* infix(_:_:), scope 0
+// Isolation: unspecified
+sil [transparent] [serialized] @$sSi1moiyS2i_SitFZ : $@convention(method) (Int, Int, @thin Int.Type) -> Int
+
+sil_witness_table hidden Circle: Shape module main {
+  method #Shape.area!getter: <Self where Self : Shape> (Self) -> () -> Double : @$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW	// protocol witness for Shape.area.getter in conformance Circle
+}
+
+sil_witness_table hidden Square: Shape module main {
+  method #Shape.area!getter: <Self where Self : Shape> (Self) -> () -> Double : @$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW	// protocol witness for Shape.area.getter in conformance Square
+}
+
+
+
+// Mappings from '#fileID' to '#filePath':
+//   'main/main.swift' => '/workspace/main.swift'
+//   'main/Shapes.swift' => '/workspace/Shapes.swift'
+
+

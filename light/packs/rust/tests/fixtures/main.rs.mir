@@ -1,0 +1,282 @@
+// WARNING: This output format is intended for human consumers only
+// and is subject to change without notice. Knock yourself out.
+fn square(_1: i32) -> i32 {
+    debug x => _1;                       // in scope 0 at src/main.rs:3:11: 3:12
+    let mut _0: i32;                     // return place in scope 0 at src/main.rs:3:22: 3:25
+    let mut _2: i32;                     // in scope 0 at src/main.rs:4:5: 4:6
+    let mut _3: i32;                     // in scope 0 at src/main.rs:4:9: 4:10
+    let mut _4: (i32, bool);             // in scope 0 at src/main.rs:4:5: 4:10
+
+    bb0: {
+        StorageLive(_2);                 // scope 0 at src/main.rs:4:5: 4:6
+        _2 = _1;                         // scope 0 at src/main.rs:4:5: 4:6
+        StorageLive(_3);                 // scope 0 at src/main.rs:4:9: 4:10
+        _3 = _1;                         // scope 0 at src/main.rs:4:9: 4:10
+        _4 = CheckedMul(_2, _3);         // scope 0 at src/main.rs:4:5: 4:10
+        assert(!move (_4.1: bool), "attempt to compute `{} * {}`, which would overflow", move _2, move _3) -> [success: bb1, unwind continue]; // scope 0 at src/main.rs:4:5: 4:10
+    }
+
+    bb1: {
+        _0 = move (_4.0: i32);           // scope 0 at src/main.rs:4:5: 4:10
+        StorageDead(_3);                 // scope 0 at src/main.rs:4:9: 4:10
+        StorageDead(_2);                 // scope 0 at src/main.rs:4:9: 4:10
+        return;                          // scope 0 at src/main.rs:5:2: 5:2
+    }
+}
+
+fn main() -> () {
+    let mut _0: ();                      // return place in scope 0 at src/main.rs:7:10: 7:10
+    let _1: std::vec::Vec<i32>;          // in scope 0 at src/main.rs:8:9: 8:10
+    let mut _2: std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>; // in scope 0 at src/main.rs:8:23: 8:43
+    let mut _3: std::ops::RangeInclusive<i32>; // in scope 0 at src/main.rs:8:23: 8:31
+    let mut _5: std::slice::Iter<'_, i32>; // in scope 0 at src/main.rs:9:22: 9:30
+    let mut _6: &[i32];                  // in scope 0 at src/main.rs:9:22: 9:23
+    let _7: &[i32];                      // in scope 0 at src/main.rs:9:22: 9:30
+    let mut _8: &std::vec::Vec<i32>;     // in scope 0 at src/main.rs:9:22: 9:23
+    let _9: ();                          // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:142:23: 144:6
+    let _10: ();                         // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:62
+    let mut _11: std::fmt::Arguments<'_>; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let mut _12: &[&str];                // in scope 0 at src/main.rs:10:14: 10:26
+    let mut _13: &[&str; 3];             // in scope 0 at src/main.rs:10:14: 10:26
+    let _14: &[&str; 3];                 // in scope 0 at src/main.rs:10:14: 10:26
+    let _15: [&str; 3];                  // in scope 0 at src/main.rs:10:14: 10:26
+    let mut _16: &[core::fmt::rt::Argument<'_>]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let mut _17: &[core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let _18: &[core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let _19: [core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let mut _20: (&f64, &i32);           // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let mut _21: &f64;                   // in scope 0 at src/main.rs:10:28: 10:58
+    let _22: f64;                        // in scope 0 at src/main.rs:10:28: 10:58
+    let mut _23: shapes::Point;          // in scope 0 at src/main.rs:10:33: 10:57
+    let mut _24: &i32;                   // in scope 0 at src/main.rs:10:16: 10:21
+    let mut _26: core::fmt::rt::Argument<'_>; // in scope 0 at src/main.rs:10:15: 10:22
+    let mut _27: &i32;                   // in scope 0 at src/main.rs:10:15: 10:22
+    let mut _28: core::fmt::rt::Argument<'_>; // in scope 0 at src/main.rs:10:23: 10:25
+    let mut _29: &f64;                   // in scope 0 at src/main.rs:10:28: 10:58
+    let mut _31: &i32;                   // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let mut _32: &f64;                   // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    scope 1 {
+        debug v => _1;                   // in scope 1 at src/main.rs:8:9: 8:10
+        let _4: i32;                     // in scope 1 at src/main.rs:9:9: 9:14
+        scope 2 {
+            debug total => _4;           // in scope 2 at src/main.rs:9:9: 9:14
+            let _25: (&f64, &i32);       // in scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+            let mut _30: &[&str; 3];     // in scope 2 at src/main.rs:10:14: 10:26
+            scope 3 {
+                debug args => _25;       // in scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+            }
+        }
+    }
+
+    bb0: {
+        StorageLive(_1);                 // scope 0 at src/main.rs:8:9: 8:10
+        StorageLive(_2);                 // scope 0 at src/main.rs:8:23: 8:43
+        StorageLive(_3);                 // scope 0 at src/main.rs:8:23: 8:31
+        _3 = std::ops::RangeInclusive::<i32>::new(const 1_i32, const 10_i32) -> [return: bb1, unwind continue]; // scope 0 at src/main.rs:8:23: 8:31
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:8:24: 8:30
+                                         // + const_: Const { ty: fn(i32, i32) -> std::ops::RangeInclusive<i32> {std::ops::RangeInclusive::<i32>::new}, val: Value(std::ops::RangeInclusive::<i32>::new) }
+    }
+
+    bb1: {
+        _2 = <std::ops::RangeInclusive<i32> as std::iter::Iterator>::map::<i32, fn(i32) -> i32 {square}>(move _3, square) -> [return: bb2, unwind continue]; // scope 0 at src/main.rs:8:23: 8:43
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:8:32: 8:35
+                                         // + const_: Const { ty: fn(std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}) -> std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> {<std::ops::RangeInclusive<i32> as std::iter::Iterator>::map::<i32, fn(i32) -> i32 {square}>}, val: Value(<std::ops::RangeInclusive<i32> as std::iter::Iterator>::map::<i32, fn(i32) -> i32 {square}>) }
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:8:36: 8:42
+                                         // + const_: Const { ty: fn(i32) -> i32 {square}, val: Value(square) }
+    }
+
+    bb2: {
+        StorageDead(_3);                 // scope 0 at src/main.rs:8:42: 8:43
+        _1 = <std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as std::iter::Iterator>::collect::<std::vec::Vec<i32>>(move _2) -> [return: bb3, unwind continue]; // scope 0 at src/main.rs:8:23: 8:53
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:8:44: 8:51
+                                         // + const_: Const { ty: fn(std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>) -> std::vec::Vec<i32> {<std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as std::iter::Iterator>::collect::<std::vec::Vec<i32>>}, val: Value(<std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as std::iter::Iterator>::collect::<std::vec::Vec<i32>>) }
+    }
+
+    bb3: {
+        Retag(_1);                       // scope 0 at src/main.rs:8:23: 8:53
+        StorageDead(_2);                 // scope 0 at src/main.rs:8:52: 8:53
+        StorageLive(_4);                 // scope 1 at src/main.rs:9:9: 9:14
+        StorageLive(_5);                 // scope 1 at src/main.rs:9:22: 9:30
+        StorageLive(_6);                 // scope 1 at src/main.rs:9:22: 9:23
+        StorageLive(_7);                 // scope 1 at src/main.rs:9:22: 9:30
+        StorageLive(_8);                 // scope 1 at src/main.rs:9:22: 9:23
+        _8 = &_1;                        // scope 1 at src/main.rs:9:22: 9:23
+        _7 = <std::vec::Vec<i32> as std::ops::Deref>::deref(move _8) -> [return: bb4, unwind: bb13]; // scope 1 at src/main.rs:9:22: 9:30
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:9:22: 9:30
+                                         // + const_: Const { ty: for<'a> fn(&'a std::vec::Vec<i32>) -> &'a <std::vec::Vec<i32> as std::ops::Deref>::Target {<std::vec::Vec<i32> as std::ops::Deref>::deref}, val: Value(<std::vec::Vec<i32> as std::ops::Deref>::deref) }
+    }
+
+    bb4: {
+        Retag(_7);                       // scope 1 at src/main.rs:9:22: 9:30
+        _6 = &(*_7);                     // scope 1 at src/main.rs:9:22: 9:23
+        StorageDead(_8);                 // scope 1 at src/main.rs:9:22: 9:23
+        _5 = core::slice::<impl [i32]>::iter(move _6) -> [return: bb5, unwind: bb13]; // scope 1 at src/main.rs:9:22: 9:30
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:9:24: 9:28
+                                         // + const_: Const { ty: for<'a> fn(&'a [i32]) -> std::slice::Iter<'a, i32> {core::slice::<impl [i32]>::iter}, val: Value(core::slice::<impl [i32]>::iter) }
+    }
+
+    bb5: {
+        StorageDead(_6);                 // scope 1 at src/main.rs:9:29: 9:30
+        _4 = <std::slice::Iter<'_, i32> as std::iter::Iterator>::sum::<i32>(move _5) -> [return: bb6, unwind: bb13]; // scope 1 at src/main.rs:9:22: 9:36
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:9:31: 9:34
+                                         // + const_: Const { ty: fn(std::slice::Iter<'_, i32>) -> i32 {<std::slice::Iter<'_, i32> as std::iter::Iterator>::sum::<i32>}, val: Value(<std::slice::Iter<'_, i32> as std::iter::Iterator>::sum::<i32>) }
+    }
+
+    bb6: {
+        StorageDead(_5);                 // scope 1 at src/main.rs:9:35: 9:36
+        StorageDead(_7);                 // scope 1 at src/main.rs:9:36: 9:37
+        StorageLive(_9);                 // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:142:23: 144:6
+        StorageLive(_10);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:62
+        StorageLive(_11);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_12);                // scope 2 at src/main.rs:10:14: 10:26
+        StorageLive(_13);                // scope 2 at src/main.rs:10:14: 10:26
+        StorageLive(_14);                // scope 2 at src/main.rs:10:14: 10:26
+        _30 = const _;                   // scope 2 at src/main.rs:10:14: 10:26
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:14: 10:26
+                                         // + const_: Const { ty: &[&str; 3], val: Unevaluated(main, [], Some(promoted[0])) }
+        Retag(_30);                      // scope 2 at src/main.rs:10:14: 10:26
+        _14 = &(*_30);                   // scope 2 at src/main.rs:10:14: 10:26
+        _13 = &(*_14);                   // scope 2 at src/main.rs:10:14: 10:26
+        _12 = move _13 as &[&str] (PointerCoercion(Unsize)); // scope 2 at src/main.rs:10:14: 10:26
+        Retag(_12);                      // scope 2 at src/main.rs:10:14: 10:26
+        StorageDead(_13);                // scope 2 at src/main.rs:10:25: 10:26
+        StorageLive(_16);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_17);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_18);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_19);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_20);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_21);                // scope 2 at src/main.rs:10:28: 10:58
+        StorageLive(_22);                // scope 2 at src/main.rs:10:28: 10:58
+        StorageLive(_23);                // scope 2 at src/main.rs:10:33: 10:57
+        _23 = shapes::Point { x: const 3f64, y: const 4f64 }; // scope 2 at src/main.rs:10:33: 10:57
+        _22 = shapes::norm(move _23) -> [return: bb7, unwind: bb13]; // scope 2 at src/main.rs:10:28: 10:58
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:28: 10:32
+                                         // + const_: Const { ty: fn(shapes::Point) -> f64 {shapes::norm}, val: Value(shapes::norm) }
+    }
+
+    bb7: {
+        StorageDead(_23);                // scope 2 at src/main.rs:10:57: 10:58
+        _21 = &_22;                      // scope 2 at src/main.rs:10:28: 10:58
+        StorageLive(_24);                // scope 2 at src/main.rs:10:16: 10:21
+        _24 = &_4;                       // scope 2 at src/main.rs:10:16: 10:21
+        _20 = (move _21, move _24);      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        Retag(_20);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageDead(_24);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        StorageDead(_21);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        PlaceMention(_20);               // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_25);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        _25 = _20;                       // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        Retag(_25);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageLive(_26);                // scope 3 at src/main.rs:10:15: 10:22
+        StorageLive(_27);                // scope 3 at src/main.rs:10:15: 10:22
+        _31 = deref_copy (_25.1: &i32);  // scope 3 at src/main.rs:10:15: 10:22
+        _27 = &(*_31);                   // scope 3 at src/main.rs:10:15: 10:22
+        _26 = core::fmt::rt::Argument::<'_>::new_display::<i32>(move _27) -> [return: bb8, unwind: bb13]; // scope 3 at src/main.rs:10:15: 10:22
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:15: 10:22
+                                         // + user_ty: UserType(5)
+                                         // + const_: Const { ty: for<'b> fn(&'b i32) -> core::fmt::rt::Argument<'b> {core::fmt::rt::Argument::<'_>::new_display::<i32>}, val: Value(core::fmt::rt::Argument::<'_>::new_display::<i32>) }
+    }
+
+    bb8: {
+        Retag(_26);                      // scope 3 at src/main.rs:10:15: 10:22
+        StorageDead(_27);                // scope 3 at src/main.rs:10:21: 10:22
+        StorageLive(_28);                // scope 3 at src/main.rs:10:23: 10:25
+        StorageLive(_29);                // scope 3 at src/main.rs:10:28: 10:58
+        _32 = deref_copy (_25.0: &f64);  // scope 3 at src/main.rs:10:28: 10:58
+        _29 = &(*_32);                   // scope 3 at src/main.rs:10:28: 10:58
+        _28 = core::fmt::rt::Argument::<'_>::new_display::<f64>(move _29) -> [return: bb9, unwind: bb13]; // scope 3 at src/main.rs:10:23: 10:25
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:23: 10:25
+                                         // + user_ty: UserType(6)
+                                         // + const_: Const { ty: for<'b> fn(&'b f64) -> core::fmt::rt::Argument<'b> {core::fmt::rt::Argument::<'_>::new_display::<f64>}, val: Value(core::fmt::rt::Argument::<'_>::new_display::<f64>) }
+    }
+
+    bb9: {
+        Retag(_28);                      // scope 3 at src/main.rs:10:23: 10:25
+        StorageDead(_29);                // scope 3 at src/main.rs:10:24: 10:25
+        _19 = [move _26, move _28];      // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        Retag(_19);                      // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageDead(_28);                // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        StorageDead(_26);                // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        StorageDead(_25);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        _18 = &_19;                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        _17 = &(*_18);                   // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        _16 = move _17 as &[core::fmt::rt::Argument<'_>] (PointerCoercion(Unsize)); // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        Retag(_16);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageDead(_17);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        _11 = std::fmt::Arguments::<'_>::new_v1(move _12, move _16) -> [return: bb10, unwind: bb13]; // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+                                         // mir::ConstOperand
+                                         // + span: /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+                                         // + user_ty: UserType(4)
+                                         // + const_: Const { ty: fn(&[&'static str], &[core::fmt::rt::Argument<'_>]) -> std::fmt::Arguments<'_> {std::fmt::Arguments::<'_>::new_v1}, val: Value(std::fmt::Arguments::<'_>::new_v1) }
+    }
+
+    bb10: {
+        Retag(_11);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+        StorageDead(_16);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        StorageDead(_12);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
+        _10 = std::io::_print(move _11) -> [return: bb11, unwind: bb13]; // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:62
+                                         // mir::ConstOperand
+                                         // + span: /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:27
+                                         // + const_: Const { ty: for<'a> fn(std::fmt::Arguments<'a>) {std::io::_print}, val: Value(std::io::_print) }
+    }
+
+    bb11: {
+        StorageDead(_11);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:61: 143:62
+        StorageDead(_22);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
+        StorageDead(_20);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
+        StorageDead(_19);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
+        StorageDead(_18);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
+        StorageDead(_14);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
+        StorageDead(_10);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
+        _9 = const ();                   // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:142:23: 144:6
+        StorageDead(_9);                 // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:144:5: 144:6
+        _0 = const ();                   // scope 0 at src/main.rs:7:11: 11:2
+        StorageDead(_4);                 // scope 1 at src/main.rs:11:1: 11:2
+        drop(_1) -> [return: bb12, unwind: bb14]; // scope 0 at src/main.rs:11:1: 11:2
+    }
+
+    bb12: {
+        StorageDead(_1);                 // scope 0 at src/main.rs:11:1: 11:2
+        return;                          // scope 0 at src/main.rs:11:2: 11:2
+    }
+
+    bb13 (cleanup): {
+        drop(_1) -> [return: bb14, unwind terminate(cleanup)]; // scope 0 at src/main.rs:11:1: 11:2
+    }
+
+    bb14 (cleanup): {
+        resume;                          // scope 0 at src/main.rs:7:1: 11:2
+    }
+}
+
+promoted[0] in main: &[&str; 3] = {
+    let mut _0: &[&str; 3];              // return place in scope 0 at src/main.rs:10:14: 10:26
+    let mut _1: [&str; 3];               // in scope 0 at src/main.rs:10:14: 10:26
+
+    bb0: {
+        _1 = [const "", const " ", const "\n"]; // scope 0 at src/main.rs:10:14: 10:26
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:14: 10:26
+                                         // + const_: Const { ty: &str, val: Value("") }
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:14: 10:26
+                                         // + const_: Const { ty: &str, val: Value(" ") }
+                                         // mir::ConstOperand
+                                         // + span: src/main.rs:10:14: 10:26
+                                         // + const_: Const { ty: &str, val: Value("\n") }
+        Retag(_1);                       // scope 0 at src/main.rs:10:14: 10:26
+        _0 = &_1;                        // scope 0 at src/main.rs:10:14: 10:26
+        return;                          // scope 0 at src/main.rs:10:14: 10:26
+    }
+}

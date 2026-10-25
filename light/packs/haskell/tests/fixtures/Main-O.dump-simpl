@@ -1,0 +1,204 @@
+
+==================== Tidy Core ====================
+
+Result size of Tidy Core
+  = {terms: 144, types: 120, coercions: 12, joins: 0/1}
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$trModule4 :: Addr#
+$trModule4 = "main"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$trModule3 :: TrName
+$trModule3 = TrNameS $trModule4
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$trModule2 :: Addr#
+$trModule2 = "Main"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$trModule1 :: TrName
+$trModule1 = TrNameS $trModule2
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$trModule :: Module
+$trModule = Module $trModule3 $trModule1
+
+-- RHS size: {terms: 2, types: 1, coercions: 0, joins: 0/0}
+main_k :: Int -> Int -> Int
+main_k = + @Int $fNumInt
+
+-- RHS size: {terms: 10, types: 6, coercions: 0, joins: 0/0}
+main16 :: Int -> (Int -> Int) -> Int -> Int
+main16
+  = \ (ds_i1wW :: Int) (ds1_i1wX :: Int -> Int) (v_i1wY :: Int) ->
+      case v_i1wY of z_i1wZ { I# ipv_s1OG ->
+      ds1_i1wX (main_k z_i1wZ ds_i1wW)
+      }
+
+-- RHS size: {terms: 5, types: 2, coercions: 0, joins: 0/0}
+main15 :: Int -> Int
+main15
+  = \ (x_aIM :: Int) ->
+      src</workspace/Main.hs:10:24-29>
+      src</workspace/Main.hs:6:1-16>
+      * @Int
+        $fNumInt
+        (src</workspace/Main.hs:6:12> x_aIM)
+        (src</workspace/Main.hs:6:16> x_aIM)
+
+-- RHS size: {terms: 19, types: 9, coercions: 0, joins: 0/1}
+main14 :: forall b. (Int -> b -> b) -> b -> b
+main14
+  = \ (@b_a1xr)
+      (c_a1xs :: Int -> b_a1xr -> b_a1xr)
+      (n_a1xt :: b_a1xr) ->
+      letrec {
+        go_a1QM :: Int# -> b_a1xr
+        go_a1QM
+          = \ (x_a1QN :: Int#) ->
+              c_a1xs
+                (I# x_a1QN)
+                (case x_a1QN of wild_X1E {
+                   __DEFAULT -> go_a1QM (+# wild_X1E 1#);
+                   10# -> n_a1xt
+                 }); } in
+      go_a1QM 1#
+
+-- RHS size: {terms: 2, types: 1, coercions: 0, joins: 0/0}
+main13 :: [Int]
+main13 = build @Int main14
+
+-- RHS size: {terms: 3, types: 2, coercions: 0, joins: 0/0}
+main12 :: [Int]
+main12
+  = map @Int @Int main15 (src</workspace/Main.hs:10:31-39> main13)
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+main11 :: Integer
+main11 = IS 0#
+
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+main10 :: Int
+main10 = fromInteger @Int $fNumInt main11
+
+-- RHS size: {terms: 5, types: 4, coercions: 0, joins: 0/0}
+main_total :: Int
+main_total
+  = src</workspace/Main.hs:10:7-40>
+    src</workspace/Main.hs:10:15-40>
+    foldr
+      @Int
+      @(Int -> Int)
+      main16
+      (breakpoint @Int)
+      (src</workspace/Main.hs:10:19-40> main12)
+      main10
+
+-- RHS size: {terms: 6, types: 3, coercions: 0, joins: 0/0}
+main18 :: String
+main18 = case main_total of { I# n_i1GF -> itos n_i1GF ([] @Char) }
+
+-- RHS size: {terms: 6, types: 2, coercions: 0, joins: 0/0}
+main17 :: State# RealWorld -> (# State# RealWorld, () #)
+main17
+  = \ (eta_i1xB :: State# RealWorld) ->
+      hPutStr2
+        stdout (src</workspace/Main.hs:11:9-13> main18) True eta_i1xB
+
+-- RHS size: {terms: 9, types: 4, coercions: 0, joins: 0/0}
+main9 :: String
+main9
+  = case * @Int
+           $fNumInt
+           (src</workspace/Main.hs:6:12>
+            src</workspace/Main.hs:12:17-21> main_total)
+           (src</workspace/Main.hs:6:16>
+            src</workspace/Main.hs:12:17-21> main_total)
+    of
+    { I# n_i1GF ->
+    itos n_i1GF ([] @Char)
+    }
+
+-- RHS size: {terms: 6, types: 2, coercions: 0, joins: 0/0}
+main8 :: State# RealWorld -> (# State# RealWorld, () #)
+main8
+  = \ (eta_i1xB :: State# RealWorld) ->
+      hPutStr2
+        stdout
+        (src</workspace/Main.hs:12:9-22>
+         src</workspace/Main.hs:6:1-16> main9)
+        True
+        eta_i1xB
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+main7 :: Double
+main7 = D# 3.0##
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+main6 :: Double
+main6 = D# 4.0##
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+main5 :: Point
+main5
+  = Point
+      (src</workspace/Main.hs:13:22> main7)
+      (src</workspace/Main.hs:13:24> main6)
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+main4 :: Double
+main4 = norm (src</workspace/Main.hs:13:15-25> main5)
+
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+main3 :: String
+main3
+  = show @Double $fShowDouble (src</workspace/Main.hs:13:9-26> main4)
+
+-- RHS size: {terms: 6, types: 2, coercions: 0, joins: 0/0}
+main2 :: State# RealWorld -> (# State# RealWorld, () #)
+main2
+  = \ (eta_i1xB :: State# RealWorld) ->
+      src</workspace/Main.hs:13:3-26> hPutStr2 stdout main3 True eta_i1xB
+
+-- RHS size: {terms: 4, types: 3, coercions: 6, joins: 0/0}
+main1 :: IO ()
+main1
+  = >>
+      @IO
+      $fMonadIO
+      @()
+      @()
+      (main8
+       `cast` <Co:3> :: (State# RealWorld -> (# State# RealWorld, () #))
+                        ~R# IO ())
+      (main2
+       `cast` <Co:3> :: (State# RealWorld -> (# State# RealWorld, () #))
+                        ~R# IO ())
+
+-- RHS size: {terms: 4, types: 3, coercions: 3, joins: 0/0}
+main :: IO ()
+main
+  = src</workspace/Main.hs:(9,1)-(13,26)>
+    >>
+      @IO
+      $fMonadIO
+      @()
+      @()
+      (main17
+       `cast` <Co:3> :: (State# RealWorld -> (# State# RealWorld, () #))
+                        ~R# IO ())
+      (src</workspace/Main.hs:12:3-22> main1)
+
+-- RHS size: {terms: 2, types: 1, coercions: 0, joins: 0/0}
+main19 :: State# RealWorld -> (# State# RealWorld, () #)
+main19 = runMainIO1 @() main
+
+-- RHS size: {terms: 1, types: 0, coercions: 3, joins: 0/0}
+main :: IO ()
+main
+  = main19
+    `cast` <Co:3> :: (State# RealWorld -> (# State# RealWorld, () #))
+                     ~R# IO ()
+
+

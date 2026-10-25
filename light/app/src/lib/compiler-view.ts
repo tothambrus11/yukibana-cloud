@@ -1,8 +1,9 @@
 /**
- * A compiler output view (LLVM IR or assembly) inside a dockview panel: a
- * header saying what the output is of and how it went, the view's toggles,
- * a progress line while the compiler downloads or compiles, and a read-only
- * Monaco editor showing the output, or clang's messages when the source
+ * A compiler output view (LLVM IR, assembly, SIL, MIR, Core, …: the
+ * language's, explore-views.ts) inside a dockview panel: a header saying
+ * what the output is of and how it went, the view's toggles, a progress
+ * line while the compiler downloads or compiles, and a read-only Monaco
+ * editor showing the output, or the compiler's messages when the source
  * does not compile.
  *
  * The header is two rows of fixed height. Row 1: the source file, the
@@ -44,14 +45,14 @@
  */
 import type { monaco as Monaco } from './monaco';
 import { registerOutputLanguages } from './asm-languages';
-import { asmLanguageOf, TARGET_SHORT, targetById } from './cpp-targets';
+import { asmLanguageOf, isCppTargetId, TARGET_SHORT, targetById } from './cpp-targets';
 import { sourceOf, userFlags, viewSummary, type SourceLine } from './explorer-map';
 import { linkerFor, type LinkHost } from './linking';
 import { placePopover } from './anchor';
 import { openBuildSettings } from './build-settings';
 import { formatDuration } from './format';
-import type { Explorer, ViewOptions, ViewState } from './explorer.svelte';
-import type { ExploreKind } from './languages';
+import type { Explorer, ViewState } from './explorer.svelte';
+import { KINDS, viewOf, viewsOf, type ExploreKind, type ExploreToggle, type ExploreView } from './explore-views';
 
 /** What a view needs of the editor area, which owns the source editors (LinkHost: what the linking of the panes needs). */
 export interface ViewHost extends LinkHost {
@@ -71,20 +72,8 @@ export interface CompilerView {
 	dispose(): void;
 }
 
-const TITLES: Record<ExploreKind, string> = { 'llvm-ir': 'LLVM IR', asm: 'Assembly' };
-
-/**
- * The toggles a view offers, in header order: a short label for the strip,
- * the full name for Options, and what each does, which is the strip
- * button's title and its line in Options. Intel syntax is the assembly's
- * only, and shown only for x86-64.
- */
-const TOGGLES: { key: keyof ViewOptions; label: string; name: string; does: string; asmOnly?: boolean }[] = [
-	{ key: 'demangle', label: 'Demangle', name: 'Demangle', does: "Show C++ names as written (LLVM's demangler) instead of their mangled symbols" },
-	{ key: 'intel', label: 'Intel syntax', name: 'Intel syntax', does: 'x86-64 assembly in Intel syntax (-masm=intel) instead of AT&T', asmOnly: true },
-	{ key: 'directives', label: 'Directives', name: 'Directives', does: 'Keep the assembler directives (.section, .p2align, …) and labels nothing uses' },
-	{ key: 'library', label: 'Library', name: 'Library functions', does: "Keep functions that come only from headers outside the project, such as the standard library's" },
-];
+/** The Monaco language of `view`'s text (asm-languages.ts): the target's assembly for `asm`. */
+const monacoLanguageOf = (view: ExploreView, target: string | null): string => (view.monaco === 'asm' ? asmLanguageOf(isCppTargetId(target) ? target : 'wasm32-wasi') : view.monaco);
 
 const STYLE_ID = 'yk-compiler-view-style';
 
@@ -190,7 +179,14 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	registerOutputLanguages(monaco);
 	element.classList.add('yk-view');
 	element.dataset['view'] = kind;
-	const what = TITLES[kind];
+	const what = KINDS[kind].title;
+	// A view is made for the language of the project open; a new language closes it (Explorer `reset`).
+	const language = explorer.language;
+	const views = viewsOf(language);
+	const spec: ExploreView = viewOf(language, kind) ?? { kind, monaco: 'plaintext', toggles: [] };
+	const compiler = views?.compiler ?? 'The compiler';
+	/** The flags the person chose, as the details list them: clang's without what every view adds (explorer-map.ts), the others' as the pack sent them. */
+	const chosenFlags = (flags: readonly string[]) => (language === 'cpp' ? userFlags(flags) : [...flags]);
 
 	// Row 1, built once.
 	const head = el('div', 'yk-view-head');
@@ -226,12 +222,12 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	more.append(el('span', 'label', 'Options'));
 	head.append(file, chips, state, nav, more);
 
-	// Row 2: the toggles, one button per option this kind has; Intel is hidden off x86-64.
+	// Row 2: the toggles, one button per option this view has; Intel is hidden off x86-64.
 	const strip = el('div', 'yk-view-toggles');
 	strip.setAttribute('role', 'group');
 	strip.setAttribute('aria-label', `${what} options`);
-	const kinds = TOGGLES.filter((t) => !t.asmOnly || kind === 'asm');
-	const toggle = (t: (typeof TOGGLES)[number], className: string) => {
+	const kinds = spec.toggles;
+	const toggle = (t: ExploreToggle, className: string) => {
 		const b = el('button', className);
 		b.type = 'button';
 		b.title = t.label === t.name ? t.does : `${t.name}: ${t.does}`;
@@ -303,7 +299,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		menu.hidePopover();
 		openBuildSettings(more);
 	});
-	actions.append(copy, change);
+	actions.append(copy, ...(views?.buildSettings ? [change] : []));
 	details.append(el('div', 'menu-heading', 'Build details'), dl, el('div', 'menu-heading', 'Full command'), command, actions);
 	menu.append(el('div', 'menu-heading', 'Show'), menuToggles, el('div', 'menu-divider'), details);
 	const placeMenu = () => placePopover(menu, more);
@@ -338,7 +334,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	// Not a project file: no language server sees it, nothing saves it.
 	const uri = monaco.Uri.parse(`yukibana-output:/${kind}`);
 	monaco.editor.getModel(uri)?.dispose();
-	const model = monaco.editor.createModel('', kind === 'llvm-ir' ? 'llvm-ir' : 'asm-wasm32', uri);
+	const model = monaco.editor.createModel('', monacoLanguageOf(spec, null), uri);
 	const editor = monaco.editor.create(editorElement, {
 		model,
 		automaticLayout: true,
@@ -394,9 +390,10 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		set(file, 'title', view.path ? `${what} of ${view.path}` : '');
 		const summary = viewSummary(view.flags);
 		const std = summary.std && !/^(gnu|c)\+\+17$/.test(summary.std) ? summary.std : null;
-		const parts = [view.target ? TARGET_SHORT[view.target] : null, summary.opt, summary.sanitizers, std].filter((p): p is string => !!p);
+		const target = isCppTargetId(view.target) ? targetById(view.target) : null;
+		const parts = [target ? TARGET_SHORT[target.id] : view.target, summary.opt, summary.sanitizers, std].filter((p): p is string => !!p);
 		set(chips, 'textContent', parts.join(' · '));
-		set(chips, 'title', parts.length ? `Built for ${view.target ? targetById(view.target).label : 'an unknown target'} with ${userFlags(view.flags).join(' ') || 'the default flags'}` : '');
+		set(chips, 'title', parts.length ? `Built for ${target?.label ?? view.target ?? 'an unknown target'} with ${chosenFlags(view.flags).join(' ') || 'the default flags'}` : '');
 
 		const busy = view.status === 'loading' || view.status === 'compiling';
 		const p = view.progress;
@@ -408,8 +405,8 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 			title = `Loading ${p.label}${pct === null ? '' : ` ${pct}%`}`;
 		} else if (busy) text = title = view.text ? 'Updating…' : 'Compiling…';
 		else if (view.status === 'error') {
-			text = '✗ clang failed';
-			title = 'clang failed: its messages are below';
+			text = `✗ ${compiler} failed`;
+			title = `${compiler} failed: its messages are below`;
 		} else if (view.status === 'ok') {
 			text = `✓ ${formatDuration(view.ms)}`;
 			title = `Compiled in ${formatDuration(view.ms)}`;
@@ -421,19 +418,20 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		const options = explorer.options[kind];
 		kinds.forEach((t, i) => {
 			const on = String(options[t.key]);
-			const hidden = t.asmOnly === true && view.target !== 'x86_64-linux';
+			const hidden = t.x86Only === true && view.target !== 'x86_64-linux';
 			attr(stripButtons[i]!, 'aria-pressed', on);
 			attr(menuButtons[i]!, 'aria-pressed', on);
 			set(stripButtons[i]!, 'hidden', hidden);
 			set(menuRows[i]!.row, 'hidden', hidden);
 		});
 
-		set(targetLabel, 'textContent', view.target ? targetById(view.target).label : 'Not known yet');
+		set(targetLabel, 'textContent', target?.label ?? view.target ?? 'Not known yet');
 		set(triple, 'textContent', view.triple);
 		set(tripleWrap, 'hidden', !view.triple);
-		set(chosen, 'textContent', userFlags(view.flags).join(' ') || '(none)');
-		set(command, 'textContent', view.flags.length ? `clang ${view.flags.join(' ')}` : 'Not compiled yet');
-		attr(command, 'title', view.flags.length ? `clang ${view.flags.join(' ')}` : null);
+		set(chosen, 'textContent', chosenFlags(view.flags).join(' ') || '(none)');
+		const line = `${views?.compiler ?? ''} ${view.flags.join(' ')}`.trim();
+		set(command, 'textContent', view.flags.length ? line : 'Not compiled yet');
+		attr(command, 'title', view.flags.length ? line : null);
 	};
 
 	/** The progress line: always 2 px tall, shown by opacity, so the editor's height never changes. */
@@ -465,7 +463,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 			show(view.error, 'plaintext');
 		} else if (view.path === null) {
 			set(note, 'hidden', false);
-			set(note, 'textContent', `Open a .c or .cpp file to see its ${what}.`);
+			set(note, 'textContent', `Open ${views?.sources ?? 'a source file'} to see its ${KINDS[kind].noun}.`);
 			shown = null;
 			show('', 'plaintext');
 		} else if (!view.text) {
@@ -476,7 +474,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		} else {
 			set(note, 'hidden', true);
 			// While a newer compile runs the old text stays, with its map.
-			show(view.text, kind === 'llvm-ir' ? 'llvm-ir' : asmLanguageOf(view.target ?? 'wasm32-wasi'));
+			show(view.text, monacoLanguageOf(spec, view.target));
 			shown = view;
 		}
 		linker.setView(kind, editor, shown && shown.status !== 'error' ? shown.lines : null, shown?.unoptimized ?? []);

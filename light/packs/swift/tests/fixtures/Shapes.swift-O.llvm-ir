@@ -1,0 +1,234 @@
+; ModuleID = '/build/view.out'
+source_filename = "/build/view.out"
+target datalayout = "e-m:e-p:32:32-p10:8:8-p20:8:8-i64:64-i128:128-n32:64-S128-ni:1:10:20"
+target triple = "wasm32-unknown-wasip1"
+
+%swift.protocol_conformance_descriptor = type { i32, i32, i32, i32 }
+%swift.protocol_requirement = type { i32, i32 }
+%swift.protocolref = type { i32 }
+%swift.type_metadata_record = type { i32 }
+%swift.type = type { i32 }
+%swift.metadata_response = type { ptr, i32 }
+
+$"symbolic $s4main5ShapeP" = comdat any
+
+$"$s4mainMXM" = comdat any
+
+$"symbolic _____ 4main6CircleV" = comdat any
+
+$"symbolic Sd" = comdat any
+
+$"symbolic _____ 4main6SquareV" = comdat any
+
+$__swift_reflection_version = comdat any
+
+@"$s4main6CircleVAA5ShapeAAMc" = hidden constant %swift.protocol_conformance_descriptor { i32 sub (i32 ptrtoint (ptr @"$s4main5ShapeMp" to i32), i32 ptrtoint (ptr @"$s4main6CircleVAA5ShapeAAMc" to i32)), i32 sub (i32 ptrtoint (ptr @"$s4main6CircleVMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (%swift.protocol_conformance_descriptor, ptr @"$s4main6CircleVAA5ShapeAAMc", i32 0, i32 1) to i32)), i32 sub (i32 ptrtoint (ptr @"$s4main6CircleVAA5ShapeAAWP" to i32), i32 ptrtoint (ptr getelementptr inbounds (%swift.protocol_conformance_descriptor, ptr @"$s4main6CircleVAA5ShapeAAMc", i32 0, i32 2) to i32)), i32 0 }, section ".rodata", no_sanitize_address, align 4
+@"$s4main6CircleVAA5ShapeAAWP" = hidden constant [2 x ptr] [ptr @"$s4main6CircleVAA5ShapeAAMc", ptr @"$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW"], align 4
+@"$s4main6SquareVAA5ShapeAAMc" = hidden constant %swift.protocol_conformance_descriptor { i32 sub (i32 ptrtoint (ptr @"$s4main5ShapeMp" to i32), i32 ptrtoint (ptr @"$s4main6SquareVAA5ShapeAAMc" to i32)), i32 sub (i32 ptrtoint (ptr @"$s4main6SquareVMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (%swift.protocol_conformance_descriptor, ptr @"$s4main6SquareVAA5ShapeAAMc", i32 0, i32 1) to i32)), i32 sub (i32 ptrtoint (ptr @"$s4main6SquareVAA5ShapeAAWP" to i32), i32 ptrtoint (ptr getelementptr inbounds (%swift.protocol_conformance_descriptor, ptr @"$s4main6SquareVAA5ShapeAAMc", i32 0, i32 2) to i32)), i32 0 }, section ".rodata", no_sanitize_address, align 4
+@"$s4main6SquareVAA5ShapeAAWP" = hidden constant [2 x ptr] [ptr @"$s4main6SquareVAA5ShapeAAMc", ptr @"$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW"], align 4
+@"symbolic $s4main5ShapeP" = linkonce_odr hidden constant <{ [14 x i8], i8 }> <{ [14 x i8] c"$s4main5ShapeP", i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@"$s4main5Shape_pMF" = internal constant { i32, i32, i16, i16, i32 } { i32 sub (i32 ptrtoint (ptr @"symbolic $s4main5ShapeP" to i32), i32 ptrtoint (ptr @"$s4main5Shape_pMF" to i32)), i32 0, i16 4, i16 12, i32 0 }, section "swift5_fieldmd", no_sanitize_address, align 4
+@.str.4.main = private constant [5 x i8] c"main\00"
+@"$s4mainMXM" = linkonce_odr hidden constant <{ i32, i32, i32 }> <{ i32 0, i32 0, i32 sub (i32 ptrtoint (ptr @.str.4.main to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32 }>, ptr @"$s4mainMXM", i32 0, i32 2) to i32)) }>, section ".rodata", no_sanitize_address, comdat, align 4
+@.str.5.Shape = private constant [6 x i8] c"Shape\00"
+@"$s4main5ShapeMp" = hidden constant <{ i32, i32, i32, i32, i32, i32, %swift.protocol_requirement }> <{ i32 65603, i32 sub (i32 ptrtoint (ptr @"$s4mainMXM" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, %swift.protocol_requirement }>, ptr @"$s4main5ShapeMp", i32 0, i32 1) to i32)), i32 sub (i32 ptrtoint (ptr @.str.5.Shape to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, %swift.protocol_requirement }>, ptr @"$s4main5ShapeMp", i32 0, i32 2) to i32)), i32 0, i32 1, i32 0, %swift.protocol_requirement { i32 19, i32 0 } }>, section ".rodata", no_sanitize_address, align 4
+@"$sBi64_WV" = external global ptr, align 4
+@.str.6.Circle = private constant [7 x i8] c"Circle\00"
+@"$s4main6CircleVMn" = hidden constant <{ i32, i32, i32, i32, i32, i32, i32 }> <{ i32 81, i32 sub (i32 ptrtoint (ptr @"$s4mainMXM" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, i32 }>, ptr @"$s4main6CircleVMn", i32 0, i32 1) to i32)), i32 sub (i32 ptrtoint (ptr @.str.6.Circle to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, i32 }>, ptr @"$s4main6CircleVMn", i32 0, i32 2) to i32)), i32 ptrtoint (ptr @"$s4main6CircleVMa" to i32), i32 sub (i32 ptrtoint (ptr @"$s4main6CircleVMF" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, i32 }>, ptr @"$s4main6CircleVMn", i32 0, i32 4) to i32)), i32 1, i32 2 }>, section ".rodata", no_sanitize_address, align 4
+@"$s4main6CircleVMf" = internal constant <{ ptr, ptr, i32, ptr, i32 }> <{ ptr null, ptr @"$sBi64_WV", i32 512, ptr @"$s4main6CircleVMn", i32 0 }>, align 4
+@"symbolic _____ 4main6CircleV" = linkonce_odr hidden constant <{ i8, i32, i8 }> <{ i8 1, i32 sub (i32 ptrtoint (ptr @"$s4main6CircleVMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, i8 }>, ptr @"symbolic _____ 4main6CircleV", i32 0, i32 1) to i32)), i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@"symbolic Sd" = linkonce_odr hidden constant <{ [2 x i8], i8 }> <{ [2 x i8] c"Sd", i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@0 = private constant [7 x i8] c"radius\00", section "swift5_reflstr", no_sanitize_address
+@"$s4main6CircleVMF" = internal constant { i32, i32, i16, i16, i32, i32, i32, i32 } { i32 sub (i32 ptrtoint (ptr @"symbolic _____ 4main6CircleV" to i32), i32 ptrtoint (ptr @"$s4main6CircleVMF" to i32)), i32 0, i16 0, i16 12, i32 1, i32 0, i32 sub (i32 ptrtoint (ptr @"symbolic Sd" to i32), i32 ptrtoint (ptr getelementptr inbounds ({ i32, i32, i16, i16, i32, i32, i32, i32 }, ptr @"$s4main6CircleVMF", i32 0, i32 6) to i32)), i32 sub (i32 ptrtoint (ptr @0 to i32), i32 ptrtoint (ptr getelementptr inbounds ({ i32, i32, i16, i16, i32, i32, i32, i32 }, ptr @"$s4main6CircleVMF", i32 0, i32 7) to i32)) }, section "swift5_fieldmd", no_sanitize_address, align 4
+@.str.6.Square = private constant [7 x i8] c"Square\00"
+@"$s4main6SquareVMn" = hidden constant <{ i32, i32, i32, i32, i32, i32, i32 }> <{ i32 81, i32 sub (i32 ptrtoint (ptr @"$s4mainMXM" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, i32 }>, ptr @"$s4main6SquareVMn", i32 0, i32 1) to i32)), i32 sub (i32 ptrtoint (ptr @.str.6.Square to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, i32 }>, ptr @"$s4main6SquareVMn", i32 0, i32 2) to i32)), i32 ptrtoint (ptr @"$s4main6SquareVMa" to i32), i32 sub (i32 ptrtoint (ptr @"$s4main6SquareVMF" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, i32 }>, ptr @"$s4main6SquareVMn", i32 0, i32 4) to i32)), i32 1, i32 2 }>, section ".rodata", no_sanitize_address, align 4
+@"$s4main6SquareVMf" = internal constant <{ ptr, ptr, i32, ptr, i32 }> <{ ptr null, ptr @"$sBi64_WV", i32 512, ptr @"$s4main6SquareVMn", i32 0 }>, align 4
+@"symbolic _____ 4main6SquareV" = linkonce_odr hidden constant <{ i8, i32, i8 }> <{ i8 1, i32 sub (i32 ptrtoint (ptr @"$s4main6SquareVMn" to i32), i32 ptrtoint (ptr getelementptr inbounds (<{ i8, i32, i8 }>, ptr @"symbolic _____ 4main6SquareV", i32 0, i32 1) to i32)), i8 0 }>, section "swift5_typeref", no_sanitize_address, comdat, align 2
+@1 = private constant [5 x i8] c"side\00", section "swift5_reflstr", no_sanitize_address
+@"$s4main6SquareVMF" = internal constant { i32, i32, i16, i16, i32, i32, i32, i32 } { i32 sub (i32 ptrtoint (ptr @"symbolic _____ 4main6SquareV" to i32), i32 ptrtoint (ptr @"$s4main6SquareVMF" to i32)), i32 0, i16 0, i16 12, i32 1, i32 0, i32 sub (i32 ptrtoint (ptr @"symbolic Sd" to i32), i32 ptrtoint (ptr getelementptr inbounds ({ i32, i32, i16, i16, i32, i32, i32, i32 }, ptr @"$s4main6SquareVMF", i32 0, i32 6) to i32)), i32 sub (i32 ptrtoint (ptr @1 to i32), i32 ptrtoint (ptr getelementptr inbounds ({ i32, i32, i16, i16, i32, i32, i32, i32 }, ptr @"$s4main6SquareVMF", i32 0, i32 7) to i32)) }, section "swift5_fieldmd", no_sanitize_address, align 4
+@"$s4main5ShapeHr" = private constant %swift.protocolref { i32 sub (i32 ptrtoint (ptr @"$s4main5ShapeMp" to i32), i32 ptrtoint (ptr @"$s4main5ShapeHr" to i32)) }, section "swift5_protocols", no_sanitize_address, align 4
+@"$s4main6CircleVAA5ShapeAAHc" = private constant i32 sub (i32 ptrtoint (ptr @"$s4main6CircleVAA5ShapeAAMc" to i32), i32 ptrtoint (ptr @"$s4main6CircleVAA5ShapeAAHc" to i32)), section "swift5_protocol_conformances", no_sanitize_address, align 4
+@"$s4main6SquareVAA5ShapeAAHc" = private constant i32 sub (i32 ptrtoint (ptr @"$s4main6SquareVAA5ShapeAAMc" to i32), i32 ptrtoint (ptr @"$s4main6SquareVAA5ShapeAAHc" to i32)), section "swift5_protocol_conformances", no_sanitize_address, align 4
+@"$s4main6CircleVHn" = private constant %swift.type_metadata_record { i32 sub (i32 ptrtoint (ptr @"$s4main6CircleVMn" to i32), i32 ptrtoint (ptr @"$s4main6CircleVHn" to i32)) }, section "swift5_type_metadata", no_sanitize_address, align 4
+@"$s4main6SquareVHn" = private constant %swift.type_metadata_record { i32 sub (i32 ptrtoint (ptr @"$s4main6SquareVMn" to i32), i32 ptrtoint (ptr @"$s4main6SquareVHn" to i32)) }, section "swift5_type_metadata", no_sanitize_address, align 4
+@__swift_reflection_version = linkonce_odr hidden constant i16 3, comdat
+@_swift1_autolink_entries = private constant [77 x i8] c"-lswift_Concurrency\00-lswiftCore\00-lswift_StringProcessing\00-lswift_RegexParser\00", section ".swift1_autolink_entries", no_sanitize_address, align 4
+@llvm.used = appending global [10 x ptr] [ptr @"$s4main5ShapeHr", ptr @"$s4main5Shape_pMF", ptr @"$s4main6CircleVAA5ShapeAAHc", ptr @"$s4main6CircleVHn", ptr @"$s4main6CircleVMF", ptr @"$s4main6SquareVAA5ShapeAAHc", ptr @"$s4main6SquareVHn", ptr @"$s4main6SquareVMF", ptr @__swift_reflection_version, ptr @_swift1_autolink_entries], section "llvm.metadata"
+
+@"$s4main5ShapeTL" = hidden alias %swift.protocol_requirement, getelementptr (%swift.protocol_requirement, ptr getelementptr inbounds (<{ i32, i32, i32, i32, i32, i32, %swift.protocol_requirement }>, ptr @"$s4main5ShapeMp", i32 0, i32 6), i32 -1)
+@"$s4main6CircleVN" = hidden alias %swift.type, getelementptr inbounds (<{ ptr, ptr, i32, ptr, i32 }>, ptr @"$s4main6CircleVMf", i32 0, i32 2)
+@"$s4main6SquareVN" = hidden alias %swift.type, getelementptr inbounds (<{ ptr, ptr, i32, ptr, i32 }>, ptr @"$s4main6SquareVMf", i32 0, i32 2)
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc double @"$s4main6CircleV6radiusSdvg"(double returned %0) local_unnamed_addr #0 !dbg !24 {
+entry:
+  ret double %0, !dbg !29
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc double @"$s4main6CircleV4areaSdvg"(double %0) local_unnamed_addr #0 !dbg !30 {
+entry:
+  %1 = fmul double %0, 0x400921FB54442D18, !dbg !32
+  %2 = fmul double %0, %1, !dbg !33
+  ret double %2, !dbg !34
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc double @"$s4main6CircleV6radiusACSd_tcfC"(double returned %0) local_unnamed_addr #0 !dbg !35 {
+entry:
+  ret double %0, !dbg !37
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
+define internal swiftcc double @"$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW"(ptr noalias readonly swiftself captures(none) dereferenceable(8) %0, ptr readnone captures(none) %Self, ptr readnone captures(none) %SelfWitnessTable) #1 !dbg !38 {
+entry:
+  %1 = load double, ptr %0, align 8, !dbg !40
+  %2 = fmul double %1, 0x400921FB54442D18, !dbg !41
+  %3 = fmul double %1, %2, !dbg !43
+  ret double %3, !dbg !40
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc double @"$s4main6SquareV4sideSdvg"(double returned %0) local_unnamed_addr #0 !dbg !44 {
+entry:
+  ret double %0, !dbg !47
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc double @"$s4main6SquareV4areaSdvg"(double %0) local_unnamed_addr #0 !dbg !48 {
+entry:
+  %1 = fmul double %0, %0, !dbg !50
+  ret double %1, !dbg !51
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc double @"$s4main6SquareV4sideACSd_tcfC"(double returned %0) local_unnamed_addr #0 !dbg !52 {
+entry:
+  ret double %0, !dbg !54
+}
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
+define internal swiftcc double @"$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW"(ptr noalias readonly swiftself captures(none) dereferenceable(8) %0, ptr readnone captures(none) %Self, ptr readnone captures(none) %SelfWitnessTable) #1 !dbg !55 {
+entry:
+  %1 = load double, ptr %0, align 8, !dbg !57
+  %2 = fmul double %1, %1, !dbg !58
+  ret double %2, !dbg !57
+}
+
+define hidden swiftcc i32 @"$s4main6squareyS2iF"(i32 %0) local_unnamed_addr #2 !dbg !60 {
+entry:
+  %1 = tail call { i32, i1 } @llvm.smul.with.overflow.i32(i32 %0, i32 %0), !dbg !61
+  %2 = extractvalue { i32, i1 } %1, 1, !dbg !61
+  br i1 %2, label %5, label %3, !dbg !61, !prof !62
+
+3:                                                ; preds = %entry
+  %4 = extractvalue { i32, i1 } %1, 0, !dbg !61
+  ret i32 %4, !dbg !63
+
+5:                                                ; preds = %entry
+  tail call void asm sideeffect "", "n"(i32 0) #6, !dbg !61
+  tail call void @llvm.trap(), !dbg !64
+  unreachable, !dbg !64
+}
+
+; Function Attrs: mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none)
+declare { i32, i1 } @llvm.smul.with.overflow.i32(i32, i32) #3
+
+; Function Attrs: cold noreturn nounwind memory(inaccessiblemem: write)
+declare void @llvm.trap() #4
+
+; Function Attrs: mustprogress nofree noinline norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc %swift.metadata_response @"$s4main6CircleVMa"(i32 %0) #5 !dbg !66 {
+entry:
+  ret %swift.metadata_response { ptr getelementptr inbounds (<{ ptr, ptr, i32, ptr, i32 }>, ptr @"$s4main6CircleVMf", i32 0, i32 2), i32 0 }, !dbg !67
+}
+
+; Function Attrs: mustprogress nofree noinline norecurse nosync nounwind willreturn memory(none)
+define hidden swiftcc %swift.metadata_response @"$s4main6SquareVMa"(i32 %0) #5 !dbg !68 {
+entry:
+  ret %swift.metadata_response { ptr getelementptr inbounds (<{ ptr, ptr, i32, ptr, i32 }>, ptr @"$s4main6SquareVMf", i32 0, i32 2), i32 0 }, !dbg !69
+}
+
+attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #1 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #2 = { "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #3 = { mustprogress nocallback nofree nosync nounwind speculatable willreturn memory(none) }
+attributes #4 = { cold noreturn nounwind memory(inaccessiblemem: write) }
+attributes #5 = { mustprogress nofree noinline norecurse nosync nounwind willreturn memory(none) "frame-pointer"="non-leaf" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="generic" "target-features"="+bulk-memory,+bulk-memory-opt,+call-indirect-overlong,+multivalue,+mutable-globals,+nontrapping-fptoint,+reference-types,+sign-ext" }
+attributes #6 = { nounwind }
+
+!llvm.dbg.cu = !{!0, !13, !15}
+!swift.module.flags = !{!17}
+!llvm.module.flags = !{!18, !19, !20, !21, !22, !23}
+!llvm.linker.options = !{}
+
+!0 = distinct !DICompileUnit(language: DW_LANG_Swift, file: !1, producer: "Swift version 6.3.3 (swift-6.3.3-RELEASE)", isOptimized: true, runtimeVersion: 6, emissionKind: LineTablesOnly, imports: !2, sysroot: "/sysroot/wasi-sysroot")
+!1 = !DIFile(filename: "/workspace/Shapes.swift", directory: "/")
+!2 = !{!3, !5, !7, !9, !11}
+!3 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !4, file: !1)
+!4 = !DIModule(scope: null, name: "main", includePath: "/workspace")
+!5 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !6, file: !1)
+!6 = !DIModule(scope: null, name: "Swift", includePath: "/sysroot/swift/lib/swift_static/wasi/Swift.swiftmodule/wasm32-unknown-wasip1.swiftmodule")
+!7 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !8, file: !1)
+!8 = !DIModule(scope: null, name: "_StringProcessing", includePath: "/sysroot/swift/lib/swift_static/wasi/_StringProcessing.swiftmodule/wasm32-unknown-wasip1.swiftmodule")
+!9 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !10, file: !1)
+!10 = !DIModule(scope: null, name: "_SwiftConcurrencyShims", includePath: "/sysroot/swift/lib/swift_static/shims")
+!11 = !DIImportedEntity(tag: DW_TAG_imported_module, scope: !1, entity: !12, file: !1)
+!12 = !DIModule(scope: null, name: "_Concurrency", includePath: "/sysroot/swift/lib/swift_static/wasi/_Concurrency.swiftmodule/wasm32-unknown-wasip1.swiftmodule")
+!13 = distinct !DICompileUnit(language: DW_LANG_C11, file: !14, producer: "clang version 21.1.6 (https://github.com/swiftlang/llvm-project.git 82cdc19fa54d566969527b56f587ea8ea30bef51)", isOptimized: true, runtimeVersion: 0, emissionKind: LineTablesOnly, splitDebugInlining: false, nameTableKind: None)
+!14 = !DIFile(filename: "<swift-imported-modules>", directory: "/")
+!15 = distinct !DICompileUnit(language: DW_LANG_C99, file: !16, producer: "Swift version 6.3.3 (swift-6.3.3-RELEASE)", isOptimized: true, runtimeVersion: 0, splitDebugFilename: "/tmp/module-cache/3QVTNN1AAOJNU/_SwiftConcurrencyShims-31O3Y2F55MJEQ.pcm", emissionKind: FullDebug, dwoId: 2996294089423176434)
+!16 = !DIFile(filename: "_SwiftConcurrencyShims", directory: "/sysroot/swift/lib/swift_static/shims")
+!17 = !{!"standard-library", i1 false}
+!18 = !{i32 7, !"Dwarf Version", i32 4}
+!19 = !{i32 2, !"Debug Info Version", i32 3}
+!20 = !{i32 1, !"wchar_size", i32 4}
+!21 = !{i32 8, !"PIC Level", i32 2}
+!22 = !{i32 4, !"Objective-C Garbage Collection", i32 100861696}
+!23 = !{i32 1, !"Swift Version", i32 7}
+!24 = distinct !DISubprogram(name: "radius.get", linkageName: "$s4main6CircleV6radiusSdvg", scope: !26, file: !25, type: !27, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !28)
+!25 = !DIFile(filename: "<compiler-generated>", directory: "/")
+!26 = !DICompositeType(tag: DW_TAG_structure_type, name: "Circle", scope: !4, flags: DIFlagFwdDecl, runtimeLang: DW_LANG_Swift, identifier: "$s4main6CircleVD")
+!27 = !DISubroutineType(types: null)
+!28 = !DISubprogram(name: "radius.get", linkageName: "$s4main6CircleV6radiusSdvg", scope: !26, file: !25, type: !27, spFlags: DISPFlagOptimized)
+!29 = !DILocation(line: 0, scope: !24)
+!30 = distinct !DISubprogram(name: "area.get", linkageName: "$s4main6CircleV4areaSdvg", scope: !26, file: !1, line: 7, type: !27, scopeLine: 7, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !31)
+!31 = !DISubprogram(name: "area.get", linkageName: "$s4main6CircleV4areaSdvg", scope: !26, file: !1, line: 7, type: !27, scopeLine: 7, spFlags: DISPFlagOptimized)
+!32 = !DILocation(line: 7, column: 28, scope: !30)
+!33 = !DILocation(line: 7, column: 37, scope: !30)
+!34 = !DILocation(line: 7, column: 46, scope: !30)
+!35 = distinct !DISubprogram(name: "init", linkageName: "$s4main6CircleV6radiusACSd_tcfC", scope: !26, file: !1, line: 5, type: !27, scopeLine: 5, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !36)
+!36 = !DISubprogram(name: "init", linkageName: "$s4main6CircleV6radiusACSd_tcfC", scope: !26, file: !1, line: 5, type: !27, scopeLine: 5, spFlags: DISPFlagOptimized)
+!37 = !DILocation(line: 0, scope: !35)
+!38 = distinct !DISubprogram(name: "area.get", linkageName: "$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW", scope: !26, file: !25, type: !27, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !39)
+!39 = !DISubprogram(name: "area.get", linkageName: "$s4main6CircleVAA5ShapeA2aDP4areaSdvgTW", scope: !26, file: !25, type: !27, spFlags: DISPFlagLocalToUnit | DISPFlagOptimized)
+!40 = !DILocation(line: 0, scope: !38)
+!41 = !DILocation(line: 7, column: 28, scope: !30, inlinedAt: !42)
+!42 = distinct !DILocation(line: 7, column: 22, scope: !38)
+!43 = !DILocation(line: 7, column: 37, scope: !30, inlinedAt: !42)
+!44 = distinct !DISubprogram(name: "side.get", linkageName: "$s4main6SquareV4sideSdvg", scope: !45, file: !25, type: !27, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !46)
+!45 = !DICompositeType(tag: DW_TAG_structure_type, name: "Square", scope: !4, flags: DIFlagFwdDecl, runtimeLang: DW_LANG_Swift, identifier: "$s4main6SquareVD")
+!46 = !DISubprogram(name: "side.get", linkageName: "$s4main6SquareV4sideSdvg", scope: !45, file: !25, type: !27, spFlags: DISPFlagOptimized)
+!47 = !DILocation(line: 0, scope: !44)
+!48 = distinct !DISubprogram(name: "area.get", linkageName: "$s4main6SquareV4areaSdvg", scope: !45, file: !1, line: 12, type: !27, scopeLine: 12, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !49)
+!49 = !DISubprogram(name: "area.get", linkageName: "$s4main6SquareV4areaSdvg", scope: !45, file: !1, line: 12, type: !27, scopeLine: 12, spFlags: DISPFlagOptimized)
+!50 = !DILocation(line: 12, column: 29, scope: !48)
+!51 = !DILocation(line: 12, column: 36, scope: !48)
+!52 = distinct !DISubprogram(name: "init", linkageName: "$s4main6SquareV4sideACSd_tcfC", scope: !45, file: !1, line: 10, type: !27, scopeLine: 10, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !53)
+!53 = !DISubprogram(name: "init", linkageName: "$s4main6SquareV4sideACSd_tcfC", scope: !45, file: !1, line: 10, type: !27, scopeLine: 10, spFlags: DISPFlagOptimized)
+!54 = !DILocation(line: 0, scope: !52)
+!55 = distinct !DISubprogram(name: "area.get", linkageName: "$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW", scope: !45, file: !25, type: !27, spFlags: DISPFlagLocalToUnit | DISPFlagDefinition | DISPFlagOptimized, unit: !0, declaration: !56)
+!56 = !DISubprogram(name: "area.get", linkageName: "$s4main6SquareVAA5ShapeA2aDP4areaSdvgTW", scope: !45, file: !25, type: !27, spFlags: DISPFlagLocalToUnit | DISPFlagOptimized)
+!57 = !DILocation(line: 0, scope: !55)
+!58 = !DILocation(line: 12, column: 29, scope: !48, inlinedAt: !59)
+!59 = distinct !DILocation(line: 12, column: 22, scope: !55)
+!60 = distinct !DISubprogram(name: "square", linkageName: "$s4main6squareyS2iF", scope: !4, file: !1, line: 15, type: !27, scopeLine: 15, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!61 = !DILocation(line: 16, column: 7, scope: !60)
+!62 = !{!"branch_weights", !"expected", i32 1, i32 2000}
+!63 = !DILocation(line: 17, column: 1, scope: !60)
+!64 = !DILocation(line: 0, scope: !65, inlinedAt: !61)
+!65 = distinct !DISubprogram(name: "Swift runtime failure: arithmetic overflow", scope: !25, file: !25, type: !27, flags: DIFlagArtificial, spFlags: DISPFlagDefinition, unit: !0)
+!66 = distinct !DISubprogram(linkageName: "$s4main6CircleVMa", scope: !4, file: !25, type: !27, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!67 = !DILocation(line: 0, scope: !66)
+!68 = distinct !DISubprogram(linkageName: "$s4main6SquareVMa", scope: !4, file: !25, type: !27, flags: DIFlagArtificial, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !0)
+!69 = !DILocation(line: 0, scope: !68)
