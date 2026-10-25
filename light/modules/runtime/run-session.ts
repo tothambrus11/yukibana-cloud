@@ -12,18 +12,31 @@
  * - **Refused before any download.** A need the transport's context cannot
  *   meet ends the run as `unavailable`, with the reason, and nothing starts.
  * - **Named failures.** A runner that does not load, or says nothing for
- *   `silenceMs` while it starts, ends the run as `failed` with a reason. For
+ *   `silenceMs` while it starts or downloads, ends the run as `failed` with
+ *   a reason. For
  *   a served pack it then asks the locator whether the page's build is
  *   still served, and if not the reason becomes "reload the page" (RT11).
  *   The timeout measures silence, not total time: every progress report
  *   resets it, so a large download on a slow connection is never failed
- *   while it moves (D31).
+ *   while it moves (D31). It runs until the runner's first message, and
+ *   again from any download progress until the next message that is not
+ *   progress, so a download a runner starts after naming its phase
+ *   ("Loading the compiler") is watched as well. Once that last check
+ *   stopped at the first message of any kind, and every real runner names a
+ *   phase before it downloads, so a stalled download was never failed.
  * - **Cancelling keeps a warm runner.** Stopping a run sends the runner
  *   `cancel`; one that understands it stops the program and answers `exit`
  *   with `reusable: true`, and the worker (a loaded compiler) is kept. Only
  *   if no `exit` comes within `cancelGraceMs` is the worker terminated.
  * - **Reuse.** After an `exit` with `reusable: true` the worker takes the
  *   next run; otherwise it is terminated and the next run starts another.
+ * - **A run asked for while one is being cancelled waits for it.** Its
+ *   request reaches the runner only once the cancelled run has answered
+ *   `exit` or its worker was terminated, never alongside it, so a host may
+ *   start again from a run's `stopped` event (a Restart button) and get a
+ *   run of its own. Once the session emitted `stopped` before it had sent
+ *   `cancel`, so such a run was posted to the old one and then cancelled
+ *   in its place, and the session stayed busy for good.
  */
 import { isLoadingProgress, type LoadingProgress } from '../protocol/loading.ts';
 import type { RequirementProblem } from '../protocol/requirements.ts';
@@ -50,7 +63,8 @@ export interface SessionRequest extends RunRequest {
  *   that did not answer, a pack the index does not have).
  * - `load`: the worker did not load: its script or a module it imports
  *   failed to download or to evaluate.
- * - `stall`: the runner said nothing for `silenceMs` while it started.
+ * - `stall`: the runner said nothing for `silenceMs` while it started, or
+ *   while it downloaded (after a progress report and before anything else).
  * - `replaced`: one of the above, and the page's build of the pack is no
  *   longer served: the packs were updated and the page must be reloaded.
  * - `crashed`: the runner had loaded and then failed outside the program.
@@ -145,7 +159,7 @@ const platformTimers: Timers = {
 
 /** What a session takes beyond its source and transport; every field has a default. */
 export interface SessionOptions {
-	/** How long a starting runner may say nothing, in milliseconds. Default 30000 (RT8). */
+	/** How long a starting or downloading runner may say nothing, in milliseconds. Default 30000 (RT8). */
 	silenceMs?: number;
 	/** How long a cancelled runner has to answer `exit` before it is terminated, in milliseconds. Default 1000 (RR3-1). */
 	cancelGraceMs?: number;
@@ -197,11 +211,15 @@ export class RunSession {
 	#starting = false;
 	/** The runner has said something other than download progress (or exited): it has loaded. */
 	#loaded = false;
+	/** The runner's last message was download progress: it is downloading, so its silence is watched even after it loaded. */
+	#downloading = false;
 	/** What a runner started ahead of a run posted meanwhile, but its download progress: replayed when the run comes. */
 	#early: unknown[] = [];
 	#current: Current | null = null;
 	/** The request waiting for the worker to be started. */
 	#queued: RunRequest | null = null;
+	/** The request of a run asked for while the last one is being cancelled: sent once the cancel is over. Never cleared by {@link #drop}, which a cancel that ends by termination calls. */
+	#afterCancel: RunRequest | null = null;
 	#cancelling: unknown = null;
 	#cancellingNow = false;
 	#silence: unknown = null;
@@ -224,7 +242,11 @@ export class RunSession {
 		return this.#state;
 	}
 
-	/** Whether a run, or the cancelling of one, is in progress, so {@link run} would throw. */
+	/**
+	 * Whether a run, or the cancelling of one, is in progress: the session
+	 * is not free for another snippet. {@link run} throws only while a run
+	 * is in progress; one asked for while a cancel is under way waits for it.
+	 */
 	get busy(): boolean {
 		return this.#current !== null || this.#cancellingNow;
 	}
@@ -247,12 +269,15 @@ export class RunSession {
 
 	/**
 	 * Runs `request`, telling `emit` everything about it ({@link RunEvent}),
-	 * the first state before it returns. Throws when {@link busy}, or after
-	 * {@link dispose}.
+	 * the first state before it returns. Throws while another run is in
+	 * progress, or after {@link dispose}. While the last run is still being
+	 * cancelled (from its own `stopped` event, say) the run is accepted and
+	 * its request is sent once the cancel is over: to the same runner if it
+	 * answered as reusable, to a new one otherwise.
 	 */
 	run(request: SessionRequest, emit: (event: RunEvent) => void): SessionRun {
 		if (this.#disposed) throw new Error(`the ${this.name} run session has been disposed`);
-		if (this.busy) throw new Error(`the ${this.name} runner is busy with another run`);
+		if (this.#current !== null) throw new Error(`the ${this.name} runner is busy with another run`);
 		const { target, ...message } = request;
 		const call = { request: request.type, ...(target !== undefined ? { target } : {}) };
 		const start = this.#now();
@@ -273,7 +298,8 @@ export class RunSession {
 		emit({ type: 'state', state: current.state });
 		const limitation = sourceLimitation(this.source, 'runner', this.transport.context, call);
 		if (limitation !== null) emit({ type: 'notice', text: limitation });
-		if (this.#handle !== null) this.#send(message);
+		if (this.#cancellingNow) this.#afterCancel = message;
+		else if (this.#handle !== null) this.#send(message);
 		else {
 			this.#queued = message;
 			if (this.#state.kind === 'failed') this.#setState({ kind: 'idle' });
@@ -308,6 +334,7 @@ export class RunSession {
 		this.#timers.clear(this.#cancelling);
 		this.#cancelling = null;
 		this.#cancellingNow = false;
+		this.#afterCancel = null;
 		if (current !== null) this.#finish(current, { kind: 'stopped', seconds: this.#seconds(current) });
 		this.#setState({ kind: 'idle' });
 	}
@@ -329,6 +356,7 @@ export class RunSession {
 		const generation = this.#generation;
 		this.#starting = true;
 		this.#loaded = false;
+		this.#downloading = false;
 		this.#early = [];
 		this.#setState({ kind: 'starting', progress: null });
 		this.transport.start(this.source).then(
@@ -363,11 +391,15 @@ export class RunSession {
 		this.#handle?.send(message);
 	}
 
-	/** Starts the silence timer while a run waits for a runner that has not loaded; any progress restarts it. */
+	/**
+	 * Starts the silence timer while a run waits for a runner that has not
+	 * loaded or is downloading; any progress restarts it. A run waiting for a
+	 * cancel is not watched: the cancel's grace period bounds that wait.
+	 */
 	#armSilence(): void {
 		this.#timers.clear(this.#silence);
 		this.#silence = null;
-		if (this.#current === null || this.#loaded) return;
+		if (this.#current === null || this.#cancellingNow || (this.#loaded && !this.#downloading)) return;
 		this.#silence = this.#timers.set(() => {
 			this.#silence = null;
 			const seconds = Math.round(this.#silenceMs / 100) / 10;
@@ -382,7 +414,7 @@ export class RunSession {
 	/** The worker failed: a load failure before it said anything, a crash after. */
 	#failed(message: string): void {
 		const url = this.#handle?.url ?? null;
-		if (this.#cancellingNow && this.#current === null) {
+		if (this.#cancellingNow) {
 			// A cancelled runner that fails instead of answering is as good as terminated.
 			this.#drop();
 			this.#setState({ kind: 'idle' });
@@ -441,6 +473,7 @@ export class RunSession {
 		this.#handle = null;
 		this.#starting = false;
 		this.#loaded = false;
+		this.#downloading = false;
 		this.#queued = null;
 		this.#early = [];
 		this.#timers.clear(this.#silence);
@@ -462,14 +495,26 @@ export class RunSession {
 		});
 	}
 
+	/**
+	 * Stops the current run. The session is made consistent (the runner told
+	 * to `cancel`, the grace timer set) before `stopped` is emitted, because
+	 * a host may run again from that event.
+	 */
 	#cancel(): void {
 		const current = this.#current;
 		if (current === null) return;
-		this.#finish(current, { kind: 'stopped', seconds: this.#seconds(current) });
+		const stopped: RunState = { kind: 'stopped', seconds: this.#seconds(current) };
+		if (this.#cancellingNow) {
+			// A run waiting for the last one's cancel: its request never reached the runner.
+			this.#afterCancel = null;
+			this.#finish(current, stopped);
+			return;
+		}
 		if (this.#handle === null) {
 			// Not started yet, so nothing loaded is lost: no grace period.
 			this.#drop();
 			this.#setState({ kind: 'idle' });
+			this.#finish(current, stopped);
 			this.#freed();
 			return;
 		}
@@ -481,13 +526,29 @@ export class RunSession {
 			this.#setState({ kind: 'idle' });
 			this.#cancelled();
 		}, this.#graceMs);
+		this.#finish(current, stopped);
 	}
 
+	/** The cancel is over: a run that waited for it starts (on a new worker if the old one was dropped), or the session is free. */
 	#cancelled(): void {
 		this.#timers.clear(this.#cancelling);
 		this.#cancelling = null;
 		this.#cancellingNow = false;
-		this.#freed();
+		const current = this.#current;
+		const waiting = this.#afterCancel;
+		this.#afterCancel = null;
+		if (current === null || waiting === null) {
+			this.#freed();
+			return;
+		}
+		if (this.#handle !== null) this.#send(waiting);
+		else {
+			this.#queued = waiting;
+			if (!this.#starting) this.#startWorker();
+		}
+		this.#armSilence();
+		// The worker it would have found loaded is gone: it starts again.
+		if (!this.#loaded && current.state.kind !== 'loading') this.#update(current, { kind: 'loading', progress: null });
 	}
 
 	/** One batch from the runner, in order. */
@@ -500,22 +561,22 @@ export class RunSession {
 		for (const data of batch) {
 			const read = readFromRunner(data);
 			const progress = read.kind === 'known' && read.message.type === 'loading' ? read.message : null;
-			if (!this.#loaded) {
-				if (progress !== null) {
-					this.#setState({ kind: 'starting', progress: { label: progress.label, loaded: progress.loaded, total: progress.total } });
-					this.#armSilence();
-				} else {
-					this.#loaded = true;
-					this.#armSilence();
-					this.#setState({ kind: 'ready' });
-				}
+			const loading = !this.#loaded;
+			this.#downloading = progress !== null;
+			if (progress === null) this.#loaded = true;
+			this.#armSilence();
+			if (loading) {
+				if (progress !== null) this.#setState({ kind: 'starting', progress: { label: progress.label, loaded: progress.loaded, total: progress.total } });
+				else this.#setState({ kind: 'ready' });
+			}
+			if (this.#cancellingNow) {
+				// A cancelled run's output goes nowhere, not even to a run waiting for it; its exit ends the cancel.
+				if (read.kind === 'known' && read.message.type === 'exit') this.#exited(read.message.reusable === true, null);
+				continue;
 			}
 			const current = this.#current;
 			if (current === null) {
-				if (this.#cancellingNow) {
-					// A cancelled run's output goes nowhere; its exit frees the runner.
-					if (read.kind === 'known' && read.message.type === 'exit') this.#exited(read.message.reusable === true, null);
-				} else if (progress === null) this.#early.push(data);
+				if (progress === null) this.#early.push(data);
 				continue;
 			}
 			if (read.kind === 'rejected') {

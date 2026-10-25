@@ -97,6 +97,41 @@ test('a runner that says nothing while it starts is stopped and the run fails by
 	assert.equal(runners.length, 2, 'the next run tries again with a new runner');
 });
 
+test('a runner that names its phase and then stalls in its download fails as a stall, by name', async () => {
+	const { session, runners, clock } = sessionOf();
+	const run = recorder();
+	session.run(request(), run.listener);
+	await settle();
+	const [runner] = runners;
+	runner.post({ type: 'phase', text: 'Loading the compiler' });
+	clock.advance(60_000);
+	assert.deepEqual(run.state, { kind: 'running', phase: 'Loading the compiler', waiting: false }, 'a phase with no download yet is not watched');
+	runner.post({ type: 'loading', label: 'clang.wasm', loaded: 1, total: 100 });
+	clock.advance(29_999);
+	assert.equal(run.state.kind, 'loading');
+	runner.post({ type: 'loading', label: 'clang.wasm', loaded: 2, total: 100 });
+	clock.advance(29_999);
+	assert.equal(run.state.kind, 'loading', 'progress restarts the timer');
+	clock.advance(1);
+	assert.equal(run.state.kind, 'failed');
+	assert.equal(run.state.failure.kind, 'stall');
+	assert.match(run.state.failure.reason, /Hylo's runner said nothing for 30 s/);
+	assert.equal(runner.terminated, true);
+	assert.equal(session.busy, false);
+});
+
+test('a runner that finishes its download and starts the program is no longer watched for silence', async () => {
+	const { session, runners, clock } = sessionOf();
+	const run = recorder();
+	session.run(request(), run.listener);
+	await settle();
+	const [runner] = runners;
+	runner.post({ type: 'phase', text: 'Loading' }, { type: 'loading', label: 'ghc.wasm', loaded: 100, total: 100 }, { type: 'phase', text: 'Running' });
+	clock.advance(600_000);
+	assert.deepEqual(run.state, { kind: 'running', phase: 'Running', waiting: false });
+	assert.equal(runner.terminated, false);
+});
+
 test("a runner that cannot load names the URL that failed", async () => {
 	const source = served({ currency: 'current' });
 	const { session, runners } = sessionOf(source);
@@ -306,5 +341,71 @@ test('a run stopped before its runner was even located starts nothing', async ()
 	assert.equal(run.state.kind, 'stopped');
 	assert.equal(runners.length, 1);
 	assert.equal(runners[0].terminated, true, 'the runner that arrived late was terminated at once');
+	assert.equal(session.busy, false);
+});
+
+test('a host that starts a new run when the last one reports stopped gets a run that starts after the cancel, not one that is cancelled', async () => {
+	const { session, runners, clock } = sessionOf();
+	const first = recorder();
+	const again = recorder();
+	let restarted = null;
+	const handle = session.run(request('run', 'loop'), (event) => {
+		first.listener(event);
+		if (event.type === 'state' && event.state.kind === 'stopped') restarted = session.run(request('run', 'print 2'), again.listener);
+	});
+	await settle();
+	const [runner] = runners;
+	runner.post({ type: 'phase', text: 'Running' });
+	handle.cancel();
+	assert.equal(first.state.kind, 'stopped');
+	assert.notEqual(restarted, null, 'the restart was accepted');
+	assert.deepEqual(runner.sent.map((m) => m.type), ['run', 'cancel'], 'the new run waits for the cancel to be answered');
+	runner.post({ type: 'stdout', text: 'late\n' }, { type: 'exit', code: 130, reusable: true });
+	assert.equal(again.text(), '', "the cancelled run's late output does not reach the new run");
+	assert.deepEqual(runner.sent.map((m) => m.type), ['run', 'cancel', 'run']);
+	assert.equal(runner.runs[1].files['main.hylo'], 'print 2');
+	clock.advance(5_000);
+	assert.equal(runner.terminated, false, 'the grace period ended with the answer');
+	assert.equal(again.state.kind, 'running');
+	runner.post({ type: 'stdout', text: '2\n' }, { type: 'exit', code: 0, reusable: true });
+	assert.equal(again.text(), '2\n');
+	assert.equal(again.state.kind, 'ended');
+	assert.equal(session.busy, false);
+	session.run(request(), recorder().listener);
+	assert.equal(runner.runs.length, 3, 'the session takes runs again');
+});
+
+test('a run that waits for a cancel the runner ignores starts on a fresh runner once the old one is terminated', async () => {
+	const { session, runners, clock } = sessionOf();
+	const handle = session.run(request('run', 'loop'), recorder().listener);
+	await settle();
+	runners[0].post({ type: 'phase', text: 'Running' });
+	handle.cancel();
+	const next = recorder();
+	session.run(request('run', 'print 2'), next.listener);
+	assert.equal(runners[0].runs.length, 1);
+	clock.advance(1_000);
+	assert.equal(runners[0].terminated, true);
+	assert.equal(next.state.kind, 'loading', 'the run shows the new runner starting');
+	await settle();
+	assert.equal(runners.length, 2);
+	assert.equal(runners[1].runs[0].files['main.hylo'], 'print 2');
+	runners[1].post({ type: 'exit', code: 0, reusable: true });
+	assert.equal(next.state.kind, 'ended');
+	assert.equal(session.busy, false);
+});
+
+test('a run stopped while it waited for the last cancel never reaches the runner', async () => {
+	const { session, runners } = sessionOf();
+	const handle = session.run(request('run', 'loop'), recorder().listener);
+	await settle();
+	runners[0].post({ type: 'phase', text: 'Running' });
+	handle.cancel();
+	const next = recorder();
+	session.run(request('run', 'print 2'), next.listener).cancel();
+	assert.equal(next.state.kind, 'stopped');
+	runners[0].post({ type: 'exit', code: 130, reusable: true });
+	assert.equal(runners[0].runs.length, 1);
+	assert.equal(runners[0].cancels, 1);
 	assert.equal(session.busy, false);
 });
