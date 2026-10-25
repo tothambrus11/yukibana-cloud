@@ -204,7 +204,7 @@ publish() {
       --notes "Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup.sh); not a release of the app." \
       >/dev/null 2>&1 || gh release view "$TAG" --repo "$r" >/dev/null
   fi
-  if gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -qxF "$name"; then
+  if gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -xF "$name" >/dev/null; then
     echo "pack-store.sh: $name is in the store already"
   else
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
@@ -212,7 +212,7 @@ publish() {
     ls -l "$tmp/$name"
     # Another run may have stored the same build meanwhile: that is a success.
     gh release upload "$TAG" "$tmp/$name" --repo "$r" ||
-      gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -qxF "$name"
+      gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -xF "$name" >/dev/null
   fi
   # All but the pack's KEEP newest go. A release of the app (light-v*)
   # holds its own copy of every pack, so nothing it needs is lost.
@@ -520,7 +520,9 @@ $dirty"
   fi
   n="$(grep -c . <<<"$list" || true)"
   local oldest
-  oldest="$(sort -k3 <<<"$list" | awk 'NF { print $1; exit }')"
+  # awk reads to the end: exiting early would kill sort with SIGPIPE once the
+  # list outgrows a pipe's buffer, and pipefail would make that a failure.
+  oldest="$(sort -k3 <<<"$list" | awk 'NF && !seen { print $1; seen = 1 }')"
   if [ "$n" -ge "$MAX_ASSETS" ]; then
     die "$r's $TOOLCHAINS_TAG release holds $n assets, GitHub's cap of $MAX_ASSETS; nothing is evicted automatically: remove toolchains no branch needs with gh release delete-asset $TOOLCHAINS_TAG <asset> (the oldest is ${oldest:-?})"
   fi
