@@ -76,7 +76,13 @@ export interface WorkspaceRoot {
 	 * string as a language server sends it (percent-encoded, decoded here)
 	 * or an editor's URI object ({@link UriParts}, path already decoded).
 	 * A string that does not decode is outside: no path of ours encodes to
-	 * it.
+	 * it. So is one whose path under the root is not a project path
+	 * ({@link pathProblem}): `..`, `%2E%2E`, an empty segment or a trailing
+	 * `/` would otherwise name a file outside the root, or a second spelling
+	 * of one inside it, and a caller keying files by path would trust it.
+	 * An encoded `/` (`%2F`) is outside too, since {@link uriOf} never
+	 * writes one: `a%2Fb` and `a/b` are two URIs, and only the second is
+	 * the file `a/b`.
 	 */
 	pathOf(uri: string | UriParts): string | null;
 }
@@ -84,10 +90,14 @@ export interface WorkspaceRoot {
 /** scheme `:` [`//` authority] path, without query or fragment: the parts a workspace URI has. */
 const URI = /^([A-Za-z][A-Za-z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)$/;
 
-/** `uri`'s parts with its path decoded, or null when it is not one a workspace can hold (a query, a fragment, a bad escape). */
+/**
+ * `uri`'s parts with its path decoded, or null when it is not one a
+ * workspace can hold (a query, a fragment, a bad escape, an encoded `/`,
+ * which decoding would turn into a separator no segment of ours contains).
+ */
 function partsOf(uri: string): UriParts | null {
 	const match = URI.exec(uri);
-	if (match === null) return null;
+	if (match === null || /%2f/i.test(match[3] ?? '')) return null;
 	try {
 		return { scheme: match[1] ?? '', authority: match[2] ?? '', path: decodeURIComponent(match[3] ?? '') };
 	} catch {
@@ -119,7 +129,9 @@ export function workspaceRoot(uri: string): WorkspaceRoot {
 			const parts = typeof target === 'string' ? partsOf(target) : target;
 			if (parts === null || parts.scheme.toLowerCase() !== scheme || parts.authority !== root.authority) return null;
 			if (parts.path === root.path.slice(0, -1)) return '';
-			return parts.path.startsWith(root.path) ? parts.path.slice(root.path.length) : null;
+			if (!parts.path.startsWith(root.path)) return null;
+			const path = parts.path.slice(root.path.length);
+			return path === '' || pathProblem(path) === null ? path : null;
 		},
 	};
 }

@@ -38,6 +38,26 @@ test("a URI outside the workspace is no project file: a library, another scheme,
 	assert.equal(app.pathOf('FILE:///workspace/a.py'), 'a.py');
 });
 
+test('a URI that climbs out of the workspace, or spells a file two ways, names no project file', () => {
+	for (const uri of [
+		'file:///workspace/../etc/passwd',
+		'file:///workspace/%2E%2E/x',
+		'file:///workspace/src/./a.py',
+		'file:///workspace/a//b',
+		'file:///workspace/a/',
+		'file:///workspace/a%2Fb',
+		'file:///workspace/a%2fb',
+		'file:///workspace%2Fa.py',
+		'file:///workspace/a%5Cb',
+	]) {
+		assert.equal(app.pathOf(uri), null, uri);
+	}
+	for (const path of ['/workspace/../etc/passwd', '/workspace/a//b', '/workspace/a/', '/workspace/./a.py']) {
+		assert.equal(app.pathOf({ scheme: 'file', authority: '', path }), null, path);
+	}
+	assert.equal(snippet(1).pathOf('inmemory://snippet-1/../snippet-2/main.hylo'), null);
+});
+
 test("two snippets that both hold main.hylo give it two URIs, and each root claims only its own", () => {
 	const one = snippet(1);
 	const two = snippet(2);
