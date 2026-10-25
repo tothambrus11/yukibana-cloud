@@ -395,6 +395,8 @@ async function serverTests(page) {
         const written = asked ? applyEdits(text, asked.params.edit.changes[uri('Main.hs')]) : null;
         check('clicking the lens has the client write the signature above the binding', !!written?.includes('\nhelper :: Num a => a -> a\nhelper x = x + 1\n'), JSON.stringify(asked));
     }
+    await fix('a typed hole offers the valid hole fits GHC found as replacements', append(MAIN, '\nhole :: [Int] -> Int\nhole = _\n'),
+        (x) => /Found hole: _ :: \[Int\] -> Int/.test(x.message), /^Replace _ with length$/, (t) => t?.includes('\nhole = length\n'));
     await fix('an unused binding can be prefixed with _', append(MAIN, '\nbroken :: Int\nbroken = 1\n'),
         (x) => /Defined but not used: ‘broken’/.test(x.message), /^Prefix ‘broken’ with _$/, (t) => t?.includes('\nbroken :: Int\n_broken = 1\n'));
     await fix('a redundant import can be removed', MAIN.replace('import Geometry\n', 'import Geometry\nimport Data.List (sort)\n'),
