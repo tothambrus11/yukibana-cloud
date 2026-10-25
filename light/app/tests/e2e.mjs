@@ -1116,6 +1116,11 @@ async function previewing(page, check) {
 	const reloaded = await frame.locator('#increment', { hasText: 'Edited' }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
 	const mark = await (await inner())?.evaluate(() => window.yukibanaMark).catch(() => 'gone');
 	check(reloaded && mark === undefined, `a TypeScript edit reloads the page (button says Edited: ${reloaded}, mark after: ${mark})`);
+	// The console starts again with each page, as a browser's does: the last page's logs are gone.
+	await terminal.filter({ hasText: 'page ready' }).waitFor({ timeout: 10_000 }).catch(() => {});
+	const afterReload = (await terminal.textContent()) ?? '';
+	check(!afterReload.includes('clicked 1 times') && afterReload.split('page ready').length === 2 && afterReload.startsWith('Previewing index.html'),
+		`a reload clears the console but for the Preview's note (${JSON.stringify(afterReload.slice(0, 200))})`);
 
 	// An edit with an error does not reload: the last good page stays (its
 	// mark survives) and the bar says why; the fix reloads it, 300 ms after
@@ -1132,6 +1137,8 @@ async function previewing(page, check) {
 	const fixed = await frame.locator('#increment', { hasText: 'BrokenFixed' }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
 	const fixedMs = Date.now() - t0;
 	check(fixed && fixedMs < 5_000 && (await status.textContent()) === '', `the fix reloads the page (${fixedMs} ms after the last keystroke) and the bar is clear`);
+	const afterFix = (await terminal.textContent()) ?? '';
+	check(!afterFix.includes('was not reloaded'), `the reload clears the errors that held it back from the console (${JSON.stringify(afterFix.slice(0, 200))})`);
 
 	// With Auto reload off, edits wait for Reload; the choice is remembered.
 	await page.locator('.preview-bar .preview-auto input').uncheck();
@@ -1223,8 +1230,8 @@ async function sketching(page, check, requests, global) {
 			return [...canvas.getContext('2d').getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data.slice(0, 3)];
 		}, [x, y]);
 	const near = (rgb, want) => rgb.every((v, i) => Math.abs(v - want[i]) <= 2);
-	const BACKGROUND = [30, 32, 40];
-	const CIRCLE = [240, 120, 90];
+	const BACKGROUND = [0, 0, 0];
+	const CIRCLE = [0, 255, 255];
 	const a = { x: 80, y: 80 };
 	const b = { x: Math.round(box.width) - 80, y: Math.round(box.height) - 80 };
 	const before = await pixel(a.x, a.y);

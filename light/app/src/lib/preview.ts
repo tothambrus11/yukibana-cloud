@@ -51,6 +51,12 @@ const AUTO_KEY = 'yukibana-light.preview.auto-reload';
 /** Where the page's console and build errors go (the terminal). */
 export interface PreviewOutput {
 	print(kind: 'stdout' | 'stderr' | 'info', text: string): void;
+	/**
+	 * Empties the console for a page about to load, as a browser's console
+	 * starts again on a reload: what it shows is that page's output only,
+	 * not the last one's logs or the errors that kept it from reloading.
+	 */
+	restart(): void;
 }
 
 /**
@@ -452,6 +458,7 @@ export class Preview {
 		this.frame?.remove();
 		this.frame = null;
 		if (!this.host || !this.placed || html === null) return;
+		this.output.restart();
 		const frame = this.createFrame();
 		frame.srcdoc = html;
 		this.host.append(frame);

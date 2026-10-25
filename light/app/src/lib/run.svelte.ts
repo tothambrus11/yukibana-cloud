@@ -75,6 +75,8 @@ export class Runner {
 	#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 	/** The kernel's text after its last newline, not yet a line. */
 	#kernelRest = '';
+	/** What the terminal shows above a source's output (`attach`), until a run replaces it; null while a runner's run is shown. */
+	#heading: string | null = null;
 
 	/** `log` receives what the Output panel shows of a run; without it, that is dropped. */
 	constructor(private readonly log: RunnerLog | null = null) {}
@@ -105,6 +107,7 @@ export class Runner {
 		this.#kernelRest = '';
 		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 		this.#say = true;
+		this.#heading = null;
 		const request = { type: mode, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}) };
 		// The handle is not known until run() returns, and the first events
 		// arrive before; they belong to the run asked for here all the same.
@@ -177,11 +180,21 @@ export class Runner {
 	attach(note: string): void {
 		this.stop(false);
 		this.#run = null;
-		this.clear();
-		// A colour or half-read escape left by the last program must not tint the page's console.
-		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
+		this.#heading = note;
+		this.restart();
 		this.state = { kind: 'idle' };
-		this.#append('info', note + '\n');
+	}
+
+	/**
+	 * Empties the terminal for the next page of the source attached last
+	 * (a reload of the Preview) and says again what follows; the note of
+	 * the last attach, if no run came since.
+	 */
+	restart(): void {
+		this.clear();
+		// A colour or half-read escape left by the last program or page must not tint the next page's console.
+		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
+		if (this.#heading !== null) this.#append('info', this.#heading + '\n');
 	}
 
 	/** Shows text from a source that is not a runner, such as a previewed page's console. */
