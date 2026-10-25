@@ -6,8 +6,11 @@
 # under terms that do not allow shipping the pack (graalvm/build.sh says
 # more), so this is the licence-clean way to have it.
 #
-# Pushing the tag kotlinc/build.sh's GRAALVM_RELEASE names publishes the
-# release, built from that commit. "Run workflow" builds it as a draft
+# A push that changes graalvm/ or kotlinc/build.sh, on any branch, publishes
+# the release kotlinc/build.sh's GRAALVM_RELEASE names when there is none
+# yet, built from that commit: changing the GraalVM means naming a new
+# release there, and the push that does so makes it. Pushing that tag does
+# the same. "Run workflow" builds it as a draft
 # instead (once this workflow is on the default branch), which nobody else
 # sees until it is published from its page. A release of that name that
 # exists already is left alone, and the run fails saying so: a release that
@@ -22,8 +25,15 @@ on:
         type: boolean
         default: true
   push:
+    branches:
+      - '**'
     tags:
       - kotlin-graalvm-*
+    # Branch pushes only (GitHub applies no path filter to a tag push).
+    paths:
+      - light/packs/kotlin/graalvm/**
+      - light/packs/kotlin/kotlinc/build.sh
+      - .github/workflows/light-kotlin-graalvm.yml
 
 permissions:
   contents: write # the release
@@ -52,23 +62,33 @@ jobs:
           fi
           { echo "tag=$tag"; echo "file=$file"; } >> "$GITHUB_OUTPUT"
 
+      # A branch push finds it there unless it names a new one, and does
+      # nothing; a tag or "Run workflow" asked for it, and fails.
       - name: Is there a release already?
+        id: exists
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.pin.outputs.tag }}
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = branch ]; then
+              echo "release $TAG exists; nothing to do"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::release $TAG exists already; nothing to do" >&2
             exit 1
           fi
 
       - name: Build
+        if: steps.exists.outputs.skip != 'true'
         env:
           YK_CACHE: ${{ runner.temp }}/graalvm-cache
         run: light/packs/kotlin/graalvm/build.sh "$RUNNER_TEMP/dist"
 
       # The file kotlinc/build.sh downloads must be one this build made.
       - name: Check
+        if: steps.exists.outputs.skip != 'true'
         env:
           FILE: ${{ steps.pin.outputs.file }}
         working-directory: ${{ runner.temp }}/dist
@@ -78,6 +98,7 @@ jobs:
           echo "GRAALVM_SHA256=$(sha256sum "$FILE" | cut -d' ' -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Release
+        if: steps.exists.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.pin.outputs.tag }}
