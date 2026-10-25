@@ -114,9 +114,20 @@ step "compilers (from the stamped artifacts)"
 # Only from $CACHE/artifacts, which build-runner.sh and build-cross.sh stamp
 # (README, Build): never from a build tree, which may have been reconfigured
 # for the other compiler since.
-# A file that did not change keeps its time, so its .br/.gz are not redone.
+# A file that did not change keeps its time, so its .br/.gz are not redone;
+# one that did gets the time of its copy, which is newer than its old .br.
+# (It was copied with -p, keeping the artifact's own time: an artifact built
+# before the .br in OUT was made, by another branch's cache say, then looked
+# older than that .br, and the compressed copies of the previous compiler
+# were served beside the new one.)
 ART="$CACHE/artifacts"
-put() { cmp -s "$1" "$2" || cp -p "$1" "$2"; }
+# Written beside its target and renamed over it, as everything here, so a
+# hard link to the old file (the app's build) keeps the old bytes.
+put() {
+  cmp -s "$1" "$2" && return 0
+  cp "$1" "$2.part"
+  mv "$2.part" "$2"
+}
 for c in cc cc-cross; do
   if [ -f "$ART/$c/llvm.wasm" ]; then
     put "$ART/$c/llvm.wasm" "$OUT/$c.wasm"
@@ -142,7 +153,7 @@ step "sanitizer runtimes (asan.tar, ubsan.tar, targets/<arch>/asan.tar, ubsan.ta
 "$HERE/build-sanitizers.sh"
 
 step "runner.js, explorer.js"
-(cd "$HERE" && [ -d node_modules/esbuild ] || npm ci --no-audit --no-fund >/dev/null)
+npm_deps "$HERE"
 size() { stat -c %s "$1" 2>/dev/null || echo 0; }
 # The decoded sizes of the per-target files, for progress (a host that sends
 # .br gives a compressed Content-Length).

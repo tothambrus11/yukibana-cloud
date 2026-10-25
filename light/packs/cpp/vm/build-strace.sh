@@ -8,22 +8,28 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=pins.txt
 source "$HERE/pins.txt"
+# shellcheck source=../build-lib.sh
+source "$HERE/../build-lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 JOBS=${JOBS:-3}
 export QC
 SRC=$QC/src/strace-$STRACE_VERSION
 mkdir -p "$ART" "$QC/src"
+# Named by the version; it records the tarball's pin (keep_tree).
+keep_tree "$SRC" "strace $STRACE_VERSION $STRACE_SHA256"
 if [ ! -x "$SRC/configure" ]; then
   curl -sSfL -o "$QC/src/strace.tar.xz.part" "$STRACE_URL"
   echo "$STRACE_SHA256  $QC/src/strace.tar.xz.part" | sha256sum -c --quiet - || { echo "checksum mismatch for $STRACE_URL" >&2; exit 1; }
   tar xJf "$QC/src/strace.tar.xz.part" -C "$QC/src" && rm "$QC/src/strace.tar.xz.part"
 fi
 for a in ${ARCHES:-x86_64 aarch64 riscv64}; do
-  # The sysroot cc.sh uses (its default, or $SYSROOTS): every file of it is an input.
+  # The sysroot cc.sh uses (its default, or $SYSROOTS): every file of it is an input,
+  # and so is the compiler it runs (CLANG, default clang-18: the stamp used to name
+  # clang-18's version whichever CLANG compiled).
   sr=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/targets/sysroot}/$a
   [ -f "$sr/lib/libc.a" ] || { echo "build-strace.sh: no musl sysroot in $sr (run ../build-targets.sh)" >&2; exit 1; }
-  stamp=$(cat "$HERE/pins.txt" "$HERE/cc.sh" "$HERE/$(basename "${BASH_SOURCE[0]}")" <(cd "$sr" && find . -type f | LC_ALL=C sort | xargs sha256sum) <(clang-18 --version | head -1) | sha256sum | cut -d' ' -f1)
+  stamp=$(cat "$HERE/pins.txt" "$HERE/cc.sh" "$HERE/$(basename "${BASH_SOURCE[0]}")" <(cd "$sr" && find . -type f | LC_ALL=C sort | xargs sha256sum) <("${CLANG:-clang-18}" --version | head -1) | sha256sum | cut -d' ' -f1)
   if [ "$(cat "$ART/strace-$a.stamp" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/strace-$a.cpio" ]; then echo "strace-$a: up to date"; continue; fi
   B=$QC/strace-build-$a; rm -rf "$B"; mkdir -p "$B"; cd "$B"
   "$SRC/configure" -q --host=$a-linux-musl CC="$HERE/cc.sh $a" CFLAGS="-Os" LDFLAGS="-static -Wl,--gc-sections -s" \

@@ -20,12 +20,16 @@
 # (deterministic, no timestamps). Catch2 and doctest are not built for
 # Linux (yet): the runner refuses them there by name.
 #
-# Needs cc-cross.wasm, sysroot.tar.gz and targets/<arch>/include.tar in
+# Needs cc-cross.{wasm,js}, sysroot.tar.gz and targets/<arch>/include.tar in
 # app/static/packs/cpp (build.sh: build-cross.sh, build-targets.sh), and
-# build-cxx-runtime.sh's wasi-sdk. Idempotent: skipped while
-# $CACHE/testfw-linux/.built holds the SHA-256 of this script, of pins.sh and
-# build-lib.sh, of build-test-libs-linux.mjs, of cc-cross.wasm and of the
-# three include.tar.
+# build-cxx-runtime.sh's wasi-sdk. Idempotent: while $CACHE/testfw-linux/.built
+# holds the stamp of everything that makes them (build-lib.sh's
+# linux_testfw_inputs: the scripts, the pins, the compile driver
+# toolchain.js and targets.js(on), the compiler cc-cross.wasm with its glue
+# cc-cross.js, and the headers in sysroot.tar.gz and the three include.tar),
+# the archives kept beside it in $CACHE/testfw-linux/out are copied to
+# app/static/packs/cpp and nothing is compiled; so a build into an empty
+# app/static/packs/cpp reuses them too.
 # About 6 minutes (111 compiles, one at a time).
 set -euo pipefail
 
@@ -48,9 +52,25 @@ for f in cc-cross.wasm cc-cross.js sysroot.tar.gz "${ARCHES[@]/#/targets/}"; do
   case $f in targets/*) f="$f/include.tar" ;; esac
   [ -f "$OUT/$f" ] || die "$OUT/$f is missing (build.sh builds it)"
 done
-stamp=$(cat "$HERE/build-test-frameworks-linux.sh" "$HERE/pins.sh" "$HERE/build-lib.sh" "$HERE/build-test-libs-linux.mjs" "$OUT/cc-cross.wasm" \
-  "$OUT"/targets/{x86_64,aarch64,riscv64}/include.tar | sha256sum | cut -d' ' -f1)
-if [ "$(cat "$WORK/.built" 2>/dev/null)" = "$stamp" ] && [ -f "$OUT/targets/riscv64/rapidcheck.tar" ]; then
+mapfile -t inputs < <(linux_testfw_inputs "$OUT")
+stamp=$(stamp_of "${inputs[@]}")
+# The archives this step writes, as paths under OUT and under $WORK/out.
+archives=()
+for arch in "${ARCHES[@]}"; do archives+=("targets/$arch/gtest.tar" "targets/$arch/rapidcheck.tar"); done
+# put: copies the kept archives to OUT, each beside its target and renamed
+# over it (the app's build may hold a hard link to the old file).
+put() {
+  local f
+  for f in "${archives[@]}"; do
+    mkdir -p "$(dirname "$OUT/$f")"
+    cp "$WORK/out/$f" "$OUT/$f.part"
+    mv "$OUT/$f.part" "$OUT/$f"
+  done
+}
+kept=1
+for f in "${archives[@]}"; do [ -f "$WORK/out/$f" ] || kept=; done
+if [ -n "$kept" ] && [ "$(cat "$WORK/.built" 2>/dev/null)" = "$stamp" ]; then
+  put
   echo "GoogleTest and RapidCheck for Linux: cached ($WORK)"
   exit 0
 fi
@@ -76,13 +96,15 @@ for arch in "${ARCHES[@]}"; do
   for name in gtest gtest_main rapidcheck; do
     (cd "obj/$arch/$name" && LC_ALL=C ls -- *.o) | sed "s|^|obj/$arch/$name/|" | xargs "$WSDK/bin/llvm-ar" rcsD "$lib/lib$name.a"
   done
+  mkdir -p "out/targets/$arch"
   pack() { # archive libs...
     local archive=$1; shift
-    reproducible_tar -C "stage/$arch" -c "${@/#/usr/lib/${MULTIARCH[$arch]}/}" > "$OUT/targets/$arch/$archive"
+    reproducible_tar -C "stage/$arch" -c "${@/#/usr/lib/${MULTIARCH[$arch]}/}" > "out/targets/$arch/$archive"
   }
   pack gtest.tar libgtest.a libgtest_main.a
   pack rapidcheck.tar librapidcheck.a
 done
 rm -rf obj stage rapidcheck-src "googletest-$GTEST_VERSION"
 echo "$stamp" > "$WORK/.built"
+put
 ls -la "$OUT"/targets/*/{gtest,rapidcheck}.tar

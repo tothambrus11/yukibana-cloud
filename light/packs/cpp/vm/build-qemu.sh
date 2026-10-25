@@ -15,6 +15,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=pins.txt
 source "$HERE/pins.txt"
+# keep_tree (each reused tree records what made it); its fetch is replaced below.
+# shellcheck source=../build-lib.sh
+source "$HERE/../build-lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 JOBS=${JOBS:-3}
@@ -49,32 +52,44 @@ fetch() { # url sha256 file
   fi
 }
 
-# --- emscripten 6.0.13, the binary release unpacked as emsdk would
+# --- emscripten 6.0.13, the binary release unpacked as emsdk would. The
+# directory is named by the version; it records the release and its pin.
+# Its config names this machine's node, so it is written on every run (it
+# was written once, and kept naming a node that had since moved).
 EM=$QC/emsdk-$EMSDK_VERSION
+EM_MADE_BY="emscripten $EMSDK_VERSION $EMSDK_RELEASE $EMSDK_BINARIES_SHA256"
+keep_tree "$EM" "$EM_MADE_BY"
 if [ ! -x "$EM/install/emscripten/emcc" ]; then
-  mkdir -p "$EM"
   fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/$EMSDK_RELEASE/wasm-binaries.tar.xz" \
     "$EMSDK_BINARIES_SHA256" "$EM/wasm-binaries.tar.xz"
   tar xJf "$EM/wasm-binaries.tar.xz" -C "$EM" && rm "$EM/wasm-binaries.tar.xz"
 fi
-if [ ! -f "$EM/env.sh" ]; then
-  printf "LLVM_ROOT = '%s'\nBINARYEN_ROOT = '%s'\nNODE_JS = '%s'\n" "$EM/install/bin" "$EM/install" "$(command -v node)" > "$EM/.emscripten"
-  printf 'export EM_CONFIG=%s\nexport PATH=%s:%s:$PATH\n' "$EM/.emscripten" "$EM/install/emscripten" "$EM/install/bin" > "$EM/env.sh"
-fi
+printf "LLVM_ROOT = '%s'\nBINARYEN_ROOT = '%s'\nNODE_JS = '%s'\n" "$EM/install/bin" "$EM/install" "$(command -v node)" > "$EM/.emscripten"
+printf 'export EM_CONFIG=%s\nexport PATH=%s:%s:$PATH\n' "$EM/.emscripten" "$EM/install/emscripten" "$EM/install/bin" > "$EM/env.sh"
 # shellcheck disable=SC1091
 source "$EM/env.sh"
 # meson 1.5 (QEMU 8.2's configure wants a newer one than distributions ship)
 # and setuptools, whose distutils shim glib 2.75's gdbus-codegen imports
 # (distutils.version): Python 3.12 dropped distutils, and a venv made by 3.12
 # or later has no setuptools of its own.
-[ -x "$QC/venv/bin/meson" ] || python3 -m venv "$QC/venv"
-"$QC/venv/bin/python3" -c 'import setuptools, mesonbuild' 2>/dev/null ||
-  "$QC/venv/bin/pip" -q install meson==1.5.2 setuptools==84.2.1
+# The venv records the python that made it and the two pins (an import
+# check passed for any version already installed).
+VENV_PINS="meson==1.5.2 setuptools==84.2.1"
+keep_tree "$QC/venv" "$(python3 --version) $VENV_PINS"
+if [ ! -x "$QC/venv/bin/meson" ]; then
+  python3 -m venv "$QC/venv"
+  # shellcheck disable=SC2086 # two requirements
+  "$QC/venv/bin/pip" -q install $VENV_PINS
+fi
 export PATH=$QC/venv/bin:$PATH
 
-# --- dependencies (PR #3's scripts/build-deps.sh, with the tarballs checked)
-if [ ! -f "$TARGET/lib/libglib-2.0.a" ] || [ ! -f "$TARGET/lib/libpixman-1.a" ]; then
-  (
+# --- dependencies (PR #3's scripts/build-deps.sh, with the tarballs checked),
+# into $TARGET from sources in $WORK/src. A function, so that what made them
+# is its own text (as bash prints it: declare -f), their pins and the Emscripten that compiled
+# them: both trees record that (keep_tree), and are built again when it
+# changes. They used to be kept while the two libraries existed, whatever
+# versions or compiler had made them.
+build_deps() (
   export TARGET; mkdir -p "$TARGET/lib"; cd "$WORK/src"
   export CFLAGS="-O2 -matomics -mbulk-memory -DNDEBUG -sWASM_BIGINT -DWASM_BIGINT -pthread -sMALLOC=mimalloc -sASYNCIFY=1"
   export CXXFLAGS="$CFLAGS" LDFLAGS="-L$TARGET/lib -O2" CPATH="$TARGET/include"
@@ -125,7 +140,17 @@ EOT
   [ -d pixman ] || git clone -q "$PIXMAN_REPO" pixman
   (cd pixman && git checkout -q "$PIXMAN_COMMIT" && NOCONFIGURE=y ./autogen.sh && emconfigure ./configure --host=$CHOST --prefix="$TARGET" \
     && $NICE emmake make -C pixman install && rm -f "$TARGET"/lib/libpixman-1.so*)
-  )
+)
+DEPS_MADE_BY="$EM_MADE_BY
+zlib $ZLIB_URL $ZLIB_SHA256
+libffi $LIBFFI_REPO $LIBFFI_COMMIT
+glib $GLIB_URL $GLIB_SHA256
+pixman $PIXMAN_REPO $PIXMAN_COMMIT
+recipe $(declare -f build_deps | sha256sum | cut -d' ' -f1)"
+keep_tree "$TARGET" "$DEPS_MADE_BY"
+keep_tree "$WORK/src" "$DEPS_MADE_BY"
+if [ ! -f "$TARGET/lib/libglib-2.0.a" ] || [ ! -f "$TARGET/lib/libpixman-1.a" ]; then
+  build_deps
 fi
 
 # --- the QEMU tree: the pinned commit with PR #3's patch as one commit on top
@@ -147,14 +172,20 @@ done
 
 # --- configure (once per build tree) and build
 export PKG_CONFIG_LIBDIR=$TARGET/lib/pkgconfig PKG_CONFIG_PATH=$TARGET/lib/pkgconfig EM_PKG_CONFIG_PATH=$TARGET/lib/pkgconfig CPATH=$TARGET/include
-# A tree configured with other flags (config.status records the command) starts over.
+# A tree configured with other flags (config.status records the command) starts over,
+# and so does one compiled by another Emscripten or against other dependencies,
+# which configuring again would not show (keep_tree). The QEMU tree itself is
+# checked above (patch_ok), and a change of it removes this one.
 configured() {
   local f=$BUILD/config.status
   grep -qF -- "'--extra-cflags=$CFLAGS'" "$f" 2>/dev/null && grep -qF -- "'--extra-ldflags=$(echo $LDFLAGS)'" "$f" &&
   grep -qF -- "'--target-list=x86_64-softmmu,aarch64-softmmu,riscv64-softmmu'" "$f" && grep -qF -- "'--without-default-devices'" "$f"
 }
+configured || rm -rf "$BUILD"
+keep_tree "$BUILD" "$EM_MADE_BY
+deps $(sha256sum < "$TARGET/.yk-made-by" | cut -d' ' -f1)"
 if ! configured; then
-  rm -rf "$BUILD"; mkdir -p "$BUILD"; cd "$BUILD"
+  cd "$BUILD"
   emconfigure "$SRC/configure" --static --target-list=x86_64-softmmu,aarch64-softmmu,riscv64-softmmu \
     --cpu=wasm32 --cross-prefix= --without-default-features --without-default-devices \
     --with-devices-x86_64=yukibana --with-devices-aarch64=yukibana --with-devices-riscv64=yukibana \

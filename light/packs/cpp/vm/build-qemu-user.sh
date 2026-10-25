@@ -17,6 +17,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=pins.txt
 source "$HERE/pins.txt"
+# shellcheck source=../build-lib.sh
+source "$HERE/../build-lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 JOBS=${JOBS:-3}
@@ -38,15 +40,10 @@ LDFLAGS="-sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sINITIAL_
 # terminal semantics (isatty) with output that is not line-buffered.
 FINAL="-sEXIT_RUNTIME=1 -sINITIAL_MEMORY=${USER_INITIAL_MEMORY_MB}MB -sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,FS,TTY"
 
-stamp=$(cat "$HERE/pins.txt" "$HERE/patches/"*.patch "${BASH_SOURCE[0]}" | sha256sum | cut -d' ' -f1)
-if [ "$(cat "$ART/user.stamp" 2>/dev/null)" = "$stamp" ]; then echo "qemu user: up to date"; exit 0; fi
-[ -f "$TARGET/lib/libglib-2.0.a" ] && [ -f "$SRC/configure" ] || { echo "run build-qemu.sh first" >&2; exit 1; }
+[ -f "$TARGET/lib/libglib-2.0.a" ] && [ -f "$SRC/configure" ] && [ -f "$TARGET/.yk-made-by" ] || { echo "run build-qemu.sh first" >&2; exit 1; }
 [ -f "$HDR/linux/types.h" ] || { echo "run build-kernel.sh x86_64 first (UAPI headers)" >&2; exit 1; }
-# shellcheck source=/dev/null
-source "$QC/emsdk-$EMSDK_VERSION/env.sh"
-export PATH=$QC/venv/bin:$PATH
-
-# --- musl's headers (the cpp pack's build.sh unpacks the same tarball)
+# --- musl's headers (the cpp pack's build.sh unpacks the same tarball), before the
+# stamp, which hashes the ones used
 if [ ! -f "$MUSL_INCLUDE/sys/signalfd.h" ]; then
   mkdir -p "$QC/src"
   curl -sSfL -o "$QC/src/musl.tar.gz" "$MUSL_URL"
@@ -54,10 +51,30 @@ if [ ! -f "$MUSL_INCLUDE/sys/signalfd.h" ]; then
   tar xzf "$QC/src/musl.tar.gz" -C "$QC/src" && rm "$QC/src/musl.tar.gz"
   MUSL_INCLUDE=$QC/src/musl-$MUSL_VERSION/include
 fi
+# What this build is made of besides its own files: the QEMU tree build-qemu.sh
+# prepared (by content: its git tree, since the patch's commit is dated), the
+# dependencies it built (their record), the kernel's UAPI headers, and the musl
+# headers (MUSL_INCLUDE: its files, whichever directory it names). Each of them
+# reaches the build through a path that stays the same when it changes.
+MADE_OF="qemu-tree $(git -C "$SRC" rev-parse 'HEAD^{tree}')
+deps $(sha256sum < "$TARGET/.yk-made-by" | cut -d' ' -f1)
+uapi $(files_sha256 "$HDR")
+musl $(files_sha256 "$MUSL_INCLUDE")"
+# The final link's memory (USER_INITIAL_MEMORY_MB) is in it too: it used to be
+# left out, so another value kept the binaries linked with the first.
+stamp=$({ cat "$HERE/pins.txt" "$HERE/patches/"*.patch "${BASH_SOURCE[0]}"; echo "$MADE_OF"; echo "initial-memory $USER_INITIAL_MEMORY_MB"; } |
+  sha256sum | cut -d' ' -f1)
+if [ "${PRINT_STAMP:-}" = 1 ]; then echo "$stamp"; exit 0; fi
+if [ "$(cat "$ART/user.stamp" 2>/dev/null)" = "$stamp" ]; then echo "qemu user: up to date"; exit 0; fi
+# shellcheck source=/dev/null
+source "$QC/emsdk-$EMSDK_VERSION/env.sh"
+export PATH=$QC/venv/bin:$PATH
 
 # --- the patched tree: hard links to build-qemu.sh's tree, so it costs no space;
 # patch(1) replaces the files it changes instead of writing through the links.
-psha=$(sha256sum < "$HERE/patches/qemu-linux-user-wasm.patch" | cut -d' ' -f1)
+# It records the patch and the tree it links to: a new QEMU tree (another commit
+# or TCG patch) used to leave this one linked to the old files.
+psha=$({ sha256sum < "$HERE/patches/qemu-linux-user-wasm.patch"; git -C "$SRC" rev-parse 'HEAD^{tree}'; } | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$UT/.yk-patch" 2>/dev/null)" != "$psha" ]; then
   rm -rf "$UT" "$B"; mkdir -p "$UT"
   (cd "$SRC" && for f in * .[a-z]*; do [ "$f" = .git ] || cp -al "$f" "$UT/"; done)
@@ -66,7 +83,8 @@ if [ "$(cat "$UT/.yk-patch" 2>/dev/null)" != "$psha" ]; then
 fi
 
 # --- compat headers
-csha=$(cat "$HERE/patches/compat-wasm-host-syscall.h.patch" "$HERE/pins.txt" | sha256sum | cut -d' ' -f1)
+# Made of the patch, Emscripten's headers (pins.txt), the musl and UAPI headers.
+csha=$({ cat "$HERE/patches/compat-wasm-host-syscall.h.patch" "$HERE/pins.txt"; echo "$MADE_OF"; } | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$C/.yk-stamp" 2>/dev/null)" != "$csha" ]; then
   rm -rf "$C" "$B"; mkdir -p "$C/asm"
   E=$QC/emsdk-$EMSDK_VERSION/install/emscripten/cache/sysroot/include
@@ -89,8 +107,14 @@ configured() {
   local f=$B/config.status
   grep -qF -- "'--extra-cflags=$CFLAGS'" "$f" 2>/dev/null && grep -qF -- "'--extra-ldflags=$LDFLAGS'" "$f"
 }
+# Compiled against the dependencies and with the Emscripten pins.txt names, which
+# configuring again would not show (keep_tree); the trees above remove it when
+# they change.
+configured || rm -rf "$B"
+keep_tree "$B" "$(sha256sum < "$HERE/pins.txt" | cut -d' ' -f1) pins.txt
+$MADE_OF"
 if ! configured; then
-  rm -rf "$B"; mkdir -p "$B"; cd "$B"
+  cd "$B"
   PKG_CONFIG_PATH=$TARGET/lib/pkgconfig CC=emcc CXX=em++ "$UT/configure" --static \
     --target-list=x86_64-linux-user,aarch64-linux-user,riscv64-linux-user --cpu=wasm32 --cross-prefix= \
     --without-default-features --disable-werror \

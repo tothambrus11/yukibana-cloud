@@ -1,6 +1,7 @@
 # shellcheck shell=bash
 # What the C/C++ pack's build scripts share: each build-*.sh and
-# pack-runner.sh sources this file after pins.sh. It defines functions and
+# pack-runner.sh, and vm/'s scripts, source this file after their pins. It
+# defines functions and two constants (BUILD_LIB_DIR, YK_TREE_FORMAT) and
 # nothing else, so sourcing it runs no command, and a script keeps its own
 # HERE, CACHE, OUT and JOBS. The functions that use the cache read CACHE,
 # which every script sets to $PACK_CACHE/cpp before calling them.
@@ -93,10 +94,176 @@ fetch_apk() {
   echo "$file"
 }
 
+# Reused trees. The cache keeps build trees between runs (and CI restores
+# it from another run's), so that ninja recompiles only what changed. Ninja
+# sees a changed source, header, flag or CMakeLists.txt; it does not see a
+# different compiler under the same path, a source tree extracted again with
+# its release timestamps, or a configure step that is run only once. Each
+# reused tree therefore records what made it, and is used only when that
+# record is the one the build would write now:
+#
+#   keep_tree    a tree's .yk-made-by: the lines naming what made it that
+#                its own build cannot see (the source tarball, the compiler,
+#                arguments given only at its first configure). Any other
+#                record, or none, and the tree is deleted and built again
+#                from empty: a wrong reuse would be a stale compiler served
+#                under a key that says otherwise (plan D8).
+#   follow_patch a patch applied to a source the tree compiles: the tree
+#                keeps a copy of the patch it was last built with, and when
+#                the patch changes every file the old or the new copy
+#                touches is given a fresh time, so that ninja recompiles
+#                exactly those files (a file the old patch changed and the
+#                new one does not is back to its release time when the
+#                source is extracted again, older than its object, and
+#                would otherwise never be recompiled).
+#
+# The record's format is the first line of .yk-made-by; a change in what a
+# record means changes that line, which rebuilds every tree once.
+YK_TREE_FORMAT="yukibana-tree/1"
+
+# keep_tree <dir> <made-by>: keeps <dir> when its .yk-made-by holds
+# YK_TREE_FORMAT and then exactly <made-by> (lines, no trailing newline);
+# otherwise names the reason on stderr, deletes it, and leaves <dir> empty
+# but for that record, so the build that follows starts from nothing.
+keep_tree() {
+  local dir=$1 want
+  want=$(printf '%s\n%s' "$YK_TREE_FORMAT" "$2")
+  if [ -d "$dir" ] && [ "$(cat "$dir/.yk-made-by" 2>/dev/null)" = "$want" ]; then return 0; fi
+  if [ -e "$dir/.yk-made-by" ]; then
+    echo "$(basename "$0"): $dir was made by something else; building it again from empty:" >&2
+    diff <(cat "$dir/.yk-made-by") <(printf '%s\n' "$want") | sed -n 's/^[<>] /  /p' >&2 || true
+  elif [ -e "$dir" ]; then
+    echo "$(basename "$0"): $dir does not say what made it; building it again from empty" >&2
+  fi
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  printf '%s\n' "$want" > "$dir/.yk-made-by"
+}
+
+# patch_files <patch>: prints the paths a unified diff changes, one per
+# line, sorted, as they are named after a/ or b/ (a created or deleted
+# file's /dev/null side is not a path).
+patch_files() {
+  sed -n -E 's#^(\+\+\+|---) [ab]/([^\t]*).*#\2#p' "$1" | LC_ALL=C sort -u
+}
+
+# follow_patch <tree> <patch> <source-dir>: makes the build tree <tree>,
+# which compiles <source-dir> with <patch> applied (patch -p1 there), see a
+# change of the patch, as the comment above says. The copy is
+# <tree>/.yk-patches/<patch's name>. A tree that holds a build but no copy
+# cannot say which version it was built with, so it is started again
+# (keep_tree's record is kept): call this after keep_tree.
+follow_patch() {
+  local tree=$1 patch=$2 src=$3 copy f
+  copy="$tree/.yk-patches/$(basename "$patch")"
+  cmp -s "$patch" "$copy" && return 0
+  if [ -f "$copy" ]; then
+    { patch_files "$copy"; patch_files "$patch"; } | LC_ALL=C sort -u | while IFS= read -r f; do
+      if [ -e "$src/$f" ]; then touch "$src/$f"; fi
+    done
+  elif [ -n "$(find "$tree" -mindepth 1 -maxdepth 1 ! -name .yk-made-by ! -name .yk-patches -print -quit)" ]; then
+    echo "$(basename "$0"): $tree does not say which $(basename "$patch") it was built with; building it again from empty" >&2
+    find "$tree" -mindepth 1 -maxdepth 1 ! -name .yk-made-by -exec rm -rf {} +
+  fi
+  mkdir -p "$tree/.yk-patches"
+  cp "$patch" "$copy"
+}
+
+# llvm_made_by: prints what made a build tree of the LLVM source with the
+# pack's Emscripten (clangd's, cc's and cc-cross's: the same lines, so that
+# build-cross.sh may still be pointed at cc's tree): the source tarball and
+# the emsdk commit. Both stand behind paths ninja sees as unchanged (the
+# CMake cache holds emcc's path, not its version). The native table
+# generators are not in it: their binaries are inputs of every generated
+# file, which ninja regenerates when they change.
+llvm_made_by() {
+  printf 'llvm %s %s\nemsdk %s %s' "$LLVM_VERSION" "$LLVM_SHA256" "$EMSDK_VERSION" "$EMSDK_COMMIT"
+}
+
+# llvm_lld_sources: makes $CACHE/llvm-project-$LLVM_VERSION.src/lld the
+# release's lld/ with patches/wasm-ld-only.patch applied, extracting it
+# again when its .patched record (the tarball's SHA-256 and the patch's)
+# differs. build-runner.sh compiles it into cc.wasm; build-cross.sh needs it
+# only to exist, because LLVM's CMake refuses LLVM_ENABLE_PROJECTS=lld
+# without llvm/../lld, even with LLVM_EXTERNAL_LLD_SOURCE_DIR set elsewhere,
+# and it runs first on a clean machine. Run from $CACHE, after build.sh's
+# sources step.
+llvm_lld_sources() {
+  local src="$CACHE/llvm-project-$LLVM_VERSION.src" patch="$BUILD_LIB_DIR/patches/wasm-ld-only.patch" want
+  want=$({ echo "$LLVM_SHA256"; cat "$patch"; } | sha256sum | cut -d' ' -f1)
+  [ "$(cat "$src/lld/.patched" 2>/dev/null)" != "$want" ] || return 0
+  rm -rf "$src/lld"
+  tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" "llvm-project-$LLVM_VERSION.src/lld"
+  patch -s -d "$src" -p1 < "$patch"
+  echo "$want" > "$src/lld/.patched"
+}
+
+# npm_deps <dir>: installs <dir>'s package-lock.json into its node_modules
+# (npm ci) unless node_modules/.yk-lock holds that lock file's SHA-256, so a
+# changed lock (esbuild's version, say) reaches the build instead of the
+# node_modules a previous one installed.
+npm_deps() {
+  local want
+  want=$(sha256sum < "$1/package-lock.json" | cut -d' ' -f1)
+  [ "$(cat "$1/node_modules/.yk-lock" 2>/dev/null)" != "$want" ] || return 0
+  (cd "$1" && npm ci --no-audit --no-fund >/dev/null)
+  echo "$want" > "$1/node_modules/.yk-lock"
+}
+
+# linux_testfw_inputs <out>: prints, one per line, every file that makes
+# the Linux targets' gtest.tar and rapidcheck.tar (build-test-frameworks-
+# linux.sh): the scripts, the
+# pins, the compile driver build-test-libs-linux.mjs and what it imports
+# (src/toolchain.js, which decides the compiler's arguments and file
+# system; src/targets.js and targets.json), and from <out> the compiler
+# (cc-cross.wasm and its glue cc-cross.js), the headers every object is
+# compiled against (sysroot.tar.gz, targets/<arch>/include.tar). Their
+# stamp_of is that step's stamp.
+linux_testfw_inputs() {
+  local here=$BUILD_LIB_DIR
+  printf '%s\n' "$here/build-test-frameworks-linux.sh" "$here/pins.sh" "$here/build-lib.sh" \
+    "$here/build-test-libs-linux.mjs" "$here/src/toolchain.js" "$here/src/targets.js" "$here/src/targets.json" \
+    "$1/cc-cross.wasm" "$1/cc-cross.js" "$1/sysroot.tar.gz" \
+    "$1/targets/x86_64/include.tar" "$1/targets/aarch64/include.tar" "$1/targets/riscv64/include.tar"
+}
+
+# sanitizer_inputs: prints, one per line, every file of the pack that makes
+# the sanitizer runtimes (build-sanitizers.sh), whose stamp_of is that
+# step's stamp: the script, the pins (wasi-sdk, emsdk,
+# whose compiler-rt sources are compiled, and the Alpine packages), the
+# patch, every file under src/sanitizer-rt, and src/targets.json, which
+# names each arch's multiarch directory.
+sanitizer_inputs() {
+  local here=$BUILD_LIB_DIR
+  printf '%s\n' "$here/build-sanitizers.sh" "$here/pins.sh" "$here/build-lib.sh" \
+    "$here/patches/compiler-rt-wasi.patch" "$here/src/targets.json"
+  find "$here/src/sanitizer-rt" -type f | LC_ALL=C sort
+}
+
+# stamp_of <file...>: prints the SHA-256 of the files' own SHA-256s, one per
+# line in the order given: the contents and their order, not where the
+# files are, so a checkout elsewhere (or a staged copy) keeps the stamp.
+# A missing file is named, and the stamp fails rather than leave it out.
+stamp_of() {
+  local f
+  for f in "$@"; do
+    [ -f "$f" ] || die "$f is missing (an input of a stamp)"
+  done
+  for f in "$@"; do sha256sum < "$f" | cut -d' ' -f1; done | sha256sum | cut -d' ' -f1
+}
+
+# files_sha256 <dir>: prints the SHA-256 of a directory's files: every
+# file's SHA-256 and path outside .git, sorted by path, hashed. A stamp that
+# takes a directory as an input (the musl headers vm/build-qemu-user.sh
+# compiles with) takes this.
+files_sha256() {
+  (cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | xargs -r sha256sum | sha256sum | cut -d' ' -f1)
+}
+
 # rapidcheck_tree_sha256 <dir>: prints the SHA-256 that RAPIDCHECK_TREE_SHA256
-# pins: every file's SHA-256 outside .git, sorted by path, hashed.
+# pins, which is files_sha256 of the checkout.
 rapidcheck_tree_sha256() {
-  (cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+  files_sha256 "$1"
 }
 
 # llvm_wasm_common_args <array> <environment> <targets> <lld-source-dir>

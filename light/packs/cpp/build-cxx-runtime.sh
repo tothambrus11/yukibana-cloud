@@ -54,6 +54,11 @@ step "wasi-sdk $WASI_SDK_VERSION toolchain (native clang for wasm32)"
 WSDK="$CACHE/wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux"
 fetch "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$WASI_SDK_VERSION/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz" \
   "$WASI_SDK_SHA256" "wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz"
+# The unpacked tree is named by the version only; it records the tarball's
+# pin, so another tarball of the same version is unpacked again rather than
+# the old one used (build-lib.sh, keep_tree). build-test-frameworks.sh,
+# build-test-frameworks-linux.sh and build-sanitizers.sh use it too.
+keep_tree "$WSDK" "wasi-sdk $WASI_SDK_VERSION $WASI_SDK_SHA256"
 [ -x "$WSDK/bin/clang" ] || tar xzf "wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz" -C wasi
 
 step "sources: libunwind (LLVM $LLVM_VERSION), GoogleTest $GTEST_VERSION"

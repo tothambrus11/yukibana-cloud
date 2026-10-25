@@ -46,7 +46,9 @@ for l in qemu linux strace opensbi qboot; do cp "$ART/LICENSE-$l.txt" "$OUT/LICE
 dirs=(vm); [ -d "$OUT/user" ] && dirs+=(user)
 sizes=$(cd "$OUT" && find "${dirs[@]}" -type f ! -name '*.br' ! -name '*.gz' 2>/dev/null | sort |
   while read -r f; do printf '"%s":%s,' "$f" "$(stat -c %s "$f")"; done)
-(cd "$P" && [ -d node_modules/esbuild ] || npm ci --no-audit --no-fund >/dev/null)
+# shellcheck source=../build-lib.sh
+source "$P/build-lib.sh"
+npm_deps "$P"
 "$P/node_modules/.bin/esbuild" "$P/src/vm/run-linux.js" --bundle --format=esm --minify --target=es2022 \
   --define:VM_SIZES="{${sizes%,}}" --outfile="$OUT/vm.js" --log-level=warning
 

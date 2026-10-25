@@ -34,12 +34,10 @@ cd "$CACHE"
 step "lld sources"
 # build.sh extracts only what clangd needs; the linker comes from the same
 # tarball. The patch drops lld's ELF, COFF, Mach-O and MinGW flavours.
-if [ ! -f "$SRC/lld/.patched" ]; then
-  rm -rf "$SRC/lld"
-  tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" "llvm-project-$LLVM_VERSION.src/lld"
-  patch -d "$SRC" -p1 < "$HERE/patches/wasm-ld-only.patch"
-  touch "$SRC/lld/.patched"
-fi
+# lld/.patched records the tarball's pin and the patch, so a changed patch
+# extracts it again (it used to be an empty marker, which kept the first
+# patch's tree whatever the patch became; build-lib.sh, llvm_lld_sources).
+llvm_lld_sources
 
 step "clang + wasm-ld for WebAssembly"
 # shellcheck disable=SC1091
@@ -57,13 +55,13 @@ source emsdk/emsdk_env.sh >/dev/null 2>&1
 cmake_args=()
 llvm_wasm_common_args cmake_args worker WebAssembly "$SRC/llvm/../lld" wasm32-wasip1 ""
 # The artifact, cc.{js,wasm}, is kept in artifacts/cc with a STAMP: the
-# SHA-256 of the LLVM version, Emscripten's version, the cmake arguments and
-# the lld patch. pack-runner.sh copies cc.* from there and from nowhere else,
-# so a build tree reconfigured for something else (build-cross.sh can use
-# this one) never leaks into cc.wasm, and the LLVM step is skipped while the
-# stamp matches.
+# SHA-256 of the LLVM version and tarball pin, Emscripten's version, the
+# cmake arguments and the lld patch. pack-runner.sh copies cc.* from there
+# and from nowhere else, so a build tree reconfigured for something else
+# (build-cross.sh can use this one) never leaks into cc.wasm, and the LLVM
+# step is skipped while the stamp matches.
 ART="$CACHE/artifacts/cc"
-stamp=$({ echo "llvm $LLVM_VERSION"; emcc --version | head -1; printf '%s\n' "${cmake_args[@]}";
+stamp=$({ echo "llvm $LLVM_VERSION $LLVM_SHA256"; emcc --version | head -1; printf '%s\n' "${cmake_args[@]}";
           cat "$HERE/patches/wasm-ld-only.patch"; } | sha256sum | cut -d' ' -f1)
 if [ "${PRINT_STAMP:-}" = 1 ]; then echo "$stamp"; exit 0; fi
 B=build-wasm-cc
@@ -71,7 +69,12 @@ if [ "$(cat "$ART/STAMP" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/llvm.wasm" ] &
   echo "cc.wasm is up to date (artifacts/cc/STAMP $stamp)"
 else
   # Configured on every build, so a changed flag reaches it instead of being
-  # shadowed by an old cache.
+  # shadowed by an old cache; what configuring cannot show is what the tree
+  # records (build-lib.sh, llvm_made_by), and it follows the patches of the
+  # sources it compiles.
+  keep_tree $B "$(llvm_made_by)"
+  follow_patch $B "$HERE/patches/clangd-browser.patch" "$SRC"
+  follow_patch $B "$HERE/patches/wasm-ld-only.patch" "$SRC"
   $NICE emcmake cmake -S "$SRC/llvm" -B $B "${cmake_args[@]}" >/dev/null
   $NICE ninja -C $B -j"$JOBS" llvm-driver
   mkdir -p "$ART"

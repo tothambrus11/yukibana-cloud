@@ -30,9 +30,13 @@
 # build-targets.sh takes the builtins from) and musl 1.2.5, pinned by
 # SHA-256, the runtimes' debug information stripped.
 #
-# Idempotent: skipped when $CACHE/sanitizers/.built holds the SHA-256 of
-# this script, pins.sh, build-lib.sh, the patch and src/sanitizer-rt/, and
-# the archives exist.
+# Idempotent: while $CACHE/sanitizers/.built holds the stamp of everything
+# that makes them (build-lib.sh's sanitizer_inputs: this script, pins.sh,
+# build-lib.sh, the patch, every file of src/sanitizer-rt/, and
+# src/targets.json, which names each arch's multiarch directory), the
+# archives and their .gz/.br kept beside it in $CACHE/sanitizers/out are
+# copied to app/static/packs/cpp and nothing is built; so a build into an
+# empty app/static/packs/cpp reuses them too.
 # Under a minute at -j3.
 set -euo pipefail
 
@@ -48,22 +52,39 @@ WASI_SDK="$CACHE/wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux"
 EMSDK_LIB="$CACHE/emsdk/upstream/emscripten/system/lib"
 BIN="$CACHE/emsdk/upstream/bin"   # llvm-strip and llvm-ar handle every ELF arch
 W="$CACHE/sanitizers"
+K="$W/out"   # the archives, kept with the stamp that made them
 LLVM_LIB=usr/lib/llvm21/lib/clang/21/lib
 
 [ -x "$WASI_SDK/bin/clang" ] || die "no wasi-sdk in $WASI_SDK (build-cxx-runtime.sh fetches it)"
 [ -f "$EMSDK_LIB/compiler-rt/lib/asan/asan_emscripten.cpp" ] || die "no emsdk in $CACHE/emsdk (build.sh installs it)"
 
-stamp=$(cat "$HERE/build-sanitizers.sh" "$HERE/pins.sh" "$HERE/build-lib.sh" "$HERE/patches/compiler-rt-wasi.patch" "$HERE"/src/sanitizer-rt/*.c \
-  "$HERE"/src/sanitizer-rt/include/*.h "$HERE"/src/sanitizer-rt/include/emscripten/*.h | sha256sum | cut -d' ' -f1)
-outputs=("$OUT/asan.tar" "$OUT/ubsan.tar")
-for arch in x86_64 aarch64 riscv64; do outputs+=("$OUT/targets/$arch/asan.tar" "$OUT/targets/$arch/ubsan.tar"); done
-built=1
-for f in "${outputs[@]}"; do [ -f "$f" ] || built=; done
-if [ -n "$built" ] && [ "$(cat "$W/.built" 2>/dev/null)" = "$stamp" ]; then
+mapfile -t inputs < <(sanitizer_inputs)
+stamp=$(stamp_of "${inputs[@]}")
+# The archives, as paths under $K and under OUT, each with .gz and .br.
+archives=(asan.tar ubsan.tar)
+for arch in x86_64 aarch64 riscv64; do archives+=("targets/$arch/asan.tar" "targets/$arch/ubsan.tar"); done
+# put: copies the kept archives and their siblings to OUT, each beside its
+# target and renamed over it (the app's build may hold a hard link to the
+# old file).
+put() {
+  local f x
+  for f in "${archives[@]}"; do
+    mkdir -p "$(dirname "$OUT/$f")"
+    for x in "" .gz .br; do
+      cp "$K/$f$x" "$OUT/$f$x.part"
+      mv "$OUT/$f$x.part" "$OUT/$f$x"
+    done
+  done
+}
+kept=1
+for f in "${archives[@]}"; do [ -f "$K/$f" ] && [ -f "$K/$f.gz" ] && [ -f "$K/$f.br" ] || kept=; done
+if [ -n "$kept" ] && [ "$(cat "$W/.built" 2>/dev/null)" = "$stamp" ]; then
+  put
   echo "sanitizer runtimes: cached ($W)"
   exit 0
 fi
-mkdir -p "$W/dl" "$OUT/targets"
+rm -rf "$K" "$W/.built"
+mkdir -p "$W/dl" "$K/targets"
 
 step "compiler-rt for wasm32-wasip1"
 rm -rf "$W/rt" "$W/obj" "$W/stage"
@@ -120,8 +141,8 @@ archive "$rt/libclang_rt.ubsan_standalone.a" obj/common/*.o obj/ubsan/*.o obj/wa
 rm -rf stage-ub && mkdir -p stage-ub/usr/lib/clang/21/lib/wasm32-unknown-wasip1
 mv "$rt/libclang_rt.ubsan_standalone.a" stage-ub/usr/lib/clang/21/lib/wasm32-unknown-wasip1/
 archive stage-ub/usr/lib/clang/21/lib/wasm32-unknown-wasip1/libclang_rt.ubsan_minimal.a obj/minimal/*.o obj/wasi_emscripten.o
-tarball stage "$OUT/asan.tar"
-tarball stage-ub "$OUT/ubsan.tar"
+tarball stage "$K/asan.tar"
+tarball stage-ub "$K/ubsan.tar"
 rm -rf rt obj stage stage-ub
 
 step "Alpine's sanitizer runtimes for the Linux targets"
@@ -153,14 +174,15 @@ for arch in x86_64 aarch64 riscv64; do
     [ -f "$from/libclang_rt.$lib-$arch.a.syms" ] && cp "$from/libclang_rt.$lib-$arch.a.syms" "$ubsan/"
   done
   cp "$x/musl/lib/ld-musl-$arch.so.1" "$x/asan/usr/lib/$ma/libc.so"
-  mkdir -p "$OUT/targets/$arch"
-  tarball "$x/asan" "$OUT/targets/$arch/asan.tar"
-  tarball "$x/ubsan" "$OUT/targets/$arch/ubsan.tar"
+  mkdir -p "$K/targets/$arch"
+  tarball "$x/asan" "$K/targets/$arch/asan.tar"
+  tarball "$x/ubsan" "$K/targets/$arch/ubsan.tar"
   rm -rf "$x"
 done
 rm -rf "$W/x"
 
 step "compress"
-node "$HERE/compress.mjs" "${outputs[@]}"
+node "$HERE/compress.mjs" "${archives[@]/#/$K/}"
 echo "$stamp" > "$W/.built"
-ls -la "${outputs[@]}" "${outputs[@]/%/.br}"
+put
+ls -la "${archives[@]/#/$OUT/}"

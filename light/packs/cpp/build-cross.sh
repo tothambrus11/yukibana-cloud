@@ -20,14 +20,15 @@
 #   -sENVIRONMENT=worker,node                 Node too, for test-targets.mjs
 #
 # The artifact is kept in $CACHE/artifacts/cc-cross with a STAMP (the
-# SHA-256 of the LLVM and Emscripten versions, the cmake arguments and the
-# patch), as build-runner.sh keeps cc's; the LLVM step is skipped while it
-# matches, and PRINT_STAMP=1 prints it without building. pack-runner.sh
-# copies it to cc-cross.{js,wasm}.
+# SHA-256 of the LLVM version and tarball pin, Emscripten's version, the
+# cmake arguments and the patch), as build-runner.sh keeps cc's; the LLVM
+# step is skipped while it matches, and PRINT_STAMP=1 prints it without
+# building. pack-runner.sh copies it to cc-cross.{js,wasm}.
 #
 # CROSS_BUILD_DIR picks the build tree (default $CACHE/build-wasm-cross, a
 # fresh tree: about 2500 steps, as long as build-runner.sh's first build).
-# Any tree of this LLVM can be reused: switching a tree between this
+# Any tree of this LLVM and Emscripten can be reused (it records what made
+# it; build-lib.sh, keep_tree): switching a tree between this
 # configuration and build-runner.sh's rebuilds most of it, because the
 # default triple and the native target are in llvm-config.h, which nearly
 # every file includes (README, "Targets", Build).
@@ -50,19 +51,13 @@ cd "$CACHE"
 step "lld sources (ELF only)"
 # LLVM's CMake refuses LLVM_ENABLE_PROJECTS=lld unless llvm/../lld exists,
 # even with LLVM_EXTERNAL_LLD_SOURCE_DIR pointing elsewhere. build.sh runs
-# this script before build-runner.sh, which extracts that directory, so on a
-# clean machine it is not there yet: extracted here exactly as
-# build-runner.sh does it (with .patched, so that script then keeps it).
-if [ ! -f "$SRC/lld/.patched" ]; then
-  rm -rf "$SRC/lld"
-  tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" "llvm-project-$LLVM_VERSION.src/lld"
-  patch -d "$SRC" -p1 < "$HERE/patches/wasm-ld-only.patch"
-  touch "$SRC/lld/.patched"
-fi
+# this script before build-runner.sh, so on a clean machine it is not there
+# yet: made here as build-runner.sh makes it (build-lib.sh).
+llvm_lld_sources
 # A copy of lld/ of its own: build-runner.sh's $SRC/lld is patched to wasm
-# only and is never touched here. .patched holds the SHA-256 of the patch
-# the copy was made with; a changed patch means a fresh copy.
-patch_sha=$(sha256sum < "$HERE/patches/elf-ld-only.patch" | cut -d' ' -f1)
+# only and is never touched here. .patched holds a SHA-256 of the tarball's
+# pin and the patch; another tarball or patch means a fresh copy.
+patch_sha=$({ echo "$LLVM_SHA256"; cat "$HERE/patches/elf-ld-only.patch"; } | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$LLD/.patched" 2>/dev/null)" != "$patch_sha" ]; then
   rm -rf "$LLD" && mkdir -p "$LLD"
   tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" -C "$LLD" --strip-components=1 "llvm-project-$LLVM_VERSION.src/lld"
@@ -78,7 +73,7 @@ source emsdk/emsdk_env.sh >/dev/null 2>&1
 # its Node branch (README, sizes).
 cmake_args=()
 llvm_wasm_common_args cmake_args worker,node "X86;AArch64;RISCV" "$LLD/lld" x86_64-linux-musl libunwind
-stamp=$({ echo "llvm $LLVM_VERSION"; emcc --version | head -1; printf '%s\n' "${cmake_args[@]}";
+stamp=$({ echo "llvm $LLVM_VERSION $LLVM_SHA256"; emcc --version | head -1; printf '%s\n' "${cmake_args[@]}";
           cat "$HERE/patches/elf-ld-only.patch"; } | sha256sum | cut -d' ' -f1)
 # PRINT_STAMP=1 prints the stamp and builds nothing, as build-runner.sh does:
 # a change to the scripts can be checked to leave the compiler's stamp alone.
@@ -87,6 +82,11 @@ if [ "$(cat "$ART/STAMP" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/llvm.wasm" ] &
   echo "cc-cross.wasm is up to date (artifacts/cc-cross/STAMP $stamp)"
   exit 0
 fi
+# The tree records what made it (build-lib.sh, llvm_made_by), which is
+# cc's too, and follows the patches of the sources it compiles.
+keep_tree "$B" "$(llvm_made_by)"
+follow_patch "$B" "$HERE/patches/clangd-browser.patch" "$SRC"
+follow_patch "$B" "$HERE/patches/elf-ld-only.patch" "$LLD"
 $NICE emcmake cmake -S "$SRC/llvm" -B "$B" "${cmake_args[@]}" >/dev/null
 $NICE ninja -C "$B" -j"$JOBS" llvm-driver
 mkdir -p "$ART"

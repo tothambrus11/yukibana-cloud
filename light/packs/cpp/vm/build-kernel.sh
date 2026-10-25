@@ -16,6 +16,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=pins.txt
 source "$HERE/pins.txt"
+# shellcheck source=../build-lib.sh
+source "$HERE/../build-lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 JOBS=${JOBS:-3}
@@ -36,6 +38,12 @@ if [ "$(cat "$ART/kernel-$arch.stamp" 2>/dev/null)" = "$stamp" ] && [ -f "$QC/hd
   echo "kernel-$arch: up to date"; exit 0
 fi
 
+# The source tree is named by the version and records the tarball's pin; the
+# build tree records the same, because objects compiled from another tarball
+# are newer than its release-dated files and make would keep them. Kbuild
+# itself follows the config and the compiler (CC_VERSION_TEXT).
+keep_tree "$K" "linux $LINUX_VERSION $LINUX_SHA256"
+keep_tree "$O" "linux $LINUX_VERSION $LINUX_SHA256"
 if [ ! -f "$K/Makefile" ]; then
   tarball=$QC/linux-$LINUX_VERSION.tar.xz
   curl -sSfL -o "$tarball.part" "$LINUX_URL"

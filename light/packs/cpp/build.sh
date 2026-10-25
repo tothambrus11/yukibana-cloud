@@ -31,11 +31,14 @@
 #                        README, "Sanitizers"), fetched only for a project
 #                        whose compile_flags.txt asks for a sanitizer
 #
-# Idempotent: each step is skipped when its output is in the cache
-# ($PACK_CACHE/cpp, default ~/.cache/yukibana-packs/cpp). Needs a Linux host
-# with clang, cmake, ninja, git, curl, python3, make and node 22. Emscripten
-# is fetched into the cache. Most of the time is the clangd step: about an
-# hour at -j3 on this machine (see README).
+# Idempotent: each step is skipped, or only checked by ninja, when its
+# output is in the cache ($PACK_CACHE/cpp, default
+# ~/.cache/yukibana-packs/cpp) and was made from the same inputs: every
+# reused tree records what made it (build-lib.sh, keep_tree), and every
+# skipped step has a stamp of its inputs (README, "Build", lists them).
+# Needs a Linux host with clang, cmake, ninja, git, curl, python3, make and
+# node 22. Emscripten is fetched into the cache. Most of the time is the
+# clangd step: about an hour at -j3 on this machine (see README).
 #
 #   JOBS=3 ./build.sh
 set -euo pipefail
@@ -57,10 +60,11 @@ step "sources"
 fetch "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/llvm-project-$LLVM_VERSION.src.tar.xz" \
   "$LLVM_SHA256" "llvm-project-$LLVM_VERSION.src.tar.xz"
 fetch "https://musl.libc.org/releases/musl-$MUSL_VERSION.tar.gz" "$MUSL_SHA256" "musl-$MUSL_VERSION.tar.gz"
-# .patched holds the SHA-256 of the patch the tree was made with: a changed
-# patch means a fresh tree (ninja then rebuilds only what the patch touches,
-# as tar keeps the release's timestamps).
-patch_sha=$(sha256sum < "$HERE/patches/clangd-browser.patch" | cut -d' ' -f1)
+# .patched holds a SHA-256 of the tarball's pin and the patch: another
+# tarball or patch means a fresh tree. tar keeps the release's timestamps, so
+# each build tree that compiles it recompiles what the old or the new patch
+# touched, and nothing else (follow_patch, build-lib.sh).
+patch_sha=$({ echo "$LLVM_SHA256"; cat "$HERE/patches/clangd-browser.patch"; } | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$SRC/.patched" 2>/dev/null)" != "$patch_sha" ]; then
   rm -rf "$SRC"
   # Only the parts clangd and the libc++ headers are made of (1.9 of 2.4 GB).
@@ -70,7 +74,10 @@ if [ "$(cat "$SRC/.patched" 2>/dev/null)" != "$patch_sha" ]; then
   patch -d "$SRC" -p1 < "$HERE/patches/clangd-browser.patch"
   echo "$patch_sha" > "$SRC/.patched"
 fi
-[ -d "musl-$MUSL_VERSION" ] || tar xzf "musl-$MUSL_VERSION.tar.gz"
+# musl's tree: its headers go into sysroot.tar.gz here, and vm/build-qemu-user.sh
+# takes them from it too.
+keep_tree "musl-$MUSL_VERSION" "musl $MUSL_SHA256"
+[ -f "musl-$MUSL_VERSION/Makefile" ] || tar xzf "musl-$MUSL_VERSION.tar.gz" -C "musl-$MUSL_VERSION" --strip-components=1
 if [ ! -x emsdk/upstream/emscripten/emcc ] || [ "$(git -C emsdk rev-parse HEAD 2>/dev/null)" != "$EMSDK_COMMIT" ]; then
   rm -rf emsdk
   git clone --quiet --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk
@@ -102,14 +109,20 @@ fi
 step "native table generators"
 # The wasm build runs these on the host; it cannot run its own.
 tools="llvm-tblgen llvm-min-tblgen clang-tblgen clang-tidy-confusable-chars-gen"
-if [ ! -x build-native/bin/clang-tidy-confusable-chars-gen ]; then
-  [ -f build-native/build.ninja ] || cmake -S "$SRC/llvm" -B build-native -G Ninja -DCMAKE_BUILD_TYPE=Release \
-    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DLLVM_TARGETS_TO_BUILD=X86 \
-    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld \
-    -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF >/dev/null
-  # shellcheck disable=SC2086
-  $NICE ninja -C build-native -j"$JOBS" $tools
-fi
+native_args=(-G Ninja -DCMAKE_BUILD_TYPE=Release
+  -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DLLVM_TARGETS_TO_BUILD=X86
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld
+  -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF)
+# Configured once, so its arguments are in what made it, and so is the
+# host's clang, which ninja sees only by path. ninja runs every time: with
+# nothing changed it only checks (it used to be skipped while the last tool
+# existed, whatever source or compiler had made it).
+keep_tree build-native "$(printf 'llvm %s %s\nhost %s\n' "$LLVM_VERSION" "$LLVM_SHA256" "$(clang --version | head -1)"
+  printf '%s\n' "${native_args[@]}")"
+follow_patch build-native "$HERE/patches/clangd-browser.patch" "$SRC"
+[ -f build-native/build.ninja ] || cmake -S "$SRC/llvm" -B build-native "${native_args[@]}" >/dev/null
+# shellcheck disable=SC2086
+$NICE ninja -C build-native -j"$JOBS" $tools
 
 step "clangd for WebAssembly"
 # shellcheck disable=SC1091
@@ -127,7 +140,11 @@ ldflags="-pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=4 -sMODULARIZE -sEXPORT
   -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB"
 # Configured on every run: with nothing changed it only rereads the cache,
 # and a changed flag (the linker's above, say) reaches the build instead of
-# being shadowed by the first run's cache.
+# being shadowed by the first run's cache. What configuring cannot show
+# (another LLVM tarball, another Emscripten under the same emcc path, a
+# changed patch) is what the tree records (build-lib.sh, llvm_made_by).
+keep_tree build-wasm "$(llvm_made_by)"
+follow_patch build-wasm "$HERE/patches/clangd-browser.patch" "$SRC"
 $NICE emcmake cmake -S "$SRC/llvm" -B build-wasm -G Ninja \
     -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_EXE_LINKER_FLAGS="$ldflags" \
     -DCMAKE_C_FLAGS=-pthread -DCMAKE_CXX_FLAGS=-pthread \
@@ -150,12 +167,15 @@ $NICE ninja -C build-wasm -j"$JOBS" clangd
 step "libc++ headers"
 # Configured for musl, as the default target is x86_64-linux-musl; only the
 # header step runs, nothing is compiled.
+# Installed once per LLVM tarball and these arguments (what made it).
+cxx_args=(-G Ninja -DLLVM_ENABLE_RUNTIMES=libcxx
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX="$CACHE/cxx-headers"
+  -DLIBCXX_HAS_MUSL_LIBC=ON -DLIBCXX_CXX_ABI=none -DLIBCXX_INCLUDE_TESTS=OFF
+  -DLIBCXX_INCLUDE_BENCHMARKS=OFF -DLIBCXX_ENABLE_SHARED=OFF)
+keep_tree cxx-headers "$(printf 'llvm %s %s\n' "$LLVM_VERSION" "$LLVM_SHA256"; printf '%s\n' "${cxx_args[@]}")"
 if [ ! -f cxx-headers/include/c++/v1/__config_site ]; then
-  rm -rf build-cxx cxx-headers
-  cmake -S "$SRC/runtimes" -B build-cxx -G Ninja -DLLVM_ENABLE_RUNTIMES=libcxx \
-    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX="$CACHE/cxx-headers" \
-    -DLIBCXX_HAS_MUSL_LIBC=ON -DLIBCXX_CXX_ABI=none -DLIBCXX_INCLUDE_TESTS=OFF \
-    -DLIBCXX_INCLUDE_BENCHMARKS=OFF -DLIBCXX_ENABLE_SHARED=OFF >/dev/null
+  rm -rf build-cxx
+  cmake -S "$SRC/runtimes" -B build-cxx "${cxx_args[@]}" >/dev/null
   ninja -C build-cxx install-cxx-headers >/dev/null
   rm -rf build-cxx
 fi
@@ -196,7 +216,7 @@ reproducible_tar -C "$stage" -c usr | gzip -9n > "$OUT/sysroot.tar.gz"
 step "pack"
 cp build-wasm/bin/clangd.wasm "$OUT/clangd.wasm"
 cp build-wasm/bin/clangd.js "$OUT/clangd.js"
-(cd "$HERE" && [ -d node_modules/esbuild ] || npm ci --no-audit --no-fund >/dev/null)
+npm_deps "$HERE"
 # Bundled: it imports src/targets.js (and its targets.json), for the Linux
 # targets' headers; clangd.js stays a file of its own.
 "$HERE/node_modules/.bin/esbuild" "$HERE/src/server.js" --bundle --external:./clangd.js --outfile="$OUT/server.js" --format=esm --minify \
