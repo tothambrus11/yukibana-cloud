@@ -59,7 +59,7 @@ async function signIn(addr: string): Promise<SetCookie[]> {
   const sent = await fetch(`${app.origin}/auth/login?/send`, ownForm({ email: addr, next: '/' }));
   expect(sent.status, await sent.clone().text()).toBe(200);
   const verified = await fetch(`${app.origin}/auth/login?/verify`, ownForm({ email: addr, code: await codeMailedTo(addr, since), next: '/' }));
-  expect(verified.status).toBe(303);
+  expect(verified.status, await verified.clone().text()).toBe(303);
   const cookies = setCookies(verified).filter((c) => c.value !== '');
   expect(cookies.length, 'logging in set no cookie').toBeGreaterThan(0);
   for (const c of cookies) {
