@@ -3,7 +3,7 @@
   the editor.
 -->
 <script lang="ts">
-	import { monaco } from '../monaco';
+	import type { Severity } from '../severity';
 	import type { Workspace } from '../workspace.svelte';
 
 	let { workspace }: { workspace: Workspace } = $props();
@@ -14,8 +14,8 @@
 		return [...byPath];
 	});
 
-	const kind = (s: monaco.MarkerSeverity) =>
-		s === monaco.MarkerSeverity.Error ? 'error' : s === monaco.MarkerSeverity.Warning ? 'warning' : 'info';
+	/** The marker's class: hints are drawn as infos. */
+	const kind = (s: Severity) => (s === 'error' || s === 'warning' ? s : 'info');
 </script>
 
 <div class="problems">
@@ -24,20 +24,11 @@
 	{/if}
 	{#each groups as [path, problems] (path)}
 		<div class="file">{path} <span class="count">{problems.length}</span></div>
-		{#each problems as { marker }, i (i)}
-			<button
-				class="problem"
-				onclick={() =>
-					workspace.show(path, {
-						startLineNumber: marker.startLineNumber,
-						startColumn: marker.startColumn,
-						endLineNumber: marker.endLineNumber,
-						endColumn: marker.endColumn,
-					})}
-			>
-				<span class="sev {kind(marker.severity)}" aria-label={kind(marker.severity)}></span>
-				<span class="message">{marker.message}</span>
-				<span class="where">{marker.source ? marker.source + ' · ' : ''}{marker.startLineNumber}:{marker.startColumn}</span>
+		{#each problems as { severity, message, source, range }, i (i)}
+			<button class="problem" onclick={() => workspace.show(path, range)}>
+				<span class="sev {kind(severity)}" aria-label={kind(severity)}></span>
+				<span class="message">{message}</span>
+				<span class="where">{source ? source + ' · ' : ''}{range.startLineNumber}:{range.startColumn}</span>
 			</button>
 		{/each}
 	{/each}

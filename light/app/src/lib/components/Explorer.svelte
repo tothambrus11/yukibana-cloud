@@ -4,8 +4,8 @@
   user collapsed them.
 -->
 <script lang="ts">
-	import { monaco } from '../monaco';
 	import { baseName, parentOf } from '../project';
+	import { worst, type Severity } from '../severity';
 	import type { Workspace } from '../workspace.svelte';
 
 	let { workspace }: { workspace: Workspace } = $props();
@@ -46,15 +46,19 @@
 
 	/** Highest severity per file, for the dot next to its name. */
 	const severity = $derived.by(() => {
-		const map = new Map<string, number>();
-		for (const p of workspace.problems) map.set(p.path, Math.max(map.get(p.path) ?? 0, p.marker.severity));
+		const all = new Map<string, Severity[]>();
+		for (const p of workspace.problems) all.set(p.path, [...(all.get(p.path) ?? []), p.severity]);
+		const map = new Map<string, Severity>();
+		for (const [path, severities] of all) {
+			const s = worst(severities);
+			if (s !== null) map.set(path, s);
+		}
 		return map;
 	});
 
-	function folderSeverity(folder: string): number {
-		let max = 0;
-		for (const [path, s] of severity) if (path.startsWith(folder + '/')) max = Math.max(max, s);
-		return max;
+	/** The worst severity of any file under a folder, at any depth, or null when none has a problem. */
+	function folderSeverity(folder: string): Severity | null {
+		return worst([...severity].filter(([path]) => path.startsWith(folder + '/')).map(([, s]) => s));
 	}
 
 	function toggle(folder: string) {
@@ -126,7 +130,8 @@
 		el.setSelectionRange(0, dot > 0 ? dot : el.value.length);
 	}
 
-	const sev = (s: number) => (s >= monaco.MarkerSeverity.Error ? 'error' : s >= monaco.MarkerSeverity.Warning ? 'warning' : '');
+	/** The dot's class: errors and warnings get one, hints and infos do not. */
+	const sev = (s: Severity | null) => (s === 'error' || s === 'warning' ? s : '');
 </script>
 
 {#snippet input(depth: number, folder: boolean)}
@@ -171,7 +176,7 @@
 			{#if editing?.kind === 'rename' && editing.path === node.path}
 				{@render input(node.depth, node.folder)}
 			{:else}
-				{@const s = sev(node.folder ? folderSeverity(node.path) : (severity.get(node.path) ?? 0))}
+				{@const s = sev(node.folder ? folderSeverity(node.path) : (severity.get(node.path) ?? null))}
 				<div
 					class="row"
 					class:active={!node.folder && workspace.active === node.path}

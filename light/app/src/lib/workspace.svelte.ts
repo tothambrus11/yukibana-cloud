@@ -10,6 +10,7 @@ import { LanguageClient, type ClientState, type LoadingProgress, type LogLevel }
 import { isLanguageId, languageOf, LANGUAGES, packOf, type ExploreKind, type LanguageId } from './languages';
 import { Runner, type RunMode } from './run.svelte';
 import { Preview } from './preview';
+import { severityOf, worstFirst, type Severity } from './severity';
 import { exportProject } from './export';
 import { zip } from './zip';
 import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
@@ -34,10 +35,21 @@ export interface LogLine {
 	time: Date;
 }
 
-/** One diagnostic as the problems panel lists it. */
+/**
+ * One diagnostic as the problems panel, the explorer and the status bar show
+ * it, converted from a Monaco marker once so none of them needs the editor.
+ */
 export interface Problem {
+	/** The project path of the file it is in. */
 	path: string;
-	marker: monaco.editor.IMarker;
+	/** How bad it is. */
+	severity: Severity;
+	/** What the language server (or the editor) said, as it said it. */
+	message: string;
+	/** Who said it, such as "clangd", or null when the marker names nobody. */
+	source: string | null;
+	/** Where in the file, in Monaco's 1-based lines and columns, end exclusive. */
+	range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
 }
 
 /** What the workspace asks of the editor area, which owns the tabs. */
@@ -691,12 +703,20 @@ export class Workspace {
 	}
 
 	private refreshProblems(): void {
-		const severityOrder = (m: monaco.editor.IMarker) => -m.severity;
-		this.problems = monaco.editor
-			.getModelMarkers({})
-			.map((marker) => ({ path: pathOf(marker.resource), marker }))
-			.filter((p): p is Problem => p.path !== null && this.models.has(p.path))
-			.sort((a, b) => a.path.localeCompare(b.path) || severityOrder(a.marker) - severityOrder(b.marker) || a.marker.startLineNumber - b.marker.startLineNumber);
+		const problems: Problem[] = [];
+		for (const marker of monaco.editor.getModelMarkers({})) {
+			const path = pathOf(marker.resource);
+			if (path === null || !this.models.has(path)) continue;
+			const { startLineNumber, startColumn, endLineNumber, endColumn } = marker;
+			problems.push({
+				path,
+				severity: severityOf(marker.severity),
+				message: marker.message,
+				source: marker.source ?? null,
+				range: { startLineNumber, startColumn, endLineNumber, endColumn },
+			});
+		}
+		this.problems = problems.sort((a, b) => a.path.localeCompare(b.path) || worstFirst(a.severity, b.severity) || a.range.startLineNumber - b.range.startLineNumber);
 	}
 
 	private refreshTestFramework(): void {

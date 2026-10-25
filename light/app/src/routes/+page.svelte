@@ -12,7 +12,6 @@
 	import Sanitizers from '../lib/components/Sanitizers.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
-	import { monaco } from '../lib/monaco';
 	import { projectLanguageOf } from '../lib/project';
 	import { TEST_FRAMEWORKS, type TestFramework } from '../lib/cpp-tests';
 	import { TARGETS, type CppTargetId } from '../lib/cpp-targets';
@@ -58,8 +57,8 @@
 		if (workspace.clientState.kind === 'running') setTimeout(() => void offline.refresh(), 2000);
 	});
 
-	const errors = $derived(workspace.problems.filter((p) => p.marker.severity === monaco.MarkerSeverity.Error).length);
-	const warnings = $derived(workspace.problems.filter((p) => p.marker.severity === monaco.MarkerSeverity.Warning).length);
+	const errors = $derived(workspace.problems.filter((p) => p.severity === 'error').length);
+	const warnings = $derived(workspace.problems.filter((p) => p.severity === 'warning').length);
 	const percent = $derived(workspace.progress && workspace.progress.total > 0 ? Math.min(100, (100 * workspace.progress.loaded) / workspace.progress.total) : null);
 	const language = $derived(languageOf(workspace.language));
 	/** A C++ project on a Linux target: Run options apply (to Run and Test). */
