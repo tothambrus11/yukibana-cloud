@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Pins
         id: pins
@@ -48,7 +48,10 @@ jobs:
         run: |
           pin() { sed -n "s/^$1=\([0-9a-f]*\)$/\1/p" build.sh; }
           rootfs=$(pin ROOTFS_RUN) tools=$(pin TOOLS_RUN)
-          [ -n "$rootfs" ] && [ -n "$tools" ] || { echo "build.sh pins no ROOTFS_RUN or TOOLS_RUN" >&2; exit 1; }
+          if [ -z "$rootfs" ] || [ -z "$tools" ]; then
+            echo "build.sh pins no ROOTFS_RUN or TOOLS_RUN" >&2
+            exit 1
+          fi
           {
             echo "rootfs-run=$rootfs"
             echo "rootfs-sums=$(pin SUMS_SHA256)"
@@ -118,7 +121,9 @@ jobs:
 
           build.sh checks each file against the sha256 it pins. The licences of everything in them are inside (LICENSE-*.txt).
           EOF
+          as_draft=()
+          if [ "$DRAFT" = true ]; then as_draft=(--draft); fi
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Haskell pack inputs (runs $ROOTFS_RUN, $TOOLS_RUN)" --notes-file notes.md \
-            $([ "$DRAFT" = true ] && echo --draft) \
+            "${as_draft[@]}" \
             haskell-ghc-rootfs.zip haskell-ghc-tools.zip

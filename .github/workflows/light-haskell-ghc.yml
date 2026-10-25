@@ -9,6 +9,7 @@ name: Haskell pack GHC root file system
 on:
   push:
     branches:
+      - main
       - yukibana-light
     paths:
       - light/packs/haskell/ghc/**
@@ -25,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Cache GHC's wasm toolchain and the package store
         uses: actions/cache@v5

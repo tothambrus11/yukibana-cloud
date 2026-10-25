@@ -70,7 +70,7 @@ jobs:
     outputs:
       complete: ${{ steps.pipeline.outputs.complete }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -123,7 +123,7 @@ jobs:
       # macros patches onto it with new mtimes, and rebuilt the compiler from scratch
       # (runs 25-28, two hours each).
       - name: Restore sources
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: light/toolchains/swift/src
           key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
@@ -136,7 +136,7 @@ jobs:
       # next run picks it up and continues.
       - name: Restore build trees
         id: build-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: light/toolchains/swift/build
           key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
@@ -168,7 +168,7 @@ jobs:
       # discard the compiled tree, or every retry pays the full rebuild again.
       - name: Save sources
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: light/toolchains/swift/src
           key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
@@ -176,7 +176,7 @@ jobs:
 
       - name: Save build trees
         if: always()
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: light/toolchains/swift/build
           key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
@@ -231,7 +231,7 @@ jobs:
           done
           ls -la out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: steps.pipeline.outputs.complete == 'true'
         with:
           name: swift-toolchain-wasm-${{ env.SWIFT_VERSION }}${{ env.SWIFT_MACROS != '1' && '-nomacros' || '' }}
@@ -289,6 +289,8 @@ jobs:
       - name: Report incomplete build
         if: steps.pipeline.outputs.complete != 'true'
         run: |
-          echo "### Build incomplete" >> "$GITHUB_STEP_SUMMARY"
-          echo "The stage budget was exhausted. Re-run this workflow; it resumes from the cached build trees." >> "$GITHUB_STEP_SUMMARY"
-          tail -50 build.log >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### Build incomplete"
+            echo "The stage budget was exhausted. Re-run this workflow; it resumes from the cached build trees."
+            tail -50 build.log
+          } >> "$GITHUB_STEP_SUMMARY"

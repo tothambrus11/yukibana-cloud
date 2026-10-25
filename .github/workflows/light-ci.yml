@@ -46,9 +46,9 @@ jobs:
       run:
         working-directory: light/app
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -74,14 +74,14 @@ jobs:
       run:
         working-directory: light
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Node 22: the runner's test report is Node 22's, and test-run.mjs
       # compares it line for line with this machine's `node --test` (Node 24
       # reports a failing todo differently). No npm cache from setup-node:
       # it asks npm at the repository root, whose package.json (the IDE)
       # refuses Node 22; the pack caches its own npm downloads below.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 

@@ -9,9 +9,33 @@
 # red check here rather than a surprise in production.
 name: CI
 
+# Pushes to main (which the Database workflow deploys after) and pull
+# requests: a branch with a pull request would otherwise run everything
+# twice, and a tag push runs nothing it needs. A newer push to a pull request
+# cancels the older run; on main every run finishes, because Database
+# deploys only after one that succeeded.
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      # Yukibana Light has its own workflows (light-*.yml).
+      - light/**
+      - .github/workflows/light-*.yml
+      - .github/actions/light-*/**
   pull_request:
+    paths-ignore:
+      # Yukibana Light has its own workflows (light-*.yml).
+      - light/**
+      - .github/workflows/light-*.yml
+      - .github/actions/light-*/**
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
   app:

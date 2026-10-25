@@ -9,6 +9,7 @@ name: Haskell pack formatter and linter
 on:
   push:
     branches:
+      - main
       - yukibana-light
     paths:
       - light/packs/haskell/ghc/build-tools.sh
@@ -24,7 +25,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Restored and saved apart, the store kept even when the build fails:
       # ghc-lib-parser is most of the build, and a failure after it is the

@@ -2,10 +2,48 @@
 # devcontainer.json fails a PR rather than a teammate's morning.
 name: CI (devcontainer)
 
+# Only when something the container is built from or runs at start changes:
+# the stack job of ci.yml runs the same smoke test on every change.
 on:
   push:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - package.json
+      - package-lock.json
+      - app/package.json
+      - app/package-lock.json
+      - cli/package.json
+      - cli/package-lock.json
+      - demo/electron/package.json
+      - demo/electron/package-lock.json
+      - scripts/**
+      - supabase/config.toml
+      - dev/**
+      - .github/workflows/ci-devcontainer.yml
   pull_request:
+    paths:
+      - .devcontainer/**
+      - package.json
+      - package-lock.json
+      - app/package.json
+      - app/package-lock.json
+      - cli/package.json
+      - cli/package-lock.json
+      - demo/electron/package.json
+      - demo/electron/package-lock.json
+      - scripts/**
+      - supabase/config.toml
+      - dev/**
+      - .github/workflows/ci-devcontainer.yml
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
 
 jobs:
   devcontainer:
