@@ -64,11 +64,20 @@ jobs:
       - name: Install the app's dependencies
         run: npm ci --no-audit --no-fund
 
+      # Each artifact in a directory of its own: pack-key-<pack> (what each
+      # pack was made from) matches pack-* too, and never goes in static/packs.
       - uses: actions/download-artifact@v7
         with:
           pattern: pack-*
-          merge-multiple: true
-          path: light/app/static/packs
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Put the packs in place
+        run: |
+          mkdir -p static/packs
+          for a in "$RUNNER_TEMP"/artifacts/pack-*/; do
+            case "$(basename "$a")" in pack-key-*) continue ;; esac
+            cp -a "$a." static/packs/
+          done
 
       - name: Packs
         run: |
