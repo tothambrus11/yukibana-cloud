@@ -288,19 +288,7 @@ export class Workspace {
 	chooseTarget(id: CppTargetId): void {
 		if (this.language !== 'cpp') return;
 		const target = targetById(id);
-		const model = this.models.get(COMPILE_FLAGS);
-		const before = model?.getValue();
-		const after = withTarget(before, id);
-		if (model && after !== before) {
-			model.pushStackElement();
-			model.pushEditOperations([], [{ range: model.getFullModelRange(), text: after }], () => null);
-			model.pushStackElement();
-		} else if (!model && after) {
-			this.addModel(COMPILE_FLAGS, after, true);
-			this.files = [...this.models.keys()].sort();
-			// A new model fires no content change, which is how an edit reaches the open views.
-			this.explorer?.edited();
-		}
+		this.replaceFile(COMPILE_FLAGS, withTarget(this.models.get(COMPILE_FLAGS)?.getValue(), id));
 		this.refreshTarget();
 		const how = target.default ? `no --target line in ${COMPILE_FLAGS}` : `--target=${target.triple} in ${COMPILE_FLAGS}`;
 		this.write('info', `Target: ${target.label} (${how}).${target.runtime === 'linux' ? ' Run compiles for Linux and runs the program under QEMU, and Test its GoogleTest tests (Catch2 and doctest run on WebAssembly only).' : ''}`);
@@ -316,19 +304,7 @@ export class Workspace {
 	 */
 	chooseSanitizers(choice: SanitizerChoice): void {
 		if (this.language !== 'cpp') return;
-		const model = this.models.get(COMPILE_FLAGS);
-		const before = model?.getValue();
-		const after = withSanitizers(before, choice);
-		if (model && after !== before) {
-			model.pushStackElement();
-			model.pushEditOperations([], [{ range: model.getFullModelRange(), text: after }], () => null);
-			model.pushStackElement();
-		} else if (!model && after) {
-			this.addModel(COMPILE_FLAGS, after, true);
-			this.files = [...this.models.keys()].sort();
-			// A new model fires no content change, which is how an edit reaches the open views.
-			this.explorer?.edited();
-		}
+		this.replaceFile(COMPILE_FLAGS, withSanitizers(this.models.get(COMPILE_FLAGS)?.getValue(), choice));
 		this.refreshTarget();
 		this.write('info', describeSanitizers(choice));
 		this.scheduleSave();
@@ -346,18 +322,7 @@ export class Workspace {
 		const level = levels?.find((l) => l.flag === flag);
 		if (!levels || !level) return;
 		if (this.language === 'cpp') {
-			const model = this.models.get(COMPILE_FLAGS);
-			const before = model?.getValue();
-			const after = withCppLevel(before, flag);
-			if (model && after !== before) {
-				model.pushStackElement();
-				model.pushEditOperations([], [{ range: model.getFullModelRange(), text: after }], () => null);
-				model.pushStackElement();
-			} else if (!model && after) {
-				this.addModel(COMPILE_FLAGS, after, true);
-				this.files = [...this.models.keys()].sort();
-				this.explorer?.edited();
-			}
+			this.replaceFile(COMPILE_FLAGS, withCppLevel(this.models.get(COMPILE_FLAGS)?.getValue(), flag));
 			const how = level.default ? `no -O line in ${COMPILE_FLAGS}: Run and the views add ${flag}` : `${flag} in ${COMPILE_FLAGS}`;
 			this.write('info', `Optimization: ${flag} (${how}).`);
 		} else {
@@ -410,16 +375,14 @@ export class Workspace {
 	/**
 	 * Switches a C++ project's tests to `framework` (cpp-tests.ts): the
 	 * sample's tests are rewritten for it, or a sample test file is added,
-	 * and the output panel says which.
+	 * and the output panel says which. Each rewritten file changes as one
+	 * edit of its own, which Undo in that file takes back without touching
+	 * what was typed before it. (It once skipped the undo stops, so Undo
+	 * merged the switch with the user's last typing and took both back.)
 	 */
 	chooseTestFramework(framework: TestFramework): void {
 		const change = chooseTestFramework(this.currentFiles(), framework, languageOf('cpp').sample);
-		for (const [path, text] of Object.entries(change.write)) {
-			const model = this.models.get(path);
-			if (model) model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
-			else this.addModel(path, text, true);
-		}
-		this.files = [...this.models.keys()].sort();
+		for (const [path, text] of Object.entries(change.write)) this.replaceFile(path, text);
 		if (change.show) this.host?.open(change.show);
 		this.write(change.mixed ? 'warning' : 'info', change.message);
 		this.scheduleSave();
@@ -581,6 +544,31 @@ export class Workspace {
 		this.refreshTestFramework();
 		this.refreshTarget();
 		this.refreshOptimization();
+	}
+
+	/**
+	 * Makes the file at `path` hold `text`, as a change the app makes on the
+	 * user's behalf: an open file is rewritten as one edit with an undo stop
+	 * before and after, so Undo takes back exactly this change and neither
+	 * the typing before it nor the typing after it; a missing file is
+	 * created. A file that already holds `text` is left alone (no empty undo
+	 * step), and a missing file is not created empty. The file list and the
+	 * open views follow; saving is the caller's.
+	 */
+	private replaceFile(path: string, text: string): void {
+		const model = this.models.get(path);
+		if (model) {
+			if (model.getValue() === text) return;
+			model.pushStackElement();
+			model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+			model.pushStackElement();
+		} else {
+			if (!text) return;
+			this.addModel(path, text, true);
+		}
+		this.files = [...this.models.keys()].sort();
+		// A new model fires no content change, which is how an edit reaches the open views.
+		this.explorer?.edited();
 	}
 
 	private addModel(path: string, text: string, created: boolean): void {
