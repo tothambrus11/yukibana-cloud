@@ -31,27 +31,29 @@
 # SHA-256, the runtimes' debug information stripped.
 #
 # Idempotent: skipped when $CACHE/sanitizers/.built holds the SHA-256 of
-# this script, the patch and src/sanitizer-rt/, and the archives exist.
+# this script, pins.sh, build-lib.sh, the patch and src/sanitizer-rt/, and
+# the archives exist.
 # Under a minute at -j3.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=pins.sh
+source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=build-lib.sh
+source "$HERE/build-lib.sh"
 OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
-WASI_SDK="$CACHE/wasi/wasi-sdk-30.0-x86_64-linux"
+WASI_SDK="$CACHE/wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux"
 EMSDK_LIB="$CACHE/emsdk/upstream/emscripten/system/lib"
 BIN="$CACHE/emsdk/upstream/bin"   # llvm-strip and llvm-ar handle every ELF arch
 W="$CACHE/sanitizers"
-ALPINE=https://dl-cdn.alpinelinux.org/alpine/v3.23/main
 LLVM_LIB=usr/lib/llvm21/lib/clang/21/lib
 
-step() { printf '\n== %s\n' "$*"; }
-die() { echo "build-sanitizers.sh: $*" >&2; exit 1; }
 [ -x "$WASI_SDK/bin/clang" ] || die "no wasi-sdk in $WASI_SDK (build-cxx-runtime.sh fetches it)"
 [ -f "$EMSDK_LIB/compiler-rt/lib/asan/asan_emscripten.cpp" ] || die "no emsdk in $CACHE/emsdk (build.sh installs it)"
 
-stamp=$(cat "$HERE/build-sanitizers.sh" "$HERE/patches/compiler-rt-wasi.patch" "$HERE"/src/sanitizer-rt/*.c \
+stamp=$(cat "$HERE/build-sanitizers.sh" "$HERE/pins.sh" "$HERE/build-lib.sh" "$HERE/patches/compiler-rt-wasi.patch" "$HERE"/src/sanitizer-rt/*.c \
   "$HERE"/src/sanitizer-rt/include/*.h "$HERE"/src/sanitizer-rt/include/emscripten/*.h | sha256sum | cut -d' ' -f1)
 outputs=("$OUT/asan.tar" "$OUT/ubsan.tar")
 for arch in x86_64 aarch64 riscv64; do outputs+=("$OUT/targets/$arch/asan.tar" "$OUT/targets/$arch/ubsan.tar"); done
@@ -62,13 +64,6 @@ if [ -n "$built" ] && [ "$(cat "$W/.built" 2>/dev/null)" = "$stamp" ]; then
   exit 0
 fi
 mkdir -p "$W/dl" "$OUT/targets"
-
-# A file is written beside its target and renamed over it: the app's build
-# may hold a hard link to the old one, which must not change under it.
-tarball() { # dir out (the dir holds usr/)
-  tar --format=ustar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -C "$1" -c usr > "$2.part"
-  mv "$2.part" "$2"
-}
 
 step "compiler-rt for wasm32-wasip1"
 rm -rf "$W/rt" "$W/obj" "$W/stage"
@@ -130,46 +125,22 @@ tarball stage-ub "$OUT/ubsan.tar"
 rm -rf rt obj stage stage-ub
 
 step "Alpine's sanitizer runtimes for the Linux targets"
-# arch package sha256: compiler-rt as build-targets.sh pins it, and musl
-# for its dynamic loader (libc.so and ld-musl-<arch>.so.1 are one file).
-PINS="
-x86_64 compiler-rt-21.1.2-r0 1c2f55bf9d4c6d1dc3a95d67be09114a08f4befcaee06444b563ef0e3571285b
-x86_64 musl-1.2.5-r24 d49d703392f1a6d2fe822db1b57e61735063077e1ad846d5f40d79fe507ec727
-aarch64 compiler-rt-21.1.2-r0 c8dc9a9e98a23a30f4b5c89f44b7978e1d45db637742824304e0031aca12b200
-aarch64 musl-1.2.5-r24 d7043c549029c98d438e9bc94213b006e5c88540eb58d1f5b0f0d1d56dbf9c98
-riscv64 compiler-rt-21.1.2-r0 57934443df08a24a1b67870ba38233395e0169b7992b0769c2a2e97bdf3dcb41
-riscv64 musl-1.2.5-r24 d2b9760fca0bf386f0eee1b7e68ad55c2497a2c2b12fdc34496956ef81404a83
-"
-multiarch() { node -e 'const t = require(process.argv[1]).find((t) => t.arch === process.argv[2]); if (!t) process.exit(1); console.log(t.multiarch)' "$HERE/src/targets.json" "$1"; }
-fetch() { # arch package sha256 -> path; build-targets.sh's, with its cache
-  local file="$CACHE/targets/dl/$1/$2.apk" from
-  mkdir -p "$CACHE/targets/dl/$1"
-  if [ ! -f "$file" ] || ! echo "$3  $file" | sha256sum -c --quiet - 2>/dev/null; then
-    for from in ${ALPINE_MIRROR:+"$ALPINE_MIRROR"} "$ALPINE"; do
-      rm -f "$file.part"
-      case $from in
-        http://*|https://*) curl -sSfL -o "$file.part" "$from/$1/$2.apk" || continue ;;
-        *) cp "$from/$1/$2.apk" "$file.part" 2>/dev/null || continue ;;
-      esac
-      echo "$3  $file.part" | sha256sum -c --quiet - 2>/dev/null && break
-      echo "build-sanitizers.sh: checksum mismatch for $from/$1/$2.apk" >&2
-      rm -f "$file.part"
-    done
-    [ -f "$file.part" ] || die "no copy of $1/$2.apk with sha256 $3 (ALPINE_MIRROR=${ALPINE_MIRROR:-unset}, $ALPINE)"
-    mv "$file.part" "$file"
-  fi
-  echo "$file"
-}
+# compiler-rt, the package build-targets.sh takes the builtins from, and musl
+# for its dynamic loader (libc.so and ld-musl-<arch>.so.1 are one file),
+# pinned in pins.sh.
 for arch in x86_64 aarch64 riscv64; do
-  ma=$(multiarch "$arch") || die "no target with arch $arch in src/targets.json"
+  ma=$(multiarch "$arch")
   x="$W/x/$arch"
   rm -rf "$x" && mkdir -p "$x"
-  while read -r a pkg sha; do
-    [ "$a" = "$arch" ] || continue
-    mkdir -p "$x/${pkg%%-[0-9]*}"
-    tar xzf "$(fetch "$a" "$pkg" "$sha")" -C "$x/${pkg%%-[0-9]*}" --warning=no-unknown-keyword 2>/dev/null
-  done <<< "$PINS"
-  grep -q '^pkgver = 1\.2\.5-' "$x/musl/.PKGINFO" || die "$arch: musl is not musl 1.2.5"
+  for name in compiler-rt musl; do
+    pin=$(apk_pin "$name" "$arch")
+    read -r pkg sha <<< "$pin"
+    apk=$(fetch_apk "$arch" "$pkg" "$sha")
+    mkdir -p "$x/$name"
+    tar xzf "$apk" -C "$x/$name" --warning=no-unknown-keyword 2>/dev/null
+  done
+  # The same musl release as sysroot.tar.gz's headers.
+  grep -qF "pkgver = $MUSL_VERSION-" "$x/musl/.PKGINFO" || die "$arch: musl is not musl $MUSL_VERSION"
   from="$x/compiler-rt/$LLVM_LIB/$arch-alpine-linux-musl"
   asan="$x/asan/usr/lib/clang/21/lib/linux" ubsan="$x/ubsan/usr/lib/clang/21/lib/linux"
   mkdir -p "$asan" "$ubsan" "$x/asan/usr/lib/$ma"

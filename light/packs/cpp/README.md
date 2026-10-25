@@ -260,6 +260,15 @@ runs at `-Oz`; cmake is re-run every time, so a changed flag is not
 shadowed by an old cache), installs the libc++ headers configured for musl, packs the
 sysroot, minifies `server.js` with esbuild and writes `.gz`/`.br` siblings.
 
+Every pinned input of every build script (versions, commits, SHA-256s, the
+Alpine packages per arch) is in **`pins.sh`**, and what the scripts share
+(`step`, `fetch`, `die`, `tarball`, the Alpine fetcher, and the cmake
+arguments `cc.wasm` and `cc-cross.wasm` have in common) is in
+**`build-lib.sh`**; each script sources both. A version bump is one line in
+`pins.sh`. The VM's pins stay in `vm/pins.txt`. `PRINT_STAMP=1
+./build-runner.sh` (or `./build-cross.sh`) prints a compiler's stamp without
+building, so a change to the scripts can be checked to leave it alone.
+
 Time on this machine (4 cores shared with other builds, `-j3`, `nice`):
 native table generators about 12 minutes, clangd for wasm (2267 steps)
 about 55 minutes, the rest a minute; plus downloads (LLVM source 152 MB,
@@ -910,8 +919,8 @@ headers.
 `build-demangle.sh` before `build-runner.sh` (whose `pack-runner.sh` copies
 both compilers and bundles the three workers). `pack-runner.sh` also runs
 `build-test-frameworks-linux.sh`, which compiles GoogleTest 1.18.0 and
-RapidCheck (the same pinned sources as the WebAssembly libraries; the pins
-are read from `build-cxx-runtime.sh` and `build-test-frameworks.sh`) for
+RapidCheck (the same pinned sources as the WebAssembly libraries, from
+`pins.sh`) for
 each Linux target with **`cc-cross.wasm` itself**, in Node
 (`build-test-libs-linux.mjs`, through `toolchain.js` as the runner drives
 it, with Run's flags), archives them with wasi-sdk's `llvm-ar`, and writes

@@ -1,0 +1,19 @@
+# ShellCheck's settings for the VM's build scripts (shellcheck -x -S style
+# light/packs/cpp/vm/*.sh, from any directory).
+#
+# `source pins.txt` is found next to the script, not in the directory
+# shellcheck runs from.
+source-path=SCRIPTDIR
+
+# Each vm/build-*.sh hashes its own text into its stamp (qemu-system.stamp,
+# strace-<arch>.stamp, ...), so editing one only to quiet ShellCheck rebuilds
+# QEMU or strace for nothing. The findings below are in build-qemu.sh and
+# build-strace.sh and are what the scripts mean:
+#   SC2016  printf writes `$PATH` literally into env.sh, to expand when sourced
+#   SC2030, SC2031  the dependencies' CFLAGS/LDFLAGS/PKG_CONFIG_* are exported
+#           in a subshell on purpose, and QEMU's own are set after it
+#   SC2086, SC2116  `emcc $CFLAGS` and `$(echo $LDFLAGS)` split the flags into
+#           words, and fold LDFLAGS' newlines into spaces, on purpose
+#           (--host=$a-linux-musl: a is one of three arch names)
+# Fix them, and drop the line here, in a change that rebuilds those steps anyway.
+disable=SC2016,SC2030,SC2031,SC2086,SC2116

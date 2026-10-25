@@ -34,10 +34,15 @@
 #   JOBS=3 ./build-vm.sh
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The VM's own pins are vm/pins.txt, which vm/build-*.sh source; pins.sh is
+# sourced for the pack's (none of them used here yet) and build-lib.sh for step.
+# shellcheck source-path=SCRIPTDIR source=pins.sh
+source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=build-lib.sh
+source "$HERE/build-lib.sh"
 export PACK_CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}
 export QC=$PACK_CACHE/qemu-wasm ART=$PACK_CACHE/cpp/vm-artifacts JOBS=${JOBS:-3}
 mkdir -p "$QC" "$ART"
-step() { printf '\n== %s\n' "$*"; }
 timed() { local t=$SECONDS; "$@"; echo "($(basename "$1") ${*:2}: $((SECONDS - t)) s)"; }
 
 step "QEMU system emulation"

@@ -27,17 +27,15 @@
 # the standardised form of WebAssembly exception handling (exnref, try_table),
 # not the legacy one (try/catch/delegate), which browsers are phasing out.
 #
-# Idempotent: skipped when $CACHE/eh/.built holds the SHA-256 of this script
-# and src/uncaught.cpp. About 4 minutes at -j3.
+# Idempotent: skipped when $CACHE/eh/.built holds the SHA-256 of this script,
+# pins.sh, build-lib.sh and src/uncaught.cpp. About 4 minutes at -j3.
 set -euo pipefail
 
-LLVM_VERSION=21.1.8
-WASI_SDK_VERSION=30
-WASI_SDK_SHA256=0507679dff16814b74516cd969a9b16d2ced1347388024bc7966264648c78bfb
-GTEST_VERSION=1.18.0
-GTEST_SHA256=6e3191c1455468b3fc35a417fb565c1c5071aee1b7e7f85e30cf48a98d37d8b5
-
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=pins.sh
+source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=build-lib.sh
+source "$HERE/build-lib.sh"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
@@ -46,16 +44,7 @@ EH="$CACHE/eh"
 mkdir -p "$CACHE/wasi"
 cd "$CACHE"
 
-step() { printf '\n== %s\n' "$*"; }
-fetch() { # url sha256 file
-  if [ ! -f "$3" ] || ! echo "$2  $3" | sha256sum -c --quiet - 2>/dev/null; then
-    curl -sSfL -o "$3.part" "$1"
-    echo "$2  $3.part" | sha256sum -c --quiet - || { echo "checksum mismatch for $1" >&2; exit 1; }
-    mv "$3.part" "$3"
-  fi
-}
-
-stamp=$(cat "$HERE/build-cxx-runtime.sh" "$HERE/src/uncaught.cpp" | sha256sum | cut -d' ' -f1)
+stamp=$(cat "$HERE/build-cxx-runtime.sh" "$HERE/pins.sh" "$HERE/build-lib.sh" "$HERE/src/uncaught.cpp" | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$EH/.built" 2>/dev/null)" = "$stamp" ]; then
   echo "C++ runtime with exceptions and GoogleTest: cached in $EH"
   exit 0
@@ -64,7 +53,7 @@ fi
 step "wasi-sdk $WASI_SDK_VERSION toolchain (native clang for wasm32)"
 WSDK="$CACHE/wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux"
 fetch "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$WASI_SDK_VERSION/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz" \
-  $WASI_SDK_SHA256 "wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz"
+  "$WASI_SDK_SHA256" "wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz"
 [ -x "$WSDK/bin/clang" ] || tar xzf "wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz" -C wasi
 
 step "sources: libunwind (LLVM $LLVM_VERSION), GoogleTest $GTEST_VERSION"
@@ -73,11 +62,13 @@ step "sources: libunwind (LLVM $LLVM_VERSION), GoogleTest $GTEST_VERSION"
 [ -f "$SRC/libunwind/src/Unwind-wasm.c" ] || \
   tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" "llvm-project-$LLVM_VERSION.src/libunwind"
 fetch "https://github.com/google/googletest/releases/download/v$GTEST_VERSION/googletest-$GTEST_VERSION.tar.gz" \
-  $GTEST_SHA256 "googletest-$GTEST_VERSION.tar.gz"
+  "$GTEST_SHA256" "googletest-$GTEST_VERSION.tar.gz"
 rm -rf "googletest-$GTEST_VERSION" && tar xzf "googletest-$GTEST_VERSION.tar.gz"
 
-EHFLAGS="-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false"
-TARGET="--target=wasm32-wasip1 --sysroot=$WSDK/share/wasi-sysroot"
+# As words for a compiler called directly, and as one string for cmake.
+eh=(-fwasm-exceptions -mllvm -wasm-use-legacy-eh=false)
+EHFLAGS="${eh[*]}"
+target=(--target=wasm32-wasip1 "--sysroot=$WSDK/share/wasi-sysroot")
 CC="$WSDK/bin/clang"
 rm -rf "$EH" build-eh build-gtest && mkdir -p "$EH/lib" "$EH/include"
 
@@ -111,9 +102,8 @@ $NICE cmake -S "$SRC/runtimes" -B build-eh -G Ninja \
 $NICE ninja -C build-eh -j"$JOBS" cxx_static cxxabi_static cxx_experimental --quiet
 if ! diff -q build-eh/include/c++/v1/__config_site \
     "$WSDK/share/wasi-sysroot/include/wasm32-wasip1/c++/v1/__config_site" >/dev/null; then
-  echo "the exception-enabled libc++'s __config_site differs from wasi-sdk's:" >&2
   diff build-eh/include/c++/v1/__config_site "$WSDK/share/wasi-sysroot/include/wasm32-wasip1/c++/v1/__config_site" >&2
-  exit 1
+  die "the exception-enabled libc++'s __config_site differs from wasi-sdk's (above)"
 fi
 for lib in libc++.a libc++abi.a libc++experimental.a; do
   "$WSDK/bin/llvm-strip" --strip-debug -o "$EH/lib/$lib" "build-eh/lib/$lib"
@@ -124,11 +114,11 @@ step "libunwind (Unwind-wasm.c) and yukibana-uncaught.o"
 # with wasm exception handling the engine unwinds, and this file is all
 # libc++abi needs.
 mkdir -p build-eh/unwind
-$NICE "$CC" $TARGET $EHFLAGS -O2 -DNDEBUG -I"$SRC/libunwind/include" -I"$SRC/libunwind/src" \
+$NICE "$CC" "${target[@]}" "${eh[@]}" -O2 -DNDEBUG -I"$SRC/libunwind/include" -I"$SRC/libunwind/src" \
   -D_LIBUNWIND_IS_NATIVE_ONLY -D_LIBUNWIND_HIDE_SYMBOLS -c "$SRC/libunwind/src/Unwind-wasm.c" -o build-eh/unwind/Unwind-wasm.o
 rm -f "$EH/lib/libunwind.a"
 "$WSDK/bin/llvm-ar" rcs "$EH/lib/libunwind.a" build-eh/unwind/Unwind-wasm.o
-$NICE "$WSDK/bin/clang++" $TARGET $EHFLAGS -O2 -c "$HERE/src/uncaught.cpp" -o "$EH/lib/yukibana-uncaught.o"
+$NICE "$WSDK/bin/clang++" "${target[@]}" "${eh[@]}" -O2 -c "$HERE/src/uncaught.cpp" -o "$EH/lib/yukibana-uncaught.o"
 
 step "GoogleTest $GTEST_VERSION"
 # Without pthreads (wasm32-wasip1 has none) and without gMock. libc++'s fast

@@ -12,8 +12,11 @@
 # warnings. Takes under a minute.
 set -euo pipefail
 
-LLVM_VERSION=21.1.8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=pins.sh
+source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=build-lib.sh
+source "$HERE/build-lib.sh"
 OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 SRC="$CACHE/llvm-project-$LLVM_VERSION.src"

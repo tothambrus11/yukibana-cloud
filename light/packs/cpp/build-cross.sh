@@ -22,7 +22,8 @@
 # The artifact is kept in $CACHE/artifacts/cc-cross with a STAMP (the
 # SHA-256 of the LLVM and Emscripten versions, the cmake arguments and the
 # patch), as build-runner.sh keeps cc's; the LLVM step is skipped while it
-# matches. pack-runner.sh copies it to cc-cross.{js,wasm}.
+# matches, and PRINT_STAMP=1 prints it without building. pack-runner.sh
+# copies it to cc-cross.{js,wasm}.
 #
 # CROSS_BUILD_DIR picks the build tree (default $CACHE/build-wasm-cross, a
 # fresh tree: about 2500 steps, as long as build-runner.sh's first build).
@@ -32,9 +33,11 @@
 # every file includes (README, "Targets", Build).
 set -euo pipefail
 
-LLVM_VERSION=21.1.8
-
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=pins.sh
+source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=build-lib.sh
+source "$HERE/build-lib.sh"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
@@ -43,8 +46,6 @@ B="${CROSS_BUILD_DIR:-$CACHE/build-wasm-cross}"
 LLD="$CACHE/lld-elf-$LLVM_VERSION"
 ART="$CACHE/artifacts/cc-cross"
 cd "$CACHE"
-
-step() { printf '\n== %s\n' "$*"; }
 
 step "lld sources (ELF only)"
 # LLVM's CMake refuses LLVM_ENABLE_PROJECTS=lld unless llvm/../lld exists,
@@ -72,31 +73,16 @@ fi
 step "clang + ld.lld for x86-64, AArch64 and RISC-V 64 Linux"
 # shellcheck disable=SC1091
 source emsdk/emsdk_env.sh >/dev/null 2>&1
-# As build-runner.sh's, with node in ENVIRONMENT: test-targets.mjs drives the
-# compiler in Node. The glue grows by its Node branch (README, sizes).
-ldflags="-sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createCC -sENVIRONMENT=worker,node \
-  -sINVOKE_RUN=0 -sEXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=FS,callMain \
-  -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB"
-cmake_args=(-G Ninja
-  -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_EXE_LINKER_FLAGS="$ldflags"
-  -DCMAKE_EXE_LINKER_FLAGS_MINSIZEREL="-Oz"
-  -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_TARGETS_TO_BUILD="X86;AArch64;RISCV"
-  -DLLVM_EXTERNAL_LLD_SOURCE_DIR="$LLD/lld"
-  -DLLVM_TOOL_LLVM_DRIVER_BUILD=ON -DLLVM_DISTRIBUTION_COMPONENTS="clang;lld"
-  -DLLVM_HOST_TRIPLE=wasm32-unknown-emscripten -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-linux-musl
-  -DCLANG_DEFAULT_CXX_STDLIB=libc++ -DCLANG_DEFAULT_RTLIB=compiler-rt -DCLANG_DEFAULT_UNWINDLIB=libunwind
-  -DCLANG_DEFAULT_LINKER=lld
-  -DLLVM_NATIVE_TOOL_DIR="$CACHE/build-native/bin"
-  -DLLVM_TABLEGEN="$CACHE/build-native/bin/llvm-tblgen" -DCLANG_TABLEGEN="$CACHE/build-native/bin/clang-tblgen"
-  -DLLVM_ENABLE_THREADS=OFF -DLLVM_ENABLE_PIC=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF
-  -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_LIBPFM=OFF -DLLVM_ENABLE_CURL=OFF
-  -DLLVM_ENABLE_BACKTRACES=OFF -DLLVM_ENABLE_CRASH_OVERRIDES=OFF -DLLVM_ENABLE_UNWIND_TABLES=OFF
-  -DLLVM_ENABLE_PLUGINS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF
-  -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_UTILS=OFF -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_DOCS=OFF
-  -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_OBJC_REWRITER=OFF -DCLANG_PLUGIN_SUPPORT=OFF
-  -DCLANG_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_DOCS=OFF)
+# As build-runner.sh's (build-lib.sh's llvm_wasm_common_args), with node in
+# ENVIRONMENT: test-targets.mjs drives the compiler in Node. The glue grows by
+# its Node branch (README, sizes).
+cmake_args=()
+llvm_wasm_common_args cmake_args worker,node "X86;AArch64;RISCV" "$LLD/lld" x86_64-linux-musl libunwind
 stamp=$({ echo "llvm $LLVM_VERSION"; emcc --version | head -1; printf '%s\n' "${cmake_args[@]}";
           cat "$HERE/patches/elf-ld-only.patch"; } | sha256sum | cut -d' ' -f1)
+# PRINT_STAMP=1 prints the stamp and builds nothing, as build-runner.sh does:
+# a change to the scripts can be checked to leave the compiler's stamp alone.
+if [ "${PRINT_STAMP:-}" = 1 ]; then echo "$stamp"; exit 0; fi
 if [ "$(cat "$ART/STAMP" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/llvm.wasm" ] && [ -f "$ART/llvm.js" ]; then
   echo "cc-cross.wasm is up to date (artifacts/cc-cross/STAMP $stamp)"
   exit 0

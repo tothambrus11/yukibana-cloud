@@ -40,22 +40,11 @@
 #   JOBS=3 ./build.sh
 set -euo pipefail
 
-LLVM_VERSION=21.1.8
-LLVM_SHA256=4633a23617fa31a3ea51242586ea7fb1da7140e426bd62fc164261fe036aa142
-MUSL_VERSION=1.2.5
-MUSL_SHA256=a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4
-EMSDK_VERSION=4.0.22
-# The emsdk tag's commit, and the two archives `emsdk install` fetches for it
-# (the toolchain, named by the release revision in that commit's
-# emscripten-releases-tags.json, and node). emsdk checks no checksums itself
-# so they are fetched and checked here and handed to it as kept downloads.
-EMSDK_COMMIT=15915cad554b707837024dc2758b6a1c5b94b036
-EMSDK_RELEASE=bebaf7e50e31865b0724f17eaa52e161e2dfef5a
-EMSDK_BINARIES_SHA256=81219e78defb2f46d12a67a2fa6d128344d850f1e4375b173a324036236b40ef
-EMSDK_NODE=node-v22.16.0-linux-x64.tar.xz
-EMSDK_NODE_SHA256=f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
-
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source-path=SCRIPTDIR source=pins.sh
+source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=build-lib.sh
+source "$HERE/build-lib.sh"
 OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
@@ -64,19 +53,10 @@ SRC="$CACHE/llvm-project-$LLVM_VERSION.src"
 mkdir -p "$CACHE" "$OUT"
 cd "$CACHE"
 
-step() { printf '\n== %s\n' "$*"; }
-fetch() { # url sha256 file
-  if [ ! -f "$3" ] || ! echo "$2  $3" | sha256sum -c --quiet - 2>/dev/null; then
-    curl -sSfL -o "$3.part" "$1"
-    echo "$2  $3.part" | sha256sum -c --quiet - || { echo "checksum mismatch for $1" >&2; exit 1; }
-    mv "$3.part" "$3"
-  fi
-}
-
 step "sources"
 fetch "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/llvm-project-$LLVM_VERSION.src.tar.xz" \
-  $LLVM_SHA256 "llvm-project-$LLVM_VERSION.src.tar.xz"
-fetch "https://musl.libc.org/releases/musl-$MUSL_VERSION.tar.gz" $MUSL_SHA256 "musl-$MUSL_VERSION.tar.gz"
+  "$LLVM_SHA256" "llvm-project-$LLVM_VERSION.src.tar.xz"
+fetch "https://musl.libc.org/releases/musl-$MUSL_VERSION.tar.gz" "$MUSL_SHA256" "musl-$MUSL_VERSION.tar.gz"
 # .patched holds the SHA-256 of the patch the tree was made with: a changed
 # patch means a fresh tree (ninja then rebuilds only what the patch touches,
 # as tar keeps the release's timestamps).
@@ -85,7 +65,7 @@ if [ "$(cat "$SRC/.patched" 2>/dev/null)" != "$patch_sha" ]; then
   rm -rf "$SRC"
   # Only the parts clangd and the libc++ headers are made of (1.9 of 2.4 GB).
   tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" \
-    llvm-project-$LLVM_VERSION.src/{llvm,clang,clang-tools-extra,cmake,third-party,libcxx,libcxxabi,libc,runtimes}
+    "llvm-project-$LLVM_VERSION.src"/{llvm,clang,clang-tools-extra,cmake,third-party,libcxx,libcxxabi,libc,runtimes}
   # Input from the embedding Worker, and config files never cached; see the patch.
   patch -d "$SRC" -p1 < "$HERE/patches/clangd-browser.patch"
   echo "$patch_sha" > "$SRC/.patched"
@@ -93,14 +73,14 @@ fi
 [ -d "musl-$MUSL_VERSION" ] || tar xzf "musl-$MUSL_VERSION.tar.gz"
 if [ ! -x emsdk/upstream/emscripten/emcc ] || [ "$(git -C emsdk rev-parse HEAD 2>/dev/null)" != "$EMSDK_COMMIT" ]; then
   rm -rf emsdk
-  git clone --quiet --depth 1 --branch $EMSDK_VERSION https://github.com/emscripten-core/emsdk
-  [ "$(git -C emsdk rev-parse HEAD)" = "$EMSDK_COMMIT" ] || { echo "emsdk $EMSDK_VERSION is not commit $EMSDK_COMMIT" >&2; exit 1; }
+  git clone --quiet --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk
+  [ "$(git -C emsdk rev-parse HEAD)" = "$EMSDK_COMMIT" ] || die "emsdk $EMSDK_VERSION is not commit $EMSDK_COMMIT"
   mkdir -p emsdk/downloads
   fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/$EMSDK_RELEASE/wasm-binaries.tar.xz" \
-    $EMSDK_BINARIES_SHA256 "emsdk/downloads/$EMSDK_RELEASE-wasm-binaries.tar.xz"
+    "$EMSDK_BINARIES_SHA256" "emsdk/downloads/$EMSDK_RELEASE-wasm-binaries.tar.xz"
   fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/$EMSDK_NODE" \
-    $EMSDK_NODE_SHA256 "emsdk/downloads/$EMSDK_NODE"
-  (cd emsdk && EMSDK_KEEP_DOWNLOADS=1 ./emsdk install $EMSDK_VERSION >/dev/null && ./emsdk activate $EMSDK_VERSION >/dev/null)
+    "$EMSDK_NODE_SHA256" "emsdk/downloads/$EMSDK_NODE"
+  (cd emsdk && EMSDK_KEEP_DOWNLOADS=1 ./emsdk install "$EMSDK_VERSION" >/dev/null && ./emsdk activate "$EMSDK_VERSION" >/dev/null)
   rm -rf emsdk/downloads
 fi
 # Emscripten's proxying: a synchronous proxied call is signalled before its
@@ -211,8 +191,7 @@ hdr="$SRC/clang/lib/Headers"
 cp "$hdr"/{float.h,inttypes.h,iso646.h,limits.h,stdalign.h,stdarg.h,stdatomic.h,stdbool.h,stdckdint.h} \
   "$hdr"/{stdcountof.h,stddef.h,stdint.h,stdnoreturn.h,tgmath.h,varargs.h,unwind.h} \
   "$hdr"/__stdarg_*.h "$hdr"/__stddef_*.h "$stage/usr/lib/clang/21/include/"
-tar --format=ustar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -C "$stage" -c usr \
-  | gzip -9n > "$OUT/sysroot.tar.gz"
+reproducible_tar -C "$stage" -c usr | gzip -9n > "$OUT/sysroot.tar.gz"
 
 step "pack"
 cp build-wasm/bin/clangd.wasm "$OUT/clangd.wasm"
