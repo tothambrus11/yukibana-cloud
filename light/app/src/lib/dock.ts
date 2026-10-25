@@ -537,11 +537,18 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	 * the Explorer's width and the terminal's width (wide) or height, the
 	 * views 40% of the editors' row, and the editors at least
 	 * EDITOR_MIN_WIDTH beside them.
+	 *
+	 * With `keep` (a `snapshot`), the Explorer and the terminal keep the sizes
+	 * it holds, which are the ones the person dragged them to, and only the
+	 * editors and the views beside them are shared out. Opening a view does
+	 * that: it once reset both to the mode's defaults, and the layout someone
+	 * had set was lost every time they looked at the assembly.
 	 */
-	const applySizes = () => {
+	const applySizes = (keep?: ReturnType<typeof snapshot>) => {
 		const width = element.clientWidth;
 		const height = element.clientHeight;
-		const size = sizesFor(mode, width, height, innerHeight < 30 * 16);
+		const defaults = sizesFor(mode, width, height, innerHeight < 30 * 16);
+		const size = { explorer: keep?.explorer ?? defaults.explorer, terminal: keep?.terminal ?? defaults.terminal };
 		const explorer = panel('explorer');
 		const terminal = panel('terminal');
 		const area = live(editorArea);
@@ -730,7 +737,16 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			editors.delete(removed.id);
 			tabs.delete(removed.id);
 			const view = viewOfPanel(removed.id);
-			if (view) workspace.explorer?.closed(view);
+			if (view) {
+				workspace.explorer?.closed(view);
+				// The view's group goes once this returns, and dockview shares its room out among the whole row, the Explorer and the
+				// terminal's column too (on a wide screen they grew from 240 and 520 px to 640 each). They are given back the sizes
+				// they have now, so the editors take the room, as opening a view keeps them (showView).
+				if (mode !== 'narrow' && !arranging) {
+					const before = snapshot();
+					queueMicrotask(() => applySizes(before));
+				}
+			}
 			report();
 		}),
 		dock.onDidMovePanel(() => {
@@ -862,10 +878,13 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 				reveal(existing);
 				return;
 			}
+			// The Explorer's and the terminal's sizes before the new group takes its share of them.
+			const before = snapshot();
 			// Beside the editors, so code and its output are seen together (a tab of the bottom group on a phone); the second view is a tab of the first.
 			const { placed } = addPlaced('view', { id: view.id, component: view.component, title: view.title });
-			// A new group beside the editors: dockview shares the row out evenly, so every group is given its mode's size again (the views 40% of the editors' row).
-			if (mode !== 'narrow' && 'reference' in placed && placed.reference === 'editor-area') applySizes();
+			// A new group beside the editors: dockview shares the row out evenly, taking from the Explorer (and the terminal's column on a
+			// big screen) too, so those are given back the sizes they had and the editors' row is split 60/40 with the views.
+			if (mode !== 'narrow' && 'reference' in placed && placed.reference === 'editor-area') applySizes(before);
 		},
 		hideViews(): void {
 			for (const kind of VIEW_KINDS) panel(VIEWS[kind].id)?.api.close();
