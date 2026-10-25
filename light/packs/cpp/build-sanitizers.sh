@@ -91,6 +91,9 @@ rm -rf "$K" "$W/.built"
 mkdir -p "$K/targets"
 
 step "compiler-rt for wasm32-wasip1"
+# A cache saved by a build that failed before the chmod below holds a
+# read-only copy, which rm cannot empty.
+if [ -d "$W/rt" ]; then chmod -R u+w "$W/rt"; fi
 rm -rf "$W/rt" "$W/obj" "$W/stage"
 mkdir -p "$W/rt/lib" "$W/obj"
 for d in sanitizer_common asan ubsan ubsan_minimal lsan interception; do cp -r "$EMSDK_LIB/compiler-rt/lib/$d" "$W/rt/lib/"; done
