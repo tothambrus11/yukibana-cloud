@@ -5,7 +5,7 @@
   first call, and a row with several calls lists them to go to each.
 -->
 <script lang="ts">
-	import { ROOT_URI } from '../project';
+	import { WORKSPACE } from '../project';
 	import { callsLabel, iconOf, placeOf, type CallSite } from '../lsp/call-hierarchy';
 	import type { CallNode } from '../call-hierarchy.svelte';
 	import type { Workspace } from '../workspace.svelte';
@@ -40,7 +40,7 @@
 				<span class="codicon codicon-{iconOf(node.row.item.kind)} kind"></span>
 				<span class="name">{node.row.item.name}</span>
 				{#if node.row.item.detail}<span class="detail">{node.row.item.detail}</span>{/if}
-				<span class="where">{placeOf(node.row.item, ROOT_URI)}{depth > 0 ? ` · ${callsLabel(node.row.sites.length)}` : ''}{node.row.recursive ? ' · recursive' : ''}</span>
+				<span class="where">{placeOf(node.row.item, WORKSPACE.uri)}{depth > 0 ? ` · ${callsLabel(node.row.sites.length)}` : ''}{node.row.recursive ? ' · recursive' : ''}</span>
 			</button>
 		</div>
 		{#if depth > 0 && node.row.sites.length > 1}

@@ -26,7 +26,9 @@
  * reloads the iframe. This is live reload, not module hot replacement.
  */
 import { isFromPage, readFromRunner, type Page, type PreviewMessage, type ToPage } from '@yukibana/protocol';
+import type { PackId } from '@yukibana/runtime';
 import type { Files } from './languages';
+import { appPacks } from './packs';
 
 const RELOAD_DELAY_MS = 300;
 /**
@@ -50,7 +52,7 @@ export class Preview {
 	private frame: HTMLIFrameElement | null = null;
 	private placeholder: HTMLElement | null = null;
 	private worker: Worker | null = null;
-	private pack = '';
+	private pack: PackId | null = null;
 	private entry = '';
 	private files: () => Files = () => ({});
 	/** The id of the latest request; older answers are dropped. */
@@ -132,7 +134,7 @@ export class Preview {
 	 * Shows the page `entry` of the project, built with the runner of the
 	 * pack `pack`; `files` gives the project as it is now, at each rebuild.
 	 */
-	start(pack: string, entry: string, files: () => Files): void {
+	start(pack: PackId, entry: string, files: () => Files): void {
 		if (pack !== this.pack) this.stop();
 		this.pack = pack;
 		this.entry = entry;
@@ -176,8 +178,13 @@ export class Preview {
 	}
 
 	private build(): void {
+		// Only start() schedules a build, after setting the pack; said rather than skipped, should that change.
+		if (this.pack === null) {
+			this.output.print('stderr', 'The preview has no pack to build it with: start() was never called.\n');
+			return;
+		}
+		const url = appPacks().url(this.pack, 'runner.js');
 		if (!this.worker) {
-			const url = new URL(`packs/${this.pack}/runner.js`, document.baseURI);
 			const worker = new Worker(url, { type: 'module' });
 			worker.onmessage = (e: MessageEvent<unknown>) => {
 				if (this.worker !== worker) return;
@@ -193,7 +200,7 @@ export class Preview {
 				e.preventDefault();
 				clearTimeout(this.watchdog);
 				this.worker = null;
-				this.output.print('stderr', `The preview could not be built: ${e.message || `the runner (packs/${this.pack}/runner.js) did not load`}\n`);
+				this.output.print('stderr', `The preview could not be built: ${e.message || `the runner (${url.pathname}) did not load`}\n`);
 			};
 			this.worker = worker;
 		}
@@ -210,7 +217,7 @@ export class Preview {
 		this.watchdog = setTimeout(() => {
 			this.output.print(
 				'stderr',
-				`The preview runner (packs/${this.pack}/runner.js) has not answered for ${SILENT_RUNNER_MS / 1000} s. ` +
+				`The preview runner (${url.pathname}) has not answered for ${SILENT_RUNNER_MS / 1000} s. ` +
 					'Reload the page and press Run again.\n',
 			);
 		}, SILENT_RUNNER_MS);

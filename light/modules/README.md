@@ -13,7 +13,7 @@ app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol
 | Module | Holds | May import |
 |---|---|---|
 | `protocol/` | types and pure codecs for what crosses a boundary: LSP connection, stdin buffer, runner messages, loading progress, a pack's requirements, the frame messages | itself |
-| `runtime/` | workers, packs and sessions in a browser: pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, protocol |
+| `runtime/` | workers, packs and sessions in a browser: workspace paths, pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, protocol |
 | `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme | itself, runtime, protocol, and `import type` from `monaco-editor` |
 
 Rules every module keeps, so that a host can import one without taking on

@@ -18,8 +18,8 @@ import 'dockview/dist/styles/dockview.css';
 import { mount, unmount, type Component } from 'svelte';
 import { EDITOR_FONT, monaco } from './monaco';
 import { NavigationHistory, type Place } from './history';
-import { baseName } from './project';
-import { pathOf } from './project';
+import { baseName } from '@yukibana/runtime';
+import { WORKSPACE } from './project';
 import type { EditorHost, Workspace } from './workspace.svelte';
 import type { ExploreKind } from './languages';
 import { languageOf } from './languages';
@@ -381,7 +381,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): EditorHo
 		dock.onDidActivePanelChange(report),
 		monaco.editor.registerEditorOpener({
 			openCodeEditor: (_source, resource, selection) => {
-				const path = pathOf(resource);
+				const path = WORKSPACE.pathOf(resource);
 				if (path === null || !workspace.model(path)) return false;
 				host.open(path, selection && 'startLineNumber' in selection ? selection : selection ? monaco.Range.fromPositions(selection) : undefined);
 				return true;

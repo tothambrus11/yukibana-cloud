@@ -6,6 +6,7 @@
 import { isLanguageId, languageOf, type Files, type LanguageId } from './languages';
 import { runOptionsOf, type RunOptions } from './cpp-targets';
 import { savedLevelOf } from './optimization';
+import { pathProblem, workspaceRoot } from '@yukibana/runtime';
 
 /** What is saved for one language. Paths are relative, `/`-separated, without `.` or `..`. */
 export interface Project {
@@ -30,22 +31,14 @@ export interface Project {
 	optimization?: string;
 }
 
-/** Every project file lives under this folder, as the servers see it. */
-export const ROOT_URI = 'file:///workspace/';
-
-const ROOT_PATH = '/workspace/';
-
 /**
- * The project path of a URI (a `monaco.Uri`, or anything with its parts),
- * or `null` for a URI outside the workspace. The workspace folder itself is
- * `''`.
+ * The app's one workspace: every project file lives under this folder, as
+ * the language servers and the editor see it. A value rather than a
+ * constant spelled out in each module, so the URIs a file has and the path
+ * a URI names are decided in one place (@yukibana/runtime, paths.ts), the
+ * same one a page of many snippets uses with a root per snippet.
  */
-export function pathOf(uri: { scheme: string; authority: string; path: string }): string | null {
-	if (uri.scheme !== 'file' || uri.authority) return null;
-	// `uri.path` is decoded; `toString(true)` would still escape `#` and `?`.
-	if (uri.path === ROOT_PATH.slice(0, -1)) return '';
-	return uri.path.startsWith(ROOT_PATH) ? uri.path.slice(ROOT_PATH.length) : null;
-}
+export const WORKSPACE = workspaceRoot('file:///workspace/');
 
 const VERSION = 1;
 const key = (language: LanguageId) => `yukibana.code.v${VERSION}.project.${language}`;
@@ -141,29 +134,4 @@ function parseProject(value: unknown, language: LanguageId): Project {
 		// A level this language does not have is the default's: dropped.
 		...(savedLevelOf(language, v['optimization']) !== null ? { optimization: v['optimization'] as string } : {}),
 	};
-}
-
-/**
- * Why a path typed by the user cannot name a file or folder, or `null` when
- * it can: relative, `/`-separated, no empty, `.` or `..` segment.
- */
-export function pathProblem(path: string): string | null {
-	if (path === '') return 'The name is empty.';
-	if (path.startsWith('/') || path.endsWith('/')) return 'A name cannot start or end with "/".';
-	for (const segment of path.split('/')) {
-		if (segment === '' || segment === '.' || segment === '..') return `"${segment}" is not a valid name.`;
-		if (/[\\:*?"<>|]/.test(segment)) return 'A name cannot contain \\ : * ? " < > |.';
-	}
-	return null;
-}
-
-/** The folder containing a path, `''` for the root. */
-export function parentOf(path: string): string {
-	const i = path.lastIndexOf('/');
-	return i < 0 ? '' : path.slice(0, i);
-}
-
-/** The last segment of a path. */
-export function baseName(path: string): string {
-	return path.slice(path.lastIndexOf('/') + 1);
 }

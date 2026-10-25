@@ -12,7 +12,9 @@
  * shown again. Every request carries a new id and only the newest answer of
  * each view is kept, so a slow compile never overwrites a newer one.
  */
+import type { PackId } from '@yukibana/runtime';
 import type { ExploreKind, Files } from './languages';
+import { appPacks } from './packs';
 import type { CppTargetId } from './cpp-targets';
 import { viewSourceFor, type LineCode, type LineMap } from './explorer-map';
 
@@ -63,7 +65,7 @@ export interface ViewOptions {
 /** What the explorer needs of the workspace. */
 export interface ExplorerHost {
 	/** The pack whose `explorer.js` serves the current language, or null when it has no views. */
-	pack(): string | null;
+	pack(): PackId | null;
 	/** Every file of the project as last edited. */
 	files(): Files;
 }
@@ -251,7 +253,7 @@ export class Explorer {
 		if (this.worker) return this.worker;
 		const pack = this.host.pack();
 		if (!pack) return null;
-		const url = new URL(`packs/${pack}/explorer.js`, document.baseURI);
+		const url = appPacks().url(pack, 'explorer.js');
 		const worker = new Worker(url, { type: 'module' });
 		this.worker = worker;
 		worker.onmessage = (e: MessageEvent<FromExplorer>) => {
@@ -264,7 +266,7 @@ export class Explorer {
 			this.worker = null;
 			// A worker that fails to load at all is most likely not built.
 			void fetch(url, { method: 'HEAD' }).then(
-				(r) => this.failAll(r.ok ? `The compiler output worker failed: ${e.message || 'unknown error'}` : `The compiler output views are not installed (packs/${pack}/explorer.js).`),
+				(r) => this.failAll(r.ok ? `The compiler output worker failed: ${e.message || 'unknown error'}` : `The compiler output views are not installed (${url.pathname}).`),
 				() => this.failAll(`The compiler output worker failed: ${e.message || 'unknown error'}`),
 			);
 		};

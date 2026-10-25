@@ -4,7 +4,9 @@
  * the program's output, what the user typed, and how it ended.
  */
 import { readFromRunner, STDIN_BUFFER_BYTES, writeStdin, type FromRunner, type OutputStream, type RunMessage, type RunMode } from '@yukibana/protocol';
+import type { PackId } from '@yukibana/runtime';
 import { AnsiStream } from './ansi';
+import { appPacks } from './packs';
 import type { Files } from './languages';
 import type { RunOptions } from './cpp-targets';
 
@@ -64,14 +66,14 @@ export class Runner {
 
 	private worker: Worker | null = null;
 	/** The pack of the worker running now (or last), for `warm`. */
-	private pack: string | null = null;
+	private pack: PackId | null = null;
 	/** The pack whose runner is kept started ahead of the next Run (`keepWarm`), or null. */
-	private warm: string | null = null;
+	private warm: PackId | null = null;
 	/**
 	 * A runner started ahead of a Run, waiting for its message: what it
 	 * posted meanwhile is kept, to be read when a Run takes it.
 	 */
-	private spare: { pack: string; worker: Worker; early: unknown[] } | null = null;
+	private spare: { pack: PackId; worker: Worker; early: unknown[] } | null = null;
 	private stdin: SharedArrayBuffer | null = null;
 	private started = 0;
 	private nextId = 0;
@@ -102,15 +104,15 @@ export class Runner {
 	}
 
 	/**
-	 * Starts `entry` of `files` with the runner of the pack `language` (its
-	 * directory under `packs/`), stopping any program still running; `mode`
+	 * Starts `entry` of `files` with the runner of `pack` (located by the
+	 * app's packs, packs.ts), stopping any program still running; `mode`
 	 * 'test' runs the project's tests instead, 'mutate' mutation-tests it.
 	 * Output from the previous run is cleared. `options` go to the runner as
 	 * they are (packs/CONTRACT.md: how a C++ program built for Linux is
 	 * emulated, or the optimisation level a Swift program is compiled at; a
 	 * runner that has no use for them ignores them).
 	 */
-	start(language: string, files: Files, entry: string, mode: RunMode = 'run', options?: RunOptions | { optimization: string }): void {
+	start(pack: PackId, files: Files, entry: string, mode: RunMode = 'run', options?: RunOptions | { optimization: string }): void {
 		this.stop(false);
 		this.chunks = [];
 		this.chars = 0;
@@ -125,11 +127,12 @@ export class Runner {
 		this.stdin = crossOriginIsolated ? new SharedArrayBuffer(STDIN_BUFFER_BYTES) : null;
 		if (!this.stdin) this.append('info', 'This page is not cross-origin isolated, so programs cannot read input.\n');
 
-		const spare = this.spare?.pack === language ? this.spare : null;
+		const spare = this.spare?.pack === pack ? this.spare : null;
 		if (spare) this.spare = null;
-		const worker = spare?.worker ?? new Worker(new URL(`packs/${language}/runner.js`, document.baseURI), { type: 'module' });
+		const url = appPacks().url(pack, 'runner.js');
+		const worker = spare?.worker ?? new Worker(url, { type: 'module' });
 		this.worker = worker;
-		this.pack = language;
+		this.pack = pack;
 		worker.onmessage = (e: MessageEvent<unknown>) => {
 			if (this.worker === worker) this.receive(e.data);
 		};
@@ -140,8 +143,8 @@ export class Runner {
 			if (this.worker !== worker) return;
 			e.preventDefault();
 			// A runner that fails to load at all is most likely not built.
-			void fetch(new URL(`packs/${language}/runner.js`, document.baseURI), { method: 'HEAD' }).then(
-				(r) => this.finish(null, r.ok ? `The runner failed: ${e.message || 'unknown error'}` : `Running ${language} is not available: its runner is not installed (packs/${language}/runner.js).`),
+			void fetch(url, { method: 'HEAD' }).then(
+				(r) => this.finish(null, r.ok ? `The runner failed: ${e.message || 'unknown error'}` : `Running ${pack} is not available: its runner is not installed (${url.pathname}).`),
 				() => this.finish(null, `The runner failed: ${e.message || 'unknown error'}`),
 			);
 		};
@@ -158,7 +161,7 @@ export class Runner {
 	 * two never compete for the processor. packs/CONTRACT.md: a runner may
 	 * receive its message long after it started.
 	 */
-	keepWarm(pack: string | null): void {
+	keepWarm(pack: PackId | null): void {
 		this.warm = pack;
 		if (this.spare && this.spare.pack !== pack) {
 			this.spare.worker.terminate();
@@ -167,9 +170,9 @@ export class Runner {
 		if (pack && !this.busy) this.prewarm(pack);
 	}
 
-	private prewarm(pack: string): void {
+	private prewarm(pack: PackId): void {
 		if (this.spare?.pack === pack) return;
-		const worker = new Worker(new URL(`packs/${pack}/runner.js`, document.baseURI), { type: 'module' });
+		const worker = new Worker(appPacks().url(pack, 'runner.js'), { type: 'module' });
 		const spare = { pack, worker, early: [] as unknown[] };
 		this.keep(spare);
 	}
@@ -194,7 +197,7 @@ export class Runner {
 	}
 
 	/** Makes `spare` the spare, keeping what it posts until a Run takes it. */
-	private keep(spare: { pack: string; worker: Worker; early: unknown[] }): void {
+	private keep(spare: { pack: PackId; worker: Worker; early: unknown[] }): void {
 		const { worker } = spare;
 		worker.onmessage = (e: MessageEvent<unknown>) => {
 			spare.early.push(e.data);

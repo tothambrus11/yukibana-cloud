@@ -5,7 +5,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { createDock } from '../lib/dock';
-	import { LANGUAGES, languageOf, packOf, type LanguageId } from '../lib/languages';
+	import { LANGUAGES, languageOf, type LanguageId } from '../lib/languages';
+	import { packOf } from '../lib/packs';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';

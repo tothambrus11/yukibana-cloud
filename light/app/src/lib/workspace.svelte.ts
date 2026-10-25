@@ -7,7 +7,7 @@
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
 import { LanguageClient, type ClientState, type LoadingProgress, type LogLevel } from './lsp/client';
-import { isLanguageId, languageOf, LANGUAGES, packOf, type ExploreKind, type LanguageId } from './languages';
+import { isLanguageId, languageOf, LANGUAGES, type ExploreKind, type LanguageId } from './languages';
 import { Runner, type RunMode } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
@@ -20,11 +20,13 @@ import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } fr
 import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
-import { baseName, loadLanguage, loadProject, parentOf, pathOf, pathProblem, ROOT_URI, sampleProject, saveLanguage, saveProject, type Project } from './project';
+import { parentOf, pathProblem } from '@yukibana/runtime';
+import { appPacks, packOf } from './packs';
+import { loadLanguage, loadProject, sampleProject, saveLanguage, saveProject, WORKSPACE, type Project } from './project';
 
 /** The model URI of a project path. */
 export function uriOf(path: string): monaco.Uri {
-	return monaco.Uri.parse(ROOT_URI + path.split('/').map(encodeURIComponent).join('/'));
+	return monaco.Uri.parse(WORKSPACE.uriOf(path));
 }
 
 /** One line of the output panel. */
@@ -419,7 +421,7 @@ export class Workspace {
 	 * (a call hierarchy's call site); nothing when it is not a project file.
 	 */
 	showSite(uri: string, range: monaco.IRange): void {
-		const path = pathOf(monaco.Uri.parse(uri));
+		const path = WORKSPACE.pathOf(monaco.Uri.parse(uri));
 		if (path !== null && this.models.has(path)) this.host?.open(path, range);
 	}
 
@@ -638,10 +640,9 @@ export class Workspace {
 	private startClient(): void {
 		const language = languageOf(this.language);
 		const client = new LanguageClient({
-			// Relative to the page, so the app works from any folder of a static host.
-			serverUrl: new URL(`packs/${packOf(language)}/server.js`, document.baseURI),
+			serverUrl: appPacks().url(packOf(language), 'server.js'),
 			languages: language.monacoLanguages,
-			rootUri: ROOT_URI,
+			rootUri: WORKSPACE.uri,
 			settings: language.settings,
 			events: {
 				state: (s) => {
@@ -652,7 +653,7 @@ export class Workspace {
 				},
 				log: (level, text) => this.write(level, text),
 				open: (uri, selection) => {
-					const path = pathOf(uri);
+					const path = WORKSPACE.pathOf(uri);
 					if (path && this.models.has(path)) this.host?.open(path, selection);
 				},
 				callHierarchy: (item) => {
@@ -694,7 +695,7 @@ export class Workspace {
 	private refreshProblems(): void {
 		const problems: Problem[] = [];
 		for (const marker of monaco.editor.getModelMarkers({})) {
-			const path = pathOf(marker.resource);
+			const path = WORKSPACE.pathOf(marker.resource);
 			if (path === null || !this.models.has(path)) continue;
 			const { startLineNumber, startColumn, endLineNumber, endColumn } = marker;
 			problems.push({
@@ -762,4 +763,3 @@ export class Workspace {
 }
 
 /** The file name shown on a tab. */
-export { baseName };

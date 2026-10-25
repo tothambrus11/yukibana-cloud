@@ -26,7 +26,7 @@ import { OneReference } from 'monaco-editor/editor/contrib/gotoSymbol/browser/re
 import { ICommandService } from 'monaco-editor/platform/commands/common/commands';
 import { IQuickInputService } from 'monaco-editor/platform/quickinput/common/quickInput';
 import { IListService } from 'monaco-editor/platform/list/browser/listService';
-import { pathOf, ROOT_URI } from './project';
+import { WORKSPACE } from './project';
 import { AppDialogService, WorkspaceBulkEditService } from './workspace-edits';
 import { projectNotice } from './undo-text';
 
@@ -57,12 +57,11 @@ type List = {
 // just before that undo, which moves the caret and would close a message
 // shown at once: so the message is shown once the current task is done,
 // where the caret then is, and names files by their project paths.
-const ROOT_PATH = monaco.Uri.parse(ROOT_URI).path;
 class EditorNotificationService extends StandaloneNotificationService {
 	override notify(notification: { severity: number; message: unknown }): unknown {
 		const shown = super.notify(notification);
 		const m = notification.message;
-		const text = projectNotice(typeof m === 'string' ? m : m instanceof Error ? m.message : '', ROOT_PATH);
+		const text = projectNotice(typeof m === 'string' ? m : m instanceof Error ? m.message : '', WORKSPACE.path);
 		// Severity 0 is Ignore.
 		const editor = monaco.editor.getEditors().find((e) => e.hasWidgetFocus());
 		if (!text || notification.severity <= 0 || !editor) return shown;
@@ -78,7 +77,7 @@ class EditorNotificationService extends StandaloneNotificationService {
 // The keys are Monaco's service ids.
 StandaloneServices.initialize({
 	labelService: {
-		getUriLabel: (uri: monaco.Uri) => pathOf(uri) ?? (uri.scheme === 'file' ? uri.fsPath : uri.path),
+		getUriLabel: (uri: monaco.Uri) => WORKSPACE.pathOf(uri) ?? (uri.scheme === 'file' ? uri.fsPath : uri.path),
 		getUriBasenameLabel: (uri: monaco.Uri) => uri.path.slice(uri.path.lastIndexOf('/') + 1),
 	},
 	notificationService: new EditorNotificationService(),

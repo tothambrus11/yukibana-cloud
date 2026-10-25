@@ -4,7 +4,8 @@
   starting and the progress while it runs (offline.svelte.ts does the work).
 -->
 <script lang="ts">
-	import { LANGUAGES, packOf } from '../languages';
+	import { LANGUAGES } from '../languages';
+	import { packOf } from '../packs';
 	import { mb, offline } from '../offline.svelte';
 
 	let dialog: HTMLDialogElement;

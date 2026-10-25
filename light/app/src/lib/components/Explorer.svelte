@@ -4,7 +4,7 @@
   user collapsed them.
 -->
 <script lang="ts">
-	import { baseName, parentOf } from '../project';
+	import { baseName, parentOf } from '@yukibana/runtime';
 	import { worst, type Severity } from '../severity';
 	import type { Workspace } from '../workspace.svelte';
 

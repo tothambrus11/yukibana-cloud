@@ -71,11 +71,6 @@ export interface Language {
 /** A compiler output view: the LLVM IR or the assembly of the active source. */
 export type ExploreKind = 'llvm-ir' | 'asm';
 
-/** The pack directory of a language. */
-export function packOf(language: Language): string {
-	return language.pack ?? language.id;
-}
-
 export const LANGUAGES: readonly Language[] = [
 	{
 		id: 'python',
