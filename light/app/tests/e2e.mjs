@@ -1007,8 +1007,11 @@ async function previewing(page, check) {
 	const sandbox = await page.locator('iframe.preview-frame').getAttribute('sandbox');
 	check(sandbox === 'allow-scripts allow-forms allow-modals', `the iframe is sandboxed without allow-same-origin (${sandbox})`);
 
-	const inner = () => page.frames().find((f) => f.parentFrame() === page.mainFrame() && f.url() === 'about:srcdoc');
-	await inner()?.evaluate(() => (window.yukibanaMark = 'kept'));
+	// The page's frame, found from the iframe shown now: a frame made with its
+	// srcdoc already set has no URL (not about:srcdoc), and each page gets a
+	// new one (preview.ts `render`).
+	const inner = async () => (await page.locator('iframe.preview-frame').elementHandle({ timeout: 10_000 }).catch(() => null))?.contentFrame() ?? undefined;
+	await (await inner())?.evaluate(() => (window.yukibanaMark = 'kept'));
 	await page.locator('.explorer .row .name', { hasText: /^style\.css$/ }).click();
 	await page.locator('.dv-tab.dv-active-tab .dock-tab', { hasText: 'style.css' }).first().waitFor({ timeout: 10_000 });
 	await page.locator('.dv-groupview .monaco-editor').first().click();
@@ -1019,7 +1022,7 @@ async function previewing(page, check) {
 		const poll = () => (getComputedStyle(h).color === 'rgb(200, 0, 0)' ? done(true) : Date.now() - t0 > 10_000 ? done(false) : setTimeout(poll, 50));
 		poll();
 	})).catch(() => false);
-	const kept = await inner()?.evaluate(() => window.yukibanaMark).catch(() => undefined);
+	const kept = await (await inner())?.evaluate(() => window.yukibanaMark).catch(() => undefined);
 	check(restyled && kept === 'kept', `a CSS edit restyles the page without reloading it (colour changed: ${restyled}, mark: ${kept})`);
 
 	await page.locator('.explorer .row .name', { hasText: /^main\.ts$/ }).click();
@@ -1028,7 +1031,7 @@ async function previewing(page, check) {
 	await page.keyboard.press('Control+End');
 	await page.keyboard.type("\nbutton.textContent = 'Edited';\n");
 	const reloaded = await frame.locator('#increment', { hasText: 'Edited' }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
-	const mark = await inner()?.evaluate(() => window.yukibanaMark).catch(() => 'gone');
+	const mark = await (await inner())?.evaluate(() => window.yukibanaMark).catch(() => 'gone');
 	check(reloaded && mark === undefined, `a TypeScript edit reloads the page (button says Edited: ${reloaded}, mark after: ${mark})`);
 
 	// Run again with the Preview already in front loads the page once, not
@@ -1084,7 +1087,7 @@ async function sketching(page, check, requests) {
 	const drawn = await page.frameLocator('iframe.preview-frame').locator('canvas').waitFor({ timeout: 60_000 }).then(() => true, () => false);
 	check(drawn && fetched(/\/p5-[\d.]+\.js$/), 'Run shows the sketch: p5.js, fetched for it, makes its canvas in the Preview');
 	if (!drawn) return;
-	const inner = page.frames().find((f) => f.parentFrame() === page.mainFrame() && f.url() === 'about:srcdoc');
+	const inner = await (await frameElement.elementHandle()).contentFrame();
 	const layout = () =>
 		inner.evaluate(() => {
 			const canvas = document.querySelector('canvas');

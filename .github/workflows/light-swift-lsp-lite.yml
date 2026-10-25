@@ -14,11 +14,15 @@ on:
       - "light/toolchains/swift/tools/sourcekit-lsp-lite/**"
       - "light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh"
       - ".github/workflows/light-swift-lsp-lite.yml"
+      - ".github/actions/light-swift-toolchain/**"
+      - ".github/actions/once/**"
   pull_request:
     paths:
       - "light/toolchains/swift/tools/sourcekit-lsp-lite/**"
       - "light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh"
       - ".github/workflows/light-swift-lsp-lite.yml"
+      - ".github/actions/light-swift-toolchain/**"
+      - ".github/actions/once/**"
   workflow_dispatch:
 
 concurrency:
@@ -39,8 +43,51 @@ defaults:
     working-directory: light/toolchains/swift/tools/sourcekit-lsp-lite
 
 jobs:
+  # Which jobs already passed on exactly these inputs (.github/actions/once).
+  # A pull request's paths above are its whole diff against the base, so
+  # without this every push to a pull request that once touched the server
+  # would build it again.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    env:
+      INPUTS: |
+        light/toolchains/swift/tools/sourcekit-lsp-lite
+        light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh
+        .github/actions/light-swift-toolchain
+        .github/workflows/light-swift-lsp-lite.yml
+    outputs:
+      test-done: ${{ steps.test.outputs.done }}
+      test-key: ${{ steps.test.outputs.key }}
+      analyze-done: ${{ steps.analyze.outputs.done }}
+      analyze-key: ${{ steps.analyze.outputs.key }}
+      wasm-done: ${{ steps.wasm.outputs.done }}
+      wasm-key: ${{ steps.wasm.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: test
+        uses: ./.github/actions/once
+        with:
+          name: lsp-lite-test
+          paths: ${{ env.INPUTS }}
+      - id: analyze
+        uses: ./.github/actions/once
+        with:
+          name: lsp-lite-analyze
+          paths: ${{ env.INPUTS }}
+      - id: wasm
+        uses: ./.github/actions/once
+        with:
+          name: lsp-lite-wasm
+          paths: ${{ env.INPUTS }}
+
   test:
     name: ${{ matrix.preset }}
+    needs: plan
+    if: needs.plan.outputs.test-done != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -73,8 +120,22 @@ jobs:
           python3 tests/integration/lsp_test.py --server build/dev/sourcekit-lsp-lite \
             --project tests/project --report | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # The matrix passes as a whole or not at all: recorded once every preset
+  # passed, so that one failing preset is not skipped next time.
+  test-passed:
+    needs: [plan, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.test-key }}
+
   analyze:
     name: clang-tidy, cppcheck, clang-format
+    needs: plan
+    if: needs.plan.outputs.analyze-done != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -97,9 +158,14 @@ jobs:
         run: cmake --preset tidy && cmake --build --preset tidy
       - name: cppcheck (during the build)
         run: cmake --preset cppcheck && cmake --build --preset cppcheck
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.analyze-key }}
 
   wasm-compile:
     name: compile for wasm32-wasip1
+    needs: plan
+    if: needs.plan.outputs.wasm-done != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -124,3 +190,6 @@ jobs:
           WASI_SDK_PATH="$RUNNER_TEMP/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux" \
           SOURCEKITD_INCLUDE="$RUNNER_TEMP/sourcekitd" LITE_COMPILE_ONLY=1 \
             ./scripts/36-sourcekit-lsp-lite-wasm.sh
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.wasm-key }}
