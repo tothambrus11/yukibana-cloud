@@ -13,8 +13,12 @@
   queries on the header (`.bar-host.cq`), when this browser has them and
   they reach into an open popover in the top layer, which a one-time probe
   checks; otherwise a ResizeObserver writes the tiers the bar is under into
-  the header's `data-tier` (`"70 56 44"`). The layout test forces the
-  second (tests/e2e-layout.mjs), so both run in CI.
+  the header's `data-tier` (`"70 56 44"`). Chromium always takes the
+  first; the layout test's `fallback` scenario (tests/e2e-layout.mjs,
+  `npm run test:e2e:layout`) tells a page container queries are missing
+  and checks that the second folds the bar control for control as the
+  first does. No CI workflow runs that test yet, so a change to either set
+  is checked only when someone runs it.
 -->
 <script lang="ts" module>
 	/** The bar's tiers, in rem: below each, the controls with that `data-fold` move into the menu. */

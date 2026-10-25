@@ -375,7 +375,8 @@ body {
  *
  * Every rule is written twice: once in a container query (`.cq`, set when
  * the queries reach the menu in the top layer) and once for `data-tier`,
- * which a ResizeObserver writes otherwise. Keep the two in step.
+ * which a ResizeObserver writes otherwise. Keep the two in step: the
+ * layout test's `fallback` scenario fails where they disagree.
  */
 header.bar-host {
 	container: bar / inline-size;

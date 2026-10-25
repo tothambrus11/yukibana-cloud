@@ -3,9 +3,11 @@
 // header whose text wraps onto a second line or is cut off without saying
 // so, every control on screen and reachable (in the bar, or in its ⋯ menu),
 // and a dock arranged for the width. It walks one page per language through
-// the states people see (first load, a run, the compiler views, the Build
-// settings, the ⋯ menu, the Offline dialog, many tabs) at each viewport,
-// and saves a screenshot of each.
+// the states people see (first load, a run, the compiler views and their
+// Options, the Build settings, the ⋯ menu, the language server's menu, the
+// Offline dialog, many tabs) at each viewport, and saves a screenshot of
+// each. An open popover must fit the window and hold all its text: a phone's
+// bottom sheet once ran 90 px off the screen and nothing here looked inside it.
 //
 //   npm run build && npm run test:e2e:layout -- [--ci] [--all] [--out <dir>] [--state <name> ...]
 //
@@ -15,7 +17,7 @@
 // --all    also a small phone (360x740), a phone in landscape (844x390)
 //          and a 1440x900 desktop.
 // --state  only these states (and the scenarios only if named: modes,
-//          switching, phone).
+//          switching, dragged, fallback, phone).
 //
 // Serves app/build with ../serve.py on a free port, as e2e.mjs does, or
 // uses BASE_URL (a dev server) when it is set. Exits non-zero, naming every
@@ -86,6 +88,7 @@ const CONTROLS = [
 const STATES = [
 	{ name: 'python-start', language: 'python', reach: true },
 	{ name: 'more', language: 'python', open: async (page) => void (await openMore(page)), close: closePopovers },
+	{ name: 'server-menu', language: 'python', open: openServerMenu, close: closePopovers },
 	{ name: 'offline', language: 'python', open: openOffline, close: async (page) => void (await page.keyboard.press('Escape')) },
 	{ name: 'problems', language: 'python', setup: async (page) => page.locator('footer .problems-button').click() },
 	{ name: 'python-run', language: 'python', setup: run },
@@ -94,6 +97,7 @@ const STATES = [
 	{ name: 'build', language: 'cpp', open: async (page) => void (await openBuildSettings(page)), close: closePopovers },
 	{ name: 'cpp-ir', language: 'cpp', setup: (page) => showView(page, 'ir') },
 	{ name: 'cpp-asm', language: 'cpp', setup: (page) => showView(page, 'asm') },
+	{ name: 'asm-options', language: 'cpp', open: openAsmOptions, close: closePopovers },
 	{ name: 'cpp-run', language: 'cpp', setup: run },
 	{ name: 'tab-overflow', language: 'cpp', setup: openEveryFile },
 ].filter((s) => !onlyStates.length || onlyStates.includes(s.name));
@@ -144,7 +148,9 @@ try {
 		}
 		if (touch && scenario('phone') && viewports.some((v) => v.name === 'phone')) await phone(context);
 		if (!touch && scenario('modes')) await modes(context);
+		if (!touch && scenario('dragged')) await dragged(context, viewports);
 		if (scenario('switching')) await switching(context, viewports);
+		if (scenario('fallback')) await fallback(context, viewports);
 		await context.close();
 	}
 } finally {
@@ -191,6 +197,19 @@ async function openOffline(page) {
 	if (await button.isVisible()) await button.click();
 	else await (await openMore(page)).locator('[role=menuitem]:has-text("Offline use")').click();
 	await page.locator('dialog.offline[open]').waitFor();
+}
+
+/** Opens the status bar's language server menu. */
+async function openServerMenu(page) {
+	await page.locator('footer button.server').click();
+	await page.locator('#server-menu:popover-open').waitFor();
+}
+
+/** Opens the Assembly view's Options menu (the view is open: cpp-asm left it). */
+async function openAsmOptions(page) {
+	const view = page.locator('.yk-view[data-view="asm"]');
+	await view.locator('.yk-view-more').click();
+	await view.locator('.yk-view-menu:popover-open').waitFor();
 }
 
 /** Runs the project and waits for it to end. */
@@ -300,13 +319,15 @@ function inspect({ touch }) {
 	for (const bar of document.querySelectorAll('header.bar-host, footer.status-bar')) if (bar.scrollWidth > bar.clientWidth + 1) add(bar, `overflows its width (${bar.scrollWidth} > ${bar.clientWidth})`);
 
 	// 2 and 3. One line of text, and nothing cut off without its full text in a title or name.
-	const TEXTUAL = 'button, [role=menuitem], [role=menuitemcheckbox], .dock-tab, .chip, .lang-label, .yk-view-head, .yk-view-toggles, .terminal .status, .terminal .status-compact, footer.status-bar > *';
+	const TEXTUAL = 'button, [role=menuitem], [role=menuitemcheckbox], .dock-tab, .chip, .lang-label, .yk-view-head, .yk-view-toggles, .terminal .status, .terminal .status-compact, footer.status-bar > :not([popover])';
 	for (const el of document.querySelectorAll(TEXTUAL)) {
 		if (!shown(el) || el.closest('.monaco-editor, .terminal pre, .explorer')) continue;
 		const rects = [];
 		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
 		for (let node = walker.nextNode(); node; node = walker.nextNode()) {
 			if (!node.textContent.trim() || !node.parentElement || !shown(node.parentElement)) continue;
+			// A popover inside it (a view's Options in its header, the server menu in the footer) is drawn elsewhere and checked on its own.
+			if (node.parentElement.closest('[popover]') !== el.closest('[popover]')) continue;
 			const range = document.createRange();
 			range.selectNodeContents(node);
 			for (const r of range.getClientRects()) if (r.width > 0.5 && r.height > 0.5) rects.push(r);
@@ -339,9 +360,26 @@ function inspect({ touch }) {
 			if (!shown(el) || scrolledAway(el)) continue;
 			const r = el.getBoundingClientRect();
 			if (r.left < -1 || r.top < -1 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1) add(el, `is outside the viewport (${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)})`);
-			const group = el.closest('.yk-view-head') ? el.closest('.dv-groupview')?.getBoundingClientRect() : null;
+			// A view's Options menu is in its header but drawn in the top layer, over the other groups: only the window bounds it.
+			const group = el.closest('.yk-view-head') && !el.closest('[popover]') ? el.closest('.dv-groupview')?.getBoundingClientRect() : null;
 			if (group && (r.left < group.left - 1 || r.right > group.right + 1)) add(el, 'is outside its group');
 		}
+
+	// 5. An open popover (a menu, Build settings, a bottom sheet) inside the window, no wider than itself, and all its text inside it.
+	for (const pop of document.querySelectorAll(':popover-open')) {
+		const p = pop.getBoundingClientRect();
+		if (p.left < -1 || p.right > innerWidth + 1 || p.top < -1 || p.bottom > innerHeight + 1) add(pop, `the popover is outside the window (${Math.round(p.left)}..${Math.round(p.right)} of ${innerWidth} wide)`);
+		if (pop.scrollWidth > pop.clientWidth + 1) add(pop, `the popover's content is wider than it (${pop.scrollWidth} > ${pop.clientWidth})`);
+		const walker = document.createTreeWalker(pop, NodeFilter.SHOW_TEXT);
+		for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+			if (!node.textContent.trim() || !node.parentElement || !shown(node.parentElement) || node.parentElement.closest('.truncate')) continue;
+			const range = document.createRange();
+			range.selectNodeContents(node);
+			const r = range.getBoundingClientRect();
+			if (r.width < 0.5) continue;
+			if (r.left < Math.max(p.left, 0) - 1 || r.right > Math.min(p.right, innerWidth) + 1) add(node.parentElement, `its text runs out of its popover (${Math.round(r.left)}..${Math.round(r.right)}, the popover ${Math.round(p.left)}..${Math.round(p.right)})`);
+		}
+	}
 
 	// 6. Header heights: the bar one row; a view's header two rows at most; its state never cut.
 	const bar = document.querySelector('header.bar-host');
@@ -452,6 +490,120 @@ async function modes(context) {
 		fail('-', 'modes', '-', `the scenario stopped: ${e instanceof Error ? e.message.split('\n')[0] : e}`);
 	}
 	await page.close();
+}
+
+/**
+ * Scenario: the Explorer and the terminal keep the sizes they were dragged
+ * to when the Assembly view is opened beside the editors (once it reset
+ * both to the mode's defaults) and when it is closed again (once its room
+ * was shared out among the whole row), in the medium and the wide
+ * arrangement.
+ */
+async function dragged(context, viewports) {
+	const page = await context.newPage();
+	try {
+		const shown = viewports.filter((v) => v.name === 'laptop' || v.name === 'wide');
+		if (!shown.length) return;
+		await page.setViewportSize({ width: shown[0].width, height: shown[0].height });
+		await load(page, 'cpp');
+		for (const viewport of shown) {
+			await page.setViewportSize({ width: viewport.width, height: viewport.height });
+			await settle(page);
+			if (await page.locator('.yk-view[data-view="asm"]').count()) {
+				await toggleView(page, 'asm');
+				await settle(page);
+			}
+			const sizes = () =>
+				page.evaluate(() => {
+					const group = (title) => document.querySelector(`.dock-tab[title="${title}"]`)?.closest('.dv-groupview')?.getBoundingClientRect();
+					const e = group('Explorer');
+					const t = group('Terminal');
+					return { explorer: e ? { x: e.right, y: e.top + e.height / 2, w: Math.round(e.width) } : null, terminal: t ? { left: t.left, top: t.top, x: t.left + t.width / 2, y: t.top + t.height / 2, w: Math.round(t.width), h: Math.round(t.height) } : null };
+				});
+			const drag = async (x, y, dx, dy) => {
+				await page.mouse.move(x, y);
+				await page.mouse.down();
+				await page.mouse.move(x + dx / 2, y + dy / 2, { steps: 4 });
+				await page.mouse.move(x + dx, y + dy, { steps: 4 });
+				await page.mouse.up();
+				await page.waitForTimeout(200);
+			};
+			let s = await sizes();
+			if (!s.explorer || !s.terminal) throw new Error('no Explorer or Terminal group');
+			await drag(s.explorer.x, s.explorer.y, 110, 0);
+			s = await sizes();
+			const wide = (await layoutMode(page)) === 'wide';
+			if (wide) await drag(s.terminal.left, s.terminal.y, 90, 0);
+			else await drag(s.terminal.x, s.terminal.top, 0, 120);
+			const before = await sizes();
+			await showView(page, 'asm');
+			await settle(page);
+			const after = await sizes();
+			await toggleView(page, 'asm');
+			await settle(page);
+			const closed = await sizes();
+			const terminalOf = (v) => (wide ? v.terminal?.w : v.terminal?.h);
+			const near = (a, b) => a !== undefined && b !== undefined && Math.abs(a - b) <= 2;
+			const kept = (a, b) => near(a.explorer?.w, b.explorer?.w) && near(terminalOf(a), terminalOf(b));
+			if (!kept(before, after)) fail(viewport.name, 'dragged', 'dock', `opening Assembly moved the dragged groups: Explorer ${before.explorer?.w} → ${after.explorer?.w} px, terminal ${terminalOf(before)} → ${terminalOf(after)} px`);
+			else if (!kept(before, closed)) fail(viewport.name, 'dragged', 'dock', `closing Assembly moved the dragged groups: Explorer ${before.explorer?.w} → ${closed.explorer?.w} px, terminal ${terminalOf(before)} → ${terminalOf(closed)} px`);
+			else console.log(`ok   ${viewport.name} dragged: opening and closing Assembly keep the Explorer at ${after.explorer?.w} px and the terminal at ${terminalOf(after)} px`);
+		}
+	} catch (e) {
+		fail('-', 'dragged', '-', `the scenario stopped: ${e instanceof Error ? e.message.split('\n')[0] : e}`);
+	}
+	await page.close();
+}
+
+/**
+ * Scenario: the bar folds the same without container queries. MoreMenu.svelte
+ * has two equivalent sets of folding rules, and Chromium always takes the
+ * container-query one; here a second page is told the browser has none
+ * (`CSS.supports('container-type: inline-size')` is false), so the
+ * ResizeObserver writes `data-tier` and the other set decides. At every
+ * viewport, the same controls must be in the bar, the same in ⋯, and the
+ * fallback page must pass the checks the states do.
+ */
+async function fallback(context, viewports) {
+	const normal = await context.newPage();
+	const forced = await context.newPage();
+	await forced.addInitScript(() => {
+		const supports = CSS.supports.bind(CSS);
+		CSS.supports = (...args) => (/container-type/.test(args.join(' ')) ? false : supports(...args));
+	});
+	try {
+		for (const page of [normal, forced]) {
+			await page.setViewportSize({ width: viewports[0].width, height: viewports[0].height });
+			await load(page, 'cpp');
+		}
+		if (!(await forced.evaluate(() => { const h = document.querySelector('.bar-host'); return h !== null && !h.classList.contains('cq') && h.hasAttribute('data-tier'); })))
+			throw new Error('the forced page still uses the container queries');
+		const where = async (page) => {
+			const seen = {};
+			for (const c of CONTROLS) seen[c.name] = { bar: c.bar ? await page.locator(c.bar).first().isVisible() : false };
+			await openMore(page);
+			for (const c of CONTROLS) seen[c.name].menu = c.menu ? await page.locator(c.menu).first().isVisible() : false;
+			await closePopovers(page);
+			return seen;
+		};
+		for (const viewport of viewports) {
+			for (const page of [normal, forced]) {
+				await page.setViewportSize({ width: viewport.width, height: viewport.height });
+				await settle(page);
+			}
+			const a = await where(normal);
+			const b = await where(forced);
+			const differ = CONTROLS.filter((c) => a[c.name].bar !== b[c.name].bar || a[c.name].menu !== b[c.name].menu).map((c) => `${c.name} (${JSON.stringify(a[c.name])} with queries, ${JSON.stringify(b[c.name])} without)`);
+			for (const d of differ) fail(viewport.name, 'fallback', d, `the bar folds differently without container queries: ${d}`);
+			for (const v of await forced.evaluate(inspect, { touch: viewport.touch })) fail(viewport.name, 'fallback', v.element, `${v.what}: ${v.element}`);
+			for (const v of await reachable(forced)) fail(viewport.name, 'fallback', v, `${v} is neither in the bar nor in ⋯`);
+			if (!differ.length) console.log(`ok   ${viewport.name} fallback folds the bar as the container queries do`);
+		}
+	} catch (e) {
+		fail('-', 'fallback', '-', `the scenario stopped: ${e instanceof Error ? e.message.split('\n')[0] : e}`);
+	}
+	await normal.close();
+	await forced.close();
 }
 
 /**
