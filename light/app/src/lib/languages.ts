@@ -12,7 +12,14 @@ export type Files = Record<string, string>;
 
 export interface Language {
 	id: LanguageId;
+	/** Its full name, as the language picker's list, the Offline dialog and an exported project's README name it. */
 	label: string;
+	/**
+	 * A short name for a narrow top bar, where the picker shows the chosen
+	 * language in a word ("Web" for "Web (HTML, CSS, TypeScript)"); absent
+	 * when `label` is already short. Read it through `shortLabel`.
+	 */
+	short?: string;
 	/** Monaco language ids whose editor features the pack's server answers. */
 	monacoLanguages: readonly string[];
 	/** Answers to the server's `workspace/configuration` requests, by section. */
@@ -70,6 +77,22 @@ export interface Language {
 
 /** A compiler output view: the LLVM IR or the assembly of the active source. */
 export type ExploreKind = 'llvm-ir' | 'asm';
+
+/** A language's short name: `short` when it has one, else its label. */
+export const shortLabel = (language: Language): string => language.short ?? language.label;
+
+/**
+ * The language picker's sections, in order, each with the languages it
+ * lists: thirteen names in one flat list were hard to scan. Every language
+ * is in exactly one (tests/unit/languages.test.mjs).
+ */
+export const LANGUAGE_GROUPS: readonly { label: string; ids: readonly LanguageId[] }[] = [
+	{ label: 'Scripting', ids: ['python', 'javascript', 'typescript', 'php'] },
+	{ label: 'Web', ids: ['web', 'p5', 'p5-global'] },
+	{ label: 'Compiled', ids: ['cpp', 'rust', 'swift'] },
+	{ label: 'JVM', ids: ['java', 'kotlin', 'scala'] },
+	{ label: 'Functional', ids: ['haskell'] },
+];
 
 export const LANGUAGES: readonly Language[] = [
 	{
@@ -355,6 +378,7 @@ describe('distance and area', () => {
 		// in the Preview panel and reloaded live; downloads as a Vite project.
 		id: 'web',
 		label: 'Web (HTML, CSS, TypeScript)',
+		short: 'Web',
 		pack: 'javascript',
 		monacoLanguages: ['typescript', 'javascript'],
 		settings: {},
@@ -453,6 +477,7 @@ export class Counter {
 		// is a typed member of `p` and the sketch stays an ES module.
 		id: 'p5',
 		label: 'Web: p5.js sketch (TypeScript)',
+		short: 'p5.js',
 		pack: 'javascript',
 		monacoLanguages: ['typescript', 'javascript'],
 		settings: {},
@@ -534,6 +559,7 @@ new p5((p: p5) => {
 		// (`"types": ["p5/global"]`), so the sketch needs no `/// <reference>`.
 		id: 'p5-global',
 		label: 'Web: p5.js sketch, global mode (TypeScript)',
+		short: 'p5.js global',
 		pack: 'javascript',
 		monacoLanguages: ['typescript', 'javascript'],
 		settings: {},

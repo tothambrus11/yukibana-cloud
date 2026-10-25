@@ -65,6 +65,8 @@ export interface EditorHost {
 	closeAll(): void;
 	/** Brings the terminal panel to the front. */
 	showTerminal(): void;
+	/** Brings the Output or Problems panel to the front: the status bar's server menu and problem counts. */
+	showPanel(id: 'output' | 'problems'): void;
 	/** Opens the Preview panel (a web project's page), creating it the first time. */
 	showPreview(): void;
 	/** Closes the Preview panel, if it is open. */
@@ -76,6 +78,8 @@ export interface EditorHost {
 	showView(kind: ExploreKind): void;
 	/** Closes the compiler output views, if open: the language or project changed. */
 	hideViews(): void;
+	/** Closes one compiler output view, if open: its toggle in the top bar was pressed again. */
+	hideView(kind: ExploreKind): void;
 	/** Opens the Call Hierarchy panel beside Problems, or brings it to the front. */
 	showCallHierarchy(): void;
 }
@@ -141,6 +145,12 @@ export class Workspace {
 	 */
 	explorer: Explorer | null = null;
 	private explorerLoad: Promise<Explorer> | null = null;
+	/**
+	 * The compiler output views whose panel is open, as the dock reports it
+	 * (`viewsChanged`): the top bar's LLVM IR and Assembly toggles show it as
+	 * pressed. Open, not visible: a view behind another tab is still open.
+	 */
+	viewsOpen = $state<readonly ExploreKind[]>([]);
 	/** A web project's page, shown in the Preview panel; its console goes to the terminal. */
 	readonly preview = new Preview(this.runner, (signal) => this.projectErrors(signal));
 	/**
@@ -262,6 +272,25 @@ export class Workspace {
 		}
 		// The language changed while the views' code downloaded: the request was for the old one.
 		if (generation === this.generation) this.host?.showView(kind);
+	}
+
+	/**
+	 * Opens view `kind` when it is closed and closes it when it is open: what
+	 * the top bar's toggles do.
+	 */
+	toggleView(kind: ExploreKind): void {
+		if (this.viewsOpen.includes(kind)) this.host?.hideView(kind);
+		else void this.showView(kind);
+	}
+
+	/** Brings the Output or Problems panel to the front. */
+	showPanel(id: 'output' | 'problems'): void {
+		this.host?.showPanel(id);
+	}
+
+	/** The dock opened or closed a view's panel; `open` is every view open now. */
+	viewsChanged(open: readonly ExploreKind[]): void {
+		if (open.length !== this.viewsOpen.length || open.some((k) => !this.viewsOpen.includes(k))) this.viewsOpen = open;
 	}
 
 	/** The explorer, loading its code the first time. */

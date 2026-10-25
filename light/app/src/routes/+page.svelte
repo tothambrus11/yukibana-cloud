@@ -1,22 +1,35 @@
 <!--
-  The page: a top bar (language, project and theme), the dockview layout,
-  and a status bar with the language server's state.
+  The page: a top bar, the dockview layout, and a status bar.
+
+  The top bar is one row in five zones: who (the brand), what (the
+  language), do (Run, Test, Mutate), how it is built (the Build chip), what
+  to see (LLVM IR and Assembly), and, after a spacer, the app's own
+  controls ending in the ⋯ menu. As the bar narrows, labels shorten first
+  and then controls move into ⋯, in a fixed order (MoreMenu.svelte and
+  app.css, "The top bar's folding"); the language, Run, Test and ⋯ never
+  leave. Nothing in it wraps, and nothing makes the page wider than the
+  window.
+
+  The status bar says the language server's state (and opens a menu to
+  restart it or show its output), the C++ build in short, and the
+  problems, which open the Problems panel.
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { createDock } from '../lib/dock';
-	import { LANGUAGES, languageOf, type LanguageId } from '../lib/languages';
+	import { LANGUAGE_GROUPS, languageOf, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf } from '../lib/packs';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
-	import Sanitizers from '../lib/components/Sanitizers.svelte';
+	import BuildSettings, { BUILD_SETTINGS_EVENT, buildSummary } from '../lib/components/BuildSettings.svelte';
+	import MoreMenu from '../lib/components/MoreMenu.svelte';
+	import Popover from '../lib/components/Popover.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
 	import { projectLanguageOf } from '../lib/project';
-	import { TEST_FRAMEWORKS, type TestFramework } from '../lib/cpp-tests';
-	import { TARGETS, type CppTargetId } from '../lib/cpp-targets';
-	import { levelsOf } from '../lib/optimization';
+	import { serverLabel } from '../lib/format';
+	import { followViewport } from '../lib/viewport';
 	import { startEditor } from '../lib/monaco';
 
 	// The editor is on from here: importing it changed nothing on the page.
@@ -28,6 +41,7 @@
 	let dockElement: HTMLElement;
 	let dock: ReturnType<typeof createDock> | undefined;
 	let offlineDialog = $state<Offline>();
+	let serverMenu = $state<Popover>();
 	/** Set when a new build is installed and waiting: activates it and reloads. */
 	let applyUpdate = $state<(() => void) | null>(null);
 
@@ -40,6 +54,8 @@
 			updateReady: (apply) => (applyUpdate = apply),
 		});
 		void offline.refresh();
+		// Keeps the body the height of the visible area, above a phone's on-screen keyboard.
+		const stopViewport = followViewport(() => {});
 		// The save is debounced; a page being hidden may never come back.
 		const hidden = () => document.visibilityState === 'hidden' && workspace.flush();
 		const flush = () => workspace.flush();
@@ -51,6 +67,7 @@
 		addEventListener('storage', storage);
 		document.addEventListener('visibilitychange', hidden);
 		return () => {
+			stopViewport();
 			removeEventListener('pagehide', flush);
 			removeEventListener('storage', storage);
 			document.removeEventListener('visibilitychange', hidden);
@@ -68,153 +85,131 @@
 	const warnings = $derived(workspace.problems.filter((p) => p.severity === 'warning').length);
 	const percent = $derived(workspace.progress && workspace.progress.total > 0 ? Math.min(100, (100 * workspace.progress.loaded) / workspace.progress.total) : null);
 	const language = $derived(languageOf(workspace.language));
-	/** A C++ project on a Linux target: Run options apply (to Run and Test). */
-	const linuxTarget = $derived(workspace.target?.kind === 'target' && workspace.target.target.runtime === 'linux');
-	const targetValue = $derived(!workspace.target ? '' : workspace.target.kind === 'unsupported' ? 'other' : workspace.target.target.id);
-	/** The optimisation levels of the project's language, null for one without them (optimization.ts). */
-	const levels = $derived(workspace.optimization ? levelsOf(workspace.language) : null);
-	const levelValue = $derived(!workspace.optimization ? '' : workspace.optimization.kind === 'other' ? 'other' : workspace.optimization.level.flag);
+	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */
+	const hasBuild = $derived(workspace.language === 'cpp' || workspace.optimization !== null);
+	const summary = $derived(buildSummary(workspace));
+	const cached = $derived(offline.isPackCached(packOf(language)));
+	const themeLabel = $derived(`Switch to ${theme.current === 'dark' ? 'light' : 'dark'} theme`);
+	/** The server's full name and version, for the status bar's title; its short form is shown. */
+	const serverFull = $derived(workspace.clientState.kind === 'running' ? workspace.clientState.server : '');
 	const mb = (bytes: number) => (bytes / 1048576).toFixed(1);
 
 	function reset() {
 		const label = languageOf(workspace.language).label;
 		if (confirm(`Replace your ${label} project with the sample? Your changes to it will be lost.`)) void workspace.resetProject();
 	}
+
+	/** Opens the Build settings panel next to `from`: the ⋯ button when the chip is folded away, or the status bar's summary. */
+	function openBuildSettings(from: HTMLElement | null) {
+		dispatchEvent(new CustomEvent(BUILD_SETTINGS_EVENT, { detail: from }));
+	}
 </script>
 
-<header class="bar">
-	<a class="brand" href="./" aria-label="Yukibana Light">
-		<img src="logo-64.png" alt="" width="28" height="28" />
-		<span class="name">Yukibana</span><span class="product">Light</span>
-	</a>
+<header class="bar-host">
+	<div class="bar">
+		<a class="brand" href="./" aria-label="Yukibana Light" title="Yukibana Light">
+			<img src="logo-64.png" alt="" width="28" height="28" />
+			<span class="name">Yukibana</span><span class="product">Light</span>
+		</a>
 
-	<label class="select">
-		<span class="sr-only">Language</span>
-		<select value={workspace.language} onchange={(e) => void workspace.switchTo(e.currentTarget.value as LanguageId)}>
-			{#each LANGUAGES as l (l.id)}
-				<option value={l.id}>{l.label}{offline.isPackCached(packOf(l)) ? ' (offline)' : ''}</option>
-			{/each}
-		</select>
-		<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-	</label>
-
-	{#if workspace.runner.busy}
-		<button class="button run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
-			<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg>Stop
-		</button>
-	{:else}
-		<button class="button run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
-			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>Run
-		</button>
-		{#if language.tests}
-			<button class="button test" onclick={() => workspace.run('test')} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
-		{/if}
-		{#if language.mutates}
-			<button class="button" onclick={() => workspace.run('mutate')} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
-		{/if}
-	{/if}
-	{#if workspace.language === 'cpp'}
-		<!-- What tests/ includes is the framework; choosing one converts the sample's tests or adds a sample test. -->
-		<label class="select framework" title="Test framework: choosing one converts the sample's tests to it, or adds a sample test file">
-			<span class="sr-only">Test framework</span>
-			<select
-				value={workspace.testFramework ?? ''}
-				onchange={(e) => {
-					workspace.chooseTestFramework(e.currentTarget.value as TestFramework);
-					e.currentTarget.value = workspace.testFramework ?? '';
-				}}
-			>
-				{#if workspace.testFramework === null || workspace.testFramework === 'mixed'}
-					<option value={workspace.testFramework ?? ''} disabled>{workspace.testFramework === 'mixed' ? 'Mixed frameworks' : 'Test framework'}</option>
-				{/if}
-				{#each TEST_FRAMEWORKS as f (f.id)}
-					<option value={f.id}>{f.label}</option>
+		<!-- The chosen language is shown by .lang-label (its full or short name, by the bar's width); the native select lies over it, unseen, so a phone keeps its own picker. -->
+		<label class="lang" title="Language: {language.label}">
+			<span class="lang-label" aria-hidden="true"><span class="full">{language.label}</span><span class="short">{shortLabel(language)}</span></span>
+			<span class="sr-only">Language</span>
+			<select value={workspace.language} onchange={(e) => void workspace.switchTo(e.currentTarget.value as LanguageId)}>
+				{#each LANGUAGE_GROUPS as group (group.label)}
+					<optgroup label={group.label}>
+						{#each group.ids.map(languageOf) as l (l.id)}
+							<option value={l.id}>{l.label}{offline.isPackCached(packOf(l)) ? ' (offline)' : ''}</option>
+						{/each}
+					</optgroup>
 				{/each}
 			</select>
 			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
 		</label>
-		<!-- The target is compile_flags.txt's --target line (cpp-targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
-		<label class="select target" title="Target: what the code is compiled for and runs on. Choosing one rewrites the --target line of compile_flags.txt">
-			<span class="sr-only">Target</span>
-			<select
-				value={targetValue}
-				onchange={(e) => {
-					if (e.currentTarget.value !== 'other') workspace.chooseTarget(e.currentTarget.value as CppTargetId);
-					e.currentTarget.value = targetValue;
-				}}
-			>
-				{#each TARGETS as t (t.id)}
-					<option value={t.id}>{t.label}</option>
-				{/each}
-				{#if workspace.target?.kind === 'unsupported'}
-					<option value="other" disabled>Other ({workspace.target.triple || 'no triple'})</option>
-				{/if}
-			</select>
-			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-		</label>
-		<!-- The -fsanitize= line of compile_flags.txt (cpp-sanitizers.ts): ticking one rewrites it; a hand-written one is honoured. -->
-		<span class="sanitizers-menu"><Sanitizers {workspace} /></span>
-		{#if linuxTarget}
-			<!-- Loaded the first time a project is on a Linux target: most sessions never need it. -->
-			{#await import('../lib/components/RunOptions.svelte') then { default: RunOptions }}
-				<span class="run-options"><RunOptions {workspace} /></span>
-			{/await}
-		{/if}
-	{/if}
-	{#if levels && workspace.optimization}
-		<!-- C and C++: compile_flags.txt's -O line (optimization.ts), shown as it is when hand-edited; Swift and Scala: saved with the project. -->
-		<label
-			class="select optimization"
-			title={workspace.language === 'cpp'
-				? 'Optimization: the level Run, Test and the IR and assembly views compile at. Choosing one rewrites the -O line of compile_flags.txt'
-				: workspace.language === 'scala'
-					? 'Optimization: whether Run links with the Scala.js optimizer (as sbt fastLinkJS does), saved with the project. It adds about a second to each Run'
-					: 'Optimization: the level Run and Test compile at, saved with the project and written into Package.swift by Download'}
-		>
-			<span class="sr-only">Optimization</span>
-			<select
-				value={levelValue}
-				onchange={(e) => {
-					if (e.currentTarget.value !== 'other') workspace.chooseOptimization(e.currentTarget.value);
-					e.currentTarget.value = levelValue;
-				}}
-			>
-				{#each levels as l (l.flag)}
-					<option value={l.flag} disabled={!!l.unavailable} title={l.unavailable ?? ''}>{l.label}{l.default ? ' (default)' : ''}{l.unavailable ? ' (not available yet)' : ''}</option>
-				{/each}
-				{#if workspace.optimization.kind === 'other'}
-					<option value="other" disabled>{workspace.optimization.flag}</option>
-				{/if}
-			</select>
-			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-		</label>
-	{/if}
-	{#if language.explores?.includes('llvm-ir')}
-		<button class="button view" onclick={() => void workspace.showView('llvm-ir')} title="Show the LLVM IR of the active C or C++ file">IR</button>
-	{/if}
-	{#if language.explores?.includes('asm')}
-		<button class="button view" onclick={() => void workspace.showView('asm')} title="Show the assembly of the active C or C++ file">Asm</button>
-	{/if}
 
-	<button class="button" onclick={() => void workspace.download()} title="Download the project as a zip, with the build files an IDE needs">Download</button>
-	<button class="button" onclick={reset} title="Replace this language's project with the sample">Reset project</button>
-	<button class="button" onclick={() => void workspace.restartServer()} title="Restart the language server">Restart server</button>
-
-	<span class="spacer"></span>
-
-	{#if applyUpdate}
-		<button class="button update" onclick={() => applyUpdate?.()} title="A new version of the app is installed: reload to use it">New version: reload</button>
-	{/if}
-	<button class="icon-button offline-button" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline: languages available without a network, Download everything">
-		<svg viewBox="0 0 24 24"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /><path d="M12 10v6M9.5 13.5 12 16l2.5-2.5" /></svg>
-	</button>
-	<button class="icon-button" onclick={() => theme.toggle()} aria-label="Switch to {theme.current === 'dark' ? 'light' : 'dark'} theme" title="Toggle theme">
-		{#if theme.current === 'dark'}
-			<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
+		{#if workspace.runner.busy}
+			<button class="btn run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
+				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg>Stop
+			</button>
 		{:else}
-			<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+			<button class="btn run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>Run
+			</button>
+			{#if language.tests}
+				<button class="btn test" onclick={() => workspace.run('test')} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+			{/if}
+			{#if language.mutates}
+				<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
+			{/if}
 		{/if}
-	</button>
+
+		{#if hasBuild}
+			<BuildSettings {workspace} />
+		{/if}
+
+		{#if language.explores?.length}
+			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
+				{#if language.explores.includes('llvm-ir')}
+					{@const on = workspace.viewsOpen.includes('llvm-ir')}
+					<button class="btn view" data-view="llvm-ir" aria-pressed={on} onclick={() => workspace.toggleView('llvm-ir')} title={on ? 'Close the LLVM IR view' : 'Show the LLVM IR of the active C or C++ file'}>
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">LLVM IR</span><span class="short">IR</span>
+					</button>
+				{/if}
+				{#if language.explores.includes('asm')}
+					{@const on = workspace.viewsOpen.includes('asm')}
+					<button class="btn view" data-view="asm" aria-pressed={on} onclick={() => workspace.toggleView('asm')} title={on ? 'Close the Assembly view' : 'Show the assembly of the active C or C++ file'}>
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">Assembly</span><span class="short">Asm</span>
+					</button>
+				{/if}
+			</div>
+		{/if}
+
+		<span class="spacer"></span>
+
+		{#if applyUpdate}
+			<button class="btn update" onclick={() => applyUpdate?.()} title="A new version is installed. Reload to use it">Update</button>
+		{/if}
+		<button class="icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /><path d="M12 10v6M9.5 13.5 12 16l2.5-2.5" /></svg>
+			{#if cached}<span class="badge" title="{language.label} works offline">✓</span>{/if}
+		</button>
+		<button class="icon-btn theme-button" data-fold="44" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
+			{#if theme.current === 'dark'}
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
+			{:else}
+				<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+			{/if}
+		</button>
+
+		<MoreMenu>
+			{#if language.mutates}
+				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
+				<div class="menu-divider" role="separator" data-fold="70"></div>
+			{/if}
+			{#if hasBuild}
+				<button class="menu-item" role="menuitem" data-fold="30" onclick={() => openBuildSettings(document.querySelector<HTMLElement>('.bar-host button.more'))}>
+					Build settings…<span class="hint">{summary}</span>
+				</button>
+				<div class="menu-divider" role="separator" data-fold="30"></div>
+			{/if}
+			{#if language.explores?.length}
+				{#each language.explores as kind (kind)}
+					{@const on = workspace.viewsOpen.includes(kind)}
+					<button class="menu-item" role="menuitemcheckbox" aria-checked={on} data-fold="44" data-view={kind} onclick={() => workspace.toggleView(kind)}>
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{kind === 'asm' ? 'Assembly' : 'LLVM IR'}
+					</button>
+				{/each}
+				<div class="menu-divider" role="separator" data-fold="44"></div>
+			{/if}
+			<button class="menu-item" role="menuitem" onclick={() => void workspace.download()} title="Download the project as a zip, with the build files an IDE needs">Download project (.zip)</button>
+			<button class="menu-item danger" role="menuitem" onclick={reset} title="Replace this language's project with the sample">Reset project…</button>
+			<div class="menu-divider" role="separator"></div>
+			<button class="menu-item" role="menuitem" onclick={() => offlineDialog?.show()}>Offline use…{#if cached}<span class="hint">{shortLabel(language)} ✓</span>{/if}</button>
+			<button class="menu-item" role="menuitem" data-fold="44" onclick={() => theme.toggle()}>{themeLabel}</button>
+			<button class="menu-item" role="menuitem" onclick={() => void workspace.restartServer()}>Restart language server</button>
+		</MoreMenu>
+	</div>
 </header>
 
 <main class="dock" bind:this={dockElement}></main>
@@ -222,53 +217,75 @@
 <Offline bind:this={offlineDialog} />
 
 <footer class="status-bar">
-	<span class="state">
-		{#if workspace.progress}
-			<span class="spinner" aria-hidden="true"></span>
-			Loading {workspace.progress.label}
-			{#if percent !== null}
-				<span class="meter"><span style:width="{percent}%"></span></span>
-				{mb(workspace.progress.loaded)} / {mb(workspace.progress.total)} MB
+	<button class="server" popovertarget="server-menu" aria-haspopup="menu" title={serverFull || 'Language server'}>
+		<span class="state" role="status">
+			{#if workspace.progress}
+				<span class="spinner" aria-hidden="true"></span>
+				<span class="truncate">Loading {workspace.progress.label}</span>
+				{#if percent !== null}
+					<span class="meter" role="progressbar" aria-label="Download" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(percent)}><span style:width="{percent}%"></span></span>
+					<span class="amount">{mb(workspace.progress.loaded)} / {mb(workspace.progress.total)} MB</span>
+				{:else}
+					<span class="amount">{mb(workspace.progress.loaded)} MB</span>
+				{/if}
+			{:else if workspace.clientState.kind === 'starting'}
+				<span class="spinner" aria-hidden="true"></span> <span class="truncate">Starting the {language.label} language server…</span>
+			{:else if workspace.clientState.kind === 'running'}
+				<span class="ok" aria-hidden="true"></span> <span class="truncate">{serverLabel(workspace.clientState.server)}</span>
+			{:else if workspace.clientState.kind === 'failed'}
+				<span class="bad" aria-hidden="true"></span> <span class="truncate">Language server failed: {workspace.clientState.reason}</span>
 			{:else}
-				{mb(workspace.progress.loaded)} MB
+				<span class="truncate">Language server stopped</span>
 			{/if}
-		{:else if workspace.clientState.kind === 'starting'}
-			<span class="spinner" aria-hidden="true"></span> Starting the {languageOf(workspace.language).label} language server…
-		{:else if workspace.clientState.kind === 'running'}
-			<span class="ok" aria-hidden="true"></span> {workspace.clientState.server}
-		{:else if workspace.clientState.kind === 'failed'}
-			<span class="bad" aria-hidden="true"></span> Language server failed: {workspace.clientState.reason}
-		{:else}
-			Language server stopped
-		{/if}
-	</span>
-	<span class="counts">
-		<span title="Errors"><span class="dot error"></span>{errors}</span>
-		<span title="Warnings"><span class="dot warning"></span>{warnings}</span>
-	</span>
+		</span>
+	</button>
+	<Popover bind:this={serverMenu} id="server-menu" label="Language server" role="menu" class="server-menu">
+		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), void workspace.restartServer())}>Restart language server</button>
+		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), workspace.showPanel('output'))}>Show output</button>
+	</Popover>
+	{#if workspace.language === 'cpp' && summary}
+		<button class="build-summary-button" onclick={(e) => openBuildSettings(e.currentTarget)} title="Build settings: {summary}"><span class="truncate">{summary}</span></button>
+	{/if}
+	<span class="spacer"></span>
+	<button class="problems-button" onclick={() => workspace.showPanel('problems')} title="Show the problems">
+		<span class="sr-only">{errors} {errors === 1 ? 'error' : 'errors'}, {warnings} {warnings === 1 ? 'warning' : 'warnings'}</span>
+		<span class="counts" aria-hidden="true">
+			<span title="Errors"><span class="dot error">⊗</span>{errors}</span>
+			<span title="Warnings"><span class="dot warning">⚠</span>{warnings}</span>
+		</span>
+	</button>
 </footer>
 
 <style>
-	.bar {
-		/* Above the layout, so a menu opened from the bar (Run options) is not drawn under the panels. */
+	.bar-host {
+		/* Above the layout, so nothing in the dock is drawn over the bar. */
 		position: relative;
 		z-index: 10;
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		min-height: var(--nav-height);
-		padding: 0 1.5rem;
+		flex: none;
 		border-bottom: 1px solid var(--gray-5);
 		background: var(--header-bg);
 		backdrop-filter: blur(0.5rem);
 	}
+	.bar {
+		display: flex;
+		flex-wrap: nowrap;
+		align-items: center;
+		gap: 0.6rem;
+		height: var(--nav-height);
+		padding: 0 1rem;
+		/* Never wider than the window; the margin keeps focus rings at the edges whole. */
+		overflow-x: clip;
+		overflow-clip-margin: 4px;
+	}
 	.brand {
 		display: flex;
+		flex: none;
 		align-items: center;
 		gap: 0.5rem;
-		margin-right: 0.75rem;
+		margin-right: 0.4rem;
 		color: var(--white);
 		text-decoration: none;
+		white-space: nowrap;
 	}
 	.brand img {
 		width: 1.75rem;
@@ -284,25 +301,51 @@
 		font-size: 1.05rem;
 		color: var(--gray-2);
 	}
-	.select {
+	.lang {
 		position: relative;
 		display: inline-flex;
+		flex: 0 1 auto;
 		align-items: center;
-	}
-	.select select {
-		appearance: none;
-		height: 2rem;
-		padding: 0 2rem 0 0.8rem;
+		min-width: 0;
+		max-width: 12rem;
+		min-height: 2rem;
+		padding: 0 1.9rem 0 0.75rem;
 		border: 1px solid var(--gray-5);
 		border-radius: 0.35rem;
 		background: var(--gray-6);
 		color: var(--white);
-		font: inherit;
 		font-size: 0.9rem;
 		font-weight: 500;
 		cursor: pointer;
 	}
-	.select svg {
+	.lang:hover,
+	.lang:focus-within {
+		border-color: var(--control-border);
+	}
+	.lang:has(select:focus-visible) {
+		outline: var(--focus-ring);
+		outline-offset: 1px;
+	}
+	.lang-label {
+		display: block;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+	}
+	:global(.lang-label .short) {
+		display: none;
+	}
+	.lang select {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		opacity: 0;
+		font: inherit;
+		cursor: pointer;
+	}
+	.lang svg {
 		position: absolute;
 		right: 0.6rem;
 		width: 0.8rem;
@@ -312,28 +355,12 @@
 		stroke-width: 2;
 		pointer-events: none;
 	}
-	.button {
-		height: 2rem;
-		padding: 0 0.8rem;
-		border: 1px solid var(--gray-5);
-		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
-		font: inherit;
-		font-size: 0.85rem;
-		cursor: pointer;
-	}
 	.run {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
 		border-color: var(--accent);
 		color: var(--white);
 		font-weight: 600;
 	}
 	.run svg {
-		width: 0.85rem;
-		height: 0.85rem;
 		fill: var(--accent-high);
 	}
 	.run.stop svg {
@@ -343,41 +370,51 @@
 		border-color: var(--accent);
 		color: var(--accent-high);
 	}
-	.run:disabled,
-	.button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
+	.view-group {
+		display: inline-flex;
+		flex: none;
 	}
-	.button:hover,
-	.button:focus-visible,
-	.select select:hover {
-		border-color: var(--gray-4);
-		color: var(--white);
+	.view-group .view {
+		gap: 0.25rem;
+		padding: 0 0.65rem;
+		border-radius: 0;
+	}
+	.view-group .view:first-child {
+		border-radius: 0.35rem 0 0 0.35rem;
+	}
+	.view-group .view:last-child {
+		border-radius: 0 0.35rem 0.35rem 0;
+	}
+	.view-group .view + .view {
+		margin-left: -1px;
+	}
+	.view .check:empty {
+		display: none;
+	}
+	:global(.view-group .short) {
+		display: none;
 	}
 	.spacer {
-		flex: 1;
+		flex: 1 1 0;
+		min-width: 0;
 	}
-	.icon-button {
-		display: inline-grid;
+	.offline-button {
+		position: relative;
+	}
+	.badge {
+		position: absolute;
+		right: 0.1rem;
+		bottom: 0.15rem;
+		display: grid;
 		place-items: center;
-		width: 2rem;
-		height: 2rem;
-		border: 0;
-		border-radius: 0.35rem;
-		background: none;
-		color: var(--gray-2);
-		cursor: pointer;
-	}
-	.icon-button:hover {
-		color: var(--accent-high);
-	}
-	.icon-button svg {
-		width: 1.1rem;
-		height: 1.1rem;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2;
-		stroke-linecap: round;
+		width: 0.8rem;
+		height: 0.8rem;
+		border-radius: 50%;
+		background: var(--accent);
+		color: var(--black);
+		font-size: 0.55rem;
+		font-weight: 700;
+		line-height: 1;
 	}
 	.dock {
 		flex: 1;
@@ -385,25 +422,59 @@
 	}
 	.status-bar {
 		display: flex;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.35rem 1rem;
+		flex: none;
+		align-items: center;
+		gap: 0.75rem;
+		min-height: 1.75rem;
+		padding: 0 0.6rem;
 		border-top: 1px solid var(--gray-5);
 		color: var(--gray-3);
 		font-size: 0.8rem;
+		white-space: nowrap;
+	}
+	.status-bar button {
+		display: inline-flex;
+		align-items: center;
+		min-width: 0;
+		min-height: 1.6rem;
+		padding: 0 0.4rem;
+		border: 0;
+		border-radius: 0.3rem;
+		background: none;
+		color: inherit;
+		font: inherit;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.status-bar button:hover {
+		background: var(--gray-6);
+		color: var(--white);
+	}
+	/* What gives way first as the bar narrows: the server's name, then the build summary. */
+	.server {
+		flex: 0 1 auto;
+	}
+	.build-summary-button {
+		flex: 0 10 auto;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+	}
+	.problems-button {
+		flex: none;
 	}
 	.state {
 		display: flex;
 		align-items: center;
 		gap: 0.45rem;
 		min-width: 0;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	}
+	.amount {
+		flex: none;
 	}
 	.meter {
 		display: inline-block;
-		width: 8rem;
+		flex: none;
+		width: 6rem;
 		height: 0.35rem;
 		border-radius: 1rem;
 		background: var(--gray-5);
@@ -416,6 +487,7 @@
 		transition: width 0.2s;
 	}
 	.spinner {
+		flex: none;
 		width: 0.75rem;
 		height: 0.75rem;
 		border: 1.5px solid var(--gray-4);
@@ -429,9 +501,9 @@
 		}
 	}
 	.ok,
-	.bad,
-	.dot {
+	.bad {
 		display: inline-block;
+		flex: none;
 		width: 0.5rem;
 		height: 0.5rem;
 		border-radius: 50%;
@@ -439,42 +511,32 @@
 	.ok {
 		background: var(--accent-high);
 	}
-	.bad,
-	.dot.error {
+	.bad {
 		background: var(--red-high);
 	}
+	.dot {
+		font-size: 0.85rem;
+		line-height: 1;
+	}
+	.dot.error {
+		color: var(--red-high);
+	}
 	.dot.warning {
-		background: var(--orange-high);
+		color: var(--orange-high);
 	}
 	.counts {
 		display: flex;
-		gap: 0.9rem;
+		gap: 0.75rem;
 	}
 	.counts > span {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.35rem;
-	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
+		gap: 0.3rem;
 	}
 	@media (width < 40em) {
 		.bar {
-			padding: 0 0.75rem;
 			gap: 0.4rem;
-		}
-		.product,
-		.button:not(.run, .update),
-		.framework,
-		.target,
-		.optimization,
-		.sanitizers-menu,
-		.run-options {
-			display: none;
+			padding: 0 0.5rem;
 		}
 	}
 </style>

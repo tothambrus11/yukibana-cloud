@@ -348,6 +348,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): EditorHo
 	terminal.group.api.setSize({ width: Math.round(element.clientWidth * 0.3) });
 
 	const report = () => {
+		workspace.viewsChanged(VIEW_KINDS.filter((k) => dock.getPanel(VIEWS[k].id) !== undefined));
 		if (replacing) return;
 		const open = dock.panels.filter(isEditor).map((p) => p.id.slice(EDITOR_PREFIX.length));
 		const active = dock.activePanel;
@@ -451,6 +452,9 @@ export function createDock(element: HTMLElement, workspace: Workspace): EditorHo
 		showTerminal(): void {
 			reveal(dock.getPanel('terminal'));
 		},
+		showPanel(id: 'output' | 'problems'): void {
+			reveal(dock.getPanel(id));
+		},
 		showPreview(): void {
 			const panel = dock.getPanel('preview');
 			if (panel) {
@@ -492,6 +496,9 @@ export function createDock(element: HTMLElement, workspace: Workspace): EditorHo
 		},
 		hideViews(): void {
 			for (const kind of VIEW_KINDS) dock.getPanel(VIEWS[kind].id)?.api.close();
+		},
+		hideView(kind: ExploreKind): void {
+			dock.getPanel(VIEWS[kind].id)?.api.close();
 		},
 		showCallHierarchy(): void {
 			const panel = dock.getPanel('call-hierarchy');

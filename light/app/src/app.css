@@ -347,6 +347,149 @@ body {
 	text-transform: uppercase;
 }
 
+/*
+ * The top bar's folding (+page.svelte, MoreMenu.svelte). The header is a
+ * container; below each tier, in rem of its own width, labels shorten and
+ * the controls marked `data-fold="<tier>"` leave the bar while their twins
+ * in the ⋯ menu appear:
+ *
+ *   < 70rem  Mutate into ⋯; LLVM IR and Assembly read IR and Asm; the Build
+ *            chip's summary is capped
+ *   < 56rem  the brand is its icon; the Build chip reads "Build"
+ *   < 44rem  LLVM IR, Assembly, Offline and Theme into ⋯; the language's
+ *            short name
+ *   < 30rem  the Build chip into ⋯; the language capped at 6rem
+ *   < 22rem  no brand
+ *
+ * Every rule is written twice: once in a container query (`.cq`, set when
+ * the queries reach the menu in the top layer) and once for `data-tier`,
+ * which a ResizeObserver writes otherwise. Keep the two in step.
+ */
+header.bar-host {
+	container: bar / inline-size;
+}
+.more-menu [data-fold] {
+	display: none;
+}
+.cq-probe {
+	opacity: 0;
+	pointer-events: none;
+}
+@container bar (width >= 0px) {
+	.cq-probe span {
+		--cq-probe: 1;
+	}
+}
+
+@container bar (width < 70rem) {
+	.bar-host.cq .bar [data-fold~='70']:not(.more-menu *) {
+		display: none;
+	}
+	.bar-host.cq .more-menu [data-fold~='70'] {
+		display: flex;
+	}
+	.bar-host.cq .view-group .long {
+		display: none;
+	}
+	.bar-host.cq .view-group .short {
+		display: inline;
+	}
+	.bar-host.cq .build-summary {
+		max-width: 11rem;
+	}
+}
+.bar-host:not(.cq)[data-tier~='70'] .bar [data-fold~='70']:not(.more-menu *) {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='70'] .more-menu [data-fold~='70'] {
+	display: flex;
+}
+.bar-host:not(.cq)[data-tier~='70'] .view-group .long {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='70'] .view-group .short {
+	display: inline;
+}
+.bar-host:not(.cq)[data-tier~='70'] .build-summary {
+	max-width: 11rem;
+}
+
+@container bar (width < 56rem) {
+	.bar-host.cq .brand .name,
+	.bar-host.cq .brand .product,
+	.bar-host.cq .build-summary {
+		display: none;
+	}
+	.bar-host.cq .build-word {
+		display: inline;
+	}
+}
+.bar-host:not(.cq)[data-tier~='56'] .brand .name,
+.bar-host:not(.cq)[data-tier~='56'] .brand .product,
+.bar-host:not(.cq)[data-tier~='56'] .build-summary {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='56'] .build-word {
+	display: inline;
+}
+
+@container bar (width < 44rem) {
+	.bar-host.cq .bar [data-fold~='44']:not(.more-menu *) {
+		display: none;
+	}
+	.bar-host.cq .more-menu [data-fold~='44'] {
+		display: flex;
+	}
+	.bar-host.cq .lang-label .full {
+		display: none;
+	}
+	.bar-host.cq .lang-label .short {
+		display: inline;
+	}
+}
+.bar-host:not(.cq)[data-tier~='44'] .bar [data-fold~='44']:not(.more-menu *) {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='44'] .more-menu [data-fold~='44'] {
+	display: flex;
+}
+.bar-host:not(.cq)[data-tier~='44'] .lang-label .full {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='44'] .lang-label .short {
+	display: inline;
+}
+
+@container bar (width < 30rem) {
+	.bar-host.cq .bar [data-fold~='30']:not(.more-menu *) {
+		display: none;
+	}
+	.bar-host.cq .more-menu [data-fold~='30'] {
+		display: flex;
+	}
+	.bar-host.cq .lang {
+		max-width: 6rem;
+	}
+}
+.bar-host:not(.cq)[data-tier~='30'] .bar [data-fold~='30']:not(.more-menu *) {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='30'] .more-menu [data-fold~='30'] {
+	display: flex;
+}
+.bar-host:not(.cq)[data-tier~='30'] .lang {
+	max-width: 6rem;
+}
+
+@container bar (width < 22rem) {
+	.bar-host.cq .brand {
+		display: none;
+	}
+}
+.bar-host:not(.cq)[data-tier~='22'] .brand {
+	display: none;
+}
+
 /* A finger needs a bigger target than a pointer: 44 px for controls, 32 px for a tab's close. */
 @media (pointer: coarse) {
 	.btn,
