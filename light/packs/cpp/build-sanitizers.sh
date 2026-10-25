@@ -95,6 +95,9 @@ rm -rf "$W/rt" "$W/obj" "$W/stage"
 mkdir -p "$W/rt/lib" "$W/obj"
 for d in sanitizer_common asan ubsan ubsan_minimal lsan interception; do cp -r "$EMSDK_LIB/compiler-rt/lib/$d" "$W/rt/lib/"; done
 cp -r "$EMSDK_LIB/compiler-rt/include" "$W/rt/include"
+# The copies keep the emsdk unit's modes, and a unit is unpacked read-only
+# (pack-toolchain.sh): without this, patch cannot write its temporary files.
+chmod -R u+w "$W/rt"
 patch -s -d "$W/rt" -p1 < "$HERE/patches/compiler-rt-wasi.patch"
 # Emscripten's flags for these libraries (CompilerRTLibrary and its
 # subclasses), for wasm32-wasip1: wasi-libc's emulations of what WASI lacks
