@@ -199,14 +199,17 @@ export function problemsOf(/** @type {string} */ root, /** @type {string} */ pac
         problems.push(`${dir}/deps.apt: a split pack's system packages are each unit's toolchains/<unit>/deps.apt, in that unit's key; a pack-level one would reach every unit's build and re-key none`);
     }
     const glue = path.join(root, dir, 'glue.sh');
+    // The compiler scan hangs on glue.sh alone: chained to any other check
+    // (it once followed test.sh's), it would skip a pack's emcc whenever that
+    // other check failed, and read a glue.sh that is not there.
     if (!fs.existsSync(glue)) problems.push(`${dir} has no glue.sh`);
+    else for (const [n, tool] of compilerCalls(fs.readFileSync(glue, 'utf8'))) problems.push(`${dir}/glue.sh:${n}: runs ${tool}; a split pack's glue never compiles, a unit does`);
     // light-packs.yml's assemble job runs every split pack's test.sh over
     // the pack it assembled, in a release too; without one the pack would
     // ship as only assembled, which is how split packs once shipped untested.
     const tests = path.join(root, dir, 'test.sh');
     if (!fs.existsSync(tests)) problems.push(`${dir} has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped`);
     else if ((fs.statSync(tests).mode & 0o111) === 0) problems.push(`${dir}/test.sh is not executable`);
-    else for (const [n, tool] of compilerCalls(fs.readFileSync(glue, 'utf8'))) problems.push(`${dir}/glue.sh:${n}: runs ${tool}; a split pack's glue never compiles, a unit does`);
     for (const name of ['glue.sh', 'build.sh']) {
         const file = path.join(root, dir, name);
         if (!fs.existsSync(file)) continue;
@@ -286,6 +289,38 @@ test("a split pack without its tests is named, and they are glue, which no unit'
         const gluePaths = path.join(dir, 'light/packs/stub/glue.paths');
         fs.writeFileSync(gluePaths, fs.readFileSync(gluePaths, 'utf8').replace(/^test\.sh\n/m, ''));
         assert.deepEqual(problemsOf(dir, 'stub'), ["light/packs/stub has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped"]);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test("a split pack's glue that compiles is named even when its tests are missing, and a missing glue is named, not a crash", () => {
+    const dir = scratch();
+    try {
+        const pack = path.join(dir, 'light/packs/stub');
+        const gluePaths = path.join(pack, 'glue.paths');
+        const drop = (/** @type {string} */ name) => fs.writeFileSync(gluePaths, fs.readFileSync(gluePaths, 'utf8').replace(new RegExp(`^${name.replace('.', '\\.')}\n`, 'm'), ''));
+        const glue = path.join(pack, 'glue.sh');
+        const n = fs.readFileSync(glue, 'utf8').split('\n').length;
+        fs.appendFileSync(glue, 'emcc -O2 x.c -o "$OUT/x.js"\n');
+        fs.rmSync(path.join(pack, 'test.sh'));
+        drop('test.sh');
+        assert.deepEqual(problemsOf(dir, 'stub'), [
+            `light/packs/stub/glue.sh:${n}: runs emcc; a split pack's glue never compiles, a unit does`,
+            "light/packs/stub has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped",
+        ]);
+        // Not executable is the same: the glue is still read.
+        fs.writeFileSync(path.join(pack, 'test.sh'), '#!/bin/sh\n');
+        fs.appendFileSync(gluePaths, 'test.sh\n');
+        assert.deepEqual(problemsOf(dir, 'stub'), [
+            `light/packs/stub/glue.sh:${n}: runs emcc; a split pack's glue never compiles, a unit does`,
+            'light/packs/stub/test.sh is not executable',
+        ]);
+        // No glue at all, with tests present: one named problem.
+        fs.chmodSync(path.join(pack, 'test.sh'), 0o755);
+        fs.rmSync(glue);
+        drop('glue.sh');
+        assert.deepEqual(problemsOf(dir, 'stub'), ['light/packs/stub has no glue.sh']);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
