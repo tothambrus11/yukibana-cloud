@@ -56,6 +56,15 @@ tests is kept as `<pack>-<tree>.tar.zst` on the repository's rolling
 `light-packs` prerelease, where `<tree>` is the git tree id of
 `packs/<pack>` (`scripts/pack-store.sh tree <pack>`).
 
+A split pack (one with `packs/<pack>/toolchain.paths`) is never kept there.
+Its toolchain, the part that takes hours, is kept on the `light-toolchains`
+prerelease as `toolchain-<pack>-<key>.tar.zst`, where `<key>` hashes exactly
+the inputs `toolchain_specs <pack>` in `scripts/toolchain-env.sh` names and
+the output-changing settings of its `toolchain.env`
+(`scripts/pack-store.sh toolchain-key <pack>`), so a glue edit keeps the
+key. `scripts/pack-store.sh toolchain-key-report <pack> <base>` says what
+changed a key.
+
 * `.github/workflows/light-packs.yml` runs on every push that touches a pack.
   A pack whose tree has a build already is only looked up; a pack that
   changed is built and tested by its `build.sh` and stored. So a pack is

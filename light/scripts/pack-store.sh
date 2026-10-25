@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # The store of built language packs: each pack's output
 # (app/static/packs/<pack>) as built from one exact version of its sources,
 # kept as the asset <pack>-<tree>.tar.zst of the rolling prerelease
@@ -25,24 +26,87 @@
 # The tree a fetched pack came from is written to ../.pack-trees/<pack>, which
 # light/setup.sh reads to skip a pack that is already current.
 #
+# A split pack (one with packs/<pack>/toolchain.paths) is never in this
+# store: `has`, `fetch` and `publish` exit 2 for one. Its toolchain is kept
+# in the toolchain store instead and the pack assembled over it
+# (pack-toolchain.sh), so a glue edit rebuilds nothing:
+#
+#   pack-store.sh toolchain-key <pack>    the key of the pack's toolchain:
+#       the first 40 hex digits of the sha256 of the lines
+#         yukibana-toolchain/1
+#         pack <pack>
+#         <mode> <git blob id> <path>   each input in the worktree, sorted
+#         env NAME=value                each set variant knob, sorted
+#       where the inputs are the files `toolchain_specs <pack>` names
+#       (toolchain-env.sh; untracked files included, ignored ones not) and
+#       the knobs those `toolchain_knobs <pack>` reads from toolchain.env.
+#       So changing toolchain-env.sh rebuilds every toolchain; changing
+#       pack-toolchain.sh (assembly) rebuilds none. Exit 2: not split.
+#   pack-store.sh toolchain-key-report <pack> <base>    what changed the key
+#       since commit <base>: the inputs that differ, the env lines then and
+#       now, both keys when toolchain.paths or toolchain.env changed, and a
+#       last line `changed` or `unchanged`. Exit 6 when <base> is not in
+#       this clone.
+#   pack-store.sh toolchain-dirty <pack>  exit 0 naming the inputs with
+#       uncommitted changes, 1 when there are none.
+#   pack-store.sh toolchain-has <pack>    exit 0 when the toolchain store has
+#       the asset toolchain-<pack>-<key>.tar.zst, 3 when it has none.
+#   pack-store.sh toolchain-fetch <pack> [--any] [dir]   downloads it into
+#       dir (default $TOOLCHAIN_CACHE/built/<pack>/<key>), read-only, and
+#       prints dir; exit 3 when there is none. --any takes the pack's newest
+#       toolchain whatever its key, saying which.
+#   pack-store.sh toolchain-publish <pack> <dir>    uploads dir as the
+#       toolchain of HEAD's inputs, refusing one built from anything else.
+#       Never deletes: from 800 assets it warns, at 1000 it fails.
+#
+# A toolchain directory holds toolchain.json, written by its build:
+# {"pack": "<pack>", "key": "<key>", "commit": "<40-hex commit it was built
+# at>"}; a fetch adds a local "stat" section, {"<path>": {"size": bytes,
+# "mtimeMs": ms}} for every other file, by which a later run tells an
+# untouched copy without hashing it.
+#
 # Environment: LIGHT_PACKS_REPO (default: the origin's GitHub repository, else
-# tothambrus11/yukibana-cloud), LIGHT_PACKS_TAG (light-packs), KEEP (8), and
-# LIGHT_PACKS_API (https://api.github.com), which test-pack-store.mjs points
-# at a server of its own.
+# tothambrus11/yukibana-cloud), LIGHT_PACKS_TAG (light-packs), KEEP (8),
+# LIGHT_TOOLCHAINS_TAG (light-toolchains), TOOLCHAIN_CACHE
+# (~/.cache/yukibana-toolchains), and LIGHT_PACKS_API
+# (https://api.github.com), which test-pack-store.mjs points at a server of
+# its own.
 set -euo pipefail
+shopt -s inherit_errexit
 
 LIGHT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PACKS="$LIGHT/app/static/packs"
 TREES="$LIGHT/.pack-trees"
 TAG="${LIGHT_PACKS_TAG:-light-packs}"
+TOOLCHAINS_TAG="${LIGHT_TOOLCHAINS_TAG:-light-toolchains}"
+TOOLCHAIN_CACHE="${TOOLCHAIN_CACHE:-$HOME/.cache/yukibana-toolchains}"
 API="${LIGHT_PACKS_API:-https://api.github.com}"
 KEEP="${KEEP:-8}"
+# GitHub refuses an asset of 2 GiB or more; this leaves room to be sure.
+MAX_ASSET_BYTES=1900000000
+# GitHub's cap on assets per release, and where publishing starts warning.
+MAX_ASSETS=1000
+WARN_ASSETS=800
+
+# shellcheck source=toolchain-env.sh
+source "$LIGHT/scripts/toolchain-env.sh"
 
 die() { echo "pack-store.sh: $*" >&2; exit 1; }
 
-# A download or archive being made, removed however the script ends.
+# Removes a directory tree that may hold read-only directories (a toolchain
+# is made read-only): only the directories are made writable first, which is
+# all removing their entries needs.
+remove_tree() {
+  [ -e "$1" ] || return 0
+  find "$1" -type d -exec chmod u+w {} +
+  rm -rf "$1"
+}
+
+# A download or archive being made, and a toolchain being extracted, removed
+# however the script ends.
 tmp=""
-trap '[ -z "$tmp" ] || rm -rf "$tmp"' EXIT
+part=""
+trap '[ -z "$tmp" ] || rm -rf "$tmp"; [ -z "$part" ] || remove_tree "$part"' EXIT
 
 repo() {
   if [ -n "${LIGHT_PACKS_REPO:-}" ]; then echo "$LIGHT_PACKS_REPO"; return; fi
@@ -60,14 +124,15 @@ tree() {
     git -C "$LIGHT" rev-parse "HEAD:packs/$1"
 }
 
-# The release's assets as lines "<name> <sha256 or -> <created_at> <url>",
-# or nothing when the release does not exist. The API is asked without
-# credentials unless GH_TOKEN is set (60 requests an hour per address).
+# The assets of release $1 (default: the pack store's) as lines
+# "<name> <sha256 or -> <created_at> <url>", or nothing when the release does
+# not exist. The API is asked without credentials unless GH_TOKEN is set (60
+# requests an hour per address).
 assets() {
   local auth=()
   [ -n "${GH_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GH_TOKEN")
   curl -sSL "${auth[@]}" -H 'Accept: application/vnd.github+json' \
-    "$API/repos/$(repo)/releases/tags/$TAG" |
+    "$API/repos/$(repo)/releases/tags/${1:-$TAG}" |
     node -e '
       let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
         const r = JSON.parse(s);
@@ -76,8 +141,19 @@ assets() {
       });'
 }
 
+# Exits 2 when pack $1 is split: its output is assembled over a toolchain
+# from the toolchain store and never kept in this one, where a glue edit
+# would change its tree and rebuild the whole toolchain.
+not_split() {
+  if [ -f "$LIGHT/packs/$1/toolchain.paths" ]; then
+    echo "pack-store.sh: $1: split pack: fetch its toolchain and assemble (pack-toolchain.sh)" >&2
+    exit 2
+  fi
+}
+
 has() {
   local want
+  not_split "$1"
   want="$1-$(tree "$1").tar.zst"
   if assets | awk -v w="$want" '$1 == w { found = 1 } END { exit !found }'; then
     echo "pack-store.sh: $1: $want is in $(repo)'s $TAG release" >&2
@@ -89,6 +165,7 @@ has() {
 
 fetch() {
   local pack="$1" any="${2:-}" want name sha url
+  not_split "$pack"
   want="$pack-$(tree "$pack").tar.zst"
   local list
   list="$(assets)"
@@ -116,6 +193,7 @@ fetch() {
 
 publish() {
   local pack="$1" name r
+  not_split "$pack"
   [ -f "$PACKS/$pack/server.js" ] || die "app/static/packs/$pack is not built (no server.js)"
   name="$pack-$(tree "$pack").tar.zst"
   r="$(repo)"
@@ -146,10 +224,341 @@ publish() {
     done
 }
 
+# ---- Toolchains of split packs ------------------------------------------
+
+# Exits 2 unless pack $1 exists, has a plain name and is split.
+split_pack() {
+  [[ "$1" =~ ^[a-z][a-z0-9]*$ ]] || die "'$1' is not a pack name"
+  [ -d "$LIGHT/packs/$1" ] || die "no pack $1 (packs/$1)"
+  if [ ! -f "$LIGHT/packs/$1/toolchain.paths" ]; then
+    echo "pack-store.sh: $1 has no toolchain (packs/$1/toolchain.paths): its tree is its key" >&2
+    exit 2
+  fi
+}
+
+# Prints the lines hashed into pack $1's toolchain key (see the header),
+# reading the repository TOOLCHAIN_ROOT names: the checkout, or the scratch
+# copy of an older commit that toolchain-key-report makes.
+toolchain_lines() {
+  local pack="$1" out list path mode i=0
+  local -a specs=() paths=() modes=() regular=() hashes=()
+  # Every failure returns explicitly: old_toolchain_key runs this where
+  # `set -e` is off, and an empty pathspec list would mean every file.
+  out="$(toolchain_specs "$pack")" || return 1
+  mapfile -t specs <<<"$out"
+  list="$(mktemp "${TMPDIR:-/tmp}/pack-store.XXXXXX")" || return 1
+  git -C "$TOOLCHAIN_ROOT" ls-files -co --exclude-standard -z -- "${specs[@]}" >"$list" || { rm -f "$list"; return 1; }
+  mapfile -d '' -t paths < <(LC_ALL=C sort -zu "$list")
+  rm -f "$list"
+  echo "yukibana-toolchain/1"
+  echo "pack $pack"
+  # Modes first, then every regular file hashed by one git process (with the
+  # path's filters, so a committed file gives its blob id).
+  for path in "${paths[@]}"; do
+    case "$path" in *$'\n'*) echo "pack-store.sh: a toolchain input's name holds a newline: $path" >&2; return 1 ;; esac
+    if [ -L "$TOOLCHAIN_ROOT/$path" ]; then
+      mode=120000
+    elif [ -f "$TOOLCHAIN_ROOT/$path" ]; then
+      if [ -x "$TOOLCHAIN_ROOT/$path" ]; then mode=100755; else mode=100644; fi
+      regular+=("$path")
+    elif [ ! -e "$TOOLCHAIN_ROOT/$path" ]; then
+      mode=- # deleted in the worktree: no longer an input
+    else
+      echo "pack-store.sh: $path is neither a file nor a symlink (a submodule?); a toolchain input must be one" >&2
+      return 1
+    fi
+    modes+=("$mode")
+  done
+  if [ "${#regular[@]}" -gt 0 ]; then
+    out="$(printf '%s\n' "${regular[@]}" | git -C "$TOOLCHAIN_ROOT" hash-object --stdin-paths)" || return 1
+    mapfile -t hashes <<<"$out"
+  fi
+  local r=0
+  for i in "${!paths[@]}"; do
+    path="${paths[$i]}"
+    case "${modes[$i]}" in
+      -) ;;
+      120000) echo "120000 $(printf '%s' "$(readlink "$TOOLCHAIN_ROOT/$path")" | git -C "$TOOLCHAIN_ROOT" hash-object --stdin) $path" ;;
+      *) echo "${modes[$i]} ${hashes[$r]} $path"; r=$((r + 1)) ;;
+    esac
+  done
+  toolchain_env_lines "$pack"
+}
+
+# Prints "env NAME=value" for each variant knob of pack $1 that is set in
+# this environment, sorted; reads toolchain.env from $2 when given.
+toolchain_env_lines() {
+  local out name class
+  out="$(toolchain_knobs "$1" "${2:-}")" || return 1
+  while read -r name class; do
+    [ "$class" = variant ] || continue
+    [ -n "${!name+x}" ] || continue
+    printf 'env %s=%s\n' "$name" "${!name}"
+  done <<<"$out" | LC_ALL=C sort
+}
+
+toolchain_key() {
+  local lines
+  lines="$(toolchain_lines "$1")" || return 1
+  printf '%s\n' "$lines" | sha256sum | cut -c1-40
+}
+
+toolchain_key_report() {
+  local pack="$1" base="$2" out key old_key="" f differ=""
+  local -a specs=()
+  split_pack "$pack"
+  if ! git -C "$TOOLCHAIN_ROOT" cat-file -e "$base^{commit}" 2>/dev/null; then
+    echo "pack-store.sh: base commit $base is not in this clone; fetch it first" >&2
+    exit 6
+  fi
+  out="$(toolchain_specs "$pack")"
+  mapfile -t specs <<<"$out"
+  key="$(toolchain_key "$pack")"
+  echo "toolchain of $pack against $base:"
+  out="$(git -C "$TOOLCHAIN_ROOT" diff --name-status "$base" -- "${specs[@]}")"
+  [ -z "$out" ] || printf '%s\n' "$out"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
+  local dir="light/packs/$pack"
+  # The settings then and now: base's toolchain.env read with this
+  # environment, so only a changed declaration shows.
+  git -C "$TOOLCHAIN_ROOT" show "$base:$dir/toolchain.env" >"$tmp/old.env" 2>/dev/null || : >"$tmp/old.env"
+  local old_env new_env
+  old_env="$(toolchain_env_lines "$pack" "$tmp/old.env")"
+  new_env="$(toolchain_env_lines "$pack")"
+  echo "old env: ${old_env:-(none)}" | sed '2,$s/^/         /'
+  echo "new env: ${new_env:-(none)}" | sed '2,$s/^/         /'
+  # toolchain.paths is no input of itself and toolchain.env reaches the key
+  # only through the environment, so a change to either is shown as the key
+  # base would have had, computed from base's own files.
+  # Each is named like the inputs above, so the report says what changed.
+  local was now
+  for f in toolchain.paths toolchain.env; do
+    was="$(git -C "$TOOLCHAIN_ROOT" show "$base:$dir/$f" 2>/dev/null || echo "<absent>")"
+    now="$(cat "$TOOLCHAIN_ROOT/$dir/$f" 2>/dev/null || echo "<absent>")"
+    [ "$was" != "$now" ] || continue
+    differ=1
+    case "$was/$now" in
+      "<absent>/"*) printf 'A\t%s\n' "$dir/$f" ;;
+      *"/<absent>") printf 'D\t%s\n' "$dir/$f" ;;
+      *) printf 'M\t%s\n' "$dir/$f" ;;
+    esac
+  done
+  if [ -n "$differ" ]; then
+    old_key="$(old_toolchain_key "$pack" "$base" "$tmp/old")"
+    echo "old key: $old_key"
+    echo "new key: $key"
+  else
+    echo "key: $key"
+  fi
+  rm -rf "$tmp"
+  tmp=""
+  if [ -n "$out" ] || [ "$old_env" != "$new_env" ] || { [ -n "$differ" ] && [ "$old_key" != "$key" ]; }; then
+    echo changed
+  else
+    echo unchanged
+  fi
+}
+
+# Prints the key pack $1's toolchain had at commit $2, or "none (why)": its
+# files and toolchain-env.sh, and what else base's toolchain.paths names,
+# archived from $2 into the scratch directory $3, which is made a repository
+# so the key is computed exactly as for a checkout, by base's own
+# toolchain-env.sh.
+old_toolchain_key() {
+  local pack="$1" base="$2" scratch="$3" dir="light/packs/$1" line
+  local env=light/scripts/toolchain-env.sh
+  git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$dir/toolchain.paths" 2>/dev/null ||
+    { echo "none (no $dir/toolchain.paths at $base)"; return 0; }
+  git -C "$TOOLCHAIN_ROOT" cat-file -e "$base:$env" 2>/dev/null ||
+    { echo "none (no $env at $base)"; return 0; }
+  mkdir -p "$scratch"
+  git -C "$TOOLCHAIN_ROOT" archive "$base" -- "$dir" "$env" | tar -x -C "$scratch"
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    case "$line" in '' | '#'* | "$dir" | "$dir/"*) continue ;; esac
+    toolchain_spec_excludes "$line" && continue
+    # A pathspec that matched nothing at base fails base's own check below.
+    git -C "$TOOLCHAIN_ROOT" archive "$base" -- "$line" 2>/dev/null | tar -x -C "$scratch" 2>/dev/null || true
+  done <"$scratch/$dir/toolchain.paths"
+  git -C "$scratch" init -q
+  git -C "$scratch" add -A -f
+  # Base's toolchain-env.sh sets TOOLCHAIN_ROOT to the scratch copy, in this
+  # subshell only (shellcheck's SC2031 elsewhere is about this, and wanted).
+  (
+    # shellcheck source=toolchain-env.sh
+    source "$scratch/$env"
+    toolchain_key "$pack"
+  ) || echo "unknown (base's toolchain inputs do not resolve)"
+}
+
+# Prints the inputs of pack $1's toolchain with uncommitted changes
+# (untracked ones included), one per line.
+# shellcheck disable=SC2031 # TOOLCHAIN_ROOT is the checkout's here
+toolchain_dirty_paths() {
+  local out
+  local -a specs=()
+  out="$(toolchain_specs "$1")"
+  mapfile -t specs <<<"$out"
+  out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "${specs[@]}")"
+  [ -z "$out" ] || printf '%s\n' "$out" | cut -c4-
+}
+
+toolchain_dirty() {
+  local out
+  split_pack "$1"
+  out="$(toolchain_dirty_paths "$1")"
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out"
+  else
+    exit 1
+  fi
+}
+
+toolchain_has() {
+  local pack="$1" want
+  split_pack "$pack"
+  want="toolchain-$pack-$(toolchain_key "$pack").tar.zst"
+  if assets "$TOOLCHAINS_TAG" | awk -v w="$want" '$1 == w { found = 1 } END { exit !found }'; then
+    echo "pack-store.sh: $pack: $want is in $(repo)'s $TOOLCHAINS_TAG release" >&2
+  else
+    echo "pack-store.sh: $pack: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2
+    exit 3
+  fi
+}
+
+toolchain_fetch() {
+  local pack="$1" any="" dir="" key list want name sha url
+  shift
+  split_pack "$pack"
+  if [ "${1:-}" = --any ]; then any=1; shift; fi
+  dir="${1:-}"
+  list="$(assets "$TOOLCHAINS_TAG")"
+  if [ -n "$any" ]; then
+    # The newest toolchain of the pack: ISO 8601 times sort as text.
+    read -r name sha _ url < <(awk -v p="toolchain-$pack-" 'index($1, p) == 1 && substr($1, length(p) + 1) ~ /^[0-9a-f]{40}\.tar\.zst$/' <<<"$list" | sort -k3 | tail -n 1) || true
+    if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no toolchain-$pack-* in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
+    key="${name#"toolchain-$pack-"}"
+    key="${key%.tar.zst}"
+    echo "pack-store.sh: $pack: taking the newest toolchain, $key (not necessarily of these inputs)" >&2
+  else
+    key="$(toolchain_key "$pack")"
+    want="toolchain-$pack-$key.tar.zst"
+    read -r name sha _ url < <(awk -v w="$want" '$1 == w' <<<"$list") || true
+    if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
+  fi
+  dir="${dir:-$TOOLCHAIN_CACHE/built/$pack/$key}"
+  [ "$sha" != - ] || die "$name: GitHub records no sha256 for it; refusing an unchecked toolchain"
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
+  echo "pack-store.sh: $pack: downloading $name" >&2
+  curl -sSfL --retry 3 -o "$tmp/$name" "$url"
+  echo "$sha  $tmp/$name" | sha256sum -c --quiet - || die "$name: sha256 mismatch"
+  mkdir -p "$(dirname "$dir")"
+  part="$dir.part"
+  remove_tree "$part"
+  mkdir "$part"
+  tar --zstd -xf "$tmp/$name" -C "$part"
+  rm -rf "$tmp"
+  tmp=""
+  [ -f "$part/toolchain.json" ] || die "$name holds no toolchain.json"
+  chmod u+w "$part/toolchain.json"
+  # shellcheck disable=SC2016 # JavaScript's own ${...}, not the shell's
+  node -e '
+    const fs = require("node:fs"), path = require("node:path");
+    const [dir, pack, key, name] = process.argv.slice(1);
+    const file = path.join(dir, "toolchain.json");
+    const fail = (why) => { console.error(`pack-store.sh: ${name}: ${why}`); process.exit(1); };
+    let m;
+    try { m = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { fail(`toolchain.json is not JSON: ${e.message}`); }
+    if (m === null || typeof m !== "object" || Array.isArray(m)) fail("toolchain.json is not an object");
+    if (m.pack !== pack) fail(`toolchain.json is of pack ${JSON.stringify(m.pack)}, not ${pack}`);
+    if (m.key !== key) fail(`toolchain.json names the inputs ${JSON.stringify(m.key)}, not ${key}`);
+    if (typeof m.commit !== "string" || !/^[0-9a-f]{40}$/.test(m.commit)) fail(`toolchain.json names no commit (${JSON.stringify(m.commit)})`);
+    const stat = {};
+    const walk = (rel) => {
+      for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
+        const p = rel ? `${rel}/${e.name}` : e.name;
+        if (e.isDirectory()) walk(p);
+        else if (e.isFile() && p !== "toolchain.json") {
+          const s = fs.lstatSync(path.join(dir, p));
+          stat[p] = { size: s.size, mtimeMs: s.mtimeMs };
+        }
+      }
+    };
+    walk("");
+    m.stat = Object.fromEntries(Object.entries(stat).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    fs.writeFileSync(file, JSON.stringify(m, null, 1) + "\n");
+  ' "$part" "$pack" "$key" "$name"
+  find "$part" -type f -exec chmod a-w {} +
+  remove_tree "$dir"
+  mv "$part" "$dir"
+  part=""
+  echo "$dir"
+}
+
+# shellcheck disable=SC2031 # TOOLCHAIN_ROOT is the checkout's here
+toolchain_publish() {
+  local pack="$1" dir="$2" dirty key head manifest mpack mkey mcommit name r list n size
+  split_pack "$pack"
+  [ -f "$dir/toolchain.json" ] || die "$dir holds no toolchain.json"
+  dirty="$(toolchain_dirty_paths "$pack")"
+  if [ -n "$dirty" ]; then
+    die "$pack: not publishing a toolchain built from uncommitted inputs:
+$dirty"
+  fi
+  key="$(toolchain_key "$pack")"
+  head="$(git -C "$TOOLCHAIN_ROOT" rev-parse HEAD)"
+  manifest="$(node -e '
+    const m = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+    console.log([m.pack, m.key, m.commit].map((v) => (typeof v === "string" && /^[0-9a-z]+$/.test(v) ? v : "-")).join(" "));
+  ' "$dir/toolchain.json")"
+  read -r mpack mkey mcommit <<<"$manifest"
+  [ "$mpack" = "$pack" ] || die "$dir is a toolchain of $mpack, not $pack"
+  [ "$mkey" = "$key" ] || die "$pack: $dir was built from the inputs $mkey, but HEAD's inputs and settings give $key"
+  [ "$mcommit" = "$head" ] || die "$pack: $dir was built at $mcommit, not at HEAD ($head)"
+  name="toolchain-$pack-$key.tar.zst"
+  r="$(repo)"
+  if ! gh release view "$TOOLCHAINS_TAG" --repo "$r" >/dev/null 2>&1; then
+    # Several pack jobs may get here at once: one creates, the rest find it.
+    gh release create "$TOOLCHAINS_TAG" --repo "$r" --prerelease --latest=false --title "Yukibana Light toolchains (build store)" \
+      --notes "Toolchains of Yukibana Light's split packs, one asset per pack and key of its inputs: toolchain-<pack>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key). Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh; not a release of the app. Nothing is deleted automatically." \
+      >/dev/null 2>&1 || gh release view "$TOOLCHAINS_TAG" --repo "$r" >/dev/null
+  fi
+  list="$(assets "$TOOLCHAINS_TAG")"
+  if awk -v w="$name" '$1 == w { found = 1 } END { exit !found }' <<<"$list"; then
+    echo "pack-store.sh: $name is in the store already"
+    return 0
+  fi
+  n="$(grep -c . <<<"$list" || true)"
+  local oldest
+  oldest="$(sort -k3 <<<"$list" | awk 'NF { print $1; exit }')"
+  if [ "$n" -ge "$MAX_ASSETS" ]; then
+    die "$r's $TOOLCHAINS_TAG release holds $n assets, GitHub's cap of $MAX_ASSETS; nothing is evicted automatically: remove toolchains no branch needs with gh release delete-asset $TOOLCHAINS_TAG <asset> (the oldest is ${oldest:-?})"
+  fi
+  if [ "$n" -ge "$WARN_ASSETS" ]; then
+    echo "pack-store.sh: warning: $r's $TOOLCHAINS_TAG release holds $n of at most $MAX_ASSETS assets; evict toolchains no branch needs with gh release delete-asset $TOOLCHAINS_TAG <asset> (the oldest is $oldest)" >&2
+    [ -z "${GITHUB_ACTIONS:-}" ] || echo "::warning::$TOOLCHAINS_TAG holds $n of at most $MAX_ASSETS assets; evict with gh release delete-asset $TOOLCHAINS_TAG <asset>"
+  fi
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
+  tar --zstd -cf "$tmp/$name" -C "$dir" .
+  size="$(stat -c %s "$tmp/$name")"
+  [ "$size" -le "$MAX_ASSET_BYTES" ] || die "$name is $size bytes, more than the $MAX_ASSET_BYTES a release asset may safely be"
+  ls -l "$tmp/$name"
+  # Another run may have stored the same toolchain meanwhile: that is a success.
+  gh release upload "$TOOLCHAINS_TAG" "$tmp/$name" --repo "$r" ||
+    assets "$TOOLCHAINS_TAG" | awk -v w="$name" '$1 == w { found = 1 } END { exit !found }'
+}
+
 case "${1:-}" in
   tree) tree "${2:?pack}" ;;
   has) has "${2:?pack}" ;;
   fetch) fetch "${2:?pack}" "${3:-}" ;;
   publish) publish "${2:?pack}" ;;
-  *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
+  toolchain-key) split_pack "${2:?pack}"; toolchain_key "$2" ;;
+  toolchain-key-report) toolchain_key_report "${2:?pack}" "${3:?base commit}" ;;
+  toolchain-dirty) toolchain_dirty "${2:?pack}" ;;
+  toolchain-has) toolchain_has "${2:?pack}" ;;
+  toolchain-fetch) toolchain_fetch "${2:?pack}" "${@:3}" ;;
+  toolchain-publish) toolchain_publish "${2:?pack}" "${3:?toolchain directory}" ;;
+  *) sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
 esac
