@@ -474,11 +474,14 @@ test('a comment or a source setting added to toolchain.env rebuilds nothing, and
     fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), '# a note on the settings\nPROXYLESS source  # where sources come from\n');
     assert.equal(await key(), plain);
     assert.equal(await key('tool', { OPT: '2', PROXYLESS: '1' }), opt);
-    // Nor is the build dirty for it: the file is no input.
+    // The key stays, but the build is dirty until the edit is committed: the
+    // file is no input, yet it decides which settings reach the build.
     const dirty = await store('toolchain-dirty', 'tool');
-    assert.equal(dirty.code, 1, dirty.out + dirty.err);
+    assert.equal(dirty.code, 0, dirty.err);
+    assert.equal(dirty.out, 'light/packs/tool/toolchain.env\n');
     commit('a note on the settings');
     assert.equal(await key(), plain);
+    assert.equal((await store('toolchain-dirty', 'tool')).code, 1);
     // A newly declared output-changing setting counts once it is set.
     fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'LTO variant  # link-time optimisation: another compiler\n');
     assert.equal(await key(), plain);
@@ -890,6 +893,14 @@ test('a toolchain built from uncommitted inputs or a changed setting is never pu
     const tampered = await store('toolchain-publish', 'tool', changed);
     assert.notEqual(tampered.code, 0);
     assert.match(tampered.err, /bin\/cc changed size/);
+
+    // An uncommitted toolchain.env leaves the key as it is, yet it decides
+    // what reached the build: OPT, made a source setting, passes unkeyed.
+    fs.writeFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'OPT source  # no longer another compiler\n');
+    const reclassified = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool', built);
+    assert.notEqual(reclassified.code, 0);
+    assert.match(reclassified.err, /not publishing a toolchain built from uncommitted inputs:\nlight\/packs\/tool\/toolchain\.env/);
+    clean();
 
     const elsewhere = await store('toolchain-publish', 'tool', await builtToolchain({ commit: 'a'.repeat(40) }));
     assert.notEqual(elsewhere.code, 0);

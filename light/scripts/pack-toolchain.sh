@@ -74,7 +74,9 @@
 #                  fixed and transport variables that reaches toolchain.sh.
 #                  A `variant` knob changes the output: setting it changes the
 #                  key and makes the build dirty. A `source` knob does not.
-#   dirty          built from uncommitted inputs or with a set variant knob.
+#   dirty          built from uncommitted inputs, with an uncommitted
+#                  toolchain.env (no input, but it decides which knobs pass
+#                  and which are keyed), or with a set variant knob.
 #                  A dirty toolchain is recorded with commit "dirty", used
 #                  locally, and never fetched, published or recorded as
 #                  HEAD's.
@@ -147,7 +149,8 @@ trap '[ -z "$stage" ] || remove_tree "$stage"; [ -z "$part" ] || remove_tree "$p
 key_of() { "$STORE" toolchain-key "$1"; }
 
 # Prints why a build of pack $1's toolchain here would be dirty, one reason
-# per line: each uncommitted input, then each set variant knob as
+# per line: each uncommitted input and an uncommitted toolchain.env
+# (pack-store.sh toolchain-dirty), then each set variant knob as
 # "NAME=value (a variant knob)". Nothing means clean.
 dirty_reasons() {
   local pack="$1" out rc=0 name kind

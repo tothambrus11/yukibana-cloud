@@ -47,7 +47,9 @@
 #       `unchanged`. Exit 6 when <base> is not in
 #       this clone.
 #   pack-store.sh toolchain-dirty <pack>  exit 0 naming the inputs with
-#       uncommitted changes, 1 when there are none.
+#       uncommitted changes, and the pack's toolchain.env when it has any
+#       (no input, but it decides what reaches the build), 1 when there are
+#       none.
 #   pack-store.sh toolchain-has <pack>    exit 0 when the toolchain store has
 #       the asset toolchain-<pack>-<key>.tar.zst, 3 when it has none.
 #   pack-store.sh toolchain-fetch <pack> [--any] [dir]   downloads it into
@@ -409,7 +411,20 @@ old_toolchain_key() {
 }
 
 # Prints the inputs of pack $1's toolchain with uncommitted changes
-# (untracked ones included), one per line.
+# (untracked ones included), one per line, then the pack's toolchain.env when
+# it has uncommitted changes.
+#
+# toolchain.env is no key input (toolchain_specs leaves it out, so a comment
+# rebuilds nothing), but it still decides what reaches toolchain.sh: which
+# knobs pass at all, and which of them are variant and so keyed. An
+# uncommitted edit that declares a new source knob, or turns a set variant
+# knob into a source one, builds with a variable HEAD's toolchain.env would
+# not pass, under HEAD's key. Counting the edit as dirty is what keeps that
+# build from being recorded as HEAD's commit, reused for a clean worktree or
+# published. It is checked on its own, because toolchain_specs excludes it
+# and a pathspec exclusion applies to every pathspec of the same call. A
+# comment-only edit is dirty too until it is committed; the key, and so the
+# toolchain fetched or reused once it is, stays the same.
 # shellcheck disable=SC2031 # TOOLCHAIN_ROOT is the checkout's here
 toolchain_dirty_paths() {
   local out
@@ -417,6 +432,8 @@ toolchain_dirty_paths() {
   out="$(toolchain_specs "$1")"
   mapfile -t specs <<<"$out"
   out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "${specs[@]}")"
+  [ -z "$out" ] || printf '%s\n' "$out" | cut -c4-
+  out="$(git -C "$TOOLCHAIN_ROOT" status --porcelain --untracked-files=all -- "light/packs/$1/toolchain.env")"
   [ -z "$out" ] || printf '%s\n' "$out" | cut -c4-
 }
 

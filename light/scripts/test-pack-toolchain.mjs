@@ -554,6 +554,32 @@ test('a toolchain built dirty is replaced by a clean one once exactly its inputs
     git('reset', '-q', '--hard', 'HEAD~1');
 });
 
+test('a set output-changing setting made a source one by an uncommitted toolchain.env is built only as dirty, and never kept for the committed settings', async () => {
+    removeTree(cache);
+    const plain = await key();
+    put('light/packs/tool/toolchain.env', 'OPT source  # no longer another compiler\nMIRROR source  # the same bytes\n');
+    // The key is HEAD's clean one, though OPT now reaches the build unkeyed.
+    assert.equal(await key({ OPT: '2' }), plain);
+    const before = downloads;
+    const refused = await toolchain({ OPT: '2' }, 'ensure', 'tool');
+    assert.equal(refused.code, 4, refused.err);
+    assert.match(refused.err, /not built without being asked:\n {2}light\/packs\/tool\/toolchain\.env\nbuild it anyway/);
+    assert.equal(downloads, before);
+    const asked = await ensure({ OPT: '2' }, '--build-dirty');
+    assert.equal(path.basename(asked.dir), plain);
+    assert.equal(manifestOf(asked.dir).commit, 'dirty');
+    assert.equal(fs.readFileSync(path.join(asked.dir, 'lib/opt.txt'), 'utf8'), 'opt=2\n');
+    const state = await toolchain({ OPT: '2' }, 'record-state', 'tool');
+    assert.equal(state.code, 5);
+    // Back at HEAD's settings, with OPT unset, that build is not HEAD's.
+    clean();
+    const rebuilt = await ensure();
+    assert.equal(rebuilt.dir, asked.dir);
+    assert.match(rebuilt.r.err, /not reusing .*: it was built dirty/);
+    assert.equal(manifestOf(rebuilt.dir).commit, git('rev-parse', 'HEAD'));
+    assert.equal(fs.readFileSync(path.join(rebuilt.dir, 'lib/opt.txt'), 'utf8'), 'opt=\n');
+});
+
 test('an output declared after its toolchain was built is looked for at every assembly', async () => {
     const { dir } = await ensure();
     const out = path.join(root, 'out-outputs');
