@@ -410,8 +410,12 @@ are set by `build-vm.sh` or are for a person running one `vm/` script;
 (each unit's `deps.apt`); a host compiler's version is in the record of the
 tree it compiles (`build-native`, the kernel, strace).
 
-Cold time per unit is measured on T4's own pull-request run (each unit job
-writes its time to the run's summary); the figures below are the
+Cold time per unit is **not measured yet**. It is to be taken from the first
+pull-request run of the split (each unit job writes its time to the run's
+summary; plan step T4m) and written here, with the unit workflow's timeout
+comment; until then nothing shows that `compilers`, three LLVM trees and
+brotli at q11 in one job, stays inside the runner's 355 minutes, and if it
+comes close, cc-cross becomes a unit of its own. The figures below are the
 single-machine build before the split.
 
 Time on this machine (4 cores shared with other builds, `-j3`, `nice`):
