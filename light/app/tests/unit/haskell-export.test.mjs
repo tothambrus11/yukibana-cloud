@@ -2,10 +2,10 @@
 // (src/lib/export.ts, haskellDepends and haskellCabal), so `cabal build`
 // of a downloaded project finds what the browser's GHC found.
 //
-//   node --test tests/haskell-export.mjs
+//   node --test tests/unit/haskell-export.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { haskellCabal, haskellDepends } from '../src/lib/export.ts';
+import { haskellCabal, haskellDepends } from '../../src/lib/export.ts';
 
 test('a project that imports only the Prelude depends on base alone', () => {
 	assert.deepEqual(haskellDepends({ 'Main.hs': 'main :: IO ()\nmain = print 1\n' }), []);

@@ -4,13 +4,13 @@
 // rule agree with the pack's (packs/cpp/src/targets.json and
 // tests/fixtures/target-cases.json).
 //
-//   node --test tests/cpp-targets.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/cpp-targets.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { asmLanguageOf, runOptionsOf, TARGETS, targetOf, withTarget } from '../src/lib/cpp-targets.ts';
+import { asmLanguageOf, runOptionsOf, TARGETS, targetOf, withTarget } from '../../src/lib/cpp-targets.ts';
 
-const pack = new URL('../../packs/cpp/', import.meta.url);
+const pack = new URL('../../../packs/cpp/', import.meta.url);
 const said = (choice) => (choice.kind === 'unsupported' ? { kind: choice.kind, triple: choice.triple } : { kind: choice.kind, id: choice.target.id });
 
 test('a project without compile_flags.txt, or without a target line, is on WebAssembly', () => {

@@ -2,10 +2,10 @@
 // (src/lib/lsp/plain.ts): a refused rename's reason, folding ranges and
 // smart-select chains.
 //
-//   node --test tests/lsp.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/lsp.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { reasonOf, toFolds, toSelectionChain } from '../src/lib/lsp/plain.ts';
+import { reasonOf, toFolds, toSelectionChain } from '../../src/lib/lsp/plain.ts';
 
 const range = (sl, sc, el, ec) => ({ start: { line: sl, character: sc }, end: { line: el, character: ec } });
 const monacoRange = (sl, sc, el, ec) => ({ range: { startLineNumber: sl + 1, startColumn: sc + 1, endLineNumber: el + 1, endColumn: ec + 1 } });

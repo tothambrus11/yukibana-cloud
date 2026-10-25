@@ -1295,7 +1295,7 @@ against native clang's, the SUMMARY line and the exit status; a clean C++
 program with exceptions, containers and stdin, and a clean C program,
 report nothing under both; a run without a sanitizer fetches none of their
 files. 52 tests, all passing on the four targets. The app's
-`tests/cpp-sanitizers.mjs` checks the menu's rewriting of
+`tests/unit/cpp-sanitizers.test.mjs` checks the menu's rewriting of
 `compile_flags.txt`, `tests/export.mjs` the CMake link options, and the
 e2e test ticks AddressSanitizer, runs a heap overflow and follows the
 terminal's link to the allocation.

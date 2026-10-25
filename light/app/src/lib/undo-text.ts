@@ -9,7 +9,7 @@
  * project stays open.
  *
  * Imports nothing, so `node` can load this file directly
- * (tests/undo-text.mjs).
+ * (tests/unit/undo-text.test.mjs).
  */
 
 /**

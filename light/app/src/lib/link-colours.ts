@@ -16,7 +16,7 @@
  * The shade is the one Ambrus picked from the prototype's variants on
  * 2026-10-24 ("Thin wash · balanced", with text colours raised to 7:1 and
  * the outputs matching the source). His criteria, which `judge` measures
- * and tests/link-colours.mjs holds every theme to, for the hue that does
+ * and tests/unit/link-colours.test.mjs holds every theme to, for the hue that does
  * worst:
  *
  * - every highlight clearly visible: the resting tint and the secondary one

@@ -12,7 +12,7 @@
  * `-fsanitize=signed-integer-overflow` are left alone by the menu.
  *
  * Imports nothing, so `node` can load this file directly
- * (tests/cpp-sanitizers.mjs).
+ * (tests/unit/cpp-sanitizers.test.mjs).
  */
 
 /** The sanitizers the menu offers. */

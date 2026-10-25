@@ -1,10 +1,10 @@
 // Unit tests of the terminal's ANSI reader (src/lib/ansi.ts): what a program
 // printed with escape sequences becomes plain text in styled spans.
 //
-//   node --test tests/ansi.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/ansi.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AnsiStream, PLAIN, applySgr, colorCss, stripAnsi, styleCss } from '../src/lib/ansi.ts';
+import { AnsiStream, PLAIN, applySgr, colorCss, stripAnsi, styleCss } from '../../src/lib/ansi.ts';
 
 const feed = (...pieces) => {
 	const stream = new AnsiStream();

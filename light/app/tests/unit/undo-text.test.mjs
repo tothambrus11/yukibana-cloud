@@ -1,9 +1,9 @@
 // Unit tests of the undo prompts' and notices' words (src/lib/undo-text.ts).
 //
-//   node --test tests/undo-text.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/undo-text.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buttonLabel, projectNotice } from '../src/lib/undo-text.ts';
+import { buttonLabel, projectNotice } from '../../src/lib/undo-text.ts';
 
 test('the undo prompt shows its buttons without access-key marks', () => {
 	assert.equal(buttonLabel('&&Undo in 2 Files'), 'Undo in 2 Files');

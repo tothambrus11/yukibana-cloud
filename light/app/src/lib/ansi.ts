@@ -4,7 +4,7 @@
  * reset) becomes a style; every other escape sequence (cursor moves, erase
  * line, window titles, hyperlinks) is removed without a trace, so it never
  * shows up as `[2K` garbage. Pure: no DOM, testable on its own
- * (tests/ansi.mjs).
+ * (tests/unit/ansi.test.mjs).
  *
  * Streaming-safe: a runner posts its output in pieces cut anywhere, so a
  * sequence may begin at the end of one piece and end in the next.

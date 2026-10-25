@@ -9,11 +9,11 @@
  * honoured. No line means the default target, WebAssembly (WASI).
  *
  * `TARGETS` and the parse rule are copies of the pack's
- * (packs/cpp/src/targets.json and targets.js); tests/cpp-targets.mjs checks
+ * (packs/cpp/src/targets.json and targets.js); tests/unit/cpp-targets.test.mjs checks
  * that the table is equal to the JSON and that `targetOf` gives the answers
  * of packs/cpp/tests/fixtures/target-cases.json.
  *
- * Imports nothing, so `node` can load this file directly (tests/cpp-targets.mjs,
+ * Imports nothing, so `node` can load this file directly (tests/unit/cpp-targets.test.mjs,
  * and export.ts under tests/export.mjs).
  */
 

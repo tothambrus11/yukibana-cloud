@@ -3,11 +3,11 @@
 // them (src/lib/lsp/inlay-hints.ts): ranking, highlights, what a row says
 // and where it goes, for any server's answer.
 //
-//   node --test tests/workspace-symbols.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/workspace-symbols.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { matchOf, symbolRows } from '../src/lib/lsp/workspace-symbols.ts';
-import { toInlayHint, toTooltip } from '../src/lib/lsp/inlay-hints.ts';
+import { matchOf, symbolRows } from '../../src/lib/lsp/workspace-symbols.ts';
+import { toInlayHint, toTooltip } from '../../src/lib/lsp/inlay-hints.ts';
 
 const ROOT = 'file:///workspace/';
 const range = (line, sc, ec) => ({ start: { line, character: sc }, end: { line, character: ec } });

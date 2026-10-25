@@ -4,7 +4,7 @@
  * line an output line came from. The pack's explorer sends one entry per
  * output line (packs/CONTRACT.md, "Showing compiler output"); these are the
  * lookups the views make on every caret move, so they are pure and tested
- * on their own (tests/explorer-map.mjs).
+ * on their own (tests/unit/explorer-map.test.mjs).
  *
  * Imports nothing, so `node` can load this file directly.
  */

@@ -1,10 +1,10 @@
 // Unit tests of the terminal's links (src/lib/terminal-links.ts): a project
 // file's path and line in what a program or a compiler printed.
 //
-//   node --test tests/terminal-links.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/terminal-links.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { linksIn } from '../src/lib/terminal-links.ts';
+import { linksIn } from '../../src/lib/terminal-links.ts';
 
 const files = new Set(['main.cpp', 'geometry.h', 'tests/geometry_test.cpp']);
 const links = (text) => linksIn(text, files).filter((p) => p.place).map((p) => p.place);

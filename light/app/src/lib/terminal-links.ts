@@ -10,7 +10,7 @@
  * a system header (`/usr/include/c++/v1/vector:1455`) stays plain text.
  *
  * Imports nothing, so `node` can load this file directly
- * (tests/terminal-links.mjs).
+ * (tests/unit/terminal-links.test.mjs).
  */
 
 /** Where a link goes: a project path, a line from 1, and a column from 1 or null for none. */

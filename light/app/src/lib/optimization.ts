@@ -20,7 +20,7 @@
  * project and sent with Run. Download cannot carry it: the downloaded
  * project is an sbt project for the JVM, which has no such switch.
  *
- * Imports nothing, so `node` can load this file directly (tests/optimization.mjs).
+ * Imports nothing, so `node` can load this file directly (tests/unit/optimization.test.mjs).
  */
 
 /** One level of a language, in the order the picker lists them. */

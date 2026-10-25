@@ -5,15 +5,15 @@
 // for every hue: highlights visible, primary and secondary rows apart, and
 // readable text on every row.
 //
-//   node --test tests/link-colours.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/link-colours.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { colourOf, contrast, EDITOR, LINE_NUMBERS, OWN_RULES, raise, raisedRules, rgbOf, TEXT_CONTRAST, viewText } from '../src/lib/palette.ts';
-import { CRITERIA, judge, liftFor, linkStyleSheet, partContrast, SHADE, NO_CODE } from '../src/lib/link-colours.ts';
+import { colourOf, contrast, EDITOR, LINE_NUMBERS, OWN_RULES, raise, raisedRules, rgbOf, TEXT_CONTRAST, viewText } from '../../src/lib/palette.ts';
+import { CRITERIA, judge, liftFor, linkStyleSheet, partContrast, SHADE, NO_CODE } from '../../src/lib/link-colours.ts';
 
 /** Monaco's vs and vs-dark rules, read from its source (theme.svelte.ts imports the same objects). */
-const themes = readFileSync(new URL('../node_modules/monaco-editor/esm/vs/editor/standalone/common/themes.js', import.meta.url), 'utf8');
+const themes = readFileSync(new URL('../../node_modules/monaco-editor/esm/vs/editor/standalone/common/themes.js', import.meta.url), 'utf8');
 const rulesOf = (name) => {
 	const body = themes.slice(themes.indexOf(`const ${name} = {`));
 	return [...body.slice(0, body.indexOf('colors:')).matchAll(/\{ token: '([^']*)'(?:, foreground: '([0-9a-fA-F]{6})')?/g)].map((m) => ({ token: m[1], ...(m[2] && { foreground: m[2] }) }));

@@ -3,11 +3,11 @@
 // rewrites that file, which languages have levels, and how a saved level is
 // read back.
 //
-//   node --test tests/optimization.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/optimization.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cppLevelOf, levelsOf, savedLevelOf, withCppLevel } from '../src/lib/optimization.ts';
-import { targetOf, withTarget } from '../src/lib/cpp-targets.ts';
+import { cppLevelOf, levelsOf, savedLevelOf, withCppLevel } from '../../src/lib/optimization.ts';
+import { targetOf, withTarget } from '../../src/lib/cpp-targets.ts';
 
 const said = (choice) => (choice.kind === 'other' ? { kind: 'other', flag: choice.flag } : { kind: choice.kind, flag: choice.level.flag });
 

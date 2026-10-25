@@ -3,11 +3,11 @@
 // that file, and that what the menu writes is what the pack's runner reads
 // as that sanitizer (packs/cpp/src/toolchain.js, sanitizersOf).
 //
-//   node --test tests/cpp-sanitizers.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/cpp-sanitizers.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { describeSanitizers, SANITIZERS, sanitizersOf, withSanitizers } from '../src/lib/cpp-sanitizers.ts';
-import { flagsFor, sanitizersOf as packSanitizersOf } from '../../packs/cpp/src/toolchain.js';
+import { describeSanitizers, SANITIZERS, sanitizersOf, withSanitizers } from '../../src/lib/cpp-sanitizers.ts';
+import { flagsFor, sanitizersOf as packSanitizersOf } from '../../../packs/cpp/src/toolchain.js';
 
 const off = { address: false, undefined: false };
 

@@ -5,10 +5,10 @@
 // the linked views draw with: the lines' hues, the parts of a line, and
 // which place of a line to scroll to.
 //
-//   node --test tests/explorer-map.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test tests/unit/explorer-map.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { hueGroups, isStatement, isViewSource, linesWithoutCode, lineKey, outputLinesFor, partAt, partFromChain, runIndex, runsOf, runToReveal, stepRun, shortFlags, sourceOf, viewSourceFor } from '../src/lib/explorer-map.ts';
+import { hueGroups, isStatement, isViewSource, linesWithoutCode, lineKey, outputLinesFor, partAt, partFromChain, runIndex, runsOf, runToReveal, stepRun, shortFlags, sourceOf, viewSourceFor } from '../../src/lib/explorer-map.ts';
 
 // main:                      1  null
 //   push rbp                 2  main.cpp:6
