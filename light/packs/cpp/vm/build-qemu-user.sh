@@ -11,7 +11,8 @@
 #   - the musl 1.2.5 headers Emscripten's libc leaves out (sys/signalfd.h, ...);
 #   - the Linux UAPI headers linux-user needs for struct layouts and constants, from
 #     the pinned kernel (build-kernel.sh's headers), never the build machine's.
-# Needs build-qemu.sh first (the pack's emsdk, the dependencies, the QEMU tree) and
+# Needs build-qemu.sh first (the dependencies, the QEMU tree; this script installs
+# the pack's emsdk itself, as build-qemu.sh does) and
 # build-kernel.sh x86_64 (the UAPI headers).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,7 +73,14 @@ stamp=$({ cat "$HERE/pins.sh" "$HERE/patches/"*.patch "${BASH_SOURCE[0]}"; echo 
   sha256sum | cut -d' ' -f1)
 if [ "${PRINT_STAMP:-}" = 1 ]; then echo "$stamp"; exit 0; fi
 if [ "$(cat "$ART/user.stamp" 2>/dev/null)" = "$stamp" ]; then echo "qemu user: up to date"; exit 0; fi
-[ -f "$EMSDK_DIR/emsdk_env.sh" ] || { echo "run build-qemu.sh first (it installs the pack's emsdk in $EMSDK_DIR)" >&2; exit 1; }
+# The Emscripten the stamp and the trees name (MADE_OF), installed here and not
+# only looked for: build-qemu.sh installs it after its own stamp check, so with
+# qemu-system up to date it never runs, and the emsdk under the same path may be
+# another release (build.sh at an older commit installs its own pin there). A
+# check that emsdk_env.sh existed once relinked this binary with that other
+# release while user.stamp named the pinned one. emsdk_install returns at once
+# when the emsdk is already at EMSDK_COMMIT.
+emsdk_install
 # shellcheck source=/dev/null
 source "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
 export PATH=$QC/venv/bin:$PATH

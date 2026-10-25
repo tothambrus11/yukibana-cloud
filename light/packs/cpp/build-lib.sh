@@ -195,8 +195,13 @@ emsdk_made_by() {
 # pack's builds compile with is exactly the release pinned, and a fix
 # Emscripten lacks is a newer pin, not a patch to the cached copy (plan D52;
 # the cpp pack once patched proxying.c there, and had to delete prebuilt
-# libraries and keep a sentinel to make the patch reach the build). build.sh
-# and vm/build-qemu.sh both call it, so either may run first.
+# libraries and keep a sentinel to make the patch reach the build). Every
+# entry point that compiles with emcc calls it before compiling (build.sh,
+# before the sub-scripts it runs; vm/build-qemu.sh; vm/build-qemu-user.sh,
+# which may run while qemu-system is up to date), so any may run first, and none
+# compiles with an emsdk another checkout left under the same path. That is
+# what makes the stamps and trees true: emsdk_made_by prints the pins, not
+# what is installed.
 emsdk_install() {
   local em="$CACHE/emsdk"
   if [ -x "$em/upstream/emscripten/emcc" ] && [ -f "$em/.emscripten" ] &&

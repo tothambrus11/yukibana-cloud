@@ -368,3 +368,64 @@ test("the VM's user-mode QEMU is built again for another Emscripten, and not for
     swap('EMSDK_RELEASE', '1'.repeat(40));
     assert.notEqual(stamp(), first, 'another Emscripten release is another build');
 });
+
+test("the user-mode QEMU is never compiled with an Emscripten another checkout left in the cache, nor refused for a missing one", () => {
+    // build-qemu.sh installs the emsdk only after its own stamp check, so with
+    // qemu-system up to date build-qemu-user.sh is the only script that can
+    // put the pinned release back. It once only checked that emsdk_env.sh
+    // existed, and relinked with whatever release was there while user.stamp
+    // named the pinned one.
+    const pack = fresh();
+    for (const f of ['pins.sh', 'build-lib.sh', 'vm/pins.sh', 'vm/build-qemu-user.sh', ...fs.readdirSync(path.join(HERE, 'vm/patches')).map((p) => `vm/patches/${p}`)]) {
+        fs.mkdirSync(path.dirname(path.join(pack, f)), { recursive: true });
+        fs.copyFileSync(path.join(HERE, f), path.join(pack, f));
+    }
+    fs.chmodSync(path.join(pack, 'vm/build-qemu-user.sh'), 0o755);
+    const pinsFile = path.join(pack, 'pins.sh');
+    const sha = execFileSync('sha256sum', { input: 'archive\n', encoding: 'utf8' }).split(' ')[0];
+    for (const name of ['EMSDK_BINARIES_SHA256', 'EMSDK_NODE_SHA256'])
+        fs.writeFileSync(pinsFile, fs.readFileSync(pinsFile, 'utf8').replace(new RegExp(`^${name}=.*$`, 'm'), `${name}=${sha}`));
+    const pinned = pinsOf(pinsFile).get('EMSDK_COMMIT');
+    assert.match(pinned, /^[0-9a-f]{40}$/);
+    const { PATH, LOG } = emsdkFakes();
+    const qc = fresh();
+    write(path.join(qc, 'work/target/lib/libglib-2.0.a'), '');
+    write(path.join(qc, 'work/target/.yk-made-by'), 'yukibana-tree/1\nsome dependencies\n');
+    write(path.join(qc, 'work/qemu-wasm/configure'), '#!/bin/sh\n');
+    // The fake git reads a checkout's HEAD (and here its tree) from .head.
+    write(path.join(qc, 'work/qemu-wasm/.head'), `${'d'.repeat(40)}\n`);
+    write(path.join(qc, 'hdr/x86_64/include/linux/types.h'), '/* uapi */\n');
+    write(path.join(qc, 'musl/include/sys/signalfd.h'), '/* musl */\n');
+    const em = path.join(qc, 'cpp/emsdk');
+    // An emsdk at another commit, whose emsdk_env.sh would put that release's emcc first.
+    write(path.join(em, '.head'), `${'b'.repeat(40)}\n`);
+    write(path.join(em, '.emscripten'), '');
+    write(path.join(em, 'upstream/emscripten/emcc'), '#!/bin/sh\n');
+    fs.chmodSync(path.join(em, 'upstream/emscripten/emcc'), 0o755);
+    // emsdk_env.sh says which emsdk the script was about to compile with, and
+    // stops it there: nothing after it is under test.
+    const envSh = `echo "compiles with $(cat "$(dirname "\${BASH_SOURCE[0]}")/.head")" >> "${LOG}"; exit 7\n`;
+    write(path.join(em, 'emsdk_env.sh'), envSh);
+    const run = () => spawnSync(path.join(pack, 'vm/build-qemu-user.sh'), [], {
+        encoding: 'utf8',
+        env: { PATH, HOME: process.env.HOME, LOG, FAKE_COMMIT: pinned, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: path.join(qc, 'musl/include') },
+    });
+    const log = () => fs.readFileSync(LOG, 'utf8').trim().split('\n');
+    // The fake emsdk's install writes no emsdk_env.sh; the test's own stands in for it.
+    const reinstall = (r) => {
+        assert.equal(r.status, 7, r.stderr);
+        return log();
+    };
+    const r = run();
+    assert.ok(fs.existsSync(LOG) && log().some((l) => l.startsWith('git clone')), `the stale emsdk is installed again: ${r.stderr}`);
+    assert.ok(!log().some((l) => l.startsWith('compiles with')), 'nothing was compiled with the stale emsdk');
+    assert.notEqual(r.status, 0, 'the fake install has no emsdk_env.sh, so the script stops');
+    assert.ok(!fs.existsSync(path.join(qc, 'art/user.stamp')), 'no stamp names a build that did not happen');
+    write(path.join(em, 'emsdk_env.sh'), envSh);
+    assert.deepEqual(reinstall(run()).filter((l) => l.startsWith('compiles with')), [`compiles with ${pinned}`], 'the pinned emsdk, once installed, is what compiles it');
+    assert.equal(log().filter((l) => l.startsWith('git clone')).length, 1, 'the pinned emsdk is not installed twice');
+    fs.rmSync(em, { recursive: true });
+    const missing = run();
+    assert.doesNotMatch(missing.stderr, /run build-qemu\.sh first/, 'a missing emsdk is installed, not blamed on build-qemu.sh');
+    assert.equal(log().filter((l) => l.startsWith('git clone')).length, 2, 'a missing emsdk is installed');
+});
