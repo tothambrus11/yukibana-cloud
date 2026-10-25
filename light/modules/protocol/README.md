@@ -9,7 +9,10 @@ declares it needs from its host.
 
 * Types and pure codecs only: a function here is a function of its
   arguments, with no I/O, timers, globals or DOM. It runs the same in a
-  page, a worker, the runner frame and Node. The two that touch the world
+  page, a worker, the runner frame and Node, and `tsconfig.json` holds it
+  to that: it checks protocol with the language alone and
+  `platform.d.ts`, so a use of `document`, `window`, `fetch`, `process`
+  or `Buffer` fails `npm run check`. The two that touch the world
   touch only what they are handed: `Connection` posts to the worker its
   caller gives it (it never creates one), and the stdin functions read
   and write the buffer they are given.
@@ -27,6 +30,8 @@ declares it needs from its host.
 | `stdin.ts` | the standard input buffer: layout, `writeStdin`, `readStdin` (sticky end of file), `rearmStdin` |
 | `runner.ts` | to and from a runner (batched `output`, reserved `test-report`, the headless contract), and a previewed page |
 | `loading.ts` | download progress from any pack worker |
+| `requirements.ts` | what a pack's workers need from the page (`Need`, `Requires`, `parseRequires`, `needFor`), and why a page that lacks it refuses them (`requirementProblem`, `requirementLimitation`, `PROTOCOL_MAJOR`) |
+| `platform.d.ts` | the platform types every host has under one name, the only ones protocol's own check knows |
 
 Its tests are in `../tests/` (outside the module, which may not import
 `node:test`): `node --test "light/modules/**/*.test.mjs"`, or

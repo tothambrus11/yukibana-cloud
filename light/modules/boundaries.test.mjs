@@ -42,6 +42,7 @@ const FORBIDDEN = [
 	{ pattern: /document\.documentElement/, why: 'the host page\'s <html>' },
 	{ pattern: /serviceWorker\.register/, why: 'registering a service worker on import' },
 	{ pattern: /yukibana\.json/, why: 'the app\'s project configuration' },
+	{ pattern: /\/\/\/\s*<reference/, why: 'a triple-slash reference, which brings in globals the module\'s tsconfig.json leaves out' },
 ];
 
 /** Every import of a source file: its specifier and whether it is type-only. */
@@ -187,7 +188,48 @@ test('no module touches what belongs to the app or the host page', () => {
 		"document.documentElement.dataset.theme = 'dark';",
 		"navigator.serviceWorker.register('/sw.js');",
 		"// reads yukibana.json",
+		'/// <reference lib="dom" />',
+		'/// <reference types="node" />',
 	]) {
 		assert.ok(check('runtime', source).some((problem) => problem.includes('mentions')), source);
+	}
+});
+
+/**
+ * The type errors of `source`, compiled as a file of `module` under that
+ * module's own tsconfig.json, with the module's real files beside it.
+ */
+function typeErrors(module, source) {
+	const project = join(here, module, 'tsconfig.json');
+	const config = ts.readConfigFile(project, ts.sys.readFile);
+	const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, dirname(project));
+	const probe = join(here, module, 'probe.ts');
+	const host = ts.createCompilerHost(parsed.options);
+	const read = host.getSourceFile.bind(host);
+	host.getSourceFile = (name, ...rest) =>
+		resolve(name) === probe ? ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true) : read(name, ...rest);
+	const program = ts.createProgram([...parsed.fileNames, probe], parsed.options, host);
+	return ts.getPreEmitDiagnostics(program, program.getSourceFile(probe)).map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
+}
+
+test("protocol does not compile if it reaches for a page's, a worker's or Node's globals", () => {
+	for (const source of [
+		"export const title = document.title;",
+		"export const width = window.innerWidth;",
+		"export const scope = self;",
+		"export const get = () => fetch('/x');",
+		"export const env = process.env;",
+		"export const bytes = Buffer.from('x');",
+	]) {
+		assert.notDeepEqual(typeErrors('protocol', source), [], source);
+	}
+	assert.deepEqual(typeErrors('protocol', "export const bytes = new TextEncoder().encodeInto('x', new Uint8Array(4)).written;"), []);
+});
+
+test("the runtime and the Monaco integration do not compile if they reach for Node's globals", () => {
+	for (const module of ['runtime', 'monaco']) {
+		assert.notDeepEqual(typeErrors(module, 'export const env = process.env;'), [], module);
+		assert.notDeepEqual(typeErrors(module, "export const bytes = Buffer.from('x');"), [], module);
+		assert.deepEqual(typeErrors(module, "export const get = () => fetch('/x');"), [], module);
 	}
 });

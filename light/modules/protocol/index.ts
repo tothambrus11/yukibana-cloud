@@ -8,12 +8,15 @@
  * - stdin.ts: the standard input buffer, both sides of it.
  * - runner.ts: the messages to and from a runner, and a previewed page.
  * - loading.ts: download progress, from any kind of pack worker.
+ * - requirements.ts: what a pack's workers need from the page, and why a
+ *   page that lacks it refuses them before anything is downloaded.
  *
- * Still to come: the requirements a pack declares and the frame messages
- * (../README.md says the order). What it promises, and may import, is in
- * ./README.md and is enforced by ../boundaries.test.mjs.
+ * Still to come: the frame messages (../README.md says the order). What it
+ * promises, and may import, is in ./README.md and is enforced by
+ * ../boundaries.test.mjs and its own tsconfig.json.
  */
 export * from './connection.ts';
 export * from './loading.ts';
+export * from './requirements.ts';
 export * from './runner.ts';
 export * from './stdin.ts';

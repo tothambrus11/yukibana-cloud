@@ -1,0 +1,11 @@
+{
+	"format": 1,
+	"id": "hylo",
+	"name": "Hylo",
+	"protocol": 1,
+	"requires": {
+		"runner": {
+			"default": { "crossOriginIsolated": "optional-stdin", "sameOriginPacks": true }
+		}
+	}
+}

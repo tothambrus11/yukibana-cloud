@@ -34,10 +34,15 @@ the app:
   (`../protocol/index.ts`) or its name (`@yukibana/protocol`); the app has
   the names as `kit.alias`.
 
-`tsconfig.json` checks the three as one project (`npm run check` in
-`light/app` runs `tsc -p ../modules`), and `boundaries.test.mjs` fails on any
-import or mention that breaks the table or the rules above (`npm run
-test:unit` in `light/app` runs it). The modules' own tests are in `tests/`,
+Each module is its own TypeScript project, so each is checked with only
+the globals it may use: `protocol/tsconfig.json` with the language and
+the few platform types every host has (`protocol/platform.d.ts`), and
+`runtime/` and `monaco/` with the DOM; none sees Node's types. They share
+`tsconfig.base.json`, and `npm run check` in `light/app` runs
+`tsc -p ../modules/<name>` for each. `boundaries.test.mjs` fails on any
+import or mention that breaks the table or the rules above, and on a
+protocol project that would compile a source reaching for a page or Node
+(`npm run test:unit` in `light/app` runs it). The modules' own tests are in `tests/`,
 beside them rather than in them, since a test imports `node:test`; the same
 `npm run test:unit` runs them, as does
 `node --test "light/modules/**/*.test.mjs"` from the repository root.

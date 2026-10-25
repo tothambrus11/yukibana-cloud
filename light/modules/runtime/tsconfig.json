@@ -1,0 +1,9 @@
+{
+	// runtime starts workers and fetches in a browser: the DOM and worker
+	// globals, and nothing of Node.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"]
+	},
+	"include": ["."]
+}

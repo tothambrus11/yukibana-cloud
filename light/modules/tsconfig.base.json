@@ -1,0 +1,38 @@
+{
+	// What the three modules' own projects (protocol/, runtime/ and
+	// monaco/tsconfig.json) share. It names no lib, no types and no files:
+	// each module says which globals it may use, and `npm run check` in
+	// light/app checks each project on its own (`tsc -p ../modules/<name>`),
+	// with the app's TypeScript and type packages, since the modules have no
+	// node_modules of their own.
+	//
+	// They were one project until finding #22 of the architecture review:
+	// with the DOM and Node's types shared by all three, protocol could use
+	// `document`, `window`, `process` or `Buffer` and still type-check,
+	// though it promises to run unchanged in a page, a worker, the runner
+	// frame and Node.
+	//
+	// erasableSyntaxOnly and allowImportingTsExtensions keep every file
+	// loadable as it is by Node's type stripping (the unit tests), Vite and
+	// esbuild (the packs' glue): no enums, namespaces or parameter
+	// properties, and relative imports name the .ts file.
+	"compilerOptions": {
+		"target": "es2024",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"erasableSyntaxOnly": true,
+		"verbatimModuleSyntax": true,
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"isolatedModules": true,
+		"skipLibCheck": true,
+		// No @types package (Node's above all) is visible unless a module's
+		// project names it, and none does.
+		"types": []
+	}
+}

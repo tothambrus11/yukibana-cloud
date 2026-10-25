@@ -1,0 +1,14 @@
+{
+	// monaco runs in the host's page beside its editor: the DOM, nothing of
+	// Node, and Monaco's types only.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		// monaco's `import type` only (H1: the host's Monaco is injected,
+		// never bundled), resolved from the app's installed copy.
+		"paths": {
+			"monaco-editor": ["../../app/node_modules/monaco-editor"]
+		}
+	},
+	"include": ["."]
+}
