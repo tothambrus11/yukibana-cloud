@@ -496,6 +496,15 @@ test('a service that lost a method the adapter calls is named the first time it 
 	assert.throws(() => internals.createQuickPick(), /Monaco's quickInputService has no createQuickPick/);
 });
 
+test("a service Monaco instantiates on first use, a Proxy that answers only reads, has every member it has", () => {
+	const fake = fakeMonaco();
+	const real = { pushElement() {}, removeElements() {} };
+	// As Monaco's instantiation service makes a Delayed service: no `has` trap, so `in` sees an empty object.
+	fake.services.set('undoRedoService', new Proxy(Object.create(null), { get: (_, key) => real[key] }));
+	const internals = monacoInternals(fake.modules);
+	assert.doesNotThrow(() => internals.forgetUndo({ toString: () => 'file:///workspace/a.ts' }));
+});
+
 test('an edit across files is one undo step in every file, and an edit of one file an ordinary step', () => {
 	const fake = fakeMonaco();
 	const internals = monacoInternals(fake.modules);

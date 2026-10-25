@@ -598,7 +598,14 @@ export function monacoInternals(modules: InternalModules): MonacoInternals {
 	/** Monaco's service `id`, with the members INTERNALS says the adapter calls on it. */
 	const serviceOf = <T>(id: ServiceId, members: readonly string[]): T => {
 		const service = StandaloneServices.get(id);
-		const missing = members.filter((m) => typeof service !== 'object' || service === null || !(m in service));
+		// `in`, or else a read: Monaco makes a Delayed service (the undo-redo
+		// one among them) a Proxy with only a `get` trap over an empty
+		// object, which `in` alone took for a service with no members at
+		// all. (A field such as lastFocusedList may hold undefined, so a read
+		// alone would not do either.)
+		const missing = members.filter(
+			(m) => typeof service !== 'object' || service === null || (!(m in service) && (service as Record<string, unknown>)[m] === undefined),
+		);
 		if (missing.length > 0) throw new MonacoInternalsError(missing.map((m) => `Monaco's ${String(id)} has no ${m}`));
 		return service as T;
 	};
