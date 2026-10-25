@@ -535,7 +535,7 @@ can use it. Each style costs only what it uses:
 | Style | How a file asks for it | Editor downloads | Page runs |
 | --- | --- | --- | --- |
 | Instance mode, `new p5((p) => …)` | `import p5 from 'p5'` | `packages-p5-2.3.4.json` (116 KiB brotli) | `p5-2.3.4.js` |
-| Global mode, bare `setup()`, `circle()` | `/// <reference types="p5/global" />`, or `"types": ["p5/global"]` in tsconfig.json | the same, plus `packages-p5-global-2.3.4.json` (103 KiB brotli) | the same `p5-2.3.4.js` |
+| Global mode, bare `setup()`, `circle()` | `"types": ["p5/global"]` in tsconfig.json (the template), or `/// <reference types="p5/global" />` in a file | the same, plus `packages-p5-global-2.3.4.json` (103 KiB brotli) | the same `p5-2.3.4.js` |
 | Neither | | nothing of p5 | nothing of p5 |
 
 

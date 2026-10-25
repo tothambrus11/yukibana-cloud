@@ -489,26 +489,19 @@ canvas {
 `,
 			'main.ts': `import p5 from 'p5';
 
-// A p5.js sketch in instance mode: p5 calls the function with the sketch's
-// p5 instance, \`p\`, and everything p5 offers is a member of it.
 new p5((p: p5) => {
-  // Runs once, at the start.
   p.setup = () => {
     p.createCanvas(p.windowWidth, p.windowHeight);
-    p.noStroke();
   };
 
-  // Keeps the canvas the size of the window.
   p.windowResized = () => {
     p.resizeCanvas(p.windowWidth, p.windowHeight);
   };
 
-  // Runs every frame: paint over the last frame, then draw the circle
-  // where the mouse is.
   p.draw = () => {
-    p.background(30, 32, 40);
-    p.fill(240, 120, 90);
-    p.circle(p.mouseX, p.mouseY, 60);
+    p.background('black');
+    p.fill(0, 255, 255);
+    p.circle(p.mouseX, p.mouseY, 100);
   };
 });
 `,
@@ -537,7 +530,8 @@ new p5((p: p5) => {
 		// it; once the page has loaded, p5 finds setup() and draw() and starts.
 		// The editor's types come from `p5/global`, a download of their own
 		// that instance mode never makes (packs/javascript/README.md,
-		// "Packages"), asked for by the sketch's `/// <reference>`.
+		// "Packages"), asked for by the project's tsconfig.json
+		// (`"types": ["p5/global"]`), so the sketch needs no `/// <reference>`.
 		id: 'p5-global',
 		label: 'Web: p5.js sketch, global mode (TypeScript)',
 		pack: 'javascript',
@@ -580,28 +574,18 @@ canvas {
   display: block;
 }
 `,
-			'sketch.ts': `/// <reference types="p5/global" />
-
-// A p5.js sketch in global mode: p5 calls these functions by their names,
-// and everything p5 offers is a global, as in p5.js's own editor.
-
-// Runs once, at the start.
-function setup() {
+			'sketch.ts': `function setup() {
   createCanvas(windowWidth, windowHeight);
-  noStroke();
 }
 
-// Keeps the canvas the size of the window.
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
 }
 
-// Runs every frame: paint over the last frame, then draw the circle where
-// the mouse is.
 function draw() {
-  background(30, 32, 40);
-  fill(240, 120, 90);
-  circle(mouseX, mouseY, 60);
+  background('black');
+  fill(0, 255, 255);
+  circle(mouseX, mouseY, 100);
 }
 `,
 			'tsconfig.json': `{
@@ -614,7 +598,8 @@ function draw() {
     "verbatimModuleSyntax": true,
     "strict": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "types": ["p5/global"]
   }
 }
 `,
