@@ -778,6 +778,12 @@ jobs:
           # The system packages a pack needs are in its deps.apt. cpp is
           # split: its units are built by the wave jobs and it is assembled
           # by the assemble job.
+          # Go's compiler and standard library come from a pinned Go
+          # release; cold, most of the 15 minutes is brotli over 290 MB of
+          # archives (cached by content), so a deploy can build it.
+          - pack: go
+            timeout: 30
+            deploy-builds: true
           - pack: haskell
             timeout: 60
           - pack: java
