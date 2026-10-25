@@ -1,6 +1,7 @@
 package plan
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -193,5 +194,19 @@ func TestTestReportsAWrongSignatureWhereGoTestDoes(t *testing.T) {
 				t.Errorf("errors %v, want %q", plan.Errors, c.want)
 			}
 		})
+	}
+}
+
+func TestAProgramThatImportsNothingHasAnEmptyListOfStandardPackages(t *testing.T) {
+	plan := Run(newProject(map[string]string{"main.go": "package main\n\nfunc main() { var p *int; println(*p) }\n"}), "main.go", std)
+	if len(plan.Errors) != 0 || len(plan.Builds) != 1 {
+		t.Fatalf("plan = %+v", plan)
+	}
+	data, err := json.Marshal(plan.Builds[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"std":[]`) {
+		t.Errorf("JSON = %s, want std as an empty list, which the runner iterates", data)
 	}
 }

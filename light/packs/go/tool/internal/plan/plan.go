@@ -347,7 +347,9 @@ func (l *loader) position(pkg *build.Package, positions []token.Position) *token
 // build turns an ordered closure into units. `replace` swaps a package's
 // unit for another (the package under test, compiled with its tests).
 func (l *loader) build(name string, pkgs []*build.Package, replace map[string]Unit) Build {
-	b := Build{Package: name}
+	// Std is never nil: JSON has it as a list even for a program that
+	// imports nothing.
+	b := Build{Package: name, Std: []string{}}
 	std := map[string]bool{}
 	for _, pkg := range pkgs {
 		u, ok := replace[pkg.ImportPath]
