@@ -152,7 +152,11 @@ patch_files() {
 # change of the patch, as the comment above says. The copy is
 # <tree>/.yk-patches/<patch's name>. A tree that holds a build but no copy
 # cannot say which version it was built with, so it is started again
-# (keep_tree's record is kept): call this after keep_tree.
+# (keep_tree's record is kept): call this after keep_tree. The copies of the
+# tree's other patches are kept too: an empty tree compiles everything, so
+# they stay true, and deleting them once made a tree that follows two
+# patches (cc's, or cross's on cc's tree) be built again on the next
+# unchanged run, because the first patch's copy was gone.
 follow_patch() {
   local tree=$1 patch=$2 src=$3 copy f
   copy="$tree/.yk-patches/$(basename "$patch")"
@@ -163,7 +167,7 @@ follow_patch() {
     done
   elif [ -n "$(find "$tree" -mindepth 1 -maxdepth 1 ! -name .yk-made-by ! -name .yk-patches -print -quit)" ]; then
     echo "$(basename "$0"): $tree does not say which $(basename "$patch") it was built with; building it again from empty" >&2
-    find "$tree" -mindepth 1 -maxdepth 1 ! -name .yk-made-by -exec rm -rf {} +
+    find "$tree" -mindepth 1 -maxdepth 1 ! -name .yk-made-by ! -name .yk-patches -exec rm -rf {} +
   fi
   mkdir -p "$tree/.yk-patches"
   cp "$patch" "$copy"

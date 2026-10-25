@@ -110,6 +110,23 @@ test('a build tree that does not say which version of a patch it was built with 
     assert.ok(fs.existsSync(path.join(dir, 'tree/.yk-patches/the.patch')), 'what made it is still the record');
 });
 
+test('a tree that follows two patches is built again once when it learns of the second, and kept on the next run', () => {
+    const dir = fresh();
+    write(path.join(dir, 'p1.patch'), diff('a.cpp'));
+    write(path.join(dir, 'p2.patch'), diff('b.cpp'));
+    ok(`keep_tree tree "x"; follow_patch tree p1.patch src; touch tree/build.ninja`, { cwd: dir });
+    // Another script now points a second patch at the same tree (cross on
+    // cc's tree, or a follow_patch line added later): one rebuild.
+    const first = ok(`keep_tree tree "x"; follow_patch tree p1.patch src; follow_patch tree p2.patch src`, { cwd: dir });
+    assert.match(first.err, /does not say which p2\.patch it was built with/);
+    assert.ok(!fs.existsSync(path.join(dir, 'tree/build.ninja')), 'the tree is started again');
+    assert.deepEqual(fs.readdirSync(path.join(dir, 'tree/.yk-patches')).sort(), ['p1.patch', 'p2.patch'], 'both copies are kept');
+    ok(`touch tree/build.ninja`, { cwd: dir });
+    const next = ok(`keep_tree tree "x"; follow_patch tree p1.patch src; follow_patch tree p2.patch src`, { cwd: dir });
+    assert.equal(next.err, '', 'nothing is said about an unchanged tree');
+    assert.ok(fs.existsSync(path.join(dir, 'tree/build.ninja')), 'the next unchanged run keeps the build');
+});
+
 test('the wasm-only lld is extracted again when its patch changes, not kept because it was once patched', () => {
     // A pack of its own: build-lib.sh's patches are found beside it.
     const pack = fresh();
