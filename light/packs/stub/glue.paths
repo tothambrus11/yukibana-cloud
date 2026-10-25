@@ -2,5 +2,6 @@
 # toolchains of its three units. No unit builds with any of it.
 glue.paths
 glue.sh
+test.sh
 README.md
 src/

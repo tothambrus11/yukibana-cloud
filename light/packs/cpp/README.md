@@ -258,6 +258,14 @@ CI builds each unit in its own job (`light-toolchain-unit.yml`) and
 assembles the pack once (`light-packs.yml`), so no job builds more than one
 unit and a glue edit builds none.
 
+`./test.sh` runs the pack's tests over the pack as assembled: `test.mjs`,
+`test-run.mjs`, `test-sanitizers.mjs`, `test-run-linux.mjs` and
+`test-targets.mjs`, each failing on a skip, since an assembled pack lacks
+nothing they need. The assemble job runs it after every assembly, a
+release's included, so what is uploaded is what passed. `test-vm.mjs` and
+`test-demangle.mjs` are not in it: they compile with the vm and compilers
+units' build trees, which an assembly over stored units does not have.
+
 ### Units
 
 | Unit | Needs | Builds | Inputs besides its directory (`paths`) |

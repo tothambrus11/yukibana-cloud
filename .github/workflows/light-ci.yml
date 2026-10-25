@@ -12,11 +12,14 @@
 #   languages it serves.
 # - pack-units: the packs' own tests that need no built pack (the C++
 #   pack's compiler output filters and initramfs writer, the Haskell
-#   language server's outline and hints), and the tests of the pack and
-#   toolchain store scripts, of the split packs' contract
-#   (light/packs/contract.test.mjs) and of light-packs.yml's release rule.
-#   A change to a pack's glue or scripts is otherwise first tested by a
-#   pack build, up to hours later.
+#   language server's outline and hints) and the split packs' contract
+#   (light/packs/contract.test.mjs). A change to a pack's glue or scripts
+#   is otherwise first tested by a pack build, up to hours later. The pack
+#   and toolchain store scripts' tests and the workflows' rules
+#   (test-pack-store, test-pack-toolchain, test-workflows) are
+#   light-packs.yml's store job's alone, which runs them before anything
+#   uses the stores, a release included; they ran here too until both
+#   jobs ran the same suites on every change to them.
 # - hylo-example: light/examples/hylo, a docs page of Hylo snippets on
 #   Hylo's own compiler through one runner pool: type-check, its unit tests,
 #   a Vite build and the page driven in Chromium with the real compiler.
@@ -100,12 +103,12 @@ jobs:
             .github/workflows/light-ci.yml
       # Every file the pack-units tests read, and the files that decide
       # how a pack is built (a change there is a change those tests are
-      # about, even when they do not open it). The workflows are all here
-      # because test-workflows.mjs reads every one for a caller of the
-      # toolchain unit workflow. The contract test also partitions every
-      # file of a split pack, which no pathspec short of the pack names:
-      # light-packs.yml's assemble job, whose inputs are the whole pack,
-      # runs it again on any change to one.
+      # about, even when they do not open it). The contract test and the C++
+      # units' test read the key's definition (light/scripts); the contract
+      # test also asks every split pack for its test.sh, and partitions
+      # every file of a split pack, which no pathspec short of the pack
+      # names: light-packs.yml's assemble job, whose inputs are the whole
+      # pack, runs it again on any change to one.
       - id: pack-units
         uses: ./.github/actions/once
         with:
@@ -131,10 +134,11 @@ jobs:
             light/packs/*/toolchain.*
             light/packs/*/toolchains
             light/packs/*/glue.paths
+            light/packs/*/test.sh
             light/packs/stub
             light/packs/contract.test.mjs
             light/scripts
-            .github/workflows
+            .github/workflows/light-ci.yml
       # The example runs the shared modules as an outside host would.
       - id: hylo-example
         uses: ./.github/actions/once
@@ -281,16 +285,9 @@ jobs:
         working-directory: light/packs/haskell
         run: node --test test-symbols.mjs
 
-      # As the runner's own user, never root: the read-only toolchain checks
-      # are meant to be stopped by a file's mode, which root ignores.
-      - name: Pack and toolchain store scripts, the split packs' contract, light-packs.yml's release rule
+      - name: The split packs' contract
         working-directory: light
-        run: |
-          if [ "$(id -u)" = 0 ]; then
-            echo "::error title=pack-units runs as root::these tests must run as an ordinary user" >&2
-            exit 1
-          fi
-          node --test scripts/test-pack-store.mjs scripts/test-pack-toolchain.mjs scripts/test-workflows.mjs packs/contract.test.mjs
+        run: node --test packs/contract.test.mjs
 
       - uses: ./.github/actions/once
         with:

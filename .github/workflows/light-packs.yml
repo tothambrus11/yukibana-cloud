@@ -88,7 +88,10 @@
 # build fails so a rerun resumes where it stopped. The toolchain cache
 # ($TOOLCHAIN_CACHE) is never saved there: the toolchain store is its
 # durable copy. Every pack that changed is tested on the push that changed
-# it: an unsplit one by its build.sh, a split one after assembly.
+# it: an unsplit one by its build.sh, a split one by its test.sh, over the
+# pack as assembled (the assemble job; light/packs/contract.test.mjs makes
+# every split pack have one). A deploy that ships a stored build of a split
+# pack (the deploy rule) assembles nothing, so tests nothing here.
 #
 # Timings (fetch, unit build cold or warm, assemble or build and test) go to
 # each job's summary. Expected numbers are not measured yet; they belong here
@@ -134,6 +137,10 @@ on:
       - main
     paths:
       - light/packs/**
+      # What a split pack's tests read outside the packs (its test.sh
+      # --inputs; test-workflows.mjs checks that each is here).
+      - light/app/src/lib/languages.ts
+      - light/app/src/lib/cpp-tests.ts
       - light/scripts/pack-store.sh
       - light/scripts/test-pack-store.mjs
       - light/scripts/pack-toolchain.sh
@@ -151,10 +158,17 @@ on:
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
       - .github/workflows/light-caches.yml
+      # test-workflows.mjs, which the store job alone runs, reads every
+      # Light workflow (the release's, the modules', light-ci.yml).
+      - .github/workflows/light-*.yml
       - .github/actions/once/**
   pull_request:
     paths:
       - light/packs/**
+      # What a split pack's tests read outside the packs (its test.sh
+      # --inputs; test-workflows.mjs checks that each is here).
+      - light/app/src/lib/languages.ts
+      - light/app/src/lib/cpp-tests.ts
       - light/scripts/pack-store.sh
       - light/scripts/test-pack-store.mjs
       - light/scripts/pack-toolchain.sh
@@ -172,6 +186,9 @@ on:
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
       - .github/workflows/light-caches.yml
+      # test-workflows.mjs, which the store job alone runs, reads every
+      # Light workflow (the release's, the modules', light-ci.yml).
+      - .github/workflows/light-*.yml
       - .github/actions/once/**
   workflow_dispatch:
   workflow_call:
@@ -361,6 +378,17 @@ jobs:
           shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-key.sh scripts/toolchain-build-env.sh \
             scripts/pack-lib.sh scripts/pack-toolchain.sh scripts/protect-releases.sh setup.sh \
             packs/stub/glue.sh packs/stub/lib.sh packs/stub/compiler/cc.sh packs/stub/toolchains/*/toolchain.sh
+      # As the runner's own user, never root: the read-only toolchain checks
+      # are meant to be stopped by a file's mode, which root ignores. These
+      # suites run here alone (light-ci.yml's pack-units job ran them too,
+      # code review finding 13), here because this job gates every use of
+      # the stores, in a release too.
+      - name: The tests run as an ordinary user
+        run: |
+          if [ "$(id -u)" = 0 ]; then
+            echo "::error title=the store job runs as root::its tests must run as an ordinary user" >&2
+            exit 1
+          fi
       - name: Test the store
         run: node --test scripts/test-pack-store.mjs
       - name: Test building and assembling toolchains
@@ -452,7 +480,9 @@ jobs:
 
   # Each split pack, over its units: those this run built (its artifacts),
   # otherwise the store's, never built here. Assembling is the glue, in
-  # seconds; then the pack's test.
+  # seconds; then the pack's tests, over the pack as assembled (its
+  # test.sh), in a release too, so the bytes they passed are the bytes
+  # uploaded, and the once gate records only inputs whose tests passed.
   assemble:
     name: Assemble ${{ matrix.pack }}
     needs: [plan, store, wave-1, wave-2, wave-3]
@@ -461,7 +491,11 @@ jobs:
       (needs.store.result == 'success' || needs.store.result == 'skipped') &&
       needs.plan.outputs.split != '[]' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Fetching the units and assembling take minutes; the rest is the
+    # pack's tests: cpp's took 18 minutes on a 4-core machine (2026-10-25,
+    # ten of them test-run-linux.mjs under QEMU-Wasm), so this leaves room
+    # for a slower runner.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -479,7 +513,8 @@ jobs:
 
       # Everything this job reads, for the once gate: the pack's directory,
       # the directories of the packs its units need (whose keys are in its
-      # units' keys), and the scripts that key, fetch and assemble.
+      # units' keys), the scripts that key, fetch and assemble, and the
+      # files outside the pack that its tests read (`test.sh --inputs`).
       - name: What this pack is made from
         id: inputs
         run: |
@@ -504,9 +539,13 @@ jobs:
             p="${unit%%/*}"
             [[ " ${packs[*]} " == *" $p "* ]] || packs+=("$p")
           done <<<"$units"
+          [ -x "light/packs/$PACK/test.sh" ] ||
+            { echo "::error title=$PACK::light/packs/$PACK/test.sh is missing or not executable: a split pack's tests run over the pack as assembled (light/packs/contract.test.mjs)"; exit 1; }
+          tested="$("light/packs/$PACK/test.sh" --inputs)"
           {
             echo "once-paths<<ONCE_PATHS"
             printf 'light/packs/%s\n' "${packs[@]}"
+            [ -z "$tested" ] || printf '%s\n' "$tested"
             printf '%s\n' light/scripts/pack-toolchain.sh light/scripts/toolchain-key.sh \
               light/scripts/toolchain-build-env.sh light/scripts/pack-lib.sh light/scripts/toolchain-manifest.mjs \
               light/scripts/pack-store.sh .github/workflows/light-packs.yml .github/workflows/light-toolchain-unit.yml
@@ -628,6 +667,23 @@ jobs:
           test -f "light/app/static/packs/$PACK/server.js" ||
             { echo "::error::pack $PACK has no server.js" >&2; exit 1; }
           echo "$PACK: $(du -sh "light/app/static/packs/$PACK" | cut -f1), assembled over ${names[*]}" >> "$GITHUB_STEP_SUMMARY"
+
+      # What the pack's tests need on this runner (a browser, an emulator),
+      # as its test.sh says, installed with sudo.
+      - name: Install what the tests need
+        if: steps.assemble.outcome == 'success'
+        run: |
+          trap 'echo "Install what the tests need|$SECONDS" >> "$TIMINGS"' EXIT
+          "light/packs/$PACK/test.sh" --setup
+
+      # The pack's own tests, over the pack as assembled: what a release
+      # uploads below is what they passed.
+      - name: Run the pack's tests
+        if: steps.assemble.outcome == 'success'
+        run: |
+          trap 'echo "Run the tests|$SECONDS" >> "$TIMINGS"' EXIT
+          "light/packs/$PACK/test.sh"
+          echo "$PACK: its tests passed over the assembled pack" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Passed already
         if: steps.once.outputs.done == 'true'

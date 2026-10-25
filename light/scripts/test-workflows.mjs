@@ -2,10 +2,11 @@
 // only it calls), light-caches.yml and light-release.yml must keep, which no
 // run checks until a release, hours in, or a pull request, unnoticed, does
 // the wrong thing: a release never builds or publishes a toolchain and
-// never skips a pack; the units build in waves, each with a cache of its
-// own; only main writes a store or deletes a cache, and never another ref's;
-// every toolchain fetched is verified; every third-party action is pinned by
-// commit.
+// never skips a pack; a split pack is tested over the pack it assembled
+// before anything uploads or records it; the units build in waves, each
+// with a cache of its own; only main writes a store or deletes a cache, and
+// never another ref's; every toolchain fetched is verified; every
+// third-party action is pinned by commit.
 //
 // Most of these rules are hygiene, not the control: a same-repository pull
 // request runs its own copy of the workflows and of this file, so it can
@@ -23,6 +24,7 @@
 // nothing. (A `yq` would not do instead: the runners ship one yq, many
 // machines another whose YAML 1.1 reads the key `on` as `true`.)
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -316,6 +318,56 @@ test('a release run never skips a pack', () => {
     assert.equal(gates.length, 1, 'one once gate outside the plan job: the assemble job');
     assert.ok(stepsOf(/** @type {Job} */ (jobs.assemble)).includes(/** @type {Step} */ (gates[0])));
     assert.match(String(gates[0]?.if), /!inputs\.upload/);
+});
+
+test('a split pack is tested over the pack it assembled before it is uploaded or its inputs are recorded as passed', () => {
+    // A split pack once shipped tested by nothing but its glue's versions
+    // check, while the once gate recorded its inputs as passed (code review
+    // finding 9). Its test.sh runs after assembly, in a release too, before
+    // any upload and before the record.
+    const assemble = stepsOf(/** @type {Job} */ (jobs.assemble));
+    const at = (/** @type {RegExp} */ pattern) => assemble.findIndex((s) => pattern.test(String(s.run ?? '')));
+    const tests = at(/"light\/packs\/\$PACK\/test\.sh"\s*\n/);
+    const setup = at(/"light\/packs\/\$PACK\/test\.sh" --setup/);
+    assert.ok(tests >= 0, "the assemble job runs the pack's test.sh");
+    assert.ok(setup >= 0 && setup < tests, "the assemble job installs what the tests need first");
+    const assembled = assemble.findIndex((s) => s.id === 'assemble');
+    assert.ok(assembled >= 0 && assembled < setup, 'the tests run after assembly');
+    for (const i of [setup, tests]) {
+        assert.equal(assemble[i]?.if, "steps.assemble.outcome == 'success'", `step "${assemble[i]?.name}" runs whenever the pack was assembled, a release included`);
+    }
+    assemble.forEach((s, i) => {
+        const after = String(s.uses ?? '').startsWith('actions/upload-artifact@') || (s.uses === './.github/actions/once' && s.with?.record !== undefined);
+        if (after) assert.ok(i > tests, `step "${s.name ?? s.uses}" comes before the pack's tests`);
+    });
+    // What the tests read outside the pack is among the once gate's inputs.
+    assert.match(String(stepById(assemble, 'inputs').run), /"light\/packs\/\$PACK\/test\.sh" --inputs/);
+});
+
+// What reaches the split packs' test.sh --inputs from the environment
+// (none of it is read; cleared all the same, as the env rule below asks of
+// a test that runs a program).
+const OWN = ['CI', 'GITHUB_ACTIONS', 'PACK_CACHE', 'TOOLCHAIN_CACHE', 'JOBS', 'GH_TOKEN', 'LIGHT_TOOLCHAIN_PROVENANCE'];
+
+test("what a split pack's tests read outside the packs starts the pack workflow", () => {
+    // The once gate counts those files, but a push that changes only them
+    // must also start the workflow for the gate to be asked.
+    const matches = (/** @type {string} */ file, /** @type {string} */ spec) =>
+        new RegExp(`^${spec.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\0').replace(/\*/g, '[^/]*').replace(/\0/g, '.*')}$`).test(file);
+    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !OWN.includes(name)));
+    let read = 0;
+    for (const pack of SPLIT) {
+        const out = execFileSync(path.join(ROOT, 'light/packs', pack, 'test.sh'), ['--inputs'], { cwd: ROOT, env, encoding: 'utf8' });
+        for (const file of out.split('\n').filter(Boolean)) {
+            assert.ok(fs.existsSync(path.join(ROOT, file)), `${pack}'s test.sh --inputs names ${file}, which does not exist`);
+            for (const event of ['push', 'pull_request']) {
+                const paths = workflow.on[event]?.paths ?? [];
+                assert.ok(paths.some((spec) => matches(file, spec)), `${file}, which ${pack}'s tests read, is not in on.${event}.paths`);
+            }
+            read++;
+        }
+    }
+    assert.ok(read > 0, 'no split pack names a file outside it: the rule reads nothing');
 });
 
 test('every script that keys, fetches, verifies, builds or assembles a toolchain starts the pack workflow', () => {

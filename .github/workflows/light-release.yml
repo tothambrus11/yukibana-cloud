@@ -29,12 +29,14 @@
 #
 # The packs come from light-packs.yml, reused with `upload`, and from nowhere
 # else: this workflow never fetches, assembles or builds a pack itself. There
-# a split pack is assembled from its stored units and tested, and fails
-# by name when the store lacks it (a release never builds a compiler); an
+# a split pack is assembled from its stored units and its tests (its
+# test.sh) run over the pack as assembled, and it fails by name when the
+# store lacks a unit (a release never builds a compiler); an
 # unsplit pack is downloaded from the pack store when its sources have been
 # built before, and built and tested only otherwise. So the bytes those tests
 # passed are the bytes shipped, and a release whose packs are all built
-# takes minutes. The assemble job puts the packs in app/static/packs, builds
+# takes as long as the split packs' tests (cpp's, about 18 minutes). The
+# assemble job puts the packs in app/static/packs, builds
 # the app, type-checks it, smoke-tests the built app in Chromium and makes
 # the archive.
 name: Yukibana Light release

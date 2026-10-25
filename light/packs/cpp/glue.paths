@@ -12,6 +12,7 @@ package-lock.json
 README.md
 src/
 test*.mjs
+test.sh
 tests/
 vm/README.md
 vm/fixtures/
