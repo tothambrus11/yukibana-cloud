@@ -8,13 +8,14 @@ import { test } from 'node:test';
 import { ALL_KINDS, KINDS, LANGUAGE_VIEWS, defaultOptions, viewOf, viewsOf } from '../../src/lib/explore-views.ts';
 import { LANGUAGES } from '../../src/lib/languages.ts';
 
-test('C++ keeps its LLVM IR and Assembly views; Swift, Rust, Haskell, Python and Java have their own', () => {
+test('C++ keeps its LLVM IR and Assembly views; Swift, Rust, Haskell, Scala, Python and Java have their own', () => {
 	assert.deepEqual(viewsOf('cpp')?.views.map((v) => v.kind), ['llvm-ir', 'asm']);
 	assert.deepEqual(viewsOf('swift')?.views.map((v) => v.kind), ['sil', 'llvm-ir', 'asm']);
 	assert.deepEqual(viewsOf('rust')?.views.map((v) => v.kind), ['mir']);
 	assert.deepEqual(viewsOf('haskell')?.views.map((v) => v.kind), ['core', 'stg', 'cmm', 'asm']);
 	assert.deepEqual(viewsOf('python')?.views.map((v) => v.kind), ['bytecode']);
 	assert.deepEqual(viewsOf('java')?.views.map((v) => v.kind), ['bytecode']);
+	assert.deepEqual(viewsOf('scala')?.views.map((v) => v.kind), ['typed', 'lowered']);
 	assert.equal(viewsOf('javascript'), null);
 	assert.equal(viewOf('rust', 'asm'), null);
 });
@@ -37,6 +38,7 @@ test('a view shows the language’s sources, not its headers or project files', 
 	assert.ok(viewsOf('rust')?.isSource('src/lib.rs') && !viewsOf('rust')?.isSource('Cargo.toml'));
 	assert.ok(viewsOf('haskell')?.isSource('Geometry.hs') && !viewsOf('haskell')?.isSource('app.cabal'));
 	assert.ok(viewsOf('java')?.isSource('src/main/java/geometry/Point.java') && !viewsOf('java')?.isSource('pom.xml'));
+	assert.ok(viewsOf('scala')?.isSource('src/main/scala/Main.scala') && !viewsOf('scala')?.isSource('build.sbt'));
 });
 
 test('the C++ views start as before: assembly demangled, IR as LLVM wrote it, nothing else on', () => {

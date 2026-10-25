@@ -3,9 +3,9 @@
  * compiler output"): what each view is called, which files it can show,
  * what compiles them, and the toggles its header offers. The views' client
  * (explorer.svelte.ts), their panels (dock.ts, compiler-view.ts) and the top
- * bar read it from here, so a language gains a view by a line in
- * languages.ts (`explores`) and an entry below, and nothing else in the app
- * knows which language it is.
+ * bar read it from here, so a language gains a view by an entry below and
+ * its pack's explorer.js, and nothing else in the app knows which language
+ * it is.
  *
  * A kind is the same view in every language that has it (`asm` is the
  * assembly of C++, Swift and Haskell alike), so its panel and its title are
@@ -16,7 +16,7 @@
  */
 
 /** A compiler output view: the form of the active source it shows. */
-export type ExploreKind = 'llvm-ir' | 'asm' | 'sil' | 'mir' | 'core' | 'stg' | 'cmm' | 'bytecode';
+export type ExploreKind = 'typed' | 'lowered' | 'llvm-ir' | 'asm' | 'sil' | 'mir' | 'core' | 'stg' | 'cmm' | 'bytecode';
 
 /** What a kind is called, in every language. */
 export interface ExploreKindInfo {
@@ -30,6 +30,8 @@ export interface ExploreKindInfo {
 
 /** Every kind, in the order a language lists its views. */
 export const KINDS: Readonly<Record<ExploreKind, ExploreKindInfo>> = {
+	typed: { title: 'Typed tree', short: 'Typed', noun: 'typed tree' },
+	lowered: { title: 'Lowered tree', short: 'Lowered', noun: 'lowered tree' },
 	sil: { title: 'SIL', short: 'SIL', noun: 'SIL' },
 	mir: { title: 'MIR', short: 'MIR', noun: 'MIR' },
 	core: { title: 'Core', short: 'Core', noun: 'GHC Core' },
@@ -155,6 +157,16 @@ export const LANGUAGE_VIEWS: Readonly<Record<string, LanguageViews>> = {
 		sources: 'a .py file',
 		buildSettings: false,
 		views: [{ kind: 'bytecode', monaco: 'py-bytecode', toggles: [{ key: 'offsets', label: 'Offsets', name: 'Byte offsets', does: 'Show where each instruction starts in its code object, as dis does', on: false }] }],
+	},
+	scala: {
+		compiler: 'scalac',
+		isSource: (path) => path.endsWith('.scala'),
+		sources: 'a .scala file',
+		buildSettings: false,
+		views: [
+			{ kind: 'typed', monaco: 'scala', toggles: [] },
+			{ kind: 'lowered', monaco: 'scala', toggles: [] },
+		],
 	},
 	haskell: {
 		compiler: 'GHC',
