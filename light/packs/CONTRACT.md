@@ -385,7 +385,8 @@ Compiler Explorer does: the app's view buttons in the top bar (and the
 editor's "Show …" commands) open read-only panels with a form of the
 active source file next to the editors, one panel per kind of output. The
 kinds are `llvm-ir` and `asm` (C and C++; Swift; Haskell's is `asm` only),
-`sil` (Swift), `mir` (Rust), `core`, `stg` and `cmm` (Haskell) and
+`sil` (Swift), `mir` (Rust), `core`, `stg` and `cmm` (Haskell), `typed`
+and `lowered` (Scala's trees after typer and before the back end) and
 `bytecode` (Python's, and the JVM's for Java). Which views a language has, which files they show,
 what the compiler is called and the toggles each view's header offers are
 `app/src/lib/explore-views.ts`, a table and nothing else: a language gains
@@ -476,4 +477,6 @@ filter (a copy: a pack's tree is its own directory); Rust, the spans
 `-Zmir-include-spans` prints; Haskell, the source notes of `-g` in Core
 and STG, Cmm's `//tick` lines, and for the assembly the Cmm procedure
 each function was made from; Python, the positions CPython records for
-each instruction (`co_positions`); Java, each method's LineNumberTable.
+each instruction (`co_positions`); Java, each method's LineNumberTable;
+Scala, the line numbers `-print-lines` puts on every printed line that
+names something from the source.

@@ -406,6 +406,42 @@ an out-of-bounds exception behave the same, and that an unknown level is
 refused. Download cannot carry the choice: `build.sbt` builds for the JVM,
 which has no Scala.js optimizer.
 
+## The tree views
+
+The app's **Typed tree** and **Lowered tree** panels (`../CONTRACT.md`,
+"Showing compiler output") show the active `.scala` file as the compiler
+sees it, from `explorer.js`, a third worker that loads the same
+`scalac.js` and class paths as the runner and nothing else (no linker, no
+library IR). `ScalaJSCompiler.explore` compiles the whole project with
+`-scalajs -Vprint:<phase> -Ystop-after:<phase> -print-lines` and keeps what
+the compiler echoes for that one file: upstream's own tree printer, through
+upstream's own flags.
+
+* **Typed tree**, after `typer`: what the source means. Inferred types are
+  written out (`val xs: List[Int]`), type arguments and givens filled in
+  (`.sum[Int](scala.math.Numeric.IntIsIntegral)`), `for` loops become
+  `foreach`/`map`/`flatMap`, string interpolators become `StringContext`
+  calls, a case class shows the `copy`, `apply` and `unapply` typer adds,
+  and an `@main def` its generated `main`.
+* **Lowered tree**, after `repeatableAnnotations`, the last phase before
+  `GenSJSIR`: what the back end is given. Erased (`def biggest(shapes:
+  scala.collection.immutable.List): Option`), with boxing
+  (`Int.box(total)`), lambdas lifted to static methods and passed as
+  `closure(...)`, case class `equals`/`hashCode`/`productElement` written
+  out, pattern matches as labelled blocks, constructors as `<init>`.
+
+**Line mapping.** `-print-lines` prefixes every printed line that names
+something from the source with that source line (`12|`, or `12-14|` for a
+line printed from several; the view takes the first). Lines the printer
+makes up, braces and synthesised code with no position, have none.
+Columns are not recorded (0). A first request takes about 2.5 s once the
+files are cached (compiler start and class path); later ones 0.7-1.3 s.
+
+`test-explorer.mjs` (after `./build.sh`) checks it in headless Chromium:
+the for loop as a `foreach` on its line, an inferred type on its line, a
+case class's `copy`, erasure in the lowered tree, the compiler's message
+for a type error, and the refusals for other files and other views.
+
 ## Sizes
 
 | file | raw | gzip | brotli |
@@ -712,6 +748,7 @@ all checks passed
 build.sh                    the build (see above)
 src/server.js               the worker: LSP over postMessage
 src/runner.js               the worker that runs a program (compile, link, run)
+src/explorer.js             the tree views' worker (compile to a phase, print)
 compiler-js/                sbt project: ScalaService.scala, ScalaJSCompiler.scala,
                             ir-shims/, linker/ (Scala.js linker entry), runtime/
                             (standard streams of a running program), build.sbt
@@ -720,4 +757,5 @@ scripts/                    prepare-upstream.sh, StripClasses.java, jdk-packages
                             sjsir-bundle.mjs, finish.mjs
 test.mjs                    the headless test of the language server
 test-run.mjs                the headless test of the runner
+test-explorer.mjs           the headless test of the tree views
 ```
