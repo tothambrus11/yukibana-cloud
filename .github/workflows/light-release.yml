@@ -4,17 +4,22 @@
 # wants.
 #
 # Pushing a light-v* tag publishes it as the GitHub release of that tag,
-# with packs.json, which says from which sources (the git tree id of each
-# light/packs/<pack>) every pack in it was built. Run by hand (Actions, "Run
-# workflow"), it only uploads the archive as the run's artifact
-# yukibana-light-preview-<run number>.
+# with packs.json, which says what every pack in it was made from (the
+# toolchain key of a split pack, the git tree id of light/packs/<pack> of
+# any other), and toolchains.json, the split packs' toolchain keys alone.
+# Run by hand (Actions, "Run workflow"), it only uploads the archive as the
+# run's artifact yukibana-light-preview-<run number>.
 #
-# The packs come from light-packs.yml: each pack is downloaded from the pack
-# store when its sources have been built before (on the push that changed
-# them, usually), and built and tested only otherwise, so a release whose
-# packs are all built takes minutes. The assemble job puts the packs in
-# app/static/packs, builds the app, type-checks it, smoke-tests the built app
-# in Chromium and makes the archive.
+# The packs come from light-packs.yml, reused with `upload`, and from nowhere
+# else: this workflow never fetches, assembles or builds a pack itself. There
+# a split pack is assembled from its stored toolchain and tested, and fails
+# by name when the store lacks it (a release never builds a compiler); an
+# unsplit pack is downloaded from the pack store when its sources have been
+# built before, and built and tested only otherwise. So the bytes those tests
+# passed are the bytes shipped, and a release whose packs are all built
+# takes minutes. The assemble job puts the packs in app/static/packs, builds
+# the app, type-checks it, smoke-tests the built app in Chromium and makes
+# the archive.
 name: Yukibana Light release
 
 on:
@@ -64,8 +69,9 @@ jobs:
       - name: Install the app's dependencies
         run: npm ci --no-audit --no-fund
 
-      # Each artifact in a directory of its own: pack-key-<pack> (what each
-      # pack was made from) matches pack-* too, and never goes in static/packs.
+      # Each artifact in a directory of its own: pack-key-<pack> matches
+      # pack-* too, and never goes in static/packs (it is downloaded again
+      # below, on its own).
       - uses: actions/download-artifact@v7
         with:
           pattern: pack-*
@@ -79,12 +85,37 @@ jobs:
             cp -a "$a." static/packs/
           done
 
+      # What each pack was made from, as the pack job wrote it: one file
+      # per pack, $RUNNER_TEMP/keys/<pack>, holding `toolchain <key>` or
+      # `tree <tree id>`.
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: pack-key-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/keys
+
+      # Every pack in the tree (a directory with a build.sh, as the pack
+      # workflow's matrix has it), so a new pack needs no edit here. Each
+      # problem is named before the step fails, not only the first.
       - name: Packs
         run: |
-          for p in cpp haskell java javascript kotlin php python rust scala swift; do
-            [ -f "static/packs/$p/server.js" ] || { echo "pack $p is missing server.js" >&2; exit 1; }
-            echo "$p: $(du -sh "static/packs/$p" | cut -f1)"
+          missing=()
+          for d in ../packs/*/build.sh; do
+            p=$(basename "$(dirname "$d")")
+            [ -f "static/packs/$p/server.js" ] || missing+=("$p has no server.js")
+            key="$RUNNER_TEMP/keys/$p"
+            if [ ! -f "$key" ]; then
+              missing+=("$p has no key file (pack-key-$p)")
+            elif ! grep -Eqx '(toolchain|tree) [0-9a-f]{40,64}' "$key"; then
+              missing+=("$p's key file is not 'toolchain <key>' or 'tree <id>': $(head -c 200 "$key")")
+            else
+              echo "$p: $(du -sh "static/packs/$p" | cut -f1), $(cat "$key")"
+            fi
           done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf '::error::pack %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
 
       - name: Type-check
         run: npm run check
@@ -107,11 +138,23 @@ jobs:
           mv build "$root/build"
           cp ../serve.py ../README.md "$root/"
           printf 'python3 serve.py build --port 8080\nthen open http://localhost:8080/\n' > "$root/RUN.txt"
-          for p in ../packs/*/; do
-            p=$(basename "$p")
-            printf '%s\t%s\n' "$p" "$(git rev-parse "HEAD:light/packs/$p")"
-          done | jq -R -n '[inputs | split("\t") | {key: .[0], value: .[1]}] | from_entries' > "$RUNNER_TEMP/packs.json"
-          cp "$RUNNER_TEMP/packs.json" "$root/packs.json"
+          # packs.json ({<pack>: {"toolchain": <key>} | {"tree": <id>}}) and
+          # toolchains.json ({<pack>: <key>}, split packs only) record what
+          # the reused pack job actually used, from its key files; they are
+          # never recomputed here, where a different checkout or script could
+          # disagree with what was shipped. Nothing prunes light-toolchains
+          # today; a future pruning must keep every key a published
+          # toolchains.json names, so a release can be rebuilt (D6).
+          for d in ../packs/*/build.sh; do
+            p=$(basename "$(dirname "$d")")
+            read -r kind value < "$RUNNER_TEMP/keys/$p"
+            printf '%s\t%s\t%s\n' "$p" "$kind" "$value"
+          done > "$RUNNER_TEMP/keys.tsv"
+          jq -R -n '[inputs | split("\t") | {key: .[0], value: {(.[1]): .[2]}}] | from_entries' \
+            < "$RUNNER_TEMP/keys.tsv" > "$root/packs.json"
+          jq -R -n '[inputs | split("\t") | select(.[1] == "toolchain") | {key: .[0], value: .[2]}] | from_entries' \
+            < "$RUNNER_TEMP/keys.tsv" > "$root/toolchains.json"
+          jq . "$root/packs.json"
           du -sh "$root"
           find "$root" -type f | wc -l
 
@@ -147,7 +190,7 @@ jobs:
         working-directory: release
         run: |
           zip -q -r -0 "../yukibana-light-$GITHUB_REF_NAME.zip" yukibana-light
-          cp yukibana-light/packs.json ../packs.json
+          cp yukibana-light/packs.json yukibana-light/toolchains.json ../
           ls -l ../yukibana-light-*.zip
           size=$(stat -c %s "../yukibana-light-$GITHUB_REF_NAME.zip")
           [ "$size" -lt 2000000000 ] || { echo "::error::the archive is $size bytes, over GitHub's 2 GB per asset" >&2; exit 1; }
@@ -159,11 +202,11 @@ jobs:
           cat > notes.md <<EOF
           Yukibana Light with every language pack, built from $GITHUB_SHA by [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID).
 
-          Unzip \`yukibana-light-$GITHUB_REF_NAME.zip\`, then \`python3 serve.py build --port 8080\` in \`yukibana-light/\` and open http://localhost:8080/ (RUN.txt). \`packs.json\` gives the git tree id of \`light/packs/<pack>\` each pack was built from.
+          Unzip \`yukibana-light-$GITHUB_REF_NAME.zip\`, then \`python3 serve.py build --port 8080\` in \`yukibana-light/\` and open http://localhost:8080/ (RUN.txt). \`packs.json\` gives what each pack was made from: the toolchain key it was assembled from (\`toolchain\`), or the git tree id of \`light/packs/<pack>\` it was built from (\`tree\`). \`toolchains.json\` gives the toolchain keys alone: each is the asset \`toolchain-<pack>-<key>.tar.zst\` of the \`light-toolchains\` prerelease.
           EOF
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Yukibana Light $GITHUB_REF_NAME" --notes-file notes.md \
-            "yukibana-light-$GITHUB_REF_NAME.zip" packs.json
+            "yukibana-light-$GITHUB_REF_NAME.zip" packs.json toolchains.json
 
   # The release goes live at https://light.yukibana.dev (light/deploy): the
   # archive's build/ is the Worker's assets, and the pack files too big for
