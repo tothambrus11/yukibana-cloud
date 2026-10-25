@@ -172,6 +172,10 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		fixedOverflowWidgets: true,
 		// The clang messages of a failed compile name files and lines, not links to follow.
 		links: false,
+		// Assembly immediates such as AArch64's `#100` look like CSS hex colours,
+		// and Monaco would put a colour swatch and picker on them.
+		colorDecorators: false,
+		defaultColorDecorators: 'never',
 	});
 	/** The output lines (text and map) shown, while they are a compile's output. */
 	let shown: ViewState | null = null;

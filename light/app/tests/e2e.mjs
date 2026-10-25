@@ -588,6 +588,8 @@ int main() {
 	const a64 = await viewShows(page, 'asm', (t) => /^\s+ret\b/m.test(t) && !t.includes('%rbp'), 120_000);
 	const triple = (await page.locator('[data-view="asm"] .yk-view-triple').textContent().catch(() => '')) ?? '';
 	check(a64.ok && triple === 'aarch64-linux-musl', `switching to aarch64 shows aarch64 assembly (ret) and its triple in the toolbar (${triple})`);
+	const swatches = await page.locator('[data-view="asm"] .colorpicker-color-decoration').count();
+	check(swatches === 0, `aarch64 immediates such as #16 are not shown as colours (${swatches} colour swatches)`);
 	await picker.selectOption('wasm32-wasi');
 	const wasm = await viewShows(page, 'asm', (t) => t.includes('end_function'), 120_000);
 	check(wasm.ok, `switching to WebAssembly shows wasm32 assembly with end_function (${wasm.seconds.toFixed(1)} s)`);
