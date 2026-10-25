@@ -128,7 +128,7 @@ async function run(language, c) {
 	await page.selectOption('header select', language);
 	const status = page.locator('footer .state');
 	const started = await status
-		.filter({ hasNotText: /Starting|Downloading|stopped/ })
+		.filter({ hasNotText: /Starting|Loading|stopped/ })
 		.waitFor({ timeout: 240_000 })
 		.then(() => true, () => false);
 	const statusText = (await status.textContent())?.trim();
@@ -1013,7 +1013,7 @@ async function undoRename(page, check, { file, needle, from, name, declarationFi
 	const reset = await textsBecome(page, { [file]: before[file], [declarationFile]: before[declarationFile] }, 15_000);
 	if (!reset) return check(false, 'Reset project restores the sample');
 	// Reset restarts the server: rename once it answers again.
-	await page.locator('footer .state').filter({ hasNotText: /Starting|Downloading|stopped/ }).waitFor({ timeout: 60_000 });
+	await page.locator('footer .state').filter({ hasNotText: /Starting|Loading|stopped/ }).waitFor({ timeout: 60_000 });
 	await noErrors();
 	await page.waitForTimeout(1000);
 	await focusFile(page, file);

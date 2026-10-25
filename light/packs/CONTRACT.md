@@ -110,7 +110,8 @@ started; a run it has not finished must not be disturbed by one that
 arrives. A page keeps such a worker for the next run instead of starting
 another (`RunnerPool` in `light/modules/runtime/run-pool.ts`: one runner
 per pack per page, shared by its snippets), and the app also starts one
-ahead of the first run for a language with `warmRunner`. The Haskell runner does: GHC, linked and warm, then answers
+ahead of the first run for a language with `warmRunner`. The Swift runner
+does, so only the first Run loads its compiler, linker and sysroot. The Haskell runner does too: GHC, linked and warm, then answers
 in a fraction of a second, and Chromium compiles the wasm of only a few
 new workers in a row while the language server's GHC is alive.
 

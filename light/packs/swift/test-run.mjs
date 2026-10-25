@@ -200,14 +200,15 @@ try {
     // line each, then end of file), optionally terminate it after the program
     // printed `stopAfter`. Resolves with what came back and when.
     await page.evaluate(() => {
-        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.swift', type = 'run', optimization = null } = {}) =>
+        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.swift', type = 'run', optimization = null, keep = false } = {}) =>
             new Promise((done) => {
                 const t0 = performance.now();
                 const result = { stdout: '', stderr: '', code: null, phases: [], loading: {}, stdinRequests: 0, stdoutBeforeInput: [], terminated: false };
                 const sab = new SharedArrayBuffer(8 + 65536);
                 const state = new Int32Array(sab, 0, 2);
                 const data = new Uint8Array(sab, 8);
-                const worker = new Worker('/packs/swift/runner.js', { type: 'module' });
+                // `keep`: the worker the last kept run left, as the app keeps a reusable runner.
+                const worker = keep ? (window.kept ??= new Worker('/packs/swift/runner.js', { type: 'module' })) : new Worker('/packs/swift/runner.js', { type: 'module' });
                 const finish = () => {
                     result.ms = Math.round(performance.now() - t0);
                     done(result);
@@ -238,7 +239,9 @@ try {
                         Atomics.notify(state, 0);
                     } else if (m.type === 'exit') {
                         result.code = m.code;
-                        worker.terminate();
+                        result.reusable = m.reusable === true;
+                        if (!keep || !result.reusable) worker.terminate();
+                        if (keep && !result.reusable) window.kept = undefined;
                         finish();
                     }
                     if (stopAfter && m.type === 'stdout' && result.stdout.includes(stopAfter)) {
@@ -279,6 +282,26 @@ try {
             `code=${warm.code} in ${warm.ms} ms, ${bytesSent} bytes transferred; ${timeline(warm)}`
         );
     }
+
+    // 1b. One worker, run after run, as the app keeps a reusable runner: the
+    // second run loads nothing, the first time Run was pressed having
+    // loaded the compiler for every later one.
+    const first = await run(SAMPLE, { keep: true });
+    check('a run says its worker is reusable', first.code === 0 && first.stdout === EXPECTED && first.reusable,
+        `code=${first.code} reusable=${first.reusable} in ${first.ms} ms; ${timeline(first)}`);
+    const again = await run(SAMPLE, { keep: true });
+    check('the next run in that worker loads nothing and gives the same output',
+        again.code === 0 && again.stdout === EXPECTED && Object.keys(again.loading).length === 0,
+        `loads=${JSON.stringify(Object.keys(again.loading))} in ${again.ms} ms (first ${first.ms} ms); ${timeline(again)}`);
+    const broke = await run(TYPE_ERROR, { keep: true });
+    const after = await run(SAMPLE, { keep: true });
+    check('a compile error leaves the worker usable for the next run',
+        broke.code !== 0 && broke.reusable && after.code === 0 && after.stdout === EXPECTED,
+        `error run code=${broke.code} reusable=${broke.reusable}; next code=${after.code} ${JSON.stringify(after.stdout)}`);
+    const other = await run(STDIN, { keep: true, inputs: ['19', '23'] });
+    check('another project in the same worker sees only its own files and its own stdin',
+        other.code === 0 && other.stdout === 'first number: second number: sum: 42\n',
+        `code=${other.code} ${JSON.stringify(other.stdout)} ${other.stderr}`);
 
     // 2. stdin: the prompt must be visible before the program waits.
     const r = await run(STDIN, { inputs: ['19', '23'] });

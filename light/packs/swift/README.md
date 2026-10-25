@@ -96,9 +96,14 @@ Timings in Chromium (headless, 4 shared cores under load, test-run.mjs):
 | run | <0.1 s | <0.1 s |
 | total | 6.6 s | 2.9-4.2 s |
 
-A type error is reported 1.5 s after Run (warm). Each Run is a new worker,
-as the app does it, so the 136 MB module is compiled again every time. Only
-the downloads are cached, and the browser's wasm code cache helps "load".
+A type error is reported 1.5 s after Run (warm). Those are the times of a
+new worker. The runner keeps the compiled tools, the sysroot and Clang's
+module cache for the next run and exits `reusable`, so the app keeps it
+and every Run after the first skips "load" and builds no SwiftShims: the
+sample then compiles, links and runs in about 1 s (test-run.mjs, "the next
+run in that worker"). Until 2026-10-25 each Run was a new worker, so the
+136 MB module was compiled again and some 230 MB read again from the
+service worker's cache every time, which the app showed as a download.
 The app's service worker caches `/packs/**`, and the test uses a service
 worker that does the same.
 

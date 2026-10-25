@@ -219,7 +219,7 @@
 	<span class="state">
 		{#if workspace.progress}
 			<span class="spinner" aria-hidden="true"></span>
-			Downloading {workspace.progress.label}
+			Loading {workspace.progress.label}
 			{#if percent !== null}
 				<span class="meter"><span style:width="{percent}%"></span></span>
 				{mb(workspace.progress.loaded)} / {mb(workspace.progress.total)} MB

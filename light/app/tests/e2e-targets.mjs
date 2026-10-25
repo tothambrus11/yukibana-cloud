@@ -210,7 +210,7 @@ async function open() {
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
 	await page.selectOption('header select', 'cpp');
-	await page.locator('footer .state').filter({ hasNotText: /Starting|Downloading|stopped/ }).waitFor({ timeout: 240_000 });
+	await page.locator('footer .state').filter({ hasNotText: /Starting|Loading|stopped/ }).waitFor({ timeout: 240_000 });
 	await page.locator('.explorer .row .name', { hasText: /^main\.cpp$/ }).click();
 	return { context, page, responses, errors, settled: () => Promise.all(pending.splice(0)) };
 }

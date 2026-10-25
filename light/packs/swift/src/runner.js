@@ -17,7 +17,9 @@
 // `wasm-ld` with the stdlib archives plus whatever the object's autolink
 // entries name, then the program, as a WASI command, in this same worker.
 // Standard input blocks on the contract's SharedArrayBuffer, so readLine()
-// works interactively.
+// works interactively. The worker keeps the compiled tools and the sysroot
+// for the next run and says so (`reusable`), so only the first Run loads
+// them (toolchain(), below).
 //
 // `{ type: 'test' }` (same fields as 'run') runs the project's XCTest tests
 // instead of its program, with the browser's XCTest (xctest/, README "Tests
@@ -32,7 +34,7 @@
 // "Optimization").
 
 import {
-    Fd, FRONTEND_WASM, LINKER_WASM, OPTIMIZATION_LEVELS, autolinkEntries, compileArgs, linkArgs, linkLibraries, loadMacroPlugins, loadSwiftTesting,
+    Directory, Fd, FRONTEND_WASM, LINKER_WASM, OPTIMIZATION_LEVELS, autolinkEntries, compileArgs, linkArgs, linkLibraries, loadMacroPlugins, loadSwiftTesting,
     loadSysroot, loadTool, loadXCTest, mkdirp, readFile, remove, runFrontend, runWasi, textSink, usesMacroPlugins, wasiDefs,
     writeFile, writeProject,
 } from './toolchain.js';
@@ -120,21 +122,21 @@ async function run({ files, entry, stdin, options }, testing) {
     const needsPlugins = texts.some(usesMacroPlugins);
 
     phase('Loading the Swift compiler');
-    // All downloads at once; the linker compiles while the frontend runs.
-    const linkerPromise = loadTool(LINKER_WASM, onLoading);
-    linkerPromise.catch(() => {});
+    const tools = toolchain();
     const [frontend, root] = await Promise.all([
-        loadTool(FRONTEND_WASM, onLoading),
-        loadSysroot(onLoading).then(async (root) => {
+        tools.frontend,
+        tools.root.then(async (root) => {
             await Promise.all([
-                needsXCTest && loadXCTest(root, onLoading),
-                needsTesting && loadSwiftTesting(root, onLoading),
-                needsPlugins && loadMacroPlugins(root, onLoading),
+                needsXCTest && tools.extra('xctest', loadXCTest),
+                needsTesting && tools.extra('testing', loadSwiftTesting),
+                needsPlugins && tools.extra('plugins', loadMacroPlugins),
             ]);
             return root;
         }),
     ]);
 
+    // The last run's build, if it failed before cleaning up.
+    remove(root, '/build');
     writeProject(root, WORK, files, entry);
     const sources = compiled.map((p) => `${WORK}/${p.replace(/^\/+/, '')}`);
     sources.sort((a, b) => (a === `${WORK}/${entry}` ? -1 : b === `${WORK}/${entry}` ? 1 : a < b ? -1 : 1));
@@ -166,7 +168,7 @@ async function run({ files, entry, stdin, options }, testing) {
 
     phase('Linking');
     const object = readFile(root, '/build/main.o');
-    const linker = await linkerPromise;
+    const linker = await tools.linker;
     code = await runWasi(linker, {
         args: [...linkArgs(['/build/main.o'], '/build/main.wasm', 1 << 20, linkLibraries(root, autolinkEntries(object))),
             // So the runner can flush the program's stdout before it waits for input.
@@ -175,10 +177,14 @@ async function run({ files, entry, stdin, options }, testing) {
     });
     if (code !== 0) return code;
     const program = await WebAssembly.compile(readFile(root, '/build/main.wasm'));
-    // The toolchain's files are no longer needed; the program sees an empty /tmp
-    // and its own project directory.
-    remove(root, '/sysroot');
     remove(root, '/build');
+    // The program gets a root of its own: an empty /tmp and its project
+    // directory. The toolchain's root, which the next run compiles in, is
+    // out of its reach (it used to be this root with /sysroot removed,
+    // when every run had a worker of its own).
+    const own = new Directory(new Map());
+    mkdirp(own, '/tmp');
+    writeProject(own, WORK, files, entry);
 
     phase(testing ? 'Testing' : 'Running');
     console.debug(`swift runner: compiled and linked in ${ms()}`);
@@ -204,7 +210,7 @@ async function run({ files, entry, stdin, options }, testing) {
     for (const args of testing ? plan.runs : [['main']]) {
         try {
             code = await runWasi(program, {
-                args, env: [], root, stdin: input, stdout: out, stderr: err,
+                args, env: [], root: own, stdin: input, stdout: out, stderr: err,
                 onInstance: (instance) => (exports = instance.exports),
             });
         } catch (e) {
@@ -219,13 +225,52 @@ async function run({ files, entry, stdin, options }, testing) {
     return status;
 }
 
+/**
+ * What runs load, once per worker: the frontend and the linker, compiled,
+ * and the root with the sysroot unpacked, to which the optional parts
+ * (XCTest, swift-testing, the macro plugins) are added the first time a run
+ * needs them. The root also keeps Clang's module cache (MODULE_CACHE), so
+ * only the first compile builds SwiftShims. A worker used to load all of it
+ * for every run, as the app started one per run: some 260 MB read again
+ * (from the offline cache, but shown as a download) and 180 MB of wasm
+ * compiled again, every time Run was pressed.
+ */
+let tools = null;
+function toolchain() {
+    if (tools) return tools;
+    const root = loadSysroot(onLoading);
+    const extras = new Map();
+    tools = {
+        frontend: loadTool(FRONTEND_WASM, onLoading),
+        linker: loadTool(LINKER_WASM, onLoading),
+        root,
+        /** `load(root, onLoading)` once per worker, under `name`. */
+        extra: (name, load) => {
+            if (!extras.has(name)) extras.set(name, root.then((r) => load(r, onLoading)));
+            return extras.get(name);
+        },
+    };
+    // The linker is awaited only after compiling, so a failed download
+    // must not be an unhandled rejection meanwhile.
+    tools.linker.catch(() => {});
+    return tools;
+}
+
+/**
+ * The runs, one after another: a run that arrives while another is going
+ * waits for it. Every exit says `reusable` (CONTRACT.md, "Running a
+ * program"), so the app keeps this worker and the next Run starts
+ * compiling at once, but for an exit after the runner itself failed (a
+ * download, the toolchain): then a fresh worker is the safe next step.
+ */
+let queue = Promise.resolve();
 self.onmessage = ({ data }) => {
     if (data?.type !== 'run' && data?.type !== 'test') return;
-    run(data, data.type === 'test').then(
-        (code) => post({ type: 'exit', code }),
+    queue = queue.then(() => run(data, data.type === 'test').then(
+        (code) => post({ type: 'exit', code, reusable: true }),
         (e) => {
             post({ type: 'stderr', text: `swift runner: ${e?.message ?? e}\n` });
-            post({ type: 'exit', code: 1 });
+            post({ type: 'exit', code: 1, reusable: false });
         },
-    );
+    ));
 };

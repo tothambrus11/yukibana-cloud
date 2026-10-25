@@ -52,7 +52,7 @@
 				return `Waiting for ${s.behind.snippet} to finish${s.behind.waitingForInput ? ', which is waiting for input' : ''}`;
 			case 'loading': {
 				const p = s.progress;
-				return p === null ? 'Starting…' : `Downloading ${p.label}${p.total ? ` ${Math.round((100 * p.loaded) / p.total)}%` : ''}`;
+				return p === null ? 'Starting…' : `Loading ${p.label}${p.total ? ` ${Math.round((100 * p.loaded) / p.total)}%` : ''}`;
 			}
 			case 'running':
 				return s.waiting ? 'Waiting for input' : `${s.phase}…`;

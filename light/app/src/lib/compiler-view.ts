@@ -224,7 +224,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		const busy = view.status === 'loading' || view.status === 'compiling';
 		if (busy) {
 			const p = view.progress;
-			const what = p ? `Downloading ${p.label}${p.total ? ` ${Math.round((100 * p.loaded) / p.total)}%` : ''}…` : view.text ? 'Updating…' : 'Compiling…';
+			const what = p ? `Loading ${p.label}${p.total ? ` ${Math.round((100 * p.loaded) / p.total)}%` : ''}…` : view.text ? 'Updating…' : 'Compiling…';
 			parts.push(span('yk-view-state', what));
 		} else if (view.status === 'error') parts.push(span('yk-view-state error', 'clang failed'));
 		info.replaceChildren(...parts);
