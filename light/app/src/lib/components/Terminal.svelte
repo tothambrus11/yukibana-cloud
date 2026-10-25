@@ -66,6 +66,14 @@
 				return s.failure.kind === 'replaced' ? 'Reload the page to run' : 'The runner failed';
 		}
 	});
+	const failed = $derived((runner.state.kind === 'ended' && runner.state.code !== 0) || runner.state.kind === 'failed' || runner.state.kind === 'unavailable');
+	/** The status in a few characters, for a terminal narrower than its sentence ("✓ 0 · 7.2 s"); the sentence stays its title and what is announced. */
+	const compact = $derived.by(() => {
+		const s = runner.state;
+		if (s.kind === 'ended') return `${s.code === 0 ? '✓' : '✗'} ${s.code} · ${s.seconds.toFixed(1)} s`;
+		if (s.kind === 'stopped') return `■ ${s.seconds.toFixed(1)} s`;
+		return status;
+	});
 </script>
 
 <div class="terminal">
@@ -86,8 +94,12 @@
 		</label>
 	{/if}
 	<div class="footer">
-		<span class="status" class:failed={(runner.state.kind === 'ended' && runner.state.code !== 0) || runner.state.kind === 'failed' || runner.state.kind === 'unavailable'}>{status}</span>
-		<button class="clear" title="Clear the terminal" onclick={() => runner.clear()}>Clear</button>
+		<!-- The sentence is what is announced and what a narrow terminal shows in its title; the compact form is only drawn. -->
+		<span class="status truncate" class:failed role="status" title={status || undefined}>{status}</span>
+		<span class="status-compact truncate" class:failed aria-hidden="true" title={status || undefined}>{compact}</span>
+		<button class="icon-btn clear" title="Clear the terminal" aria-label="Clear the terminal" onclick={() => runner.clear()}>
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
+		</button>
 	</div>
 </div>
 
@@ -177,36 +189,45 @@
 		font-size: 0.8rem;
 	}
 	.footer {
+		container: terminal-footer / inline-size;
+		position: relative;
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 1rem;
-		padding: 0.25rem 1rem;
+		gap: 0.75rem;
+		padding: 0 0.25rem 0 1rem;
 		border-top: 1px solid var(--gray-5);
 		color: var(--gray-3);
 		font-size: 0.75rem;
-		min-height: 1.9rem;
+		min-height: 2rem;
 	}
-	.status.failed {
+	.status,
+	.status-compact {
+		flex: 1;
+	}
+	.status-compact {
+		display: none;
+	}
+	.failed {
 		color: var(--red-high);
 	}
 	.clear {
-		padding: 0.1rem 0.55rem;
-		border: 1px solid var(--gray-5);
-		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
-		font: inherit;
-		cursor: pointer;
+		color: var(--gray-3);
 	}
-	.clear:hover {
-		color: var(--white);
+	.clear svg {
+		width: 1rem;
+		height: 1rem;
 	}
-	.sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		overflow: hidden;
-		clip: rect(0 0 0 0);
+	/* A terminal a phone's width: the sentence gives way to its compact form. */
+	@container terminal-footer (width < 20rem) {
+		.status {
+			position: absolute;
+			width: 1px;
+			height: 1px;
+			overflow: hidden;
+			clip-path: inset(50%);
+		}
+		.status-compact {
+			display: block;
+		}
 	}
 </style>

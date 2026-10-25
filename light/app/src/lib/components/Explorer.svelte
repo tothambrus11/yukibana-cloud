@@ -366,6 +366,16 @@
 	.row:hover .dot {
 		display: none;
 	}
+	/* A touch screen has no hover to reveal them: Rename and Delete are shown on the open file's or the chosen folder's row, at a finger's size. */
+	@media (hover: none) {
+		.row:is(.active, .selected) .actions {
+			display: flex;
+		}
+		.actions button {
+			width: 2.25rem;
+			height: 2.25rem;
+		}
+	}
 	.editing {
 		cursor: default;
 	}

@@ -81,8 +81,11 @@ const ICONS: Record<string, string> = {
 
 /** A mark on a tab: a view's compile state, or the problem count. `busy` shows a spinner instead of text. */
 export interface TabBadge {
+	/** What the badge shows: a mark or a count, drawn by CSS so the tab's text stays its title alone. */
 	text: string;
 	kind: 'ok' | 'error' | 'busy' | 'count';
+	/** What the badge means, in words, for its tooltip ("3 problems", "Compiled"). */
+	says: string;
 }
 
 /**
@@ -117,7 +120,7 @@ class CompilerViewRenderer implements IContentRenderer {
 		explorer.opened(this.kind);
 		const badge = () => {
 			const { status } = explorer.views[this.kind];
-			this.setBadge(status === 'ok' ? { text: '✓', kind: 'ok' } : status === 'error' ? { text: '✗', kind: 'error' } : status === 'idle' ? null : { text: '', kind: 'busy' });
+			this.setBadge(status === 'ok' ? { text: '✓', kind: 'ok', says: 'Up to date' } : status === 'error' ? { text: '✗', kind: 'error', says: 'Failed to compile' } : status === 'idle' ? null : { text: '', kind: 'busy', says: 'Compiling' });
 		};
 		this.unsubscribe = explorer.subscribe((k) => {
 			if (k === this.kind) badge();
@@ -353,8 +356,10 @@ class TabRenderer implements ITabRenderer {
 	setBadge(badge: TabBadge | null): void {
 		this.badge.hidden = badge === null;
 		if (!badge) return;
-		if (this.badge.textContent !== badge.text) this.badge.textContent = badge.text;
+		// The mark is the badge's data, drawn by CSS: a suite or a screen reader reading the tab gets its title, not "LLVM IR✓".
+		this.badge.dataset['text'] = badge.text;
 		this.badge.dataset['kind'] = badge.kind;
+		this.badge.title = badge.says;
 	}
 }
 
@@ -657,11 +662,11 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 		group.element.removeAttribute('data-collapsed');
 		updateCollapseNames();
 	};
-	/** Shrinks the phone's bottom group to its tab strip, so the editor has the height. */
-	const collapse = () => {
+	/** Shrinks the phone's bottom group to its tab strip, so the editor has the height; `height` is what to give it back (its height now by default). */
+	const collapse = (height?: number) => {
 		const group = mode === 'narrow' ? panel('terminal')?.group : undefined;
 		if (!group || collapsed || group === live(editorArea)) return;
-		collapsed = { group, height: group.height };
+		collapsed = { group, height: height ?? group.height };
 		const strip = stripHeight(group);
 		group.api.setConstraints({ minimumHeight: strip });
 		group.api.setSize({ height: strip });
@@ -879,12 +884,21 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			addPlaced('call-hierarchy', { id: 'call-hierarchy', component: 'call-hierarchy', title: 'Call Hierarchy' });
 		},
 		setProblemCount(n: number): void {
-			tabs.get('problems')?.setBadge(n ? { text: String(n), kind: 'count' } : null);
+			tabs.get('problems')?.setBadge(n ? { text: String(n), kind: 'count', says: n === 1 ? '1 problem' : `${n} problems` } : null);
 		},
 		keyboard(up: boolean): void {
 			if (mode !== 'narrow') return;
-			if (up && document.activeElement?.closest('.monaco-editor')) collapse();
-			else if (!up && collapsed) expand();
+			if (up && document.activeElement?.closest('.monaco-editor')) {
+				// The height it folds from is the one it had before the keyboard, kept to give back.
+				const before = panel('terminal')?.group.height;
+				dock.layout(element.clientWidth, element.clientHeight);
+				collapse(before);
+			} else if (!up && collapsed) {
+				// The body already has its new height (viewport.ts set it just before, and reading it lays it out): dockview is told
+				// now, so the height given back is not shared out again when its own observer sees the dock grow.
+				dock.layout(element.clientWidth, element.clientHeight);
+				expand();
+			}
 		},
 		dispose(): void {
 			for (const d of disposables) d.dispose();

@@ -98,7 +98,7 @@ function addStyles(): void {
 	style.id = STYLE_ID;
 	style.textContent = `
 .yk-view { display: flex; flex-direction: column; height: 100%; container: view / inline-size; }
-.yk-view-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; block-size: 1.9rem; flex: none; padding: 0 0.4rem 0 0.75rem; color: var(--gray-3); font-size: 0.75rem; white-space: nowrap; }
+.yk-view-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; block-size: 1.75rem; flex: none; padding: 0 0.4rem 0 0.75rem; color: var(--gray-3); font-size: 0.75rem; white-space: nowrap; }
 .yk-view-file { flex: 0 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; color: var(--white); font-family: var(--font-mono); }
 .yk-view-file > span { direction: ltr; unicode-bidi: isolate; }
 .yk-view-chips { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
@@ -111,7 +111,7 @@ function addStyles(): void {
 .yk-view-nav button, .yk-view-more { display: inline-flex; flex: none; align-items: center; gap: 0.25rem; min-height: 1.5rem; padding: 0 0.4rem; border: 1px solid var(--gray-5); border-radius: 0.35rem; background: var(--gray-6); color: var(--gray-2); font: inherit; white-space: nowrap; cursor: pointer; }
 .yk-view-nav button:hover, .yk-view-more:hover, .yk-view-more[aria-expanded='true'] { color: var(--white); border-color: var(--control-border); }
 .yk-view-more svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.yk-view-toggles { display: flex; flex-wrap: nowrap; flex: none; align-items: center; gap: 0.3rem; block-size: 1.9rem; padding: 0 0.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-top: 1px solid var(--gray-6); color: var(--gray-3); font-size: 0.75rem; }
+.yk-view-toggles { display: flex; flex-wrap: nowrap; flex: none; align-items: center; gap: 0.3rem; block-size: 1.7rem; padding: 0 0.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-top: 1px solid var(--gray-6); color: var(--gray-3); font-size: 0.75rem; }
 .yk-view-toggles::-webkit-scrollbar { display: none; }
 .yk-view-toggles[data-overflow~='end'] { mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent); }
 .yk-view-toggles[data-overflow~='start'] { mask-image: linear-gradient(to right, transparent, black 1.5rem); }

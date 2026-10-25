@@ -314,6 +314,12 @@
 		font-weight: 500;
 		cursor: pointer;
 	}
+	/* A finger's height on a touch screen, as the bar's buttons have (app.css). */
+	@media (pointer: coarse) {
+		.lang {
+			min-height: 2.75rem;
+		}
+	}
 	.lang:hover,
 	.lang:focus-within {
 		border-color: var(--control-border);

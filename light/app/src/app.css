@@ -648,6 +648,10 @@ header.bar-host {
 	line-height: 1;
 }
 
+.dock-tab-badge::before {
+	content: attr(data-text);
+}
+
 .dock-tab-badge[data-kind='ok'] {
 	padding: 0;
 	background: none;
@@ -854,6 +858,13 @@ header.bar-host {
 		clip-path: inset(50%);
 	}
 	[data-bottom] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+	/* Room for eight tabs on a phone: closer icons, and no ✓ (the view's own header says it is up to date). */
+	[data-bottom] .dock-tab.has-icon {
+		padding-inline: 0.6rem;
+	}
+	[data-bottom] .dock-tab.has-icon .dock-tab-badge[data-kind='ok'] {
 		display: none;
 	}
 }

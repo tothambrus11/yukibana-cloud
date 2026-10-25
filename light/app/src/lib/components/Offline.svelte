@@ -28,7 +28,9 @@
 <dialog class="offline" bind:this={dialog} aria-labelledby="offline-title" onclick={(e) => e.target === dialog && dialog.close()}>
 	<header>
 		<h2 id="offline-title">Offline</h2>
-		<button class="close" onclick={() => dialog.close()} aria-label="Close">×</button>
+		<button class="icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+		</button>
 	</header>
 
 	{#if !offline.manifest}
@@ -61,7 +63,8 @@
 							{:else if offline.isPackCached(pack) && sizes.missing.files === 0}
 								<span class="ok">available offline</span>
 							{:else}
-								<button class="button" disabled={offline.progress !== null} onclick={() => void makeAvailable(l.label, pack)}>Make available offline ({mb(sizes.missing.transfer)} MB)</button>
+								<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
+								<button class="button" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, pack)}>Save offline</button>
 							{/if}
 						</td>
 					</tr>
@@ -91,7 +94,9 @@
 
 <style>
 	.offline {
+		container: offline / inline-size;
 		width: min(40rem, calc(100vw - 2rem));
+		max-height: calc(var(--app-height, 100dvh) - 2rem);
 		padding: 0;
 		border: 1px solid var(--gray-5);
 		border-radius: 0.5rem;
@@ -106,18 +111,16 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0.75rem 1rem 0;
+		padding: 0.5rem 0.5rem 0 1rem;
 	}
 	h2 {
 		margin: 0;
 		font-size: 1.05rem;
 	}
 	.close {
-		border: 0;
-		background: none;
+		min-width: 2.5rem;
+		min-height: 2.5rem;
 		color: var(--gray-2);
-		font-size: 1.4rem;
-		cursor: pointer;
 	}
 	p {
 		margin: 0.5rem 1rem;
@@ -145,6 +148,7 @@
 	}
 	.action {
 		text-align: right;
+		white-space: nowrap;
 	}
 	footer {
 		display: flex;
@@ -175,7 +179,8 @@
 		transition: width 0.2s;
 	}
 	.button {
-		height: 1.9rem;
+		min-height: 1.9rem;
+		white-space: nowrap;
 		padding: 0 0.7rem;
 		border: 1px solid var(--gray-5);
 		border-radius: 0.35rem;
@@ -208,5 +213,38 @@
 		width: 100%;
 		margin: 0;
 		color: var(--red-high);
+	}
+	/* A phone: the header row goes, and each language is a name over its size and button. */
+	@container offline (width < 26rem) {
+		table,
+		tbody {
+			display: block;
+		}
+		thead {
+			display: none;
+		}
+		tr {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			align-items: center;
+			gap: 0 0.5rem;
+			padding: 0.4rem 0;
+			border-bottom: 1px solid var(--gray-6);
+		}
+		td {
+			padding: 0;
+			border: 0;
+		}
+		td:first-child {
+			grid-column: 1 / -1;
+			font-weight: 500;
+		}
+		.size {
+			text-align: left;
+			color: var(--gray-3);
+		}
+		footer .button {
+			width: 100%;
+		}
 	}
 </style>
