@@ -35,6 +35,8 @@ PACKAGES_FILE="packages-fast-check-$FC_VERSION.json"
 P5_VERSION="$(node -p 'require("./node_modules/p5/package.json").version')"  # p5's exports hide its package.json
 P5_FILE="p5-$P5_VERSION.js"
 P5_TYPES_FILE="packages-p5-$P5_VERSION.json"
+# Global mode's declarations (p5/global), loaded with the instance ones.
+P5_GLOBAL_TYPES_FILE="packages-p5-global-$P5_VERSION.json"
 # StrykerJS for Mutate (README "Mutation testing"): its instrumenter, its
 # clear-text reporter and the metrics it reads, one ES module loaded only
 # when the user asks for mutation testing.
@@ -50,7 +52,7 @@ for f in "$OUT"/*; do
   case "$(basename "$f")" in
     server.js|server.js.*|runner.js|runner.js.*|strip.js|strip.js.*|"$TS_FILE"|"$TS_FILE".*|"$LIBS_FILE"|"$LIBS_FILE".*) ;;
     "$FC_FILE"|"$FC_FILE".*|"$PACKAGES_FILE"|"$PACKAGES_FILE".*|LICENSE-fast-check.txt|LICENSE-pure-rand.txt) ;;
-    "$P5_FILE"|"$P5_FILE".*|"$P5_TYPES_FILE"|"$P5_TYPES_FILE".*|LICENSE-p5.txt) ;;
+    "$P5_FILE"|"$P5_FILE".*|"$P5_TYPES_FILE"|"$P5_TYPES_FILE".*|"$P5_GLOBAL_TYPES_FILE"|"$P5_GLOBAL_TYPES_FILE".*|LICENSE-p5.txt) ;;
     "$STRYKER_FILE"|"$STRYKER_FILE".*|LICENSE-stryker.txt|LICENSE-babel.txt) ;;
     *) rm -f "$f" ;;
   esac
@@ -86,12 +88,14 @@ cp node_modules/pure-rand/LICENSE "$OUT/LICENSE-pure-rand.txt"
 # p5.js for Preview: the package's own lib/p5.esm.min.js, copied as it is
 # (it is already one minified ES module with its dependencies, and it is
 # what p5.js publishes for `<script type="module">`). It is LGPL-2.1, so its
-# licence goes next to it, unmodified as the file is. Its declarations as
-# for fast-check: types/p5.d.ts, for
-# instance mode (`new p5((p) => …)`); `p5/global`'s 1.2 MB of global
-# declarations are not shipped.
+# licence goes next to it, unmodified as the file is; global mode runs the
+# same file (README "Packages"). Its declarations as for fast-check, in two
+# files the server downloads only when asked: types/p5.d.ts for instance
+# mode (`new p5((p) => …)`), and types/global.d.ts for global mode
+# (`p5/global`, 1.2 MB more), which imports the first and is loaded with it.
 cp node_modules/p5/lib/p5.esm.min.js "$OUT/$P5_FILE"
 node tools/package-types.mjs "$OUT/$P5_TYPES_FILE" p5
+node tools/package-types.mjs "$OUT/$P5_GLOBAL_TYPES_FILE" p5/global --except "$OUT/$P5_TYPES_FILE"
 cp node_modules/p5/license.txt "$OUT/LICENSE-p5.txt"
 
 # StrykerJS, bundled by tools/stryker.mjs (which says what it stands in for
@@ -109,7 +113,9 @@ npx esbuild src/server.ts --bundle --minify --format=esm --target=es2022 --log-l
   --define:__LIBS_FILE__="\"$LIBS_FILE\"" --define:__LIBS_SIZE__="$(size "$OUT/$LIBS_FILE")" \
   --define:__PACK_VERSION__="\"$PACK_VERSION\"" \
   --define:__PACKAGES_FILE__="\"$PACKAGES_FILE\"" --define:__PACKAGES_SIZE__="$(size "$OUT/$PACKAGES_FILE")" \
-  --define:__LAZY_PACKAGES__="{\"p5\":{\"file\":\"$P5_TYPES_FILE\",\"size\":$(size "$OUT/$P5_TYPES_FILE")}}" \
+  --define:__LAZY_PACKAGES__="$(node -p '
+    const [instance, global] = process.argv.slice(1).map((f) => ({ file: f.split("/").pop(), size: require("fs").statSync(f).size }));
+    JSON.stringify({ p5: [instance], "p5/global": [instance, global] })' "$OUT/$P5_TYPES_FILE" "$OUT/$P5_GLOBAL_TYPES_FILE")" \
   --define:__NODE_TYPES__="$(node -p 'JSON.stringify(require("fs").readFileSync("src/node/builtins.d.ts", "utf8"))')" \
   --outfile="$OUT/server.js"
 

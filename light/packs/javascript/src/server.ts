@@ -36,12 +36,17 @@ declare const __NODE_TYPES__: string;
 declare const __PACKAGES_FILE__: string;
 declare const __PACKAGES_SIZE__: number;
 /**
- * The declarations of the npm packages a web page may import (p5.js), by
- * package name, each made by tools/package-types.mjs like
- * `__PACKAGES_FILE__` and with its uncompressed size. Unlike those, each is
- * downloaded only once a project file imports the package (`loadTypesFor`).
+ * The declarations of the npm packages a web page may import, by the
+ * specifier that asks for them: `p5` (instance mode) and `p5/global` (global
+ * mode). Each entry lists the files it needs, made by
+ * tools/package-types.mjs like `__PACKAGES_FILE__`, with their uncompressed
+ * sizes; entries share files (`p5/global`'s declarations import `p5`'s), and
+ * a file is downloaded once. Unlike `__PACKAGES_FILE__`, nothing is
+ * downloaded until a project file asks for the entry (`loadTypesFor`), so a
+ * project pays only for the API it uses: instance mode never downloads the
+ * 1.2 MB of global declarations, and a project without p5 nothing at all.
  */
-declare const __LAZY_PACKAGES__: Record<string, { file: string; size: number }>;
+declare const __LAZY_PACKAGES__: Record<string, { file: string; size: number }[]>;
 
 /** Libraries a project gets when its config names none. Must be in the bundle. */
 const DEFAULT_LIBS = ['lib.es2023.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts', 'lib.dom.asynciterable.d.ts'];
@@ -367,7 +372,7 @@ function changed(): void {
 
 function setDoc(uri: string, text: string, version: number): void {
   const path = uriToPath(uri);
-  loadTypesFor(text);
+  loadTypesFor(path, text);
   const old = docs.get(path);
   if (old) {
     old.text = text;
@@ -381,48 +386,79 @@ function setDoc(uri: string, text: string, version: number): void {
 }
 
 /**
- * The packages of `__LAZY_PACKAGES__` whose declarations are being
- * downloaded or are in `libs`, by name: each is fetched at most once per
- * session (once more after a failure, at the next edit that imports it).
+ * The files of `__LAZY_PACKAGES__` being downloaded or in `libs`, by file
+ * name: each is fetched at most once per session (once more after a
+ * failure, at the next edit that asks for it).
  */
 const lazyTypes = new Map<string, 'loading' | 'loaded'>();
 
 /**
- * Starts downloading the declarations of each lazily typed package that
- * `text` imports, names in `import`/`export … from`, `import()`,
- * `require()` or `/// <reference types>`, alone or by a subpath
- * (`p5/global`). Diagnostics wait for the download (`publishDiagnostics`),
- * so an import of p5 is not reported missing while its types are on the way;
- * once they are in the virtual `/node_modules/`, the language service is
- * replaced (`renewService`) and the diagnostics follow.
+ * Starts downloading the declarations of each lazily typed entry that the
+ * file at `path` asks for (`specifiersIn`). Diagnostics wait for the
+ * download (`publishDiagnostics`), so an import of p5 is not reported
+ * missing while its types are on the way; once they are in the virtual
+ * `/node_modules/`, the language service is replaced (`renewService`) and
+ * the diagnostics follow.
  */
-function loadTypesFor(text: string): void {
-  for (const [name, { file, size }] of Object.entries(__LAZY_PACKAGES__)) {
-    if (lazyTypes.has(name) || !importsPackage(text, name)) continue;
-    lazyTypes.set(name, 'loading');
-    download(file, size).then(
-      (bytes) => {
-        const files = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, string>;
-        for (const [path, source] of Object.entries(files)) libs.set(path, ts.ScriptSnapshot.fromString(source));
-        lazyTypes.set(name, 'loaded');
-        log(3, `${name}: ${Object.keys(files).length} declaration files loaded`);
-        renewService();
-        changed();
-      },
-      (e: unknown) => {
-        lazyTypes.delete(name);
-        log(1, `could not load the types of ${name}: ${e instanceof Error ? e.message : String(e)}`);
-        changed();
-      },
-    );
+function loadTypesFor(path: string, text: string): void {
+  const asked = specifiersIn(path, text);
+  if (asked.size === 0) return;
+  const entries = Object.keys(__LAZY_PACKAGES__);
+  for (const [name, files] of Object.entries(__LAZY_PACKAGES__)) {
+    if (!asksFor(asked, name, entries)) continue;
+    for (const { file, size } of files) {
+      if (lazyTypes.has(file)) continue;
+      lazyTypes.set(file, 'loading');
+      download(file, size).then(
+        (bytes) => {
+          const declarations = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, string>;
+          for (const [p, source] of Object.entries(declarations)) libs.set(p, ts.ScriptSnapshot.fromString(source));
+          lazyTypes.set(file, 'loaded');
+          log(3, `${name}: ${file}, ${Object.keys(declarations).length} declaration files loaded`);
+          renewService();
+          changed();
+        },
+        (e: unknown) => {
+          lazyTypes.delete(file);
+          log(1, `could not load the types of ${name} (${file}): ${e instanceof Error ? e.message : String(e)}`);
+          changed();
+        },
+      );
+    }
   }
 }
 
-/** Whether `text` imports `name` or a subpath of it (see `loadTypesFor`). */
-function importsPackage(text: string, name: string): boolean {
-  const escaped = name.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
-  const quoted = `['"]${escaped}(?:/[^'"]*)?['"]`;
-  return new RegExp(`(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*${quoted}|<reference\\s+types\\s*=\\s*${quoted}`).test(text);
+/**
+ * The bare specifiers a project file names: in `import`/`export … from`,
+ * `import()`, `require()` and `/// <reference types>`, and, in a
+ * tsconfig.json or jsconfig.json, in `"types"`, which is how a whole project
+ * says it is a p5.js sketch in global mode. A scan of the text, not a parse:
+ * a specifier in a comment or a string counts too, which costs at most a
+ * download.
+ */
+function specifiersIn(path: string, text: string): Set<string> {
+  const found = new Set<string>();
+  const quoted = `['"]([^'"./][^'"]*)['"]`;
+  for (const m of text.matchAll(new RegExp(`(?:\\bfrom|\\bimport|\\brequire)\\s*\\(?\\s*${quoted}|<reference\\s+types\\s*=\\s*${quoted}`, 'g'))) {
+    found.add((m[1] ?? m[2])!);
+  }
+  if (isConfig(path)) {
+    for (const list of text.matchAll(/"types"\s*:\s*\[([^\]]*)\]/g)) for (const m of list[1]!.matchAll(/"([^"]+)"/g)) found.add(m[1]!);
+  }
+  return found;
+}
+
+/**
+ * Whether the specifiers `asked` ask for the entry `name`: by its name, or
+ * by a subpath of it that no other entry is named after. So `p5/global`
+ * asks for the `p5/global` entry only, and `p5` or `p5/core` for `p5`.
+ */
+function asksFor(asked: ReadonlySet<string>, name: string, entries: readonly string[]): boolean {
+  for (const s of asked) {
+    if (s === name) return true;
+    if (s.startsWith(`${name}/`) && !entries.some((e) => e !== name && e.length > name.length && (s === e || s.startsWith(`${e}/`)))) return true;
+  }
+  return false;
 }
 
 function isConfig(path: string): boolean {

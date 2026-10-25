@@ -5,7 +5,7 @@
  */
 
 /** Identifies a language, and with it a pack and a saved project. */
-export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell';
+export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'p5-global' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell';
 
 /** Project files by path relative to the workspace root, `/`-separated. */
 export type Files = Record<string, string>;
@@ -511,6 +511,98 @@ new p5((p: p5) => {
     p.circle(p.mouseX, p.mouseY, 60);
   };
 });
+`,
+			'tsconfig.json': `{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  }
+}
+`,
+		},
+	},
+	{
+		// The same sketch in global mode, as p5.js's own editor and most of
+		// its examples write it: setup() and draw() are plain functions and
+		// every p5 function a global. The sketch is a classic script (a
+		// module's functions are not globals), and p5.js, the same file
+		// instance mode runs, is imported by an inline module that runs after
+		// it; once the page has loaded, p5 finds setup() and draw() and starts.
+		// The editor's types come from `p5/global`, a download of their own
+		// that instance mode never makes (packs/javascript/README.md,
+		// "Packages"), asked for by the sketch's `/// <reference>`.
+		id: 'p5-global',
+		label: 'Web: p5.js sketch, global mode (TypeScript)',
+		pack: 'javascript',
+		monacoLanguages: ['typescript', 'javascript'],
+		settings: {},
+		entry: 'sketch.ts',
+		preview: 'index.html',
+		extension: '.ts',
+		runs: true,
+		sample: {
+			'index.html': `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>p5.js sketch</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!-- A classic script, not a module, so that setup() and draw() are globals. -->
+    <script src="./sketch.ts"></script>
+    <!-- p5.js in global mode: once the page has loaded, it calls setup() and draw(). -->
+    <script type="module">
+      import p5 from 'p5';
+      window.p5 = p5; // as p5.min.js would, for p5.Vector and the like
+    </script>
+  </body>
+</html>
+`,
+			'style.css': `/* The canvas fills the page: no margin, no scroll bars. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* A canvas is inline by default, which leaves a gap below it. */
+canvas {
+  display: block;
+}
+`,
+			'sketch.ts': `/// <reference types="p5/global" />
+
+// A p5.js sketch in global mode: p5 calls these functions by their names,
+// and everything p5 offers is a global, as in p5.js's own editor.
+
+// Runs once, at the start.
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  noStroke();
+}
+
+// Keeps the canvas the size of the window.
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+
+// Runs every frame: paint over the last frame, then draw the circle where
+// the mouse is.
+function draw() {
+  background(30, 32, 40);
+  fill(240, 120, 90);
+  circle(mouseX, mouseY, 60);
+}
 `,
 			'tsconfig.json': `{
   "compilerOptions": {

@@ -32,6 +32,7 @@ const CASES = {
 	web: { pack: 'javascript', file: 'main.ts', error: '\nconst wrong: number = "no";\n', access: '\ncounter.', member: 'increment', definition: 'Counter', definitionFile: 'counter.ts', hover: 'Counter' },
 	// One file, and p5.js's declarations, whose definitions are dropped as a lib's are: no definition to go to.
 	p5: { pack: 'javascript', file: 'main.ts', error: '\nconst wrong: number = "no";\n', access: '\nnew p5((q) => q.circ', member: 'circle', hover: 'createCanvas' },
+	'p5-global': { pack: 'javascript', file: 'sketch.ts', error: '\nconst wrong: number = "no";\n', access: '\ncirc', member: 'circle', hover: 'createCanvas' },
 	cpp: { output: '5.000000', testOutput: '[  PASSED  ] 3 tests.', file: 'main.cpp', error: '\nint broken = undeclared_xyz;\n', access: '\nvoid f(Point p) { p.', member: 'norm', definition: 'distance', definitionFile: 'geometry', hover: 'Point' },
 	swift: { output: 'to', testOutput: 'Executed 2 tests, with 0 failures', file: 'main.swift', error: '\nlet x: Int = "no"\n', access: '\nb.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.swift', hover: 'Point' },
 	scala: { output: 'to', file: 'Main.scala', error: '\nval broken: Int = "no"\n', access: '\nval q = Point(1, 2)\nval r = q.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.scala', hover: 'Point' },
@@ -211,8 +212,8 @@ async function run(language, c) {
 	if (language === 'javascript') await settings(page, check);
 	if (language === 'web') await previewing(page, check);
 	if (language === 'web') await webServices(page, check);
-	if (language === 'web') check(!requests.some((u) => /\/(p5-|packages-p5-)[\d.]+\.js(on)?$/.test(u)), 'a web project that does not import p5 downloads nothing of p5.js');
-	if (language === 'p5') await sketching(page, check, requests);
+	if (language === 'web') check(!requests.some((u) => /\/(p5-|packages-p5-(global-)?)[\d.]+\.js(on)?$/.test(u)), 'a web project that does not use p5 downloads nothing of p5.js');
+	if (language === 'p5' || language === 'p5-global') await sketching(page, check, requests, language === 'p5-global');
 	if (language === 'python') await peek(page, check);
 	if (c.callHierarchy) await callHierarchy(page, check, c.callHierarchy);
 	if (language === 'haskell') await typeLens(page, check);
@@ -1185,9 +1186,11 @@ async function previewing(page, check) {
  * documentation), and Run shows a canvas that fills the Preview, follows the
  * panel's size (windowResized), and draws the circle under the mouse.
  */
-async function sketching(page, check, requests) {
+async function sketching(page, check, requests, global) {
 	const fetched = (re) => requests.some((u) => re.test(u));
-	check(fetched(/\/packages-p5-[\d.]+\.json$/), 'the editor downloads the declarations of p5.js for a project that imports it');
+	check(fetched(/\/packages-p5-[\d.]+\.json$/), 'the editor downloads the declarations of p5.js for a project that uses it');
+	// Each mode pays for its own API only: instance mode never downloads global mode's declarations.
+	check(fetched(/\/packages-p5-global-[\d.]+\.json$/) === global, `the global-mode declarations are ${global ? '' : 'not '}downloaded for a sketch in ${global ? 'global' : 'instance'} mode`);
 	await page.locator('.dv-groupview .view-line span', { hasText: /^[\s.]*createCanvas$/ }).first().hover();
 	const hover = page.locator('.monaco-hover-content').first();
 	const documented = await hover.filter({ hasText: /Creates a canvas element/ }).waitFor({ timeout: 20_000 }).then(() => true, () => false);

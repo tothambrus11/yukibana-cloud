@@ -221,13 +221,15 @@ async function web(name, files, id = 'web') {
 	const dir = await download(name, sample(id), files);
 	if (!dir) return;
 	const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-	const p5 = Object.values(files).some((t) => /from 'p5'/.test(t));
+	const p5 = Object.values(files).some((t) => /from 'p5'|types="p5\//.test(t));
 	check(p5 ? json.dependencies?.p5 === '^2.3.4' : !json.dependencies, `${name}: package.json ${p5 ? 'has p5 as a dependency, at the version Preview runs' : 'has no dependencies'}`, JSON.stringify(json));
 	const install = run('npm', ['install', '--no-audit', '--no-fund'], dir);
 	if (install.status !== 0) return skip(`${name}: npm install failed (no registry?): ${tail(install.output)}`);
 	step(`${name}: npm run build (vite build) builds the page`, 'npm', ['run', 'build'], dir, 'built in');
 	const built = existsSync(join(dir, 'dist', 'index.html')) ? readFileSync(join(dir, 'dist', 'index.html'), 'utf8') : '';
 	check(/<script type="module"[^>]*src="\/assets\/[^"]+\.js"/.test(built) && /<link rel="stylesheet"[^>]*href="\/assets\/[^"]+\.css"/.test(built), `${name}: dist/index.html loads the bundled script and stylesheet`, built);
+	// A classic TypeScript script (a sketch in global mode) is compiled into the page by the generated vite.config.ts.
+	if (existsSync(join(dir, 'vite.config.js'))) check(/<script>[\s\S]*?function setup\(\)[\s\S]*?<\/script>/.test(built) && !/src="[^"]*\.ts"/.test(built), `${name}: dist/index.html has the classic sketch compiled in place`, built);
 	step(`${name}: npm run typecheck (tsc) finds no errors`, 'npm', ['run', 'typecheck'], dir);
 }
 
@@ -360,6 +362,7 @@ const cases = {
 	typescript: () => typescript('typescript', sample('typescript').sample),
 	web: () => web('web', sample('web').sample),
 	p5: () => web('p5', sample('p5').sample, 'p5'),
+	'p5-global': () => web('p5-global', sample('p5-global').sample, 'p5-global'),
 	python: () => python('python', sample('python').sample),
 	php: async () => {
 		await php('php', sample('php').sample, 'OK (5 tests, 5 assertions)');

@@ -416,7 +416,7 @@ check('go to definition into fast-check finds nothing in the project (results in
 // p5.js, the package a web page may import: its declarations are not part
 // of the server's start (nothing above imported it), and arrive with the
 // first file that imports it, before that file's first diagnostics.
-const p5Loads = async () => (await notifications()).filter((n) => n.method === 'yukibana/loading' && /^packages-p5-/.test(n.params.label));
+const p5Loads = async () => (await notifications()).filter((n) => n.method === 'yukibana/loading' && /^packages-p5-\d/.test(n.params.label));
 check('p5.js declarations are not downloaded for a project that does not import p5', (await p5Loads()).length === 0, await p5Loads());
 const sketchFile = `import p5 from 'p5';
 
@@ -449,6 +449,33 @@ await notify('textDocument/didChange', { textDocument: { uri: W + 'sketch.ts', v
 const p5Wrong = await diagnostics(W + 'sketch.ts', (d) => d.some((x) => x.severity === 1));
 check('a p5.js call with an argument of the wrong type is a type error', p5Wrong?.some((x) => x.code === 2345 && /string/.test(x.message) && /number/.test(x.message) && x.range.start.line === 14), p5Wrong?.map((x) => `${x.range.start.line}: ${x.code} ${x.message}`));
 check('p5.js declarations are downloaded only once per session', (await p5Loads()).filter((n) => n.params.loaded === 0).length === 1, (await p5Loads()).length);
+
+// Global mode: its declarations are a download of their own, made only for a
+// file that asks for `p5/global`; instance mode above never made it.
+const globalLoads = async () => (await notifications()).filter((n) => n.method === 'yukibana/loading' && /^packages-p5-global-/.test(n.params.label));
+check('a sketch in instance mode does not download the global-mode declarations', (await globalLoads()).length === 0, await globalLoads());
+const globalFile = `/// <reference types="p5/global" />
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+}
+
+function draw() {
+  background(30, 32, 40);
+  circle(mouseX, mouseY, 60);
+}
+`;
+await notify('textDocument/didOpen', { textDocument: { uri: W + 'global.ts', languageId: 'typescript', version: 1, text: globalFile } });
+const globalDiags = await diagnostics(W + 'global.ts', () => true, 30000);
+check('a p5.js sketch in global mode has no errors', Array.isArray(globalDiags) && globalDiags.length === 0, globalDiags?.map((x) => `${x.code} ${x.message}`));
+const globalLoaded = await globalLoads();
+check('the global-mode declarations are downloaded when a file asks for p5/global', globalLoaded.length > 0 && globalLoaded.at(-1).params.loaded === globalLoaded.at(-1).params.total && globalLoaded.at(-1).params.total > 1_000_000, globalLoaded.at(-1)?.params);
+check('the instance-mode declarations they import are not downloaded again', (await p5Loads()).filter((n) => n.params.loaded === 0).length === 1, (await p5Loads()).length);
+const globalHover = await request('textDocument/hover', { textDocument: { uri: W + 'global.ts' }, position: { line: 8, character: 3 } });
+check('hover on a bare `circle` in global mode shows its signature', /circle\(x: number/.test(globalHover?.contents?.value ?? ''), (globalHover?.contents?.value ?? '').slice(0, 200));
+await notify('textDocument/didChange', { textDocument: { uri: W + 'global.ts', version: 2 }, contentChanges: [{ text: globalFile + "circle('x', 1, 2);\n" }] });
+const globalWrong = await diagnostics(W + 'global.ts', (d) => d.some((x) => x.severity === 1));
+check('a global-mode call with an argument of the wrong type is a type error', globalWrong?.some((x) => x.code === 2345 && x.range.start.line === 10), globalWrong?.map((x) => `${x.range.start.line}: ${x.code} ${x.message}`));
 
 // Garbage on the wire is logged, not thrown; a second initialize is refused.
 await page.evaluate(() => window.lsp.worker.postMessage('not json-rpc'));

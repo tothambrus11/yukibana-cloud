@@ -42,7 +42,7 @@ reports that with a notification the client shows as a progress bar:
 `initialize` response arrives, so a pack may simply delay answering it.
 A pack may also send it later in the session, for something it downloads
 only when a project needs it (the JavaScript pack, p5.js's declarations
-once a file imports `p5`); the bar shows until `loaded` reaches `total`.
+once a file imports `p5` or names `p5/global`); the bar shows until `loaded` reaches `total`.
 
 A pack sends `window/logMessage` for its own log lines and stderr; the app
 shows them in an output panel.
@@ -177,7 +177,11 @@ the `javascript` pack's server and runner. That runner also takes
 `{ type: 'preview', id, files, entry }` for a web project's Preview panel
 and answers it with a page rather than a run (packs/javascript/README.md,
 "Preview"); this is the JavaScript pack's own addition, not something
-other runners need.
+other runners need. The Preview reloads only when the project has no
+errors, and asks the server for them with `workspace/diagnostic` (LSP
+3.17's pull for the whole workspace, answered from the edits sent so far);
+a server without `diagnosticProvider.workspaceDiagnostics` leaves the
+editor's markers to decide, which may lag the latest edit.
 
 Runner to app, any number of times:
 

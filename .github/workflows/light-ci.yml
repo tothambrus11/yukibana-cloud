@@ -5,7 +5,7 @@
 #   the unit tests (the modules' import boundaries among them, and their
 #   tarballs installed and loaded as another site would), and
 #   the Download test for the languages whose tools the runner image has
-#   (Node: JavaScript, TypeScript, web, p5.js).
+#   (Node: JavaScript, TypeScript, web, p5.js in both modes).
 # - javascript: the JavaScript/TypeScript pack built from npm (no toolchain
 #   to compile, so a cold build is a minute or two), its own tests, then the
 #   app built with that pack alone and driven in Chromium for the four
@@ -175,7 +175,7 @@ jobs:
         run: npm run test:unit
 
       - name: Download test (Node languages)
-        run: node tests/export.mjs javascript typescript web p5
+        run: node tests/export.mjs javascript typescript web p5 p5-global
 
       - uses: ./.github/actions/once
         with:
@@ -244,9 +244,9 @@ jobs:
           BUNDLE_REQUIRED: '1'
         run: node --test tests/unit/bundle.test.mjs
 
-      - name: End-to-end (JavaScript, TypeScript, web, p5.js)
+      - name: End-to-end (JavaScript, TypeScript, web, p5.js in both modes)
         working-directory: light/app
-        run: node tests/e2e.mjs javascript typescript web p5
+        run: node tests/e2e.mjs javascript typescript web p5 p5-global
 
       - uses: ./.github/actions/once
         with:

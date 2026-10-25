@@ -50,7 +50,8 @@ interface Project {
 
 /** A language's build files: the paths it can generate, and their contents. */
 interface BuildFiles {
-	paths: readonly string[];
+	/** The build files this language's projects get, or, when that depends on the project, a function of its files. */
+	paths: readonly string[] | ((files: Files) => readonly string[]);
 	generate(project: Project): Files;
 }
 
@@ -63,8 +64,9 @@ const BUILD: Record<LanguageId, BuildFiles> = {
 	python: { paths: ['pyproject.toml'], generate: (p) => ({ 'pyproject.toml': pyprojectToml(p.files) }) },
 	javascript: { paths: ['package.json', 'stryker.config.json'], generate: (p) => ({ 'package.json': packageJson(p.language.entry, p.files), 'stryker.config.json': strykerConfig() }) },
 	typescript: { paths: ['package.json', 'stryker.config.json'], generate: (p) => ({ 'package.json': typescriptPackageJson(p.language.entry, p.files), 'stryker.config.json': strykerConfig() }) },
-	web: { paths: ['package.json'], generate: (p) => ({ 'package.json': vitePackageJson('web-project', p.files) }) },
-	p5: { paths: ['package.json'], generate: (p) => ({ 'package.json': vitePackageJson('p5-project', p.files) }) },
+	web: viteBuild('web-project'),
+	p5: viteBuild('p5-project'),
+	'p5-global': viteBuild('p5-project'),
 	scala: { paths: ['build.sbt', 'project/build.properties'], generate: (p) => ({ 'build.sbt': buildSbt(p.files), 'project/build.properties': `sbt.version=${SBT_VERSION}\n` }) },
 	php: { paths: ['composer.json', 'phpunit.xml'], generate: (p) => ({ 'composer.json': composerJson(p.language.entry, p.files), 'phpunit.xml': phpunitXml(p.files) }) },
 	rust: { paths: ['Cargo.toml'], generate: (p) => ({ 'Cargo.toml': cargoToml(p.files) }) },
@@ -89,7 +91,8 @@ export function exportProject(language: Language, files: Files, optimization: st
 	const build = BUILD[language.id];
 	const absent = (path: string) => !(path in files);
 	const hasReadme = Object.keys(files).some((p) => /^readme(\.[^/]*)?$/i.test(p));
-	const generated = [...build.paths.filter(absent), ...(hasReadme ? [] : ['README.md']), ...['.gitignore'].filter(absent)].sort();
+	const paths = typeof build.paths === 'function' ? build.paths(files) : build.paths;
+	const generated = [...paths.filter(absent), ...(hasReadme ? [] : ['README.md']), ...['.gitignore'].filter(absent)].sort();
 	const project: Project = { language, files, paths: [...Object.keys(files), ...generated].sort(), optimization };
 	const candidates: Files = {
 		...build.generate(project),
@@ -734,10 +737,102 @@ export function vitePackageJson(name: string, files: Files = {}): string {
 		private: true,
 		type: 'module',
 		scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', typecheck: 'tsc' },
-		...(importsPackage(files, 'p5') ? { dependencies: { p5: `^${P5_VERSION}` } } : {}),
+		...(usesP5(files) ? { dependencies: { p5: `^${P5_VERSION}` } } : {}),
 		devDependencies: { typescript: TYPESCRIPT_VERSION, vite: VITE_VERSION },
 	};
 	return JSON.stringify(json, null, 2) + '\n';
+}
+
+/** The build files of a web project: package.json, and vite.config.js when a page has a classic TypeScript script. */
+function viteBuild(name: string): BuildFiles {
+	return {
+		paths: (files) => ['package.json', ...(classicScripts(files).length > 0 ? ['vite.config.js'] : [])],
+		generate: (p) => ({ 'package.json': vitePackageJson(name, p.files), 'vite.config.js': viteConfig() }),
+	};
+}
+
+/**
+ * Whether the project uses p5.js: a script imports it (instance mode), names
+ * its types (`/// <reference types="p5/global" />`, global mode) or has
+ * them in a tsconfig.json's `"types"`, or a page's inline module imports it
+ * (which is how a global-mode page loads p5).
+ */
+function usesP5(files: Files): boolean {
+	if (importsPackage(files, 'p5')) return true;
+	return Object.entries(files).some(([path, text]) =>
+		/\.(?:[cm]?[jt]s|[jt]sx)$/.test(path)
+			? /<reference\s+types\s*=\s*['"]p5(?:\/[^'"]*)?['"]/.test(text)
+			: /(^|\/)[jt]sconfig\.json$/.test(path)
+				? /"types"\s*:\s*\[[^\]]*"p5(?:\/[^"]*)?"/.test(text)
+				: /\.html?$/.test(path) && /\bimport\s[^'"]*?\bfrom\s*['"]p5['"]|\bimport\s*['"]p5['"]/.test(text),
+	);
+}
+
+/**
+ * The classic scripts of the project's pages that are TypeScript files:
+ * `<script src="sketch.ts">` without `type="module"`, as a p5.js sketch in
+ * global mode is (its setup() and draw() must be globals, which a module's
+ * functions are not). Preview compiles them as it does modules.
+ */
+function classicScripts(files: Files): string[] {
+	const found: string[] = [];
+	for (const [path, text] of Object.entries(files)) {
+		if (!/\.html?$/.test(path)) continue;
+		for (const m of text.matchAll(/<script\b([^>]*)>/gi)) {
+			const attrs = m[1] ?? '';
+			const src = /\bsrc\s*=\s*["']([^"']+\.[cm]?tsx?)["']/i.exec(attrs)?.[1];
+			if (src && !/\btype\s*=\s*["']?module/i.test(attrs)) found.push(src);
+		}
+	}
+	return found;
+}
+
+/**
+ * vite.config.js for a project with a classic TypeScript script
+ * (`classicScripts`). Vite bundles only module scripts and leaves a classic
+ * `<script src="sketch.ts">` as it is, which a browser cannot run, so a
+ * small plugin compiles each one with Vite's own TypeScript transform and
+ * puts it in the page, in `npm run dev` and in `npm run build` alike; an
+ * edit to one reloads the page, as Preview does. JavaScript rather than
+ * TypeScript, so that `tsc`, which checks the project's .ts files, does not
+ * need Node's types for it.
+ */
+function viteConfig(): string {
+	return `import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { defineConfig, transformWithOxc } from 'vite';
+
+/**
+ * Vite bundles only module scripts. A classic <script src="….ts"> (a p5.js
+ * sketch in global mode: its setup() and draw() must be globals, which a
+ * module's functions are not) is compiled here and put in the page.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function classicTypeScript() {
+  const scripts = new Set();
+  return {
+    name: 'classic-typescript',
+    transformIndexHtml: {
+      order: 'pre',
+      async handler(html, { filename }) {
+        for (const [tag, src] of [...html.matchAll(/<script\\s+src="([^"]+\\.ts)"\\s*><\\/script>/g)]) {
+          const path = resolve(filename, '..', src);
+          scripts.add(path);
+          const { code } = await transformWithOxc(readFileSync(path, 'utf8'), path);
+          html = html.replace(tag, () => \`<script>\\n\${code}</script>\`);
+        }
+        return html;
+      },
+    },
+    handleHotUpdate({ file, server }) {
+      if (scripts.has(file)) server.ws.send({ type: 'full-reload' });
+    },
+  };
+}
+
+export default defineConfig({ plugins: [classicTypeScript()] });
+`;
 }
 
 // ---- Scala: sbt
@@ -1282,6 +1377,7 @@ function instructions(language: Language, files: Files): string[] {
 		}
 		case 'web':
 		case 'p5':
+		case 'p5-global':
 			return [
 				'## Run\n\nWith Node.js 20.19 or later:\n\n```sh\nnpm install\nnpm run dev                 # a local server that reloads as you edit\nnpm run build               # the site, in dist/\nnpm run typecheck           # tsc: Vite does not check types\n```',
 				'## Editors\n\nVS Code and WebStorm open the folder as it is.',
@@ -1365,6 +1461,7 @@ const IGNORED: Record<LanguageId, readonly string[]> = {
 	typescript: ['node_modules/', '.stryker-tmp/', 'reports/'],
 	web: ['node_modules/', 'dist/'],
 	p5: ['node_modules/', 'dist/'],
+	'p5-global': ['node_modules/', 'dist/'],
 	scala: ['target/', 'project/target/', 'project/project/', '.bsp/', '.bloop/', '.metals/', 'metals.sbt'],
 	php: ['vendor/', '.phpunit.cache/', '.phpunit.result.cache'],
 	rust: ['target/'],

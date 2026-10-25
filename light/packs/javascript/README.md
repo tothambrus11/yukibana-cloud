@@ -527,9 +527,17 @@ with their npm integrity hashes; nothing in them is changed.
 
 The second is for web pages: **p5.js 2.3.4** (LGPL-2.1, its licence is
 `LICENSE-p5.txt` next to it), the creative-coding library, pinned in
-`package-lock.json` with its integrity hash. The app's **Web: p5.js
-sketch** project starts with it (a canvas that fills the page, a circle
-that follows the mouse), and any web project can import it.
+`package-lock.json` with its integrity hash. The app's two **Web: p5.js
+sketch** projects start with it (a canvas that fills the page, a circle
+that follows the mouse), one in each of p5's styles, and any web project
+can use it. Each style costs only what it uses:
+
+| Style | How a file asks for it | Editor downloads | Page runs |
+| --- | --- | --- | --- |
+| Instance mode, `new p5((p) => …)` | `import p5 from 'p5'` | `packages-p5-2.3.4.json` (116 KiB brotli) | `p5-2.3.4.js` |
+| Global mode, bare `setup()`, `circle()` | `/// <reference types="p5/global" />`, or `"types": ["p5/global"]` in tsconfig.json | the same, plus `packages-p5-global-2.3.4.json` (103 KiB brotli) | the same `p5-2.3.4.js` |
+| Neither | | nothing of p5 | nothing of p5 |
+
 
 * **Preview.** `p5-2.3.4.js` is p5.js's own `lib/p5.esm.min.js`, copied
   unchanged: it is already one minified ES module with its dependencies
@@ -553,11 +561,27 @@ that follows the mouse), and any web project can import it.
   resolutions while its imports do not change; a new service resolves them
   again, and reuses the parsed libs). Instance mode (`new p5((p: p5) =>
   …)`) is fully typed: completion on `p.`, hover with p5.js's
-  documentation, and type errors such as `p.circle('x', 1, 2)`. Global
-  mode's `p5/global` declarations (1.2 MB more) are not shipped.
+  documentation, and type errors such as `p.circle('x', 1, 2)`.
+* **Global mode.** `types/global.d.ts` declares every p5 function and
+  variable as a global (1.2 MB raw) and imports `types/p5.d.ts`; it is
+  `packages-p5-global-2.3.4.json`, without the files the instance one
+  already holds (`package-types.mjs --except`), and the server loads both
+  for a file that asks for `p5/global` and only the instance one for
+  `p5` (`__LAZY_PACKAGES__`, keyed by specifier, each listing its files).
+  The sketch is a classic script, `<script src="./sketch.ts">` without
+  `type="module"` (the runner compiles it as it does modules), because a
+  module's functions are not globals and p5 looks for `window.setup`; the
+  page loads p5 with an inline `<script type="module">import p5 from
+  'p5'</script>` after it. That module runs once the document is parsed,
+  when the sketch's functions exist, and p5.js's ES module build starts
+  global mode by itself once the document is ready, so global mode needs
+  no other build of p5 and no code of ours in the page.
 * **Download** adds `"p5": "^2.3.4"` to `dependencies` of the Vite
-  project when a file imports it; Vite bundles it and `tsc` checks the
-  sketch against the same declarations (`app/tests/export.mjs`).
+  project when a file imports it or names its types; Vite bundles it and
+  `tsc` checks the sketch against the same declarations
+  (`app/tests/export.mjs`). Vite bundles only module scripts, so a project
+  with a classic TypeScript script (global mode) also gets a
+  `vite.config.js` whose plugin compiles that script into the page.
 
 ## Testing
 

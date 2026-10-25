@@ -1,7 +1,7 @@
 // Collects the type declarations of npm packages the runner ships, as the
 // language server's virtual `/node_modules/` (src/server.ts, PACKAGES_FILE).
 //
-//   node tools/package-types.mjs <out.json> <package>...
+//   node tools/package-types.mjs <out.json> <package>... [--except <other.json>]
 //
 // Which files: exactly those TypeScript itself reads to resolve
 // `import ... from '<package>'` the way the server resolves it (ESNext
@@ -14,14 +14,20 @@
 // CommonJS copy, the declarations for TypeScript before 5.7).
 //
 // The output is a JSON object from path to text, keys sorted, so the same
-// packages give the same bytes.
+// packages give the same bytes. `--except` leaves out the files another
+// output already holds, for an entry that is always loaded with that one
+// (`p5/global`'s declarations import `p5`'s, which instance mode loads alone).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 
-const [out, ...packages] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const exceptAt = args.indexOf('--except');
+const except = exceptAt === -1 ? {} : JSON.parse(readFileSync(args[exceptAt + 1] ?? '', 'utf8'));
+if (exceptAt !== -1) args.splice(exceptAt, 2);
+const [out, ...packages] = args;
 if (!out || packages.length === 0) {
-  console.error('usage: node tools/package-types.mjs <out.json> <package>...');
+  console.error('usage: node tools/package-types.mjs <out.json> <package>... [--except <other.json>]');
   process.exit(2);
 }
 
@@ -67,6 +73,7 @@ const kept = [...program.getSourceFiles().map((f) => f.fileName), ...read].filte
   (p) => p.startsWith(prefix) && !p.startsWith(`${prefix}typescript/`) && (p.endsWith('/package.json') || /\.d\.[cm]?ts$/.test(p)),
 );
 for (const p of [...new Set(kept)].sort()) {
+  if (Object.hasOwn(except, `/node_modules/${p.slice(prefix.length)}`)) continue;
   try {
     files[`/node_modules/${p.slice(prefix.length)}`] = readFileSync(p, 'utf8');
   } catch {
