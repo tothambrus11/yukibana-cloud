@@ -16,7 +16,7 @@
 QEMU_WASM_REPO=https://github.com/ktock/qemu-wasm
 QEMU_WASM_COMMIT=0ef7b4e2814b231705d8371dd7997f5b72e70baf
 # git patch-id --stable of vm/patches/qemu-wasm-tcg.patch (PR #3's 0001 patch).
-QEMU_WASM_TCG_PATCH_ID=a2989c25fb91c4ef61927e1803fdc40e74dd6497
+QEMU_WASM_TCG_PATCH_ID=520a3223bf9c79defd1bbb08647b0fba83fedc93
 
 # QEMU's dependencies, as PR #3's build-deps.sh (ktock/qemu-wasm's Dockerfile stages).
 ZLIB_URL=https://zlib.net/fossils/zlib-1.3.1.tar.gz

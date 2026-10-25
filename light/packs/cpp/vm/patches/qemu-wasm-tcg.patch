@@ -1,4 +1,4 @@
-From c0b14ae64a68022541156b8fe01429c475a99dec Mon Sep 17 00:00:00 2001
+From fe96f1048d0f5d0e1835ef1c8afc5efa1999afc4 Mon Sep 17 00:00:00 2001
 From: =?UTF-8?q?Ambrus=20T=C3=B3th?= <palpista11@gmail.com>
 Date: Thu, 22 Oct 2026 11:17:56 +0000
 Subject: [PATCH] tcg/wasm32: fix i32 ops that read undefined upper bits, and
@@ -29,16 +29,25 @@ sub2_i64 pushed the i32 result of i64.gt_u straight into i64.sub, and
 ctpop_i32 stored an i32 into an i64 global; both produced modules that fail
 validation.
 
-Tested with x86_64 and AArch64 Linux guests. Neither reaches sub2_i32,
-sub2_i64, sextract_i32, ctz_i32 or ctpop_i32, and clz_i32 appears only with a
-default of 32, so those hunks were checked against tci.c only (sub2_i32 and
-sextract_i32 are reachable from AArch32 guests).
+ctpop_i32/ctpop_i64 were emitted with args[1] and args[2] as their
+destination and source, where a two-operand op has them in args[0] and
+args[1]: the count went into the source register, and the source was read
+from whatever followed in the op's arguments. RISC-V guests with Zbb use it
+for CPOP: a C program built with -march=rv64gc_zbb counted 1 bit in
+0x00f0123400000100, and Go's runtime, which uses CPOP once riscv_hwprobe
+reports Zbb, crashed the emulator with "memory access out of bounds".
+
+Tested with x86_64 and AArch64 Linux guests, and ctpop_i64 with RISC-V
+ones. None reaches sub2_i32, sub2_i64, sextract_i32, ctz_i32 or ctpop_i32,
+and clz_i32 appears only with a default of 32, so those hunks were checked
+against tci.c only (sub2_i32 and sextract_i32 are reachable from AArch32
+guests).
 ---
- tcg/wasm32/tcg-target.c.inc | 66 +++++++++++++++++++++++++++++++++----
- 1 file changed, 59 insertions(+), 7 deletions(-)
+ tcg/wasm32/tcg-target.c.inc | 70 ++++++++++++++++++++++++++++++++-----
+ 1 file changed, 61 insertions(+), 9 deletions(-)
 
 diff --git a/tcg/wasm32/tcg-target.c.inc b/tcg/wasm32/tcg-target.c.inc
-index 3c85588be9..34b6ed3ab9 100644
+index 3c85588be9..276a2d22ad 100644
 --- a/tcg/wasm32/tcg-target.c.inc
 +++ b/tcg/wasm32/tcg-target.c.inc
 @@ -885,7 +885,8 @@ static void tcg_wasm_out_clz64(TCGContext *s, TCGReg ret, TCGReg arg1, TCGReg ar
@@ -184,6 +193,19 @@ index 3c85588be9..34b6ed3ab9 100644
  }
  static void tcg_out_mulu2_i32(TCGContext *s, TCGOpcode opc, TCGReg retl, TCGReg reth, TCGReg arg1, TCGReg arg2)
  {
+@@ -3688,10 +3740,10 @@ static void tcg_out_op(TCGContext *s, TCGOpcode opc,
+         tcg_out_not(s, opc, args[0], args[1]);
+         break;
+     case INDEX_op_ctpop_i32:
+-        tcg_out_ctpop_i32(s, opc, args[1], args[2]);
++        tcg_out_ctpop_i32(s, opc, args[0], args[1]);
+         break;
+     case INDEX_op_ctpop_i64:
+-        tcg_out_ctpop_i64(s, opc, args[1], args[2]);
++        tcg_out_ctpop_i64(s, opc, args[0], args[1]);
+         break;
+     case INDEX_op_add2_i32:
+     case INDEX_op_add2_i64:
 -- 
 2.43.0
 

@@ -232,10 +232,19 @@ default.
     a phase never cancels an outstanding request. `test-run-linux.mjs` checks that
     every request is a streaming one; `app/tests/e2e-targets.mjs` types a line into
     the terminal after the program printed, in both modes, on every arch.
+11. **Every Go program crashed the RISC-V VM** ("memory access out of bounds" in
+    QEMU's worker; found by the Go pack, `../../go/README.md`). The backend emitted
+    `ctpop_i32`/`ctpop_i64` with the op's arguments 1 and 2 as destination and source
+    instead of 0 and 1, so a RISC-V `cpop` (Zbb, which QEMU's default RISC-V CPU has)
+    wrote its count into the source register and read a register past the op's. Go's
+    runtime uses `cpop` once `riscv_hwprobe` reports Zbb; a C program built with
+    `-march=rv64gc_zbb` got wrong counts (1 bit in `0x00f0123400000100`). The fix is a
+    hunk of `patches/qemu-wasm-tcg.patch`. x86-64 (`qemu64` reports no POPCNT) and AArch64
+    guests did not reach the op in any test.
 
 ## The patches
 
-- **`patches/qemu-wasm-tcg.patch`** is the backend fix from item 3, on ktock/qemu-wasm
+- **`patches/qemu-wasm-tcg.patch`** is the backend fix from items 3 and 11, on ktock/qemu-wasm
   at `QEMU_WASM_COMMIT`. `build-qemu.sh` checks its `git patch-id`. Both modes use it.
 - **`patches/qemu-linux-user-wasm.patch`** makes linux-user build and run on a Wasm
   host. QEMU 8.2 has no such host, and QEMU 10 dropped 64-bit guests on 32-bit hosts.
