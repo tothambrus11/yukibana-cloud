@@ -30,6 +30,20 @@ const monacoWorkers: Plugin = {
 	},
 };
 
+/**
+ * The shared modules (light/modules), each imported by its package name
+ * from its index.ts, the only file a module promises. kit.alias, which
+ * SvelteKit 3 deprecates (and says so on every run) in favour of
+ * package.json `imports`: those may only point inside this package and must
+ * be `#` names, and the modules live beside the app and are called
+ * `@yukibana/<name>` by every host. kit.alias also writes the TypeScript
+ * paths, so svelte-check resolves the same names Vite does.
+ */
+const modules = fileURLToPath(new URL('../modules', import.meta.url));
+const moduleAliases = Object.fromEntries(
+	['protocol', 'runtime', 'monaco'].map((name) => [`@yukibana/${name}`, `${modules}/${name}/index.ts`]),
+);
+
 export default defineConfig({
 	plugins: [
 		monacoWorkers,
@@ -40,9 +54,12 @@ export default defineConfig({
 			// Registered by hand (src/lib/pwa.ts), so the page can reload once
 			// to become cross-origin isolated.
 			serviceWorker: { register: false },
+			alias: moduleAliases,
 		}),
 	],
-	server: { headers: isolation },
+	// The dev server serves files only from the directories it allows; the
+	// modules live beside the app, not in it.
+	server: { headers: isolation, fs: { allow: [modules] } },
 	preview: { headers: isolation },
 	worker: { format: 'es' },
 });

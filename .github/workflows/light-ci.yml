@@ -1,7 +1,8 @@
 # Checks Yukibana Light (light) on every push to a pull
 # request and to main, in a few minutes:
 #
-# - app: type-check (svelte-check, the service worker), the unit tests, and
+# - app: type-check (svelte-check, the service worker, the shared modules),
+#   the unit tests (the modules' import boundaries among them), and
 #   the Download test for the languages whose tools the runner image has
 #   (Node: JavaScript, TypeScript, web, p5.js).
 # - javascript: the JavaScript/TypeScript pack built from npm (no toolchain
@@ -51,7 +52,8 @@ env:
 jobs:
   # Which jobs already passed on exactly these inputs. The app's tests also
   # read the C++ pack's sources (its toolchain flags, target table and test
-  # fixtures), which are listed with it.
+  # fixtures), which are listed with it, and the app checks, tests and
+  # bundles the shared modules (light/modules).
   plan:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -72,6 +74,7 @@ jobs:
           name: light-app
           paths: |
             light/app
+            light/modules
             light/packs/cpp/src
             light/packs/cpp/tests/fixtures
             .github/workflows/light-ci.yml
@@ -81,6 +84,7 @@ jobs:
           name: light-javascript
           paths: |
             light/app
+            light/modules
             light/packs/javascript
             .github/workflows/light-ci.yml
       # Every file the pack-units tests read, and the files that decide

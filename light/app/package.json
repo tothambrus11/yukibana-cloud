@@ -7,9 +7,9 @@
 		"dev": "vite dev",
 		"build": "vite build && node scripts/compress.mjs && node scripts/offline-manifest.mjs",
 		"preview": "vite preview",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker --noEmit",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker --noEmit && tsc -p ../modules",
 		"prepare": "svelte-kit sync",
-		"test:unit": "node --test \"tests/unit/*.test.mjs\"",
+		"test:unit": "node --test \"tests/unit/*.test.mjs\" ../modules/boundaries.test.mjs",
 		"test:e2e": "node tests/e2e.mjs",
 		"test:e2e:targets": "node tests/e2e-targets.mjs",
 		"test:export": "node tests/export.mjs"
