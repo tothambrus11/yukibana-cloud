@@ -292,10 +292,22 @@ The cloud button in the top bar opens the Offline dialog: which languages
 are available offline (also marked in the language list), a button per
 language to make it so, and **Download everything**, with its size shown
 before it starts and progress in megabytes while it runs. A build lists
-every file it can serve, with sizes and, for pack files, a content hash, in
+every file it can serve, with sizes and the sha256 of each, in
 `offline.json`, written by `app/scripts/offline-manifest.mjs` at the end of
 `npm run build`. The page downloads into the same caches the service worker
-serves from, and asks the browser for persistent storage first.
+serves from, checking each file against its sha256, and asks the browser
+for persistent storage first.
+
+The service worker serves a cached file only when its bytes have the
+sha256 the build lists, the page itself included, and otherwise deletes it
+and goes to the network: programs run on the app's origin and can write
+its caches, and an unchecked page would let one plant a page for every
+later visit. The list it checks against is written into
+`service-worker.js` by the same script, not read from a cache, because the
+browser fetches that script from the network. App files are checked
+before they are served and remembered while the worker runs; a pack file
+is checked as it streams, so its progress still shows, and a wrong one
+fails to load and is deleted (`app/src/lib/verified-cache.ts`).
 
 | Download | Transfer | Stored |
 | --- | --- | --- |

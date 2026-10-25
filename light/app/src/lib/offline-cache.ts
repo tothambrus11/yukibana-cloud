@@ -13,7 +13,14 @@ export interface OfflineFile {
 	size: number;
 	/** Bytes over the network: the brotli sibling's size when there is one. */
 	transfer: number;
-	/** A content hash, for pack files only: a cached copy is kept while it matches. */
+	/**
+	 * The sha256 of the bytes as stored, 64 lowercase hex digits, for every
+	 * file. The page checks a download against it (offline.svelte.ts). The
+	 * service worker does not read it from here: this file is fetched like
+	 * any other and could be rewritten in a cache, so the worker checks
+	 * against its own inlined table (verified-cache.ts). A build from before
+	 * that had 20 digits, for pack files only.
+	 */
 	hash?: string;
 }
 
@@ -44,11 +51,18 @@ export const appCacheName = (version: string): string => `app-${version}`;
  * megabytes at worst, and most app updates change none of them. A new build
  * removes only the entries whose hash it does not list (see `HASH_HEADER`).
  * Before this, each build had its own `packs-<version>` cache, and every
- * update threw every downloaded language away.
+ * update threw every downloaded language away. What is kept is still
+ * checked byte for byte whenever it is served.
  */
 export const PACKS_CACHE = 'packs';
 
-/** The header a cached pack file carries its manifest hash in. */
+/**
+ * The header a cached pack file carries its manifest hash in. It is the
+ * writer's word, never evidence: a new build uses it only to decide which
+ * pack entries are worth keeping, and every byte served is checked against
+ * the build's table regardless (verified-cache.ts). Until SW1 it was what
+ * decided whether a cached pack file was served.
+ */
 export const HASH_HEADER = 'X-Yukibana-Hash';
 
 /**

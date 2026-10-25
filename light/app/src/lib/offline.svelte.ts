@@ -12,6 +12,7 @@
  */
 import { version } from '$app/env';
 import { appCacheName, DIRECT_HEADER, isOfflineManifest, isPackPath, MANIFEST_PATH, PACKS_CACHE, storable, type OfflineFile, type OfflineManifest } from './offline-cache';
+import { verifying } from './verified-cache';
 
 /** Several files at a time: a pack is a few large files and some small ones. */
 const PARALLEL = 4;
@@ -140,11 +141,18 @@ export class Offline {
 		this.abort?.abort();
 	}
 
-	/** Fetches one file and stores it, reporting each chunk's size as it arrives. */
+	/**
+	 * Fetches one file and stores it, reporting each chunk's size as it
+	 * arrives. Bytes that are not the ones offline.json lists are not
+	 * stored, and the file is reported as failed: the service worker would
+	 * refuse to serve them anyway, and the dialog would call the language
+	 * available offline when it is not.
+	 */
 	private async fetchInto(cache: Cache, file: OfflineFile, signal: AbortSignal, received: (bytes: number) => void): Promise<void> {
 		const response = await fetch(url(file.path), { headers: { [DIRECT_HEADER]: '1' }, cache: 'no-store', signal });
 		if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
-		const [counted, stored] = response.body.tee();
+		const body = file.hash?.length === 64 ? response.body.pipeThrough(verifying({ sha256: file.hash, size: file.size }, file.path || 'index.html', () => undefined)) : response.body;
+		const [counted, stored] = body.tee();
 		const reader = counted.getReader();
 		const count = (async () => {
 			for (let r = await reader.read(); !r.done; r = await reader.read()) received(r.value.byteLength);

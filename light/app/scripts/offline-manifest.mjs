@@ -2,10 +2,16 @@
 // the service worker precaches when it installs (`shell`), what the app
 // fetches only when a language needs it (`lazy`: Monaco's language services,
 // their workers, grammars, JSON schemas) and each pack's files (`packs`).
-// Every entry has its size on disk and its transfer size (its .br sibling's
-// when there is one, which is what serve.py and a good host send). Pack
-// files also have a content hash: the service worker keeps a cached pack
-// file across app updates for as long as its hash is unchanged.
+// Every entry has its size on disk, its transfer size (its .br sibling's
+// when there is one, which is what serve.py and a good host send) and the
+// sha256 of its bytes.
+//
+// Then writes the same sizes and hashes, as the file table, into
+// build/service-worker.js (file-table.mjs) and compresses it again: the
+// worker serves a cached file only when its bytes have the table's sha256,
+// and keeps a cached pack file across app updates while its hash is
+// unchanged. Until SW1 only pack files had a hash, 20 digits of one, and
+// the worker trusted offline.json from its own cache.
 //
 // Runs after `vite build` and compress.mjs (package.json, "build"). Hashing
 // every pack takes a while, so hashes are remembered by path, size and
@@ -15,13 +21,15 @@ import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { brotliCompressSync, gzipSync } from 'node:zlib';
+import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
+import { fileTable, inlineFileTable } from './file-table.mjs';
 
 const app = fileURLToPath(new URL('..', import.meta.url));
 const build = join(app, 'build');
 const viteManifest = JSON.parse(await readFile(join(app, '.svelte-kit/output/client/.vite/manifest.json'), 'utf8'));
 const { version } = JSON.parse(await readFile(join(build, '_app/version.json'), 'utf8'));
-const hashCachePath = join(app, 'node_modules/.cache/yukibana-offline/hashes.json');
+// sha256.json: hashes.json held 20-digit prefixes, which no entry may reuse.
+const hashCachePath = join(app, 'node_modules/.cache/yukibana-offline/sha256.json');
 const hashCache = existsSync(hashCachePath) ? JSON.parse(await readFile(hashCachePath, 'utf8')) : {};
 
 /** Every file under `dir`, as paths relative to build/, without compressed siblings. */
@@ -33,19 +41,16 @@ async function* walk(dir) {
 	}
 }
 
-async function describe(path, hashed) {
+async function describe(path) {
 	const full = join(build, path);
 	const { size, mtimeMs } = await stat(full);
 	const transfer = existsSync(`${full}.br`) ? (await stat(`${full}.br`)).size : size;
-	const entry = { path, size, transfer };
-	if (hashed) {
-		const key = `${path}:${size}:${mtimeMs}`;
-		entry.hash = hashCache[key] ??= await new Promise((resolve, reject) => {
-			const hash = createHash('sha256');
-			createReadStream(full).on('data', (d) => hash.update(d)).on('end', () => resolve(hash.digest('hex').slice(0, 20))).on('error', reject);
-		});
-	}
-	return entry;
+	const key = `${path}:${size}:${mtimeMs}`;
+	const hash = (hashCache[key] ??= await new Promise((resolve, reject) => {
+		const h = createHash('sha256');
+		createReadStream(full).on('data', (d) => h.update(d)).on('end', () => resolve(h.digest('hex'))).on('error', reject);
+	}));
+	return { path, size, transfer, hash };
 }
 
 // Lazy app files: what Monaco's code imports dynamically (a grammar, a
@@ -87,10 +92,10 @@ for await (const path of walk(build)) {
 	if (path.startsWith('packs/')) {
 		const pack = path.split('/')[1];
 		if (path.split('/').length < 3) continue;
-		(packs[pack] ??= []).push(await describe(path, true));
+		(packs[pack] ??= []).push(await describe(path));
 	} else if (path === 'offline.json' || path === 'service-worker.js' || path.endsWith('.md')) {
 		// The worker is fetched by the browser itself; this file by the worker.
-	} else (isLazy(path) ? lazy : shell).push(await describe(path, false));
+	} else (isLazy(path) ? lazy : shell).push(await describe(path));
 }
 // The root URL, which is what a navigation asks for; index.html is the same file.
 const index = shell.findIndex((f) => f.path === 'index.html');
@@ -102,9 +107,19 @@ const json = JSON.stringify({ version, shell: shell.sort(byPath), lazy: lazy.sor
 await writeFile(join(build, 'offline.json'), json);
 await writeFile(join(build, 'offline.json.br'), brotliCompressSync(json));
 await writeFile(join(build, 'offline.json.gz'), gzipSync(json, { level: 9 }));
+
+// The worker's trust root, written into the worker itself.
+const table = fileTable({ version, shell, lazy, packs }, { hash: createHash('sha256').update(json).digest('hex'), size: Buffer.byteLength(json) });
+const workerPath = join(build, 'service-worker.js');
+const worker = inlineFileTable(await readFile(workerPath, 'utf8'), table);
+await writeFile(workerPath, worker);
+await writeFile(`${workerPath}.br`, brotliCompressSync(worker, { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }));
+await writeFile(`${workerPath}.gz`, gzipSync(worker, { level: 9 }));
+
 await mkdir(dirname(hashCachePath), { recursive: true });
 await writeFile(hashCachePath, JSON.stringify(hashCache));
 
 const mb = (files, key) => (files.reduce((n, f) => n + f[key], 0) / 1048576).toFixed(1);
 const allPacks = Object.values(packs).flat();
+console.log(`service-worker.js: a file table of ${Object.keys(table.files).length} files`);
 console.log(`offline.json: shell ${mb(shell, 'transfer')} MB, lazy ${mb(lazy, 'transfer')} MB, packs ${mb(allPacks, 'transfer')} MB to download (${mb(allPacks, 'size')} MB stored), ${Object.keys(packs).length} packs`);

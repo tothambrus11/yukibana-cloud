@@ -2,13 +2,20 @@
  * Makes the app work offline and cross-origin isolated.
  *
  * Offline: when this worker installs, it precaches the app shell, the files
- * the app needs to start, as `offline.json` lists them (written at build
- * time, scripts/offline-manifest.mjs). Everything else is cached the first
- * time it is fetched: the app's lazy files (Monaco's HTML, CSS and JSON
- * services and their workers, grammars, schemas) in this build's app cache,
- * a language pack's files in the pack cache. The page's Download everything
- * fills the same caches ahead of time (offline.svelte.ts). The cache names
- * and the manifest's shape are in src/lib/offline-cache.ts.
+ * the app needs to start, as the build's file table lists them (written
+ * into this script at build time, scripts/offline-manifest.mjs).
+ * Everything else the table lists is cached the first time it is fetched:
+ * the app's lazy files (Monaco's HTML, CSS and JSON services and their
+ * workers, grammars, schemas) in this build's app cache, a language pack's
+ * files in the pack cache. The page's Download everything fills the same
+ * caches ahead of time (offline.svelte.ts). The cache names and
+ * offline.json's shape are in src/lib/offline-cache.ts.
+ *
+ * Integrity: nothing comes out of a cache unless its bytes are the ones the
+ * table lists, navigations included, because programs run on this origin
+ * and can write its caches (src/lib/verified-cache.ts, D50). Until this
+ * build the page was served from the app cache unchecked, and a program
+ * could replace it for every later visit.
  *
  * Until this build, the install precached every file of `static/`, which
  * includes every pack and its .br and .gz copies: a first visit downloaded
@@ -28,10 +35,10 @@
  * hands out carries them. Everything the app loads is same-origin, so
  * `require-corp` costs nothing.
  */
-import { assets, immutable, prerendered } from '$app/manifest';
 import { version } from '$app/env';
 import { self as sw } from '$app/service-worker';
-import { appCacheName, DIRECT_HEADER, HASH_HEADER, isOfflineManifest, isPackPath, MANIFEST_PATH, PACKS_CACHE, storable, type OfflineFile, type OfflineManifest } from '../lib/offline-cache';
+import { appCacheName, DIRECT_HEADER, HASH_HEADER, isPackPath, PACKS_CACHE } from '../lib/offline-cache';
+import { parseFileTable, VerifiedCache } from '../lib/verified-cache';
 
 const APP = appCacheName(version);
 /** A path relative to the app's root (this worker's scope) as a URL. */
@@ -39,51 +46,46 @@ const url = (path: string) => new URL(path.replace(/^\//, ''), sw.registration.s
 /** A same-origin URL as a path relative to the app's root, or null outside the scope. */
 const pathOf = (href: string) => (href.startsWith(sw.registration.scope) ? href.slice(sw.registration.scope.length).split(/[?#]/)[0]! : null);
 
-/** This build's manifest, read once from the app cache (where install put it). */
-let manifest: Promise<OfflineManifest | null> | null = null;
-function loadManifest(): Promise<OfflineManifest | null> {
-	manifest ??= caches
-		.open(APP)
-		.then((cache) => cache.match(url(MANIFEST_PATH)))
-		.then((r) => r?.json() as Promise<unknown> | undefined)
-		.then((m) => (isOfflineManifest(m) && m.version === version ? m : null))
-		.catch(() => null);
-	return manifest;
-}
-
-/** Pack files by path, from the manifest. */
-async function packFiles(): Promise<Map<string, OfflineFile>> {
-	const m = await loadManifest();
-	return new Map(Object.values(m?.packs ?? {}).flatMap((files) => files.map((f) => [f.path, f] as const)));
-}
-
 /**
- * The shell: the manifest's when it is this build's. A host may serve the
- * new worker with an older offline.json (a deploy in progress); then every
- * app file but the packs is precached, as before there was a manifest.
+ * The build's file table, the one thing this worker trusts about what it
+ * may serve (verified-cache.ts says why). The build replaces the quoted
+ * slot below with the table's JSON as a string literal
+ * (scripts/offline-manifest.mjs, which fails unless it finds the slot
+ * exactly once). This must stay the only place the slot's text appears in
+ * the worker. Without a table (the dev server, or a build that skipped
+ * that script) nothing is served from a cache and nothing is cached: the
+ * app works online and says why it does not offline.
  */
-async function shellPaths(): Promise<string[]> {
-	try {
-		const response = await fetch(url(MANIFEST_PATH), { cache: 'no-cache' });
-		const m: unknown = await response.clone().json();
-		if (response.ok && isOfflineManifest(m) && m.version === version) {
-			await (await caches.open(APP)).put(url(MANIFEST_PATH), response);
-			return m.shell.map((f) => f.path);
-		}
-	} catch {
-		// No manifest: the fallback below.
-	}
-	return [...immutable, ...prerendered, ...assets].map((f) => f.path.replace(/^\//, '')).filter((p) => !isPackPath(p) && !/\.(br|gz)$/.test(p));
-}
+const parsed = parseFileTable('__YUKIBANA_FILE_TABLE__', version);
+if ('problem' in parsed && !import.meta.env.DEV) console.error(`service worker: ${parsed.problem}; nothing is served from the caches.`);
+const verified =
+	'table' in parsed
+		? new VerifiedCache({
+				table: parsed.table,
+				cacheFor: (path) => caches.open(isPackPath(path) ? PACKS_CACHE : APP),
+				isPack: isPackPath,
+				url,
+				report: (message) => console.warn(`service worker: ${message}`),
+			})
+		: null;
 
 sw.addEventListener('install', (event) => {
 	event.waitUntil(
 		(async () => {
-			const cache = await caches.open(APP);
-			const paths = await shellPaths();
+			if (!verified || !('table' in parsed)) return;
 			// Hashed files are the same bytes whenever fetched, so the copy the
-			// page just downloaded (in the HTTP cache) will do.
-			await Promise.all(paths.map((p) => cache.add(new Request(url(p), { cache: p.startsWith('_app/immutable/') ? 'force-cache' : 'no-cache' }))));
+			// page just downloaded (in the HTTP cache) will do. A shell file
+			// whose bytes are not the table's fails the install by name: a host
+			// mid-deploy serves another build's file, and this build installs
+			// on a later visit instead of starting with a hole in its shell.
+			const failed: string[] = [];
+			await Promise.all(
+				parsed.table.shell.map(async (p) => {
+					const response = await fetch(new Request(url(p), { cache: p.startsWith('_app/immutable/') ? 'force-cache' : 'no-cache' }));
+					if (!response.ok || !(await verified.store(p, response))) failed.push(`${p || 'index.html'} (HTTP ${response.status})`);
+				}),
+			);
+			if (failed.length) throw new Error(`service worker: not installed, ${failed.length} shell file(s) are not this build's: ${failed.slice(0, 3).join(', ')}`);
 		})(),
 		// No skipWaiting here: a new build waits until the page asks (pwa.ts),
 		// so an open tab never loses the cached files of the build it runs.
@@ -94,14 +96,18 @@ sw.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
 			await Promise.all((await caches.keys()).filter((k) => k !== APP && k !== PACKS_CACHE).map((k) => caches.delete(k)));
-			// Keep only the pack files this build lists with the same hash.
-			const files = await packFiles();
-			if (files.size) {
+			// Keep only the pack files this build lists with the same hash. The
+			// header is the writer's word, so this only saves downloads: what
+			// is kept is still checked byte for byte whenever it is served. A
+			// 20-digit header is a build's from before full sha256s, kept while
+			// its prefix matches, so this update does not re-download every pack.
+			if (verified) {
 				const packs = await caches.open(PACKS_CACHE);
 				for (const request of await packs.keys()) {
 					const path = pathOf(request.url);
-					const cached = await packs.match(request);
-					if (!path || !cached || files.get(path)?.hash !== cached.headers.get(HASH_HEADER)) await packs.delete(request);
+					const header = (await packs.match(request))?.headers.get(HASH_HEADER) ?? '';
+					const sha256 = path === null ? undefined : verified.listed(path)?.sha256;
+					if (!sha256 || !header || !(header === sha256 || (header.length === 20 && sha256.startsWith(header)))) await packs.delete(request);
 				}
 			}
 			await sw.clients.claim();
@@ -127,38 +133,37 @@ function isolated(response: Response): Response {
 
 async function respond(request: Request, event: FetchEvent): Promise<Response> {
 	const path = pathOf(request.url);
-	const app = await caches.open(APP);
 	// Pages: this worker's own build, from its cache, so the page and the
 	// pack files this worker serves are one build. It used to be the network
 	// first: after a deploy, the page was the new build while the old worker,
 	// still in control until the reload is accepted, served the packs it had
 	// cached, and a new page's C++ Test found no doctest headers in the old
 	// sysroot. A new build reaches the page through the update prompt. In
-	// development the page is always fresh.
+	// development the page is always fresh. A cached page that is not this
+	// build's bytes is a miss (verified-cache.ts): the network's copy is
+	// served, and cached again when it is the build's.
 	if (request.mode === 'navigate') {
-		const own = import.meta.env.DEV ? undefined : ((await app.match(request, { ignoreSearch: true })) ?? (await app.match(url(''))));
+		const page = path !== null && verified?.listed(path) && !isPackPath(path) ? path : '';
+		const own = import.meta.env.DEV ? null : await verified?.cached(page);
 		if (own) return own;
 		try {
-			return await fetch(request);
+			const response = await fetch(request);
+			if (verified && path === page && response.status === 200) event.waitUntil(verified.store(page, response.clone()));
+			return response;
 		} catch {
 			return Response.error();
 		}
 	}
-	if (path === null) return fetch(request);
+	if (path === null || !verified) return fetch(request);
 	// The page caches this one itself (Download everything).
 	if (request.headers.has(DIRECT_HEADER)) return fetch(request);
-	const cache = isPackPath(path) ? await caches.open(PACKS_CACHE) : app;
-	const cached = await cache.match(request, { ignoreSearch: !isPackPath(path) });
+	const cached = await verified.cached(path);
 	if (cached) return cached;
 	const response = await fetch(request);
-	// Cache pack files and the app's own files (not, say, a preview's
-	// requests); hand the response over at once, so a pack sees its download
-	// progress, and let the copy go into the cache alongside.
-	const appFile = path.startsWith('_app/') || path.startsWith('schemas/');
-	if (response.ok && response.status === 200 && (isPackPath(path) || appFile)) {
-		const file = isPackPath(path) ? (await packFiles()).get(path) : undefined;
-		event.waitUntil(cache.put(request.url, storable(response.clone(), file)));
-	}
+	// Cache what the build lists (not, say, a preview's requests); hand the
+	// response over at once, so a pack sees its download progress, and let
+	// the checked copy go into the cache alongside.
+	if (response.status === 200 && verified.listed(path)) event.waitUntil(verified.store(path, response.clone()));
 	return response;
 }
 

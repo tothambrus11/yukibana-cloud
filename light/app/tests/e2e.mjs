@@ -8,7 +8,7 @@
 // Serves app/build with ../serve.py on a free port. Exits non-zero naming
 // every check that failed.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
@@ -89,6 +89,7 @@ try {
 	}
 	if (languages.includes('python') && languages.includes('javascript')) await switching();
 	await downloading();
+	await integrity();
 	if (languages.includes('python') && languages.includes('web')) await lazyServices();
 	if (languages.includes('python')) await offlineUse();
 } finally {
@@ -1292,6 +1293,114 @@ async function downloading() {
 	check(listing.status === 0 && expected.every((n) => names.includes(n)), `the zip is valid and holds the project and its CMakeLists.txt (${names.join(', ')}${listing.stderr})`);
 	rmSync(dir, { recursive: true, force: true });
 	await page.close();
+}
+
+/**
+ * A program cannot change what the app serves on the next visit (SW1,
+ * D50): programs run on the app's origin and can write its caches, so a
+ * dedicated worker, as a program's runner is, plants a page, an
+ * offline.json vouching for it and a changed pack file carrying the hash
+ * header the build lists. The service worker is then stopped, as it is
+ * between visits, and the page reloaded: the page must be the build's,
+ * fetched from the network (the app cache holds the build's bytes again,
+ * which only the network had), and the pack file must fail to load once
+ * and then load as the build's. Needs only the app; the pack half needs a
+ * built pack.
+ */
+async function integrity() {
+	const context = await browser.newContext({ viewport: { width: 1400, height: 850 } });
+	const page = await context.newPage();
+	const check = (ok, what) => {
+		console.log(`${ok ? 'ok  ' : 'FAIL'} integrity: ${what}`);
+		if (!ok) failures.push(`integrity: ${what}`);
+	};
+	const offline = JSON.parse(readFileSync(join(build, 'offline.json'), 'utf8'));
+	const index = readFileSync(join(build, 'index.html'), 'utf8');
+	// A pack file of some size, so its check spans many chunks.
+	// page.waitForFunction does not await an async predicate: a Promise is truthy.
+	const until = async (predicate, timeout) => {
+		for (const end = Date.now() + timeout; Date.now() < end; await new Promise((r) => setTimeout(r, 200))) if (await predicate().catch(() => false)) return true;
+		return false;
+	};
+	const pack = Object.values(offline.packs)
+		.flat()
+		.filter((f) => f.size <= 4 * 1048576)
+		.sort((a, b) => b.size - a.size)[0];
+	try {
+		await page.goto(`http://127.0.0.1:${port}/`);
+		await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30_000 });
+		if (pack) {
+			// Fetched through the worker, which caches it once it is checked.
+			await page.evaluate((path) => fetch(path).then((r) => r.arrayBuffer()), pack.path);
+			const cached = await until(() => page.evaluate(async (path) => !!(await (await caches.open('packs')).match(new URL(path, location.href).href)), pack.path), 30_000);
+			check(cached, `the service worker caches ${pack.path} when it is fetched`);
+		}
+
+		const planted = await page.evaluate(async ({ packPath }) => {
+			const code = `onmessage = async ({ data: { origin, packPath } }) => {
+				const app = await caches.open((await caches.keys()).find((k) => k.startsWith('app-')));
+				const page = '<!doctype html><title>planted</title><p id="planted">a program wrote this page</p>';
+				const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+				await app.put(origin + '/', new Response(page, { headers: { 'Content-Type': 'text/html' } }));
+				const manifest = { version: 'planted', shell: [{ path: '', size: page.length, transfer: page.length, hash: await sha(page) }], lazy: [], packs: {} };
+				await app.put(origin + '/offline.json', new Response(JSON.stringify(manifest), { headers: { 'Content-Type': 'application/json' } }));
+				if (packPath) {
+					const packs = await caches.open('packs');
+					const real = await packs.match(origin + '/' + packPath);
+					const bytes = new Uint8Array(await real.arrayBuffer());
+					bytes[bytes.length >> 1] ^= 1;
+					await packs.put(origin + '/' + packPath, new Response(bytes, { headers: real.headers }));
+				}
+				postMessage('planted');
+			};`;
+			const worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
+			const answer = new Promise((resolve, reject) => {
+				worker.onmessage = (e) => resolve(e.data);
+				worker.onerror = (e) => reject(new Error(e.message));
+			});
+			worker.postMessage({ origin: location.origin, packPath });
+			return answer;
+		}, { packPath: pack?.path ?? null });
+		check(planted === 'planted', 'a dedicated worker on the origin rewrote index.html, offline.json and a pack file in the caches');
+
+		// The next visit: a service worker that has stopped since, so nothing it remembered is in play.
+		const cdp = await context.newCDPSession(page);
+		await cdp.send('ServiceWorker.enable');
+		await cdp.send('ServiceWorker.stopAllWorkers');
+		await page.reload();
+		await page.locator('header select').waitFor({ timeout: 30_000 }).catch(() => undefined); // the planted page has none: said below
+		const shown = await page.evaluate(() => ({ title: document.title, planted: document.querySelector('#planted') !== null, controlled: navigator.serviceWorker.controller !== null }));
+		check(!shown.planted && shown.title !== 'planted' && shown.controlled, `a program cannot change what the app serves on the next visit: index.html (title ${JSON.stringify(shown.title)}, controlled ${shown.controlled})`);
+		const stored = await until(
+			() =>
+				page.evaluate(async (expected) => {
+					const app = await caches.open((await caches.keys()).find((k) => k.startsWith('app-')));
+					return (await (await app.match(new URL('./', location.href).href))?.text()) === expected;
+				}, index),
+			10_000,
+		);
+		check(stored && !shown.planted, `rewriting offline.json and index.html together makes the next navigation come from the network (the app cache holds the build's page again: ${stored})`);
+		const manifest = await page.evaluate(async () => (await (await fetch('offline.json')).json()).version);
+		check(manifest === offline.version, `the planted offline.json is not served either (version ${manifest})`);
+
+		if (pack) {
+			const result = await page.evaluate(async (path) => {
+				const digest = async () => {
+					const bytes = await (await fetch(path)).arrayBuffer();
+					return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
+				};
+				const first = await digest().catch((e) => `failed: ${e}`);
+				const second = await digest().catch((e) => `failed: ${e}`);
+				return { first, second };
+			}, pack.path);
+			check(result.first !== result.second || result.first === pack.hash, `the changed ${pack.path} never loads (first load: ${result.first.slice(0, 80)})`);
+			check(result.second === pack.hash, `a program cannot change what the app serves on the next visit: a pack file (${pack.path} loads as the build's: ${result.second.slice(0, 80)})`);
+		}
+	} catch (e) {
+		check(false, `${e instanceof Error ? e.message.split('\n')[0] : e}`);
+	} finally {
+		await context.close();
+	}
 }
 
 /**
