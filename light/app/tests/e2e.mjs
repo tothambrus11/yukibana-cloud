@@ -437,7 +437,8 @@ async function cppSanitizers(page, check, requests) {
 
 	await resetProject(page);
 	const reset = await page.waitForFunction(() => !/-fsanitize/.test(globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue() ?? '-fsanitize'), null, { timeout: 15_000 }).then(() => true, () => false);
-	check(reset && !/San/.test((await summary.textContent()) ?? ''), 'Reset project turns the sanitizers off again');
+	const off = (await summary.textContent()) ?? '';
+	check(reset && !/San/.test(off) && /(^| · )no sanitizers( · |$)/.test(off), `Reset project turns the sanitizers off again, and the chip says so (${JSON.stringify(off)})`);
 }
 
 /**

@@ -24,9 +24,10 @@ export function openBuildSettings(from: HTMLElement | null): void {
 
 /**
  * The build in one line: the C++ target's short name, the optimisation
- * level, the sanitizers on, and on a Linux target the run options that are
- * not the defaults (`x86-64 · -O2 · ASan · 2 CPUs`). Empty for a language
- * without build settings.
+ * level, the sanitizers on (`no sanitizers` for C or C++ with none), and
+ * on a Linux target the run options that are not the defaults
+ * (`x86-64 · -O2 · ASan · 2 CPUs`). Empty for a language without build
+ * settings.
  */
 export function buildSummary(workspace: Pick<Workspace, 'target' | 'optimization' | 'sanitizers' | 'runOptions'>): string {
 	const parts: string[] = [];
@@ -35,7 +36,9 @@ export function buildSummary(workspace: Pick<Workspace, 'target' | 'optimization
 	const o = workspace.optimization;
 	if (o) parts.push(o.kind === 'other' ? o.flag : o.level.flag);
 	const s = workspace.sanitizers;
-	if (s?.address || s?.undefined) parts.push(s.address && s.undefined ? 'ASan + UBSan' : s.address ? 'ASan' : 'UBSan');
+	// A C or C++ project says so when none is on, so that a run without
+	// them is a choice the summary shows (Ambrus asked for it).
+	if (s) parts.push(s.address && s.undefined ? 'ASan + UBSan' : s.address ? 'ASan' : s.undefined ? 'UBSan' : 'no sanitizers');
 	if (target?.kind === 'target' && target.target.runtime === 'linux') {
 		const r = workspace.runOptions;
 		if (r.emulation === 'user') parts.push('user mode');
