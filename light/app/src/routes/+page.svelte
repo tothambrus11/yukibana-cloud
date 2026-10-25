@@ -246,8 +246,8 @@
 	<button class="problems-button" onclick={() => workspace.showPanel('problems')} title="Show the problems">
 		<span class="sr-only">{errors} {errors === 1 ? 'error' : 'errors'}, {warnings} {warnings === 1 ? 'warning' : 'warnings'}</span>
 		<span class="counts" aria-hidden="true">
-			<span title="Errors"><span class="dot error">⊗</span>{errors}</span>
-			<span title="Warnings"><span class="dot warning">⚠</span>{warnings}</span>
+			<span title="Errors"><span class="dot error"></span>{errors}</span>
+			<span title="Warnings"><span class="dot warning"></span>{warnings}</span>
 		</span>
 	</button>
 </footer>
@@ -520,11 +520,18 @@
 		font-size: 0.85rem;
 		line-height: 1;
 	}
+	/* The marks are drawn, not written, so each count's text is its number alone (what the e2e suites read). */
 	.dot.error {
 		color: var(--red-high);
 	}
+	.dot.error::before {
+		content: '⊗';
+	}
 	.dot.warning {
 		color: var(--orange-high);
+	}
+	.dot.warning::before {
+		content: '⚠';
 	}
 	.counts {
 		display: flex;
