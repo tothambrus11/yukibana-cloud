@@ -57,6 +57,16 @@ and in Chromium with the real compiler (`tests/e2e.mjs`):
 - a snippet waiting on stdin tells a queued snippet why it waits, and
   stopping it keeps the compiler worker.
 
+The docs page is served without cross-origin isolation everywhere: by
+`tests/e2e.mjs`, which serves it from an origin that sends no COOP/COEP
+headers (as GitHub Pages serves the Hylo site), and by `npm run dev` and
+`npm run preview`, which send them for every response but the docs page's.
+Only `fixture.html`, whose reading program needs a SharedArrayBuffer, is
+isolated. The runner declares that it needs no isolation, so that is the
+page it is checked on: a page served isolated once hid a runner that named
+the `SharedArrayBuffer` global, which a page that is not isolated does not
+define, and failed every run there.
+
 `tests/hylo-runner.test.mjs` covers the runner's own rules: diagnostics,
 traps, a cancel while compiling, a compiler that does not load, requests it
 does not serve.

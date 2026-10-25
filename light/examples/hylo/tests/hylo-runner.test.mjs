@@ -5,7 +5,7 @@
 //   node --test tests/hylo-runner.test.mjs      (npm test runs every file)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CANCELLED_EXIT, COMPILER_LABEL, HyloRunner, TRAPPED_EXIT, UNSUPPORTED_EXIT, sourcesOf } from '../src/hylo-runner.ts';
+import { CANCELLED_EXIT, COMPILER_LABEL, HyloRunner, TRAPPED_EXIT, UNSUPPORTED_EXIT, inputOf, sourcesOf } from '../src/hylo-runner.ts';
 import { compiled, diagnostic, workshop } from './fakes.mjs';
 
 /** A runner whose compiler has loaded, and everything around it. */
@@ -245,4 +245,31 @@ test('the files the compiler is given are the Hylo files only, entry first, what
 		{ name: 'a.hylo', contents: 'a' },
 		{ name: 'b.hylo', contents: 'b' },
 	]);
+});
+
+test('a snippet runs on a page that is not cross-origin isolated, where the browser defines no SharedArrayBuffer', (t) => {
+	const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'SharedArrayBuffer');
+	delete globalThis.SharedArrayBuffer;
+	t.after(() => Object.defineProperty(globalThis, 'SharedArrayBuffer', descriptor));
+	assert.equal(typeof SharedArrayBuffer, 'undefined', 'the test stands for a page without the global');
+	const { shop, host, runner, compiler } = loadedRunner();
+	runner.receive(run(undefined, null));
+	compiler.say(compiled(compiler.last));
+	const program = shop.programs[0];
+	assert.equal(program.last.input, null, 'the program worker is told there is no input buffer');
+	program.say({ type: 'ran', id: program.last.id, execution: { exitCode: 42, stdout: '', stderr: '' } });
+	assert.deepEqual(host.posted, [
+		{ type: 'phase', text: 'Compiling' },
+		{ type: 'phase', text: 'Running' },
+		{ type: 'exit', code: 42, reusable: true },
+	]);
+});
+
+test('an input buffer is passed on only when it is a SharedArrayBuffer, and anything else is no input', () => {
+	assert.equal(inputOf(null), null);
+	assert.equal(inputOf(undefined), null);
+	assert.equal(inputOf(new ArrayBuffer(16)), null);
+	assert.equal(inputOf({ byteLength: 16 }), null);
+	const buffer = new SharedArrayBuffer(16);
+	assert.equal(inputOf(buffer), buffer);
 });

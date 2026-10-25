@@ -139,6 +139,21 @@ export function sourcesOf(files: Readonly<Record<string, string>>, entry: string
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
 
+/**
+ * The page's input buffer from a `run` message, or null where it sent none.
+ *
+ * A page that is not cross-origin isolated, which is every page this
+ * runner declares it supports (`crossOriginIsolated: 'no'`) and how the
+ * Hylo site is served, has no `SharedArrayBuffer` global at all, so naming
+ * it there throws. Once an `instanceof SharedArrayBuffer` here failed every
+ * run on such a page with a ReferenceError, while every test and served
+ * mode was isolated. The global is therefore asked about before it is
+ * named, as the runtime's transport does.
+ */
+export function inputOf(stdin: unknown): SharedArrayBuffer | null {
+	return typeof SharedArrayBuffer === 'function' && stdin instanceof SharedArrayBuffer ? stdin : null;
+}
+
 /** One Hylo runner: see the module's comment. */
 export class HyloRunner {
 	readonly #host: RunnerHost;
@@ -199,7 +214,7 @@ export class HyloRunner {
 			return;
 		}
 		const texts = Object.fromEntries(Object.entries(files).filter((pair): pair is [string, string] => typeof pair[1] === 'string'));
-		const input = message['stdin'] instanceof SharedArrayBuffer ? message['stdin'] : null;
+		const input = inputOf(message['stdin']);
 		const run: Run = { id: this.#nextId++, stage: 'compiling', input };
 		this.#run = run;
 		if (this.#ready) this.#post({ type: 'phase', text: 'Compiling' });

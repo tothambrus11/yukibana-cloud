@@ -6,9 +6,15 @@
 //
 //   npm run build && npm run test:e2e
 //
-// Serves dist/ itself, cross-origin isolated and with `no-store`, so that
-// every compiler the page loads is a request the server counts: a second
-// compiler worker would fetch hylo-wasm.wasm a second time. Chromium is
+// Serves dist/ itself with `no-store`, so that every compiler the page
+// loads is a request the server counts: a second compiler worker would
+// fetch hylo-wasm.wasm a second time. It serves it twice: the docs page
+// from an origin that sends no isolation headers, as GitHub Pages serves
+// the Hylo site and as the Hylo runner declares it needs
+// (crossOriginIsolated: 'no'), and the fixture page from one that is
+// cross-origin isolated, which its reading stand-in needs. A docs page
+// served isolated here once hid a runner that failed every run without
+// isolation. Chromium is
 // $CHROMIUM, or the one this repository's images install. Exits non-zero
 // naming every check that failed.
 import { existsSync, readFileSync } from 'node:fs';
@@ -36,26 +42,37 @@ const KINDS = [
 ];
 const count = (kind) => counts.get(kind) ?? 0;
 
-const server = createServer((request, response) => {
-	const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
-	const file = normalize(join(dist, path.endsWith('/') ? `${path}index.html` : path));
-	if (!file.startsWith(dist + sep) || !existsSync(file)) {
-		response.writeHead(404).end();
-		return;
-	}
-	for (const [kind, pattern] of KINDS) if (pattern.test(path)) counts.set(kind, count(kind) + 1);
-	response.writeHead(200, {
-		'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
-		'Cache-Control': 'no-store',
-		'Cross-Origin-Opener-Policy': 'same-origin',
-		'Cross-Origin-Embedder-Policy': 'require-corp',
-		'Cross-Origin-Resource-Policy': 'same-origin',
+/**
+ * A server of dist/ on its own port, counting requests by kind; with
+ * `isolated`, every response carries the headers that make a page
+ * cross-origin isolated, and without it none does.
+ */
+async function serve(isolated) {
+	const server = createServer((request, response) => {
+		const path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
+		const file = normalize(join(dist, path.endsWith('/') ? `${path}index.html` : path));
+		if (!file.startsWith(dist + sep) || !existsSync(file)) {
+			response.writeHead(404).end();
+			return;
+		}
+		for (const [kind, pattern] of KINDS) if (pattern.test(path)) counts.set(kind, count(kind) + 1);
+		response.writeHead(200, {
+			'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream',
+			'Cache-Control': 'no-store',
+			...(isolated
+				? { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp', 'Cross-Origin-Resource-Policy': 'same-origin' }
+				: {}),
+		});
+		response.end(readFileSync(file));
 	});
-	response.end(readFileSync(file));
-});
-await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
-const address = server.address();
-const origin = `http://127.0.0.1:${typeof address === 'object' && address !== null ? address.port : 0}`;
+	await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
+	const address = server.address();
+	return { server, origin: `http://127.0.0.1:${typeof address === 'object' && address !== null ? address.port : 0}` };
+}
+/** Where the docs page is served: as GitHub Pages serves it, without isolation. */
+const plain = await serve(false);
+/** Where the fixture page is served: cross-origin isolated, so its programs can read input. */
+const isolated = await serve(true);
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? '/opt/pw-browsers/chromium' });
 const failures = [];
@@ -100,7 +117,12 @@ try {
 	const page = await browser.newPage();
 	const pageErrors = [];
 	page.on('pageerror', (error) => pageErrors.push(error.message));
-	await page.goto(`${origin}/index.html`);
+	await page.goto(`${plain.origin}/index.html`);
+
+	await check('the docs page is served as the Hylo site is, not cross-origin isolated and with no SharedArrayBuffer', async () => {
+		const seen = await page.evaluate(() => ({ isolated: crossOriginIsolated, buffer: typeof SharedArrayBuffer }));
+		expect(!seen.isolated && seen.buffer === 'undefined', `crossOriginIsolated ${seen.isolated}, typeof SharedArrayBuffer ${seen.buffer}`);
+	});
 
 	await check('a page creates no runner and fetches no compiler before its first Run', async () => {
 		await page.waitForTimeout(500);
@@ -169,7 +191,7 @@ try {
 
 	counts.clear();
 	const fixture = await browser.newPage();
-	await fixture.goto(`${origin}/fixture.html`);
+	await fixture.goto(`${isolated.origin}/fixture.html`);
 
 	await check('a snippet waiting on stdin tells a queued snippet why it waits, and stopping it keeps the compiler worker', async () => {
 		expect(await fixture.evaluate(() => crossOriginIsolated), 'the fixture page is not cross-origin isolated, so programs cannot read input');
@@ -195,7 +217,8 @@ try {
 	await fixture.close();
 } finally {
 	await browser.close();
-	server.close();
+	plain.server.close();
+	isolated.server.close();
 }
 
 if (failures.length > 0) {
