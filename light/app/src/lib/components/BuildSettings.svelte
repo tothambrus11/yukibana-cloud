@@ -157,7 +157,7 @@
 
 <style>
 	.build-chip {
-		max-width: 16rem;
+		max-width: 19rem;
 	}
 	.build-chip svg {
 		fill: none;
