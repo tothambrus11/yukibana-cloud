@@ -59,6 +59,11 @@ interface FromPage {
 const isFromPage = (data: unknown): data is FromPage => typeof data === 'object' && data !== null && (data as { yukibana?: unknown }).yukibana === 'preview';
 
 export class Preview {
+	/** The panel's element, while mounted. */
+	private host: HTMLElement | null = null;
+	/** Whether dockview has placed the panel since it mounted: no frame is made before (`render`). */
+	private placed = false;
+	/** The iframe of the page shown: a new one for every page (see `render`). */
 	private frame: HTMLIFrameElement | null = null;
 	private placeholder: HTMLElement | null = null;
 	private worker: Worker | null = null;
@@ -89,28 +94,50 @@ export class Preview {
 		return this.worker !== null;
 	}
 
-	/** Puts the iframe into the panel's element. */
+	/** Shows the preview in the panel's element. */
 	mount(element: HTMLElement): void {
-		const frame = document.createElement('iframe');
-		frame.className = 'preview-frame';
-		frame.title = 'Preview';
-		// Scripts, forms and alert() run; same-origin, popups and top navigation do not.
-		frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
-		frame.referrerPolicy = 'no-referrer';
 		const placeholder = document.createElement('p');
 		placeholder.className = 'preview-empty';
 		placeholder.textContent = 'Press Run (Ctrl+Enter) to show the page here. It reloads as you edit.';
-		element.append(placeholder, frame);
-		this.frame = frame;
+		element.append(placeholder);
+		this.host = element;
 		this.placeholder = placeholder;
-		this.render(this.html);
+		this.placed = false;
+		// dockview positions the panel's overlay in an animation frame of its
+		// own; two frames on, it has, and the page (shown already, or arriving
+		// meanwhile) gets its frame. A frame made before that stays blank (`render`).
+		requestAnimationFrame(() =>
+			requestAnimationFrame(() => {
+				if (this.host !== element) return;
+				this.placed = true;
+				this.render(this.html);
+			}),
+		);
 	}
 
 	unmount(): void {
 		this.frame?.remove();
 		this.placeholder?.remove();
+		this.host = null;
+		this.placed = false;
 		this.frame = null;
 		this.placeholder = null;
+	}
+
+	/** A new iframe for a page, sandboxed. */
+	private createFrame(): HTMLIFrameElement {
+		const frame = document.createElement('iframe');
+		frame.className = 'preview-frame';
+		frame.title = 'Preview';
+		// Scripts, forms and alert() run; same-origin, popups and top navigation do not.
+		frame.setAttribute('sandbox', 'allow-scripts allow-forms allow-modals');
+		// The motion sensors, for p5.js's deviceMoved and rotationX and the
+		// like: p5 listens for devicemotion and deviceorientation in every
+		// sketch, which the frame's default permissions policy refuses (a
+		// console violation per sketch, and the events never come).
+		frame.allow = 'accelerometer; gyroscope; magnetometer';
+		frame.referrerPolicy = 'no-referrer';
+		return frame;
 	}
 
 	/**
@@ -198,11 +225,27 @@ export class Preview {
 		this.render(page.html);
 	}
 
+	/**
+	 * Shows `html` (null: no page) in a new iframe, put into the panel with
+	 * its document already set. The frame used to be made once, when the
+	 * panel mounted, and given each page as a new `srcdoc`; in Chrome and
+	 * Dia as people run them (not under test automation, whose flags hide
+	 * it) that frame often stayed white for good: the page ran, its canvas
+	 * drew, but nothing reached the screen. The sandboxed page is an
+	 * out-of-process frame, and that one was made inside dockview's overlay
+	 * (a composited layer) before the overlay was positioned and shown. A
+	 * frame made afterwards, in the same place, is painted, so each page
+	 * gets a new one, which is what a reload amounts to anyway.
+	 */
 	private render(html: string | null): void {
 		this.html = html;
 		if (this.placeholder) this.placeholder.hidden = html !== null;
-		if (!this.frame) return;
-		this.frame.hidden = html === null;
-		this.frame.srcdoc = html ?? '';
+		this.frame?.remove();
+		this.frame = null;
+		if (!this.host || !this.placed || html === null) return;
+		const frame = this.createFrame();
+		frame.srcdoc = html;
+		this.host.append(frame);
+		this.frame = frame;
 	}
 }

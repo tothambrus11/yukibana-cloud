@@ -243,11 +243,21 @@ body {
 	display: flex;
 	flex-direction: column;
 }
+/*
+ * The page is shown as a browser tab would show it, whatever the app's
+ * theme: inside the frame, prefers-color-scheme is the system's, so a page
+ * with `color-scheme: light dark` (the sample's) picks the system's scheme,
+ * and the frame's background is that scheme's Canvas. A page without
+ * `color-scheme` is light, and the browser paints its canvas white itself.
+ * The frame used to be white: in the dark theme on a dark system, the
+ * sample's text was white on white.
+ */
 .preview-frame {
 	flex: 1;
 	width: 100%;
 	border: 0;
-	background: #fff;
+	color-scheme: light dark;
+	background: Canvas;
 }
 .preview-empty {
 	margin: 1rem;

@@ -1032,15 +1032,24 @@ async function previewing(page, check) {
 	check(reloaded && mark === undefined, `a TypeScript edit reloads the page (button says Edited: ${reloaded}, mark after: ${mark})`);
 
 	// Run again with the Preview already in front loads the page once, not
-	// twice: re-activating the panel used to take the iframe out of the DOM
-	// and put it back (a reload) just before the new page arrived (another),
-	// and Chrome sometimes left the frame white.
+	// twice, in one new iframe: re-activating the panel used to take the
+	// iframe out of the DOM and put it back (a reload) just before the new
+	// page arrived (another), and Chrome sometimes left the frame white. Each
+	// page now gets a frame of its own (preview.ts `render`), and no frame
+	// is ever moved.
 	await page.evaluate(() => {
-		window.yukibanaDetached = 0;
+		window.yukibanaFrames = { added: 0, moved: 0 };
+		const removed = new WeakSet();
+		const frames = (n) => (n instanceof Element ? (n.matches('iframe.preview-frame') ? [n] : [...n.querySelectorAll('iframe.preview-frame')]) : []);
 		new MutationObserver((records) => {
-			for (const r of records)
-				for (const n of r.removedNodes)
-					if (n instanceof Element && (n.matches('iframe.preview-frame') || n.querySelector('iframe.preview-frame'))) window.yukibanaDetached++;
+			for (const r of records) {
+				for (const n of r.removedNodes) for (const f of frames(n)) removed.add(f);
+				for (const n of r.addedNodes)
+					for (const f of frames(n)) {
+						window.yukibanaFrames.added++;
+						if (removed.has(f)) window.yukibanaFrames.moved++;
+					}
+			}
 		}).observe(document.body, { childList: true, subtree: true });
 	});
 	const readies = async () => ((await terminal.textContent()) ?? '').split('page ready').length - 1;
@@ -1052,8 +1061,8 @@ async function previewing(page, check) {
 		await page.waitForTimeout(1_000);
 		counts.push(await readies());
 	}
-	const detached = await page.evaluate(() => window.yukibanaDetached);
-	check(detached === 0 && counts.every((c) => c === 1), `each Run loads the preview once, without moving its iframe (iframe detached ${detached} times; "page ready" per run: ${counts.join(', ')})`);
+	const { added, moved } = await page.evaluate(() => window.yukibanaFrames);
+	check(added === runs && moved === 0 && counts.every((c) => c === 1), `each Run loads the preview once, in a new iframe, and moves none (${added} frames added, ${moved} moved; "page ready" per run: ${counts.join(', ')})`);
 }
 
 /**
