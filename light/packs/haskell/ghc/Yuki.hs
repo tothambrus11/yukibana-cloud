@@ -932,14 +932,17 @@ yukiOutline hf =
 
 -- | @binds file@: the local bindings of a file at its last check that have
 -- no type signature, with the types GHC inferred, for the server's inlay
--- hints as HLS shows them: a let or where binding ("let"), and a variable
--- bound by a pattern with a right-hand side ("bind": @x <- e@ in a do
--- block, a guard or a comprehension, or a let or where pattern binding).
--- Each is {name, kind, sel (the name where it is bound, on one line),
--- type}. A binding with a signature, a top-level one (its type is the
--- type lens's), a function's or a lambda's or a case alternative's
--- argument (bound by a match, with no right-hand side of its own), and a
--- name GHC made up are not listed.
+-- hints as HLS shows them: a let or where binding ("let"); a variable
+-- bound by a pattern with a right-hand side of its own ("bind": @x <- e@
+-- in a guard or a comprehension, a let or where pattern binding); and a
+-- variable bound by a match ("arg": a function's, a lambda's or a case
+-- alternative's argument). A variable a do block binds with @<-@ is an
+-- "arg" too: GHC (since 9.10) type checks a do block as the @>>=@ chain
+-- it expands to, @e >>= \x -> ...@, and the .hie file records that
+-- lambda, at the statement's places; the server tells it apart by the
+-- text (an @<-@ after it). Each is {name, kind, sel (the name where it is
+-- bound, on one line), type}. A binding with a signature, a top-level one
+-- (its type is the type lens's), and a name GHC made up are not listed.
 yukiLocalBinds :: State -> FilePath -> IO JsonDoc
 yukiLocalBinds st f =
   lookupHie st f >>= \case
@@ -977,6 +980,7 @@ yukiLocalBinds st f =
     kindOf = \case
       ValBind RegularBind (LocalScope _) (Just _) -> Just "let"
       PatternBind _ _ (Just _) -> Just "bind"
+      PatternBind _ _ Nothing -> Just "arg"
       _ -> Nothing
 
 -- * Imports

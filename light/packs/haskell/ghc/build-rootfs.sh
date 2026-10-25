@@ -166,6 +166,6 @@ log "compressed siblings"
 # window: 230 MB take minutes, so here rather than in the pack's build.sh).
 if command -v brotli >/dev/null; then brotli -q 11 -w 24 -k -f -o "$OUT/rootfs.tar.br" "$OUT/rootfs.tar"; fi
 gzip -9 -n -k -f "$OUT/rootfs.tar"
-(cd "$OUT" && sha256sum $(ls | grep -v SHA256SUMS) > SHA256SUMS)
+(cd "$OUT" && for f in *; do [ "$f" = SHA256SUMS ] || sha256sum "$f"; done > SHA256SUMS)
 cat "$OUT/SHA256SUMS"
 ls -la "$OUT"
