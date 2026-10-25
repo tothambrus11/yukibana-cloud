@@ -486,6 +486,21 @@ test("a pack's toolchain key report names the file that changed it", async () =>
     assert.notEqual(baseKey, await key());
 });
 
+test('a key report names a new input nobody has committed yet, as its key does', async () => {
+    const base = git('rev-parse', 'HEAD');
+    const baseKey = await key();
+    put('light/packs/tool/src/new.c', 'int helper(void) { return 1; }\n');
+    try {
+        assert.notEqual(await key(), baseKey);
+        const r = await store('toolchain-key-report', 'tool', base);
+        assert.equal(r.code, 0, r.err);
+        assert.match(r.out, /^A\tlight\/packs\/tool\/src\/new\.c$/m);
+        assert.equal(r.out.trim().split('\n').at(-1), 'changed');
+    } finally {
+        clean();
+    }
+});
+
 test('a key report against a commit the clone does not have says so', async () => {
     const missing = 'f'.repeat(40);
     const r = await store('toolchain-key-report', 'tool', missing);

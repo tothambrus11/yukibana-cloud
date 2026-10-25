@@ -317,6 +317,14 @@ toolchain_key_report() {
   key="$(toolchain_key "$pack")"
   echo "toolchain of $pack against $base:"
   out="$(git -C "$TOOLCHAIN_ROOT" diff --name-status "$base" -- "${specs[@]}")"
+  # git diff leaves out untracked files, which are inputs all the same (the
+  # key counts them): each is named as added, or the report would say
+  # `unchanged` of a key that changed.
+  local untracked path
+  untracked="$(git -C "$TOOLCHAIN_ROOT" ls-files -o --exclude-standard -- "${specs[@]}")"
+  if [ -n "$untracked" ]; then
+    while IFS= read -r path; do out+="${out:+$'\n'}A"$'\t'"$path"; done <<<"$untracked"
+  fi
   [ -z "$out" ] || printf '%s\n' "$out"
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
   local dir="light/packs/$pack"
