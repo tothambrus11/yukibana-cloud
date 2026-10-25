@@ -497,7 +497,9 @@ async function modes(context) {
  * to when the Assembly view is opened beside the editors (once it reset
  * both to the mode's defaults) and when it is closed again (once its room
  * was shared out among the whole row), in the medium and the wide
- * arrangement.
+ * arrangement. And the views keep the width they were dragged to while
+ * LLVM IR opens as a tab beside Assembly and closes again: closing one of
+ * two views once put both back to 40% of the editors' row.
  */
 async function dragged(context, viewports) {
 	const page = await context.newPage();
@@ -539,15 +541,38 @@ async function dragged(context, viewports) {
 			await showView(page, 'asm');
 			await settle(page);
 			const after = await sizes();
+			// The views' group and the editors' group to its left, by where they are on the screen.
+			const row = () =>
+				page.evaluate(() => {
+					// Whichever view is in front: dockview takes the one behind out of the page.
+					const views = document.querySelector('.yk-view')?.closest('.dv-groupview')?.getBoundingClientRect();
+					if (!views) return null;
+					const editors = [...document.querySelectorAll('.dv-groupview')].map((g) => g.getBoundingClientRect()).find((r) => Math.abs(r.right - views.left) <= 2 && r.top < views.bottom && r.bottom > views.top);
+					return { left: views.left, y: views.top + views.height / 2, views: Math.round(views.width), editors: editors ? Math.round(editors.width) : undefined };
+				});
+			const opened = await row();
+			if (!opened) throw new Error('no views group');
+			await drag(opened.left, opened.y, -150, 0);
+			const widened = await row();
+			await showView(page, 'ir');
+			await settle(page);
+			const both = await row();
+			await toggleView(page, 'ir');
+			await settle(page);
+			const one = await row();
 			await toggleView(page, 'asm');
 			await settle(page);
 			const closed = await sizes();
 			const terminalOf = (v) => (wide ? v.terminal?.w : v.terminal?.h);
 			const near = (a, b) => a !== undefined && b !== undefined && Math.abs(a - b) <= 2;
 			const kept = (a, b) => near(a.explorer?.w, b.explorer?.w) && near(terminalOf(a), terminalOf(b));
+			const keptRow = (a, b) => a && b && near(a.views, b.views) && near(a.editors, b.editors);
 			if (!kept(before, after)) fail(viewport.name, 'dragged', 'dock', `opening Assembly moved the dragged groups: Explorer ${before.explorer?.w} → ${after.explorer?.w} px, terminal ${terminalOf(before)} → ${terminalOf(after)} px`);
+			else if (!widened || widened.views < opened.views + 100) fail(viewport.name, 'dragged', 'dock', `dragging the views' edge did not widen them: ${opened.views} → ${widened?.views} px`);
+			else if (!keptRow(widened, both)) fail(viewport.name, 'dragged', 'dock', `opening LLVM IR beside Assembly moved the dragged views: views ${widened.views} → ${both?.views} px, editors ${widened.editors} → ${both?.editors} px`);
+			else if (!keptRow(widened, one)) fail(viewport.name, 'dragged', 'dock', `closing LLVM IR, with Assembly still open, moved the dragged views: views ${widened.views} → ${one?.views} px, editors ${widened.editors} → ${one?.editors} px`);
 			else if (!kept(before, closed)) fail(viewport.name, 'dragged', 'dock', `closing Assembly moved the dragged groups: Explorer ${before.explorer?.w} → ${closed.explorer?.w} px, terminal ${terminalOf(before)} → ${terminalOf(closed)} px`);
-			else console.log(`ok   ${viewport.name} dragged: opening and closing Assembly keep the Explorer at ${after.explorer?.w} px and the terminal at ${terminalOf(after)} px`);
+			else console.log(`ok   ${viewport.name} dragged: opening and closing Assembly keep the Explorer at ${after.explorer?.w} px and the terminal at ${terminalOf(after)} px; opening and closing LLVM IR beside it keep the views at ${one.views} px`);
 		}
 	} catch (e) {
 		fail('-', 'dragged', '-', `the scenario stopped: ${e instanceof Error ? e.message.split('\n')[0] : e}`);

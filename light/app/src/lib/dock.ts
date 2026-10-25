@@ -739,12 +739,17 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			const view = viewOfPanel(removed.id);
 			if (view) {
 				workspace.explorer?.closed(view);
-				// The view's group goes once this returns, and dockview shares its room out among the whole row, the Explorer and the
-				// terminal's column too (on a wide screen they grew from 240 and 520 px to 640 each). They are given back the sizes
-				// they have now, so the editors take the room, as opening a view keeps them (showView).
+				// When the view was its group's last panel, the group goes once this returns, and dockview shares its room out among
+				// the whole row, the Explorer and the terminal's column too (on a wide screen they grew from 240 and 520 px to 640
+				// each). They are given back the sizes they have now, so the editors take the room, as opening a view keeps them
+				// (showView). When the group stays, because the other view is a tab of it, nothing moved and nothing is resized:
+				// applySizes would put the views back to 40% of the row, and this once lost the width the person had dragged them to.
 				if (mode !== 'narrow' && !arranging) {
 					const before = snapshot();
-					queueMicrotask(() => applySizes(before));
+					const group = removed.group;
+					queueMicrotask(() => {
+						if (!dock.groups.includes(group)) applySizes(before);
+					});
 				}
 			}
 			report();
