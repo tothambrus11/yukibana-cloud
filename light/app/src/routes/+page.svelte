@@ -10,6 +10,7 @@
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
+	import Licenses from '../lib/components/Licenses.svelte';
 	import Sanitizers from '../lib/components/Sanitizers.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
@@ -22,6 +23,7 @@
 	let dockElement: HTMLElement;
 	let dock: ReturnType<typeof createDock> | undefined;
 	let offlineDialog = $state<Offline>();
+	let licensesDialog = $state<Licenses>();
 	/** Set when a new build is installed and waiting: activates it and reloads. */
 	let applyUpdate = $state<(() => void) | null>(null);
 
@@ -214,6 +216,7 @@
 <main class="dock" bind:this={dockElement}></main>
 
 <Offline bind:this={offlineDialog} />
+<Licenses bind:this={licensesDialog} />
 
 <footer class="status-bar">
 	<span class="state">
@@ -239,6 +242,7 @@
 	<span class="counts">
 		<span title="Errors"><span class="dot error"></span>{errors}</span>
 		<span title="Warnings"><span class="dot warning"></span>{warnings}</span>
+		<button class="licenses-link" onclick={() => licensesDialog?.show()} title="The licences of the app and of each language's compilers and tools">Licences</button>
 	</span>
 </footer>
 
@@ -376,6 +380,18 @@
 	.dock {
 		flex: 1;
 		min-height: 0;
+	}
+	.licenses-link {
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+	.licenses-link:hover {
+		color: var(--white);
+		text-decoration: underline;
 	}
 	.status-bar {
 		display: flex;

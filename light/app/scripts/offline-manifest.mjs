@@ -1,7 +1,8 @@
 // Writes build/offline.json: every file the app can fetch, sorted into what
 // the service worker precaches when it installs (`shell`), what the app
 // fetches only when a language needs it (`lazy`: Monaco's language services,
-// their workers, grammars, JSON schemas) and each pack's files (`packs`).
+// their workers, grammars, JSON schemas, and licenses/, which the Licences
+// dialog opens) and each pack's files (`packs`).
 // Every entry has its size on disk, its transfer size (its .br sibling's
 // when there is one, which is what serve.py and a good host send) and the
 // sha256 of its bytes.
@@ -83,7 +84,8 @@ const lazyFiles = new Set([...closure(lazyRoots, true)].filter((f) => !startupFi
 const isLazy = (path) =>
 	lazyFiles.has(path) ||
 	(path.startsWith('_app/immutable/workers/') && !/\/editor\.worker-/.test(path)) ||
-	path.startsWith('schemas/');
+	path.startsWith('schemas/') ||
+	path.startsWith('licenses/');
 
 const shell = [];
 const lazy = [];
