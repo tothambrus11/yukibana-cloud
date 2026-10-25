@@ -245,6 +245,8 @@ no DOM and no npm packages except fast-check, for property-based tests
 | Java | javac (OpenJDK 25u) compiled to WebAssembly GC by TeaVM 0.16.0 (teavm-javac), with our language service on its trees | the same javac, then TeaVM linking the program to WebAssembly GC in the browser; JUnit Jupiter 5.14 | 2.0 MB | 2.3 MB (TeaVM's class library) |
 | Kotlin | kotlinc 2.4.21 (K2) compiled to WebAssembly GC by GraalVM Web Image, for diagnostics; ours on tree-sitter-kotlin 1.1.0 for the rest | the same kotlinc, compiling for Kotlin/Wasm (WASI), run in a worker; kotlin.test | 23.0 MB | 3 KB (the same files) |
 | Haskell | GHC 9.14 (GHC's wasm backend) through the GHC API, our LSP layer on its diagnostics and `.hie` files; hlint 3.10 and ormolu 0.8.0.2 | GHC's bytecode interpreter, as `runghc` (one session across runs, as GHCi); hspec 2.11 and QuickCheck 2.19 | 33.2 MB; hlint 3.6 MB after the first check, ormolu 3.3 MB on the first Format | 3 KB (the same files) |
+| Go | ours, on go/types and go/doc from Go 1.27.3 (not gopls), compiled to WebAssembly (wasip1) | Go 1.27.3's own compiler and linker, compiled to WebAssembly: a wasip1/wasm program in the browser, or a Linux amd64, arm64 or riscv64 one under the C/C++ pack's QEMU-Wasm (go.env) | 2.5 MB; each imported standard library package's archive when imported (fmt 0.16 MB) | 9.1 MB; the standard library's archives for the target as a build needs them (fmt and what it imports 3.7 to 4.4 MB, Test 7.7 to 8.8 MB); a Linux target the C/C++ pack's VM, 2.6 to 2.9 MB |
+| Zig | ZLS 0.17.0 (zigtools' wasm32-wasi release), with the Zig compiler's own errors added | Zig 0.17.0's compiler, built for WebAssembly without LLVM: a wasm32-wasi program in the browser, or an x86-64 Linux one under the C/C++ pack's QEMU-Wasm (zig.env) | 4.8 MB (ZLS and the standard library's sources); the compiler 2.4 MB for its errors | 4.7 MB (the compiler, the standard library, compiler_rt); a Linux target the C/C++ pack's VM |
 
 Sizes are brotli transfer sizes. The app itself is 1.2 MB, icons included.
 Each pack's README has the details: what was patched and why, what is
@@ -435,6 +437,19 @@ after weeks without a visit, persistent storage or not.
   mtl, text, bytestring, QuickCheck, hspec and the other boot packages),
   and hlint and ormolu parse as GHC 9.12. Two workers of about 250 MB
   each. Download's cabal build runs it with any package.
+* **Go**: not gopls, which needs the go command and a file system, but our
+  language server on go/types, the type checker gopls uses, so its errors
+  are the compiler's. Projects import their own module's packages and most of
+  the standard library (not networking, os/exec or the toolchain's own
+  packages; no cgo, assembly or `//go:embed`); no other modules. The target is go.env's (WebAssembly in the
+  browser, or Linux on amd64, arm64 or riscv64 under QEMU-Wasm, which takes
+  4 to 8 s a run) (packs/go/README.md).
+* **Zig**: ZLS for the editor, and the real compiler for Run, Test and the
+  errors ZLS cannot find (types), but without LLVM: Zig's own backends
+  build WebAssembly and x86-64 Linux (zig.env); AArch64 and RISC-V wait on
+  those backends. The standard library only, no build.zig.zon packages,
+  no C. A Linux build takes 10 to 13 s the first time in a tab
+  (packs/zig/README.md).
 * **All**: one browser tab is one machine. A program that never ends needs
   Stop, and memory is the tab's.
 

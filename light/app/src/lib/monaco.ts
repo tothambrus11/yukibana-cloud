@@ -35,6 +35,7 @@ import { WORKSPACE } from './project';
 import { AppDialogService, WorkspaceBulkEditService } from './workspace-edits';
 import { projectNotice } from './undo-text';
 import { registerHaskell } from './haskell-language';
+import { registerZig } from './zig-language';
 
 export type { QuickPick, QuickPickItem };
 
@@ -110,7 +111,8 @@ import 'monaco-editor/languages/definitions/rust/register';
 import 'monaco-editor/languages/definitions/php/register';
 import 'monaco-editor/languages/definitions/java/register';
 import 'monaco-editor/languages/definitions/kotlin/register';
-// Monaco has no Haskell grammar: ours, registered by startEditor.
+import 'monaco-editor/languages/definitions/go/register';
+// Monaco has no Haskell or Zig grammar: ours, registered by startEditor.
 
 // Monaco runs diffing and word-based helpers in a worker of its own, and each
 // of the JSON, HTML and CSS services in another, started the first time the
@@ -182,6 +184,7 @@ export function startEditor(): void {
 		})),
 	});
 	registerHaskell();
+	registerZig();
 
 	// Neither is ever disposed: the page keeps its editors until it closes.
 	referencesPeekKeys(monaco.editor, internals, { report: (problem) => console.error(problem) });

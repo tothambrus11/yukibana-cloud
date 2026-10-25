@@ -35,7 +35,7 @@ const CASES = {
 	p5: { pack: 'javascript', file: 'main.ts', error: '\nconst wrong: number = "no";\n', access: '\nnew p5((q) => q.circ', member: 'circle', hover: 'createCanvas' },
 	'p5-global': { pack: 'javascript', file: 'sketch.ts', error: '\nconst wrong: number = "no";\n', access: '\ncirc', member: 'circle', hover: 'createCanvas' },
 	cpp: { output: '5.000000', testOutput: '[  PASSED  ] 3 tests.', file: 'main.cpp', error: '\nint broken = undeclared_xyz;\n', access: '\nvoid f(Point p) { p.', member: 'norm', definition: 'distance', definitionFile: 'geometry', hover: 'Point' },
-	swift: { output: 'to', testOutput: 'Executed 2 tests, with 0 failures', file: 'main.swift', error: '\nlet x: Int = "no"\n', access: '\nb.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.swift', hover: 'Point' },
+	swift: { output: 'to', testOutput: 'Executed 2 tests, with 0 failures', plainTests: true, file: 'main.swift', error: '\nlet x: Int = "no"\n', access: '\nb.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.swift', hover: 'Point' },
 	scala: { output: 'to', file: 'Main.scala', error: '\nval broken: Int = "no"\n', access: '\nval q = Point(1, 2)\nval r = q.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.scala', hover: 'Point' },
 	rust: { output: '(0, 0) to (3, 4): 5', testOutput: 'test result: ok. 3 passed', file: 'main.rs', error: '\nfn broken() -> i32 { "no" }\n', access: '\nfn f(p: Point) -> f64 { p.', member: 'norm', definition: 'distance', definitionFile: 'point.rs', hover: 'Point' },
 	php: { output: '(0, 0) to (3, 4): 5', testOutput: 'OK (5 tests, 5 assertions)', file: 'main.php', error: '\n$b->nope();\n', access: '\n$b->', member: 'norm', definition: 'distance', definitionFile: 'geometry.php', hover: 'Point' },
@@ -64,6 +64,14 @@ const CASES = {
 		// HLS's inlay hints on Main.hs's let bindings; a double click writes the signature.
 		inlayHint: { file: 'Main.hs', hint: ':: Point', written: '  let a :: Point\n      a = Point 0 0\n' },
 	},
+	// The members of point.Point come from go/types (packs/go/README.md); Distance is in the point package's directory.
+	go: { output: '(0, 0) to (3, 4): 5', testOutput: 'ok  \texample.com/geometry/point', plainTests: true, file: 'main.go', error: '\nvar broken int = "no"\n', access: '\nfunc f(p point.Point) float64 { return p.', member: 'Norm', definition: 'Distance', definitionFile: 'point.go', hover: 'Point' },
+	// ZLS answers completion, hover and definition; the type error is the
+	// compiler's (packs/zig/README.md), and an exported declaration is one
+	// it analyses without a reference. The member access is on one line:
+	// ZLS completes nothing in a block left open at the end of the file, and
+	// Monaco does not always close a typed brace there.
+	zig: { output: '(0, 0) to (3, 4): 5', testOutput: 'All 3 tests passed.', plainTests: true, file: 'main.zig', error: '\nexport const broken: u8 = "no";\n', access: '\nconst probe: geometry.Point = .{ .x = 1, .y = 2 };\nconst n = probe.', member: 'norm', definition: 'distance', definitionFile: 'geometry.zig', hover: 'Point' },
 };
 
 const only = process.argv.slice(2);
@@ -163,15 +171,52 @@ async function run(language, c) {
 	// Back to the sample's text for hover and definition.
 	await page.keyboard.press('Control+z');
 	for (let i = 0; i < 40; i++) await page.keyboard.press('Control+z');
-	// A span that is the word, or (Monaco's PHP grammar) the word after the spaces (rendered as U+00A0) and operators before it.
-	const word = (w) => page.locator('.dv-groupview .view-line span', { hasText: new RegExp(`^[\\s.=]*${w}$`) }).first();
-	await word(c.hover).hover();
+	/**
+	 * The middle of `w` in the editor's rendered lines: a span that is the
+	 * word, or (Monaco's PHP grammar) the word after the spaces (rendered as
+	 * U+00A0) and operators before it; failing that, the first whole word in
+	 * a span's text, by its text range (Monaco's Go grammar renders
+	 * `a := point.Point` as one span).
+	 */
+	const word = async (w) => {
+		const at = await page.locator('.dv-groupview .view-line').evaluateAll((lines, w) => {
+			const texts = lines.flatMap((line) => {
+				const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+				const nodes = [];
+				for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node);
+				return nodes;
+			});
+			const middle = (node, start) => {
+				const range = document.createRange();
+				range.setStart(node, start);
+				range.setEnd(node, start + w.length);
+				const box = range.getBoundingClientRect();
+				return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+			};
+			const exact = new RegExp(`^([\\s.=]*)${w}$`);
+			for (const node of texts) {
+				const m = exact.exec(node.textContent ?? '');
+				if (m) return middle(node, m[1].length);
+			}
+			const within = new RegExp(`(^|[^\\w])${w}(?!\\w)`);
+			for (const node of texts) {
+				const m = within.exec(node.textContent ?? '');
+				if (m) return middle(node, m.index + m[1].length);
+			}
+			return null;
+		}, w);
+		if (!at) throw new Error(`${w} is not on screen`);
+		return at;
+	};
+	const hoverAt = await word(c.hover);
+	await page.mouse.move(hoverAt.x, hoverAt.y);
 	const hovered = await page.locator('.monaco-hover-content').first().waitFor({ timeout: 20_000 }).then(() => true, () => false);
 	check(hovered, `hover on ${c.hover} shows ${hovered ? JSON.stringify((await page.locator('.monaco-hover-content').first().textContent())?.slice(0, 80)) : 'nothing'}`);
 	await page.mouse.move(0, 0);
 
 	if (c.definition) {
-		await word(c.definition).click();
+		const definitionAt = await word(c.definition);
+		await page.mouse.click(definitionAt.x, definitionAt.y);
 		await page.keyboard.press('F12');
 		const jumped = await page.locator('.dv-tab.dv-active-tab .dock-tab', { hasText: c.definitionFile }).first().waitFor({ timeout: 20_000 }).then(() => true, () => false);
 		check(jumped, `go to definition of ${c.definition} opens ${c.definitionFile}`);
@@ -198,11 +243,12 @@ async function run(language, c) {
 		const ended = await status.filter({ hasText: /Exited|Stopped/ }).waitFor({ timeout: 240_000 }).then(() => true, () => false);
 		const shown = (await page.locator('.terminal pre').textContent()) ?? '';
 		check(ended && /code 0/.test((await status.textContent()) ?? '') && shown.includes(c.testOutput), `Test runs the sample's tests: "${c.testOutput}" (${(await status.textContent())?.trim()}: ${JSON.stringify(shown.slice(-160))})`);
-		// The test tools print ANSI colours (all but Swift's XCTest, which has
-		// none): the terminal shows them as styled spans, and its text, what
-		// a copy yields, has no escape sequences left.
+		// The test tools print ANSI colours (all but those marked plainTests:
+		// Swift's XCTest, go test and Zig's test runner have none): the
+		// terminal shows them as styled spans, and its text, what a copy
+		// yields, has no escape sequences left.
 		const colours = await page.locator('.terminal pre span[style*="color"]').count();
-		check(!shown.includes('\x1b') && (language === 'swift' ? colours === 0 : colours > 0), `the test report's colours are rendered, its text is plain (${colours} coloured spans)`);
+		check(!shown.includes('\x1b') && (c.plainTests ? colours === 0 : colours > 0), `the test report's colours are rendered, its text is plain (${colours} coloured spans)`);
 	}
 
 	// Mutate (StrykerJS, packs/javascript/README.md "Mutation testing"): the

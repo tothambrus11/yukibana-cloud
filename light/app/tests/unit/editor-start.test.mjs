@@ -170,7 +170,7 @@ test('importing the editor changes nothing on the page: every file it brings onl
 	assert.deepEqual(unresolved, []);
 	// The editor brings at least its Monaco, its internals and its themes; a
 	// test that read only its entries would pass whatever they imported.
-	for (const file of ['monaco.ts', 'monaco-internals.ts', 'theme.svelte.ts', 'haskell-language.ts', 'workspace-edits.ts']) {
+	for (const file of ['monaco.ts', 'monaco-internals.ts', 'theme.svelte.ts', 'haskell-language.ts', 'zig-language.ts', 'workspace-edits.ts']) {
 		assert.ok(seen.has(join(lib, file)), `${file} is no longer imported by the editor's entries: this test reads ${[...seen.keys()].map((p) => relative(lib, p)).join(', ')}`);
 	}
 	assert.deepEqual([...seen.values()].flat(), []);
