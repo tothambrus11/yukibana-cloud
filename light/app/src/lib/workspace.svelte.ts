@@ -129,6 +129,7 @@ export class Workspace {
 	readonly runner = new Runner({
 		kernel: (line) => this.write('log', `[kernel] ${line}`),
 		mark: (name, ms) => this.write('log', `timing: ${name} ${(ms / 1000).toFixed(2)} s`),
+		problem: (text) => this.write('warning', text),
 	});
 	/**
 	 * The compiler output views' client (languages with `explores`), loaded

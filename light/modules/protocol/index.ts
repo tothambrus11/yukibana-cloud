@@ -4,10 +4,16 @@
  * integration, the packs' glue and the runner frame all speak it, so it is
  * the one module every other one may import, and it imports none of them.
  *
- * Empty until the first contract moves here (the LSP connection, the stdin
- * buffer layout, the runner messages, the loading notification and the
- * requirements a pack declares; ../README.md says the order). What it
- * promises, and may import, is in ./README.md and is enforced by
- * ../boundaries.test.mjs.
+ * - connection.ts: JSON-RPC 2.0 to a language server's worker.
+ * - stdin.ts: the standard input buffer, both sides of it.
+ * - runner.ts: the messages to and from a runner, and a previewed page.
+ * - loading.ts: download progress, from any kind of pack worker.
+ *
+ * Still to come: the requirements a pack declares and the frame messages
+ * (../README.md says the order). What it promises, and may import, is in
+ * ./README.md and is enforced by ../boundaries.test.mjs.
  */
-export {};
+export * from './connection.ts';
+export * from './loading.ts';
+export * from './runner.ts';
+export * from './stdin.ts';

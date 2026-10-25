@@ -177,6 +177,8 @@ Runner to app, any number of times:
 { type: 'phase', text: string }        // "Compiling", "Linking", "Running": shown in the status bar
 { type: 'stdout', text: string }       // program output, as it is produced (not buffered to the end)
 { type: 'stderr', text: string }       // program errors, and compiler diagnostics
+{ type: 'output', stream: 'stdout' | 'stderr', lines: string[] }
+                                       // several pieces of one stream at once (see "Output")
 { type: 'exit', code: number, reusable?: boolean }
                                        // last message; 0 = success. Compile errors exit non-zero
                                        // after printing them to stderr. reusable: the worker
@@ -206,17 +208,88 @@ guest kernel's log is in the Output panel. The app adds no note of its
 own to a non-zero code: the guest kernel may print messages
 while a program that exits 5 on purpose runs fine.
 
+The types, and guards that read these messages as data, are in
+`light/modules/protocol/runner.ts` (`@yukibana/protocol`). A host reads
+every message a runner posts through them: the runner is the worker the
+user's program runs in, so a message may be anything. One the contract
+does not allow (no `type`, or a known type with a wrong field) is named in
+the app's Output panel and ignored; one of a type the app does not know is
+ignored without a word.
+
+## Output
+
+A runner posts each piece of output as the program produces it, one
+`stdout` or `stderr` message a piece (normally a line with its `\n`; a
+prompt without one is a piece of its own). It must not hold output back
+until the program ends.
+
+On its way to the page, the host's transport batches it: what it receives
+from the runner in one task, consecutive pieces of one stream become one
+`output` message whose `lines` are the pieces in the order printed, and
+every other message keeps its place (`batchOutput` in
+`light/modules/protocol/runner.ts`). Relayed a message a line, a
+1000-line burst cost 16 to 20 ms more across a frame; batched it costs
+about 1.5 µs a line (measured for runner isolation, E1). A runner may post
+`output` itself when it has several pieces at hand. Either way:
+
+* a stream's text is its pieces joined with nothing between them; nothing
+  is added, and an empty piece means nothing;
+* the order of the pieces of one stream is the order they were printed;
+* the order across the two streams is the order of the messages, so a
+  program that interleaves stdout and stderr is shown interleaved.
+
+## Test results
+
+A `test` run's verdict is its exit code: 0 only when every test passed.
+The report it prints on stdout is for people, in the framework's own
+words.
+
+`{ type: 'test-report', tests: TestResult[] }` is **reserved** for the
+machine-readable result, for grading on the course platform (D28 in the
+architecture plan): at most once per run, before `exit`, each test as
+`{ name, outcome: 'passed' | 'failed' | 'skipped' | 'todo', message?,
+file?, line?, ms? }`. No runner sends it yet, the app does not show it,
+and a report never overrides the exit code. A report with an outcome
+outside the four is refused as a whole.
+
+## Headless
+
+A runner is driven the same way with or without a page, so a pack's own
+test, CI or a grader can run it with no terminal and no person:
+
+* it needs no DOM, storage or anything of the page, only its files
+  (relative to `import.meta.url`) and the messages above;
+* it waits for one `run`, `test` or `mutate` message, whenever it comes
+  (another only after `exit` with `reusable: true`);
+* with `stdin: null` every read is end of file at once; it never waits
+  for input nobody will type;
+* all the program prints arrives as output messages, in order, and `exit`
+  is the last message of a run;
+* it can be ended at any moment by terminating its worker.
+
 ## Standard input
 
-The page is cross-origin isolated, so the app passes a `SharedArrayBuffer`
-(`stdin`, or `null` when the page is not isolated, in which case reading
-stdin gives end of file) laid out as:
+The buffer is made **by the transport side, in the same agent cluster as
+the runner**, never by the page: a `SharedArrayBuffer` cannot cross a
+frame boundary (E1: a cross-origin isolated page and a frame on a packs
+origin are separate agent clusters, and a buffer posted between them
+arrives as a `messageerror`). The app's in-page transport makes it beside
+its worker; a framed transport (the course platform's) makes it inside the
+frame, next to the runner, and the page feeds it lines through the
+transport. Either way the runner receives it as `stdin` in its `run`
+message, or `null` where its side is not cross-origin isolated, in which
+case reading stdin gives end of file. It is laid out as
+(`light/modules/protocol/stdin.ts`, which has `writeStdin` for the
+transport side and `readStdin` for a runner):
 
 ```text
 Int32[0]  state: 0 = idle, 1 = runner waiting for input, 2 = input ready, 3 = end of file
 Int32[1]  length in bytes of the input in the data area
 bytes 8.. data area (64 KiB): UTF-8 input, normally one line including its "\n"
 ```
+
+Input longer than the data area is cut at the last whole UTF-8 character
+that fits; a length word beyond the data area is read as the whole area.
 
 A runner that needs input (`input()`, `std::cin`, `readLine()`) and has no
 buffered input left:
@@ -226,6 +299,11 @@ buffered input left:
 2. blocks with `Atomics.wait(state, 0, 1)`,
 3. on 2 reads `length` bytes of data, stores 0 in `state` and continues;
    on 3 treats it as end of file.
+
+End of file is sticky: a runner may leave 3 in `state` and answer every
+later read with end of file without asking (`readStdin` does), until the
+transport side stores 0 again (`rearmStdin`). A runner that keeps the end
+of file itself and stores 0 is just as correct.
 
 The app writes the data, then stores 2 (or 3 for Ctrl-D) in `state` and
 calls `Atomics.notify`. A runner must flush its stdout before waiting, so a

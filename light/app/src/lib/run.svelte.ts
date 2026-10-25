@@ -3,6 +3,7 @@
  * packs/CONTRACT.md, "Running a program") and keeps what the terminal shows:
  * the program's output, what the user typed, and how it ended.
  */
+import { readFromRunner, STDIN_BUFFER_BYTES, writeStdin, type FromRunner, type OutputStream, type RunMessage, type RunMode } from '@yukibana/protocol';
 import { AnsiStream } from './ansi';
 import type { Files } from './languages';
 import type { RunOptions } from './cpp-targets';
@@ -33,36 +34,29 @@ export type RunState =
 	| { kind: 'running'; phase: string; waiting: boolean }
 	| { kind: 'ended'; code: number | null; seconds: number };
 
-/** Messages a runner posts, as the contract defines them. */
-type FromRunner =
-	| { type: 'loading'; label: string; loaded: number; total: number }
-	| { type: 'phase'; text: string }
-	| { type: 'stdout' | 'stderr'; text: string }
-	| { type: 'stdin'; streaming?: boolean }
-	| { type: 'exit'; code: number; reusable?: boolean }
-	| { type: 'trace' | 'kernel'; text: string }
-	| { type: 'mark'; name: string; ms: number };
-
 /**
  * Where a runner's messages that are not the program's own go: the guest
  * kernel's console and QEMU's messages (`kernel`, one line at a time,
- * without its newline) and timings, for the Output panel.
+ * without its newline), timings, and messages that broke the contract
+ * (`problem`, a sentence saying what was wrong), for the Output panel.
  */
 export interface RunnerLog {
 	kernel(line: string): void;
 	mark(name: string, ms: number): void;
+	problem(text: string): void;
 }
 
 /**
  * What a runner is asked to do: run the program, run its tests, or
  * mutation-test it (languages with `tests` and `mutates`).
  */
-export type RunMode = 'run' | 'test' | 'mutate';
+export type { RunMode } from '@yukibana/protocol';
 
-/** Bytes of the stdin buffer's data area, after its two Int32 words. */
-const STDIN_BYTES = 64 * 1024;
 /** More terminal text than this drops the oldest; a runaway loop must not exhaust memory. */
 const MAX_CHARS = 2_000_000;
+
+/** Whether `data` is a runner's download progress, which a spare's early messages leave out. */
+const isLoading = (data: unknown): boolean => typeof data === 'object' && data !== null && (data as { type?: unknown }).type === 'loading';
 
 export class Runner {
 	state = $state<RunState>({ kind: 'idle' });
@@ -77,7 +71,7 @@ export class Runner {
 	 * A runner started ahead of a Run, waiting for its message: what it
 	 * posted meanwhile is kept, to be read when a Run takes it.
 	 */
-	private spare: { pack: string; worker: Worker; early: FromRunner[] } | null = null;
+	private spare: { pack: string; worker: Worker; early: unknown[] } | null = null;
 	private stdin: SharedArrayBuffer | null = null;
 	private started = 0;
 	private nextId = 0;
@@ -126,7 +120,9 @@ export class Runner {
 		this.ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 		this.started = performance.now();
 		this.state = { kind: 'running', phase: 'Starting', waiting: false };
-		this.stdin = crossOriginIsolated ? new SharedArrayBuffer(8 + STDIN_BYTES) : null;
+		// The buffer is made here, beside the worker, as the in-page transport
+		// will (@yukibana/protocol, stdin.ts: never across a frame boundary).
+		this.stdin = crossOriginIsolated ? new SharedArrayBuffer(STDIN_BUFFER_BYTES) : null;
 		if (!this.stdin) this.append('info', 'This page is not cross-origin isolated, so programs cannot read input.\n');
 
 		const spare = this.spare?.pack === language ? this.spare : null;
@@ -134,12 +130,12 @@ export class Runner {
 		const worker = spare?.worker ?? new Worker(new URL(`packs/${language}/runner.js`, document.baseURI), { type: 'module' });
 		this.worker = worker;
 		this.pack = language;
-		worker.onmessage = (e: MessageEvent<FromRunner>) => {
+		worker.onmessage = (e: MessageEvent<unknown>) => {
 			if (this.worker === worker) this.receive(e.data);
 		};
 		// What a spare said while it waited, but its download progress: that
 		// is over, and would show as this run's.
-		for (const m of spare?.early ?? []) if (m.type !== 'loading') this.receive(m);
+		for (const m of spare?.early ?? []) if (!isLoading(m)) this.receive(m);
 		worker.onerror = (e) => {
 			if (this.worker !== worker) return;
 			e.preventDefault();
@@ -149,7 +145,8 @@ export class Runner {
 				() => this.finish(null, `The runner failed: ${e.message || 'unknown error'}`),
 			);
 		};
-		worker.postMessage({ type: mode, files: { ...files }, entry, stdin: this.stdin, ...(options ? { options: { ...options } } : {}) });
+		const message: RunMessage = { type: mode, files: { ...files }, entry, stdin: this.stdin, ...(options ? { options: { ...options } } : {}) };
+		worker.postMessage(message);
 	}
 
 	/**
@@ -173,7 +170,7 @@ export class Runner {
 	private prewarm(pack: string): void {
 		if (this.spare?.pack === pack) return;
 		const worker = new Worker(new URL(`packs/${pack}/runner.js`, document.baseURI), { type: 'module' });
-		const spare = { pack, worker, early: [] as FromRunner[] };
+		const spare = { pack, worker, early: [] as unknown[] };
 		this.keep(spare);
 	}
 
@@ -197,9 +194,9 @@ export class Runner {
 	}
 
 	/** Makes `spare` the spare, keeping what it posts until a Run takes it. */
-	private keep(spare: { pack: string; worker: Worker; early: FromRunner[] }): void {
+	private keep(spare: { pack: string; worker: Worker; early: unknown[] }): void {
 		const { worker } = spare;
-		worker.onmessage = (e: MessageEvent<FromRunner>) => {
+		worker.onmessage = (e: MessageEvent<unknown>) => {
 			spare.early.push(e.data);
 		};
 		worker.onerror = (e) => {
@@ -266,7 +263,25 @@ export class Runner {
 		this.chars = 0;
 	}
 
-	private receive(m: FromRunner): void {
+	/**
+	 * Takes one message the runner posted. It comes from the worker the
+	 * program runs in, so it is read as data: a message the contract does
+	 * not allow is named in the Output panel (the terminal, without one)
+	 * and otherwise ignored, and a type it does not know (a newer
+	 * runner's) is ignored, as the contract says.
+	 */
+	private receive(data: unknown): void {
+		const read = readFromRunner(data);
+		if (read.kind === 'known') this.handle(read.message);
+		else if (read.kind === 'rejected') {
+			const text = `The runner sent a message the pack contract does not allow, and it was ignored: ${read.reason}.`;
+			// Without an Output panel, the terminal says it: never nowhere.
+			if (this.log) this.log.problem(text);
+			else this.append('info', text + '\n');
+		}
+	}
+
+	private handle(m: FromRunner): void {
 		switch (m.type) {
 			case 'loading':
 				this.state = { kind: 'loading', label: m.label, loaded: m.loaded, total: m.total };
@@ -277,8 +292,10 @@ export class Runner {
 				break;
 			case 'stdout':
 			case 'stderr':
-				if (this.state.kind === 'loading') this.state = { kind: 'running', phase: 'Running', waiting: false };
-				for (const span of this.ansi[m.type].feed(m.text)) this.append(m.type, span.text, span.css);
+				this.output(m.type, [m.text]);
+				break;
+			case 'output':
+				this.output(m.stream, m.lines);
 				break;
 			case 'stdin':
 				this.asked = true;
@@ -308,10 +325,19 @@ export class Runner {
 				// kernel log is (vm.js, CONTRACT.md "Running a program").
 				this.finish(m.code, null);
 				break;
-			default:
-				// A message type this app does not know (a newer runner's): ignored, as the contract says.
+			case 'test-report':
+				// Reserved for grading; the terminal already shows the report the runner printed.
+				break;
+			case 'page':
+				// A preview's answer, which only Preview asks for.
 				break;
 		}
+	}
+
+	/** Shows the program's output, `pieces` of one stream in the order printed. */
+	private output(stream: OutputStream, pieces: readonly string[]): void {
+		if (this.state.kind === 'loading') this.state = { kind: 'running', phase: 'Running', waiting: false };
+		for (const piece of pieces) for (const span of this.ansi[stream].feed(piece)) this.append(stream, span.text, span.css);
 	}
 
 	/** Passes the kernel's text on a line at a time; a newline flushes what is left. */
@@ -330,16 +356,7 @@ export class Runner {
 		if (!buffer || !this.busy || !this.asked) return;
 		const line = this.typedAhead.shift();
 		if (line === undefined) return;
-		const state = new Int32Array(buffer, 0, 2);
-		if (line === '') {
-			Atomics.store(state, 0, 3);
-		} else {
-			const bytes = new TextEncoder().encode(line).subarray(0, STDIN_BYTES);
-			new Uint8Array(buffer, 8, STDIN_BYTES).set(bytes);
-			Atomics.store(state, 1, bytes.length);
-			Atomics.store(state, 0, 2);
-		}
-		Atomics.notify(state, 0);
+		writeStdin(buffer, line === '' ? null : line);
 		this.asked = false;
 		if (this.state.kind === 'running') this.state = { ...this.state, waiting: false };
 	}

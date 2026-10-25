@@ -25,6 +25,7 @@
  * (the page keeps its state); any other change rebuilds the page and
  * reloads the iframe. This is live reload, not module hot replacement.
  */
+import { isFromPage, readFromRunner, type Page, type PreviewMessage, type ToPage } from '@yukibana/protocol';
 import type { Files } from './languages';
 
 const RELOAD_DELAY_MS = 300;
@@ -39,24 +40,6 @@ const SILENT_RUNNER_MS = 15_000;
 export interface PreviewOutput {
 	print(kind: 'stdout' | 'stderr' | 'info', text: string): void;
 }
-
-/** The runner's answer to a `preview` request. */
-interface Page {
-	type: 'page';
-	id: number;
-	html: string | null;
-	styles: string[];
-	errors: string[];
-}
-
-/** What the page's bridge script posts (see the runner's BRIDGE). */
-interface FromPage {
-	yukibana: 'preview';
-	type: 'stdout' | 'stderr';
-	text: string;
-}
-
-const isFromPage = (data: unknown): data is FromPage => typeof data === 'object' && data !== null && (data as { yukibana?: unknown }).yukibana === 'preview';
 
 export class Preview {
 	/** The panel's element, while mounted. */
@@ -84,8 +67,13 @@ export class Preview {
 	constructor(private readonly output: PreviewOutput) {
 		addEventListener('message', (e: MessageEvent<unknown>) => {
 			// Only the iframe's own messages: anything else may post to the app too.
-			if (!this.frame || e.source !== this.frame.contentWindow || !isFromPage(e.data)) return;
-			this.output.print(e.data.type === 'stderr' ? 'stderr' : 'stdout', String(e.data.text));
+			if (!this.frame || e.source !== this.frame.contentWindow) return;
+			if (isFromPage(e.data)) this.output.print(e.data.type, e.data.text);
+			// The page's own code may post anything to its parent; only what
+			// claims to be the bridge's and is not well formed is worth saying.
+			else if (typeof e.data === 'object' && e.data !== null && (e.data as { yukibana?: unknown }).yukibana === 'preview') {
+				this.output.print('stderr', "The preview's console bridge sent a message without a stream and text; it was ignored.\n");
+			}
 		});
 	}
 
@@ -178,7 +166,12 @@ export class Preview {
 		const files = this.files();
 		const window = this.frame?.contentWindow;
 		if (this.html !== null && window && paths.length > 0 && paths.every((p) => this.styles.includes(p) && p in files)) {
-			for (const href of paths) window.postMessage({ yukibana: 'css', href, text: files[href] }, '*');
+			for (const href of paths) {
+				const text = files[href];
+				if (text === undefined) continue;
+				const message: ToPage = { yukibana: 'css', href, text };
+				window.postMessage(message, '*');
+			}
 		} else this.build();
 	}
 
@@ -186,8 +179,14 @@ export class Preview {
 		if (!this.worker) {
 			const url = new URL(`packs/${this.pack}/runner.js`, document.baseURI);
 			const worker = new Worker(url, { type: 'module' });
-			worker.onmessage = (e: MessageEvent<Page | { type: string }>) => {
-				if (this.worker === worker && e.data.type === 'page') this.receive(e.data as Page);
+			worker.onmessage = (e: MessageEvent<unknown>) => {
+				if (this.worker !== worker) return;
+				// The runner's other messages (its download progress) are not
+				// the page's; one the contract does not allow is said, since a
+				// malformed page would otherwise leave the panel blank in silence.
+				const read = readFromRunner(e.data);
+				if (read.kind === 'rejected') this.output.print('stderr', `The preview runner sent a message the pack contract does not allow: ${read.reason}.\n`);
+				else if (read.kind === 'known' && read.message.type === 'page') this.receive(read.message);
 			};
 			worker.onerror = (e) => {
 				if (this.worker !== worker) return;
@@ -198,7 +197,8 @@ export class Preview {
 			};
 			this.worker = worker;
 		}
-		this.worker.postMessage({ type: 'preview', id: ++this.requested, files: { ...this.files() }, entry: this.entry });
+		const request: PreviewMessage = { type: 'preview', id: ++this.requested, files: { ...this.files() }, entry: this.entry };
+		this.worker.postMessage(request);
 		// A runner that never answers leaves the panel blank and says nothing,
 		// so the terminal says it instead, without guessing why. The one case
 		// seen so far was a runner.js from before previews existed, which

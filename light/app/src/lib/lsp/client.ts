@@ -26,21 +26,15 @@
 import type * as lsp from 'vscode-languageserver-protocol';
 import { createQuickPick, monaco, showEditorMessage, type QuickPickItem } from '../monaco';
 import { applyWorkspaceEdit } from '../workspace-edits';
-import { Connection, REQUEST_CANCELLED, ResponseError } from './connection';
+import { Connection, isLoadingProgress, loadingDone, LOADING_METHOD, REQUEST_CANCELLED, ResponseError, type LoadingProgress } from '@yukibana/protocol';
 import * as c from './convert';
 import { reasonOf, toFolds, toSelectionChain } from './plain';
 import { whenLanguage, type CallDirection } from './call-hierarchy';
 import { toInlayHint } from './inlay-hints';
 import { symbolRows, type SymbolRow } from './workspace-symbols';
 
-/** What a pack reports while it downloads, from the `yukibana/loading` notification. */
-export interface LoadingProgress {
-	label: string;
-	/** Bytes so far. */
-	loaded: number;
-	/** Bytes expected, or 0 when the pack does not know. */
-	total: number;
-}
+/** What a pack reports while it downloads, from the `yukibana/loading` notification (@yukibana/protocol, loading.ts). */
+export type { LoadingProgress };
 
 /** Lifecycle of a client as the status bar shows it. */
 export type ClientState =
@@ -280,9 +274,14 @@ export class LanguageClient {
 		// A pack may download after `initialize` (Swift fetches XCTest when the
 		// first file imports it), and nothing else clears the status then: a
 		// download that has reached its total is over.
-		conn.onNotification('yukibana/loading', (p) => {
-			const progress = p as LoadingProgress;
-			events.loading(progress.total > 0 && progress.loaded >= progress.total ? null : progress);
+		conn.onNotification(LOADING_METHOD, (p) => {
+			// A malformed report would draw a bar that never ends; it is
+			// named in the Output panel instead, and the bar left as it was.
+			if (!isLoadingProgress(p)) {
+				events.log('warning', `The language server sent a ${LOADING_METHOD} notification without a label and byte counts; it is ignored.`);
+				return;
+			}
+			events.loading(loadingDone(p) ? null : p);
 		});
 		conn.onNotification('window/logMessage', (p) => {
 			const m = p as lsp.LogMessageParams;

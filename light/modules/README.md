@@ -37,4 +37,7 @@ the app:
 `tsconfig.json` checks the three as one project (`npm run check` in
 `light/app` runs `tsc -p ../modules`), and `boundaries.test.mjs` fails on any
 import or mention that breaks the table or the rules above (`npm run
-test:unit` in `light/app` runs it).
+test:unit` in `light/app` runs it). The modules' own tests are in `tests/`,
+beside them rather than in them, since a test imports `node:test`; the same
+`npm run test:unit` runs them, as does
+`node --test "light/modules/**/*.test.mjs"` from the repository root.
