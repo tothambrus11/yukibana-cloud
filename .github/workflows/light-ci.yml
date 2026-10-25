@@ -8,6 +8,12 @@
 #   to compile, so a cold build is a minute or two), its own tests, then the
 #   app built with that pack alone and driven in Chromium for the four
 #   languages it serves.
+# - pack-units: the packs' own tests that need no built pack (the C++
+#   pack's compiler output filters and initramfs writer, the Haskell
+#   language server's outline and hints), and the tests of the pack and
+#   toolchain store scripts and of light-packs.yml's release rule. A change
+#   to a pack's glue or scripts is otherwise first tested by a pack build,
+#   up to hours later.
 #
 # Each job runs only when what it reads changed since it last passed
 # (.github/actions/once): its inputs are listed in the plan job.
@@ -54,6 +60,8 @@ jobs:
       app-key: ${{ steps.app.outputs.key }}
       javascript-done: ${{ steps.javascript.outputs.done }}
       javascript-key: ${{ steps.javascript.outputs.key }}
+      pack-units-done: ${{ steps.pack-units.outputs.done }}
+      pack-units-key: ${{ steps.pack-units.outputs.key }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -74,6 +82,28 @@ jobs:
           paths: |
             light/app
             light/packs/javascript
+            .github/workflows/light-ci.yml
+      # Every file the pack-units tests read, and the files that decide
+      # how a pack is built (a change there is a change those tests are
+      # about, even when they do not open it).
+      - id: pack-units
+        uses: ./.github/actions/once
+        with:
+          name: light-pack-units
+          paths: |
+            light/packs/cpp/src
+            light/packs/cpp/tests
+            light/packs/cpp/test-emit.mjs
+            light/packs/cpp/test-cpio.mjs
+            light/packs/haskell/src
+            light/packs/haskell/test-symbols.mjs
+            light/packs/*/build.sh
+            light/packs/*/glue.sh
+            light/packs/*/requires.json
+            light/packs/*/pins.sh
+            light/packs/*/toolchain.*
+            light/packs/contract.test.mjs
+            light/scripts
             .github/workflows/light-ci.yml
 
   app:
@@ -174,3 +204,47 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.javascript-key }}
+
+  pack-units:
+    name: Pack unit tests
+    needs: plan
+    if: needs.plan.outputs.pack-units-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 22, the version these tests are run with locally. They import
+      # only the packs' own sources and node's built-ins: no npm install.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Pure functions over fixtures written out in the repository; the
+      # cpio test compares with GNU cpio, which the runner image has.
+      - name: C++ pack (compiler output views, initramfs archives)
+        working-directory: light/packs/cpp
+        run: node --test test-emit.mjs test-cpio.mjs
+
+      - name: Haskell pack (outline, symbol search, inlay hints)
+        working-directory: light/packs/haskell
+        run: node --test test-symbols.mjs
+
+      # As the runner's own user, never root: the read-only toolchain checks
+      # are meant to be stopped by a file's mode, which root ignores.
+      # packs/contract.test.mjs joins this list in the change that adds it
+      # (it is already among the job's inputs above).
+      - name: Pack and toolchain store scripts, light-packs.yml's release rule
+        working-directory: light
+        run: |
+          if [ "$(id -u)" = 0 ]; then
+            echo "::error title=pack-units runs as root::these tests must run as an ordinary user" >&2
+            exit 1
+          fi
+          node --test scripts/test-pack-store.mjs scripts/test-pack-toolchain.mjs scripts/test-workflows.mjs
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.pack-units-key }}
