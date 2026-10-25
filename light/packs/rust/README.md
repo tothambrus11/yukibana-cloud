@@ -293,6 +293,33 @@ does at `--release` (where it would take milliseconds), so a level here
 would mislead more than it helps. The app's Optimization select is not
 shown for Rust.
 
+## The MIR view (src/explorer.js, src/mir.js)
+
+The app's **MIR** button shows the MIR of the crate the active file is in
+(../CONTRACT.md, "Showing compiler output"): rustc's front end in the
+runner's Miri, run as rustc (`MIRI_BE_RUSTC=target`), with
+`-Zunpretty=mir -Zmir-include-spans`, borrow checked, each statement,
+terminator and local mapped to the span rustc prints after it. An item's
+header and each basic block's label map to its first span. MIR is the last
+form a Rust program takes here, since nothing compiles it further (Run
+interprets it), and the form Miri runs.
+
+* Which crate: `src/main.rs` and `src/lib.rs` are their own; a file of
+  `tests/` is a test crate; any other file is a module of the library, or
+  of the binary when `src/main.rs` declares it (`mod point;`). For a binary
+  or test crate the library is compiled first (its metadata only), as
+  Cargo does.
+* **-O** is rustc's `-Copt-level=3`, which runs the MIR optimiser (inlining,
+  const propagation, simplifying the CFG): the MIR an optimised build hands
+  LLVM. Run's MIR stays unoptimised (above).
+* **Library** keeps the items none of whose code maps to a project file
+  (rustc prints only the crate's own items, so there are few).
+* About 1.8 s a compile once Miri is loaded (Chromium, 4 cores).
+
+`test-mir.mjs` checks the filter and the crate rule on MIR the shipped Miri
+printed for `tests/fixtures/sample.json` at both levels
+(`tests/fixtures/gen.mjs` makes it again).
+
 ## Alternatives considered
 
 - **The `rust-analyzer` binary on WASI**: needs threads (its main loop,
