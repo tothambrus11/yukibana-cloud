@@ -24,9 +24,15 @@ On Linux (Ubuntu 24.04 is what CI runs), with git, curl, zstd and Node 22
 or later:
 
 ```sh
-./setup.sh                       # the app's dependencies and every pack, prebuilt
+./setup.sh --latest              # the app's dependencies and every pack, prebuilt
 cd app && npm run dev            # http://localhost:5173
 ```
+
+`--latest` is what makes this minutes on any branch: CI stores pack builds
+from `main` only, so on another branch (or a local commit) a pack's exact
+sources often have no stored build, and without `--latest` such a pack is
+built here instead, which for C++ and Swift takes hours (C++ is then
+skipped with a note rather than built unasked).
 
 `setup.sh` downloads each language pack already built from exactly the
 sources checked out, from the pack store (below), so a working setup takes
