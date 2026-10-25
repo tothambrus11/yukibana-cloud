@@ -63,7 +63,8 @@ const CASES = {
 		outline: { file: 'Geometry.hs', query: 'py', name: 'py', container: 'Point' },
 		// HLS's inlay hints on Main.hs's let bindings; a double click writes the signature.
 		inlayHint: { file: 'Main.hs', hint: ':: Point', written: '  let a :: Point\n      a = Point 0 0\n' },
-	},
+	},	// The members of point.Point come from go/types (packs/go/README.md); Distance is in the point package's directory.
+	go: { output: '(0, 0) to (3, 4): 5', testOutput: 'ok  \texample.com/geometry/point', file: 'main.go', error: '\nvar broken int = "no"\n', access: '\nfunc f(p point.Point) float64 { return p.', member: 'Norm', definition: 'Distance', definitionFile: 'point.go', hover: 'Point' },
 };
 
 const only = process.argv.slice(2);

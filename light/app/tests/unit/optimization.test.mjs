@@ -54,7 +54,7 @@ test('only C, C++, Swift and Scala have levels, and a saved level that is not on
 	assert.deepEqual(levelsOf('scala').map((l) => l.flag), ['off', 'on']);
 	assert.equal(savedLevelOf('scala', 'on'), 'on');
 	assert.equal(savedLevelOf('scala', '-O'), null);
-	for (const language of ['python', 'javascript', 'typescript', 'rust', 'java', 'kotlin', 'php', 'haskell']) assert.equal(levelsOf(language), null, language);
+	for (const language of ['python', 'javascript', 'typescript', 'rust', 'java', 'kotlin', 'php', 'haskell', 'go']) assert.equal(levelsOf(language), null, language);
 	for (const level of levelsOf('swift')) assert.equal(savedLevelOf('swift', level.flag), level.flag, level.flag);
 	assert.ok(levelsOf('swift').every((l) => !l.unavailable), 'every Swift level can be chosen');
 	assert.equal(savedLevelOf('cpp', '-O0'), '-O0');

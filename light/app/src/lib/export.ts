@@ -79,6 +79,7 @@ const BUILD: Record<LanguageId, BuildFiles> = {
 		paths: ['haskell-project.cabal', 'cabal.project'],
 		generate: (p) => ({ 'haskell-project.cabal': haskellCabal(p.files, p.language.entry), 'cabal.project': 'packages: .\n' }),
 	},
+	go: { paths: ['go.mod'], generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }) },
 };
 
 /**
@@ -1327,6 +1328,30 @@ function crossSection(target: CppTarget | null): string[] {
 	];
 }
 
+// ---- Go
+
+/** The Go release the browser builds with (packs/go/build.sh, GO_VERSION), as go.mod's `go` line names it. */
+const GO_VERSION = '1.27';
+
+/**
+ * The README's section for a Go project whose go.env names a Linux target
+ * (packs/go: the runner reads it, the go command does not); none for the
+ * default, WebAssembly. The lines are read as the pack reads them: KEY=value,
+ * # comments.
+ */
+function goTargetSection(env: string): string[] {
+	const values = new Map<string, string>();
+	for (const line of env.split('\n').map((l) => l.trim())) {
+		const [key, value] = line.split('=', 2);
+		if (line && !line.startsWith('#') && key !== undefined && value !== undefined) values.set(key.trim(), value.trim());
+	}
+	const goarch = values.get('GOARCH');
+	if (values.get('GOOS') !== 'linux' || goarch === undefined) return [];
+	return [
+		`## Target\n\nIn Yukibana Light this project is built for Linux on ${goarch} (\`go.env\`) and runs under QEMU. The go command does not read \`go.env\`; to build the same program, set the variables yourself:\n\n\`\`\`sh\nGOOS=linux GOARCH=${goarch} go build .\n\`\`\`\n\nThe program then runs on a ${goarch} Linux machine, or elsewhere under \`qemu-${goarch === 'amd64' ? 'x86_64' : goarch === 'arm64' ? 'aarch64' : goarch}\`.`,
+	];
+}
+
 /** How to build, run and test with each language's tools, as Markdown sections. */
 function instructions(language: Language, files: Files): string[] {
 	const paths = Object.keys(files);
@@ -1424,6 +1449,15 @@ function instructions(language: Language, files: Files): string[] {
 				'## Editors\n\nVS Code (with the Haskell extension), Emacs, Vim and Zed run the Haskell Language Server, which reads the `.cabal` file; GHCup installs it with `ghcup install hls`.',
 			];
 		}
+		case 'go': {
+			const tests = paths.some((p) => p.endsWith('_test.go'));
+			return [
+				`## Build and run\n\nWith Go ${GO_VERSION} or later (go.dev/dl):\n\n\`\`\`sh\ngo run .\n\`\`\``,
+				...(tests ? ['## Test\n\n```sh\ngo test ./...\n```'] : []),
+				...goTargetSection(files['go.env'] ?? ''),
+				'## Editors\n\nVS Code (with the Go extension), GoLand and Zed open the folder; the first two run gopls, which reads `go.mod`.',
+			];
+		}
 		case 'java': {
 			const tests = paths.some((p) => JAVA_TESTS.test(p) && p.endsWith('.java'));
 			return [
@@ -1467,7 +1501,7 @@ const IGNORED: Record<LanguageId, readonly string[]> = {
 	rust: ['target/'],
 	java: ['target/', '*.class', '.classpath', '.project', '.settings/', '*.iml'],
 	kotlin: ['build/', '.gradle/', '.kotlin/', '*.class', '*.iml'],
-	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o'],
+	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o'],	go: ['*.exe', '*.test', '*.out'],
 };
 
 /** A .gitignore for the build output of the language's tools. */
