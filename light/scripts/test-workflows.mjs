@@ -370,6 +370,37 @@ test("what a split pack's tests read outside the packs starts the pack workflow"
     assert.ok(read > 0, 'no split pack names a file outside it: the rule reads nothing');
 });
 
+test("the rule on a split pack's test inputs runs whenever that pack's tests or what they source change, and the store job reruns when a pack becomes split", () => {
+    // The rule above once ran only in the store job, whose once key holds
+    // neither a split pack's test.sh nor what it sources (cpp's glue-lib.sh):
+    // an edit to --inputs found the store job skipped and went unchecked
+    // (code review of Q1a). The assemble job, keyed by the whole pack and by
+    // this file, runs it before the pack's tests.
+    const assemble = stepsOf(/** @type {Job} */ (jobs.assemble));
+    const gate = assemble.findIndex((s) => s.id === 'once');
+    const at = assemble.findIndex((s) => /node --test --test-name-pattern=.* scripts\/test-workflows\.mjs/.test(String(s.run ?? '')));
+    assert.ok(gate >= 0 && at > gate, 'the assemble job runs the rule after its once gate is asked');
+    const step = /** @type {Step} */ (assemble[at]);
+    assert.equal(step.if, "steps.once.outputs.done != 'true'", 'the rule runs whenever the pack is not already done, a release included');
+    assert.equal(/** @type {{ 'working-directory'?: string }} */ (step)['working-directory'], 'light');
+    const tests = assemble.findIndex((s) => /"light\/packs\/\$PACK\/test\.sh"\s*\n/.test(String(s.run ?? '')));
+    assert.ok(at < tests, "the rule runs before the pack's tests");
+    // The pattern picks this file's --inputs rule and nothing else: a
+    // pattern that matched no test would run none and pass.
+    const pattern = /--test-name-pattern="([^"]+)"/.exec(String(step.run))?.[1];
+    assert.ok(pattern, 'the step names its test by a quoted pattern');
+    const titles = [...fs.readFileSync(fileURLToPath(import.meta.url), 'utf8').matchAll(/^test\((['"])((?:(?!\1).)*)\1/gm)].map((m) => String(m[2]));
+    assert.deepEqual(titles.filter((t) => new RegExp(pattern).test(t)), ["what a split pack's tests read outside the packs starts the pack workflow"]);
+    assert.match(String(stepById(assemble, 'inputs').run), /light\/scripts\/test-workflows\.mjs/, "this file is among the assemble job's once inputs");
+    // Which packs are split (SPLIT, read by the rules the store job runs)
+    // is in the store's key: each split pack has a file there.
+    const specs = String(stepById(stepsOf(/** @type {Job} */ (jobs.plan)), 'store').with?.paths).split('\n').map((l) => l.trim()).filter(Boolean);
+    const keyed = execFileSync('git', ['-C', ROOT, 'ls-files', '--', ...specs], { encoding: 'utf8' }).split('\n');
+    for (const pack of SPLIT) {
+        assert.ok(keyed.some((f) => f.startsWith(`light/packs/${pack}/toolchains/`)), `that ${pack} is split is in no file of the store job's once key`);
+    }
+});
+
 test('every script that keys, fetches, verifies, builds or assembles a toolchain starts the pack workflow', () => {
     // toolchain-key.sh and toolchain-build-env.sh are the key; pack-lib.sh
     // their helpers; pack-store.sh fetches and verifies; pack-toolchain.sh

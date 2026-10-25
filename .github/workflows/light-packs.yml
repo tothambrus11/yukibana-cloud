@@ -261,6 +261,12 @@ jobs:
             light/scripts/protect-releases.sh
             light/scripts/test-protect-releases.mjs
             light/packs/stub
+            # Which packs are split (a unit's toolchain.sh under toolchains/),
+            # which test-workflows.mjs's rules read: a pack that becomes split
+            # is a new key. What a split pack's test.sh --inputs prints is
+            # checked in that pack's assemble job instead, whose key is the
+            # whole pack (code review of Q1a).
+            light/packs/*/toolchains/*/toolchain.sh
             light/setup.sh
             .github/workflows
 
@@ -548,7 +554,8 @@ jobs:
             [ -z "$tested" ] || printf '%s\n' "$tested"
             printf '%s\n' light/scripts/pack-toolchain.sh light/scripts/toolchain-key.sh \
               light/scripts/toolchain-build-env.sh light/scripts/pack-lib.sh light/scripts/toolchain-manifest.mjs \
-              light/scripts/pack-store.sh .github/workflows/light-packs.yml .github/workflows/light-toolchain-unit.yml
+              light/scripts/pack-store.sh light/scripts/test-workflows.mjs \
+              .github/workflows/light-packs.yml .github/workflows/light-toolchain-unit.yml
             echo ONCE_PATHS
           } >> "$GITHUB_OUTPUT"
 
@@ -561,6 +568,17 @@ jobs:
         with:
           name: light-pack-${{ matrix.pack }}
           paths: ${{ steps.inputs.outputs.once-paths }}
+
+      # What this pack's tests read outside it must start this workflow, or
+      # a push changing only that file never asks the gate above. The rule
+      # is test-workflows.mjs's, run here rather than only in the store job:
+      # the store's key does not hold this pack's test.sh or what it sources,
+      # so an edit to its --inputs would find the store job skipped and pass
+      # unchecked (code review of Q1a). This job's key is the whole pack.
+      - name: What the pack's tests read starts this workflow
+        if: steps.once.outputs.done != 'true'
+        working-directory: light
+        run: node --test --test-name-pattern="outside the packs starts the pack workflow" scripts/test-workflows.mjs
 
       # The units this run's waves built of this pack (a pack's name has no
       # `-`, so toolchain-<pack>-* is this pack's alone). None is no error:
