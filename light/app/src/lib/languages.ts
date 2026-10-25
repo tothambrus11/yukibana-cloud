@@ -5,7 +5,7 @@
  */
 
 /** Identifies a language, and with it a pack and a saved project. */
-export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'p5-global' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell' | 'go';
+export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'p5-global' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell' | 'go' | 'zig';
 
 /** Project files by path relative to the workspace root, `/`-separated. */
 export type Files = Record<string, string>;
@@ -89,7 +89,7 @@ export const shortLabel = (language: Language): string => language.short ?? lang
 export const LANGUAGE_GROUPS: readonly { label: string; ids: readonly LanguageId[] }[] = [
 	{ label: 'Scripting', ids: ['python', 'javascript', 'typescript', 'php'] },
 	{ label: 'Web', ids: ['web', 'p5', 'p5-global'] },
-	{ label: 'Compiled', ids: ['cpp', 'rust', 'go', 'swift'] },
+	{ label: 'Compiled', ids: ['cpp', 'rust', 'go', 'zig', 'swift'] },
 	{ label: 'JVM', ids: ['java', 'kotlin', 'scala'] },
 	{ label: 'Functional', ids: ['haskell'] },
 ];
@@ -1325,6 +1325,90 @@ func TestDistanceIsSymmetric(t *testing.T) {
 func ExampleDistance() {
 	fmt.Println(Distance(Point{0, 0}, Point{3, 4}))
 	// Output: 5
+}
+`,
+		},
+	},
+	{
+		// zig init's layout without build.zig: main.zig is the root, and
+		// `zig test main.zig` runs the tests of every file it uses. zig.env
+		// holds the target and the optimize mode, which the pack's runner
+		// reads and Download's build.zig takes as its defaults
+		// (packs/zig/README.md).
+		id: 'zig',
+		label: 'Zig',
+		monacoLanguages: ['zig'],
+		settings: {},
+		entry: 'main.zig',
+		extension: '.zig',
+		runs: true,
+		tests: true,
+		sample: {
+			'zig.env': `# The target Run and Test build for. With nothing set it is WebAssembly
+# (wasm32-wasi), run in the browser; TARGET=x86_64-linux builds an x86-64
+# Linux program and runs it under QEMU. OPTIMIZE is Debug (the default),
+# ReleaseSafe, ReleaseFast or ReleaseSmall.
+# TARGET=x86_64-linux
+# OPTIMIZE=ReleaseSafe
+`,
+			'main.zig': `const std = @import("std");
+const geometry = @import("geometry.zig");
+
+pub fn main(init: std.process.Init) !void {
+    var buffer: [1024]u8 = undefined;
+    var stdout_writer: std.Io.File.Writer = .init(.stdout(), init.io, &buffer);
+    const out = &stdout_writer.interface;
+
+    const a: geometry.Point = .{ .x = 0, .y = 0 };
+    const b: geometry.Point = .{ .x = 3, .y = 4 };
+    try out.print("{f} to {f}: {d}\\n", .{ a, b, geometry.distance(a, b) });
+    try out.print("{d}\\n", .{b.norm()});
+    try out.flush();
+}
+
+test {
+    // \`zig test main.zig\` runs the tests of the files main.zig uses.
+    _ = geometry;
+}
+`,
+			'geometry.zig': `//! Points in the plane.
+const std = @import("std");
+
+/// A point in the plane.
+pub const Point = struct {
+    x: f64,
+    y: f64,
+
+    /// Distance from the origin.
+    pub fn norm(self: Point) f64 {
+        return std.math.hypot(self.x, self.y);
+    }
+
+    /// Writes the point as (x, y), for \`{f}\` in a format string.
+    pub fn format(self: Point, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("({d}, {d})", .{ self.x, self.y });
+    }
+};
+
+/// Euclidean distance between two points.
+pub fn distance(a: Point, b: Point) f64 {
+    const d: Point = .{ .x = a.x - b.x, .y = a.y - b.y };
+    return d.norm();
+}
+
+test "the norm of (3, 4) is 5" {
+    const p: Point = .{ .x = 3, .y = 4 };
+    try std.testing.expectEqual(5.0, p.norm());
+}
+
+test "distance is symmetric, for 100 random pairs of points" {
+    var prng: std.Random.DefaultPrng = .init(42);
+    const random = prng.random();
+    for (0..100) |_| {
+        const a: Point = .{ .x = random.float(f64) * 200 - 100, .y = random.float(f64) * 200 - 100 };
+        const b: Point = .{ .x = random.float(f64) * 200 - 100, .y = random.float(f64) * 200 - 100 };
+        try std.testing.expectEqual(distance(a, b), distance(b, a));
+    }
 }
 `,
 		},

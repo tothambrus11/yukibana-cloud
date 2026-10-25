@@ -79,7 +79,7 @@ const BUILD: Record<LanguageId, BuildFiles> = {
 		paths: ['haskell-project.cabal', 'cabal.project'],
 		generate: (p) => ({ 'haskell-project.cabal': haskellCabal(p.files, p.language.entry), 'cabal.project': 'packages: .\n' }),
 	},
-	go: { paths: ['go.mod'], generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }) },
+	go: { paths: ['go.mod'], generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }) },	zig: { paths: ['build.zig'], generate: (p) => ({ 'build.zig': buildZig(p.language.entry) }) },
 };
 
 /**
@@ -1328,6 +1328,62 @@ function crossSection(target: CppTarget | null): string[] {
 	];
 }
 
+// ---- Zig
+
+/** The Zig release the browser builds with (packs/zig/build.sh, ZIG_VERSION); build.zig is written for its build API. */
+const ZIG_VERSION = '0.17.0';
+
+/**
+ * build.zig for a project whose root is `entry`, as `zig init` writes one
+ * without the library module: `zig build run` builds and runs it, `zig
+ * build test` runs the tests `zig test <entry>` runs in the browser. The
+ * target and optimize mode are zig build's options (-Dtarget, -Doptimize),
+ * native and Debug unless given.
+ */
+export function buildZig(entry: string): string {
+	return `const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const root_module = b.createModule(.{
+        .root_source_file = b.path("${entry}"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const exe = b.addExecutable(.{ .name = "main", .root_module = root_module });
+    b.installArtifact(exe);
+
+    const run = b.addRunArtifact(exe);
+    run.step.dependOn(b.getInstallStep());
+    run.addPassthruArgs();
+    b.step("run", "Run the program").dependOn(&run.step);
+
+    const tests = b.addTest(.{ .root_module = root_module });
+    b.step("test", "Run the tests").dependOn(&b.addRunArtifact(tests).step);
+}
+`;
+}
+
+/**
+ * The README's section for a Zig project whose zig.env names a target or an
+ * optimize mode (packs/zig: the runner reads it, zig build does not); none
+ * when it names neither. Read as the pack reads it: KEY=value, # comments.
+ */
+function zigTargetSection(env: string): string[] {
+	const values = new Map<string, string>();
+	for (const line of env.split('\n').map((l) => l.trim())) {
+		const [key, value] = line.split('=', 2);
+		if (line && !line.startsWith('#') && key !== undefined && value !== undefined) values.set(key.trim(), value.trim());
+	}
+	const target = values.get('TARGET');
+	const optimize = values.get('OPTIMIZE');
+	if (target === undefined && optimize === undefined) return [];
+	const flags = [...(target ? [`-Dtarget=${target}`] : []), ...(optimize ? [`-Doptimize=${optimize}`] : [])].join(' ');
+	const where = target === 'x86_64-linux' ? ' The program then runs on an x86-64 Linux machine, or elsewhere under `qemu-x86_64`.' : target === 'wasm32-wasi' ? ' The program then runs under a WASI runtime: `wasmtime zig-out/bin/main.wasm`.' : '';
+	return [`## Target\n\nIn Yukibana Light this project is built with \`zig.env\`'s settings. zig build does not read \`zig.env\`; give them as options:\n\n\`\`\`sh\nzig build ${flags}\n\`\`\`\n${where}`];
+}
+
 // ---- Go
 
 /** The Go release the browser builds with (packs/go/build.sh, GO_VERSION), as go.mod's `go` line names it. */
@@ -1458,6 +1514,15 @@ function instructions(language: Language, files: Files): string[] {
 				'## Editors\n\nVS Code (with the Go extension), GoLand and Zed open the folder; the first two run gopls, which reads `go.mod`.',
 			];
 		}
+		case 'zig': {
+			const tests = Object.entries(files).some(([p, t]) => p.endsWith('.zig') && /^\s*test\b/m.test(t));
+			return [
+				`## Build and run\n\nWith Zig ${ZIG_VERSION} (ziglang.org/download):\n\n\`\`\`sh\nzig build run\n\`\`\``,
+				...(tests ? ['## Test\n\n```sh\nzig build test --summary all\n```'] : []),
+				...zigTargetSection(files['zig.env'] ?? ''),
+				'## Editors\n\nVS Code (with the Zig Language extension), Zed and Neovim run ZLS, which reads `build.zig`.',
+			];
+		}
 		case 'java': {
 			const tests = paths.some((p) => JAVA_TESTS.test(p) && p.endsWith('.java'));
 			return [
@@ -1502,6 +1567,7 @@ const IGNORED: Record<LanguageId, readonly string[]> = {
 	java: ['target/', '*.class', '.classpath', '.project', '.settings/', '*.iml'],
 	kotlin: ['build/', '.gradle/', '.kotlin/', '*.class', '*.iml'],
 	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o'],	go: ['*.exe', '*.test', '*.out'],
+	zig: ['zig-out/', '.zig-cache/'],
 };
 
 /** A .gitignore for the build output of the language's tools. */
