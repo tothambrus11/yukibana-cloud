@@ -39,6 +39,25 @@ credentials).
   `cancel` and keep the runner, other snippets `queued` with the run they
   wait for named. Warm runners only when the host asks (`warm`).
 
+## Stability
+
+The run API is 0.x-stable since step HY1 of the architecture plan
+(`light/examples/hylo`): `SessionSource`, `RunnerTransport` and
+`workerTransport`, `RunSession`, `RunnerPool` and `RunHandle`, `RunState`
+and `RunEvent`, with the runner messages of `@yukibana/protocol` they carry
+(`cancel` among them). Hylo's own compiler, bundled by its page with Vite's
+`?worker`, ran a page of ten snippets through them with no change to this
+module. From now on a change to them either only adds (a new optional field,
+a new state a host may treat as its nearest neighbour) or is a breaking
+change that MP1's semver will say. Two things the example found that a host
+must know, both already promised in the doc comments: a run's first state
+reaches `onEvent` before `RunnerPool.run` returns its handle, so a button
+made from that first state reads the handle when clicked; and the pool keys
+a host-built source by its `worker` function, so a page makes one source per
+runner and reuses it.
+
+The language server and preview sessions are not covered: they come with M7.
+
 ## Files
 
 * `paths.ts`: project paths (`pathProblem`, `parentOf`, `baseName`) and a

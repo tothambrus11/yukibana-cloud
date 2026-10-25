@@ -12,6 +12,7 @@ installing").
 ```text
 app/                  SvelteKit 3 (Svelte 5, Vite 8, adapter-static), Monaco 0.57, dockview
 modules/              @yukibana/protocol, runtime and monaco: what the app, packs and embeds share
+examples/             other hosts built on the modules, as another site would (hylo/: Hylo's compiler, many snippets)
 packs/CONTRACT.md     what a language pack is: a language server worker and a runner worker
 packs/<language>/     one pack per language, each with build.sh, test.mjs and a README
 serve.py              a static server that sends the headers the app wants

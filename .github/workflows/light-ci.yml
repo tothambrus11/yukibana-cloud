@@ -16,6 +16,9 @@
 #   (light/packs/contract.test.mjs) and of light-packs.yml's release rule.
 #   A change to a pack's glue or scripts is otherwise first tested by a
 #   pack build, up to hours later.
+# - hylo-example: light/examples/hylo, a docs page of Hylo snippets on
+#   Hylo's own compiler through one runner pool: type-check, its unit tests,
+#   a Vite build and the page driven in Chromium with the real compiler.
 #
 # Each job runs only when what it reads changed since it last passed
 # (.github/actions/once): its inputs are listed in the plan job.
@@ -69,6 +72,8 @@ jobs:
       javascript-key: ${{ steps.javascript.outputs.key }}
       pack-units-done: ${{ steps.pack-units.outputs.done }}
       pack-units-key: ${{ steps.pack-units.outputs.key }}
+      hylo-example-done: ${{ steps.hylo-example.outputs.done }}
+      hylo-example-key: ${{ steps.hylo-example.outputs.key }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -127,6 +132,15 @@ jobs:
             light/packs/contract.test.mjs
             light/scripts
             .github/workflows
+      # The example runs the shared modules as an outside host would.
+      - id: hylo-example
+        uses: ./.github/actions/once
+        with:
+          name: light-hylo-example
+          paths: |
+            light/examples/hylo
+            light/modules
+            .github/workflows/light-ci.yml
 
   app:
     name: App
@@ -278,3 +292,46 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.pack-units-key }}
+
+  hylo-example:
+    name: Hylo example
+    needs: plan
+    if: needs.plan.outputs.hylo-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/hylo
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: light/examples/hylo/package-lock.json
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Unit tests (the runner and the page, workers stood in for)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end (Chromium, the real Hylo compiler)
+        run: npm run test:e2e
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.hylo-example-key }}
