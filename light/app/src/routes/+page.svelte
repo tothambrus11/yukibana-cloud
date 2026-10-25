@@ -55,8 +55,8 @@
 			updateReady: (apply) => (applyUpdate = apply),
 		});
 		void offline.refresh();
-		// Keeps the body the height of the visible area, above a phone's on-screen keyboard.
-		const stopViewport = followViewport(() => {});
+		// Keeps the body the height of the visible area, above a phone's on-screen keyboard, and on a phone gives the editor the room while typing.
+		const stopViewport = followViewport((up) => dock?.keyboard(up));
 		// The save is debounced; a page being hidden may never come back.
 		const hidden = () => document.visibilityState === 'hidden' && workspace.flush();
 		const flush = () => workspace.flush();

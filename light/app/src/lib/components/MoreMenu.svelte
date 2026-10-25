@@ -88,7 +88,7 @@
 </button>
 <Popover bind:this={popover} id="more-menu" label="More" role="menu" class="more-menu" ontoggle={(o) => (open = o)}>
 	<!-- The items are buttons; this only closes the menu after one is chosen. -->
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="items" onclick={chosen}>
 		{@render children()}
 	</div>
