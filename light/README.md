@@ -71,6 +71,11 @@ tests is kept as `<pack>-<tree>.tar.zst` on the repository's rolling
   and smoke-tested in Chromium, and the GitHub release of the tag with
   `yukibana-light-<tag>.zip` and `packs.json` (the tree each pack was built
   from). Run by hand, it only uploads the archive as the run's artifact.
+  On a tag it also deploys the build to https://light.yukibana.dev
+  (`deploy/deploy.sh`: a Worker with the build as its static assets, COOP
+  and COEP on every response, the `.br` copy of each file, and the few pack
+  files too big for an asset from an R2 bucket), with the `light`
+  environment's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
 
 `serve.py` sends `Cross-Origin-Opener-Policy` and
 `Cross-Origin-Embedder-Policy`, and the `.br` or `.gz` sibling of a file

@@ -155,3 +155,48 @@ jobs:
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "Yukibana Light $GITHUB_REF_NAME" --notes-file notes.md \
             "yukibana-light-$GITHUB_REF_NAME.zip" packs.json
+
+  # The release goes live at https://light.yukibana.dev (light/deploy): the
+  # archive's build/ is the Worker's assets, and the pack files too big for
+  # an asset go to its R2 bucket first. The token is the "light" environment's
+  # secret, so only this job sees it; without one, the job says so and stops.
+  deploy:
+    name: Deploy to light.yukibana.dev
+    if: startsWith(github.ref, 'refs/tags/light-v')
+    needs: assemble
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: light
+      url: https://light.yukibana.dev
+    concurrency:
+      group: light-deploy
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: light
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: yukibana-light-preview-${{ github.run_number }}
+          path: ${{ runner.temp }}/release
+
+      - name: Deploy
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::no CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the light environment: not deployed"
+            exit 0
+          fi
+          mv "$RUNNER_TEMP/release/yukibana-light/build" app/build
+          ./deploy/deploy.sh
