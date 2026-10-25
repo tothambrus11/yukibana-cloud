@@ -124,20 +124,21 @@
 			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
 		</label>
 
+		<!-- One button that is Run or Stop, as wide as the wider of the two, and Test and Mutate stay where they are while it runs: pressing a button moves nothing. -->
 		{#if workspace.runner.busy}
 			<button class="btn run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
-				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg>Stop
+				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg><span class="run-label" data-other="Run"><span>Stop</span></span>
 			</button>
 		{:else}
 			<button class="btn run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
-				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>Run
+				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg><span class="run-label" data-other="Stop"><span>Run</span></span>
 			</button>
-			{#if language.tests}
-				<button class="btn test" onclick={() => workspace.run('test')} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
-			{/if}
-			{#if language.mutates}
-				<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
-			{/if}
+		{/if}
+		{#if language.tests}
+			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+		{/if}
+		{#if language.mutates}
+			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
 		{/if}
 
 		{#if hasBuild}
@@ -149,13 +150,13 @@
 				{#if language.explores.includes('llvm-ir')}
 					{@const on = workspace.viewsOpen.includes('llvm-ir')}
 					<button class="btn view" data-view="llvm-ir" aria-pressed={on} onclick={() => workspace.toggleView('llvm-ir')} title={on ? 'Close the LLVM IR view' : 'Show the LLVM IR of the active C or C++ file'}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">LLVM IR</span><span class="short">IR</span>
+						<span class="long">LLVM IR</span><span class="short">IR</span>
 					</button>
 				{/if}
 				{#if language.explores.includes('asm')}
 					{@const on = workspace.viewsOpen.includes('asm')}
 					<button class="btn view" data-view="asm" aria-pressed={on} onclick={() => workspace.toggleView('asm')} title={on ? 'Close the Assembly view' : 'Show the assembly of the active C or C++ file'}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">Assembly</span><span class="short">Asm</span>
+						<span class="long">Assembly</span><span class="short">Asm</span>
 					</button>
 				{/if}
 			</div>
@@ -168,7 +169,6 @@
 		{/if}
 		<button class="icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /><path d="M12 10v6M9.5 13.5 12 16l2.5-2.5" /></svg>
-			{#if cached}<span class="badge" title="{language.label} works offline">✓</span>{/if}
 		</button>
 		<button class="icon-btn theme-button" data-fold="44" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
 			{#if theme.current === 'dark'}
@@ -368,6 +368,18 @@
 	.run.stop svg {
 		fill: var(--red-high);
 	}
+	/* The other word, unseen, in the same cell: the button is as wide as "Run" or "Stop", whichever is wider, in either state. */
+	.run-label {
+		display: inline-grid;
+	}
+	.run-label > span,
+	.run-label::after {
+		grid-area: 1 / 1;
+	}
+	.run-label::after {
+		content: attr(data-other);
+		visibility: hidden;
+	}
 	.update {
 		border-color: var(--accent);
 		color: var(--accent-high);
@@ -390,33 +402,12 @@
 	.view-group .view + .view {
 		margin-left: -1px;
 	}
-	.view .check:empty {
-		display: none;
-	}
 	:global(.view-group .short) {
 		display: none;
 	}
 	.spacer {
 		flex: 1 1 0;
 		min-width: 0;
-	}
-	.offline-button {
-		position: relative;
-	}
-	.badge {
-		position: absolute;
-		right: 0.1rem;
-		bottom: 0.15rem;
-		display: grid;
-		place-items: center;
-		width: 0.8rem;
-		height: 0.8rem;
-		border-radius: 50%;
-		background: var(--accent);
-		color: var(--black);
-		font-size: 0.55rem;
-		font-weight: 700;
-		line-height: 1;
 	}
 	.dock {
 		flex: 1;

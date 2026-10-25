@@ -117,8 +117,9 @@ function addStyles(): void {
 .yk-view-toggles[data-overflow~='start'] { mask-image: linear-gradient(to right, transparent, black 1.5rem); }
 .yk-view-toggles[data-overflow~='start'][data-overflow~='end'] { mask-image: linear-gradient(to right, transparent, black 1.5rem, black calc(100% - 1.5rem), transparent); }
 .yk-view-toggles .chip { min-height: 1.4rem; }
-.yk-view-toggles .chip::before, .yk-view-menu .toggle::before { content: ''; display: inline-block; width: 0.7rem; text-align: center; }
-.yk-view-toggles .chip[aria-pressed='true']::before, .yk-view-menu .toggle[aria-pressed='true']::before { content: '✓'; color: var(--accent-high); }
+/* A menu keeps its check column (its width is reserved, so nothing moves); the strip's chips show on by their fill alone. */
+.yk-view-menu .toggle::before { content: ''; display: inline-block; width: 0.7rem; text-align: center; }
+.yk-view-menu .toggle[aria-pressed='true']::before { content: '✓'; color: var(--accent-high); }
 .yk-view-progress { flex: none; height: 2px; overflow: hidden; border-bottom: 1px solid var(--gray-5); box-sizing: content-box; }
 .yk-view-progress > span { display: block; height: 100%; width: 100%; background: var(--accent-high); opacity: 0; transform-origin: left; transform: scaleX(0); transition: transform 0.2s, opacity 0.3s; }
 .yk-view-progress.busy > span { opacity: 1; }

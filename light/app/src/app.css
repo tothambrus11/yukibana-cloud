@@ -183,7 +183,7 @@ body {
 	color: var(--white);
 	font-weight: 600;
 }
-/* A toggle that is on: a fill and a check, not only a border colour. */
+/* A toggle that is on: a fill, not only a border colour, and no mark, so pressing it moves nothing. */
 .btn[aria-pressed='true'],
 .chip[aria-pressed='true'] {
 	border-color: var(--accent);
@@ -660,36 +660,6 @@ header.bar-host {
 	content: attr(data-text);
 }
 
-.dock-tab-badge[data-kind='ok'] {
-	padding: 0;
-	background: none;
-	color: var(--accent-high);
-}
-
-.dock-tab-badge[data-kind='error'] {
-	padding: 0;
-	background: none;
-	color: var(--red-high);
-}
-
-.dock-tab-badge[data-kind='busy'] {
-	width: 0.65rem;
-	min-width: 0;
-	height: 0.65rem;
-	padding: 0;
-	border: 1.5px solid var(--gray-4);
-	border-top-color: var(--accent-high);
-	border-radius: 50%;
-	background: none;
-	animation: dock-tab-spin 0.8s linear infinite;
-}
-
-@keyframes dock-tab-spin {
-	to {
-		transform: rotate(360deg);
-	}
-}
-
 /*
  * Icon-only tabs. Each group is a container, and its element carries its
  * tab count (dock.ts markGroups): when the group is narrower than the
@@ -868,12 +838,9 @@ header.bar-host {
 	[data-bottom] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
 		display: none;
 	}
-	/* Room for eight tabs on a phone: closer icons, and no ✓ (the view's own header says it is up to date). */
+	/* Room for eight tabs on a phone: closer icons. */
 	[data-bottom] .dock-tab.has-icon {
 		padding-inline: 0.6rem;
-	}
-	[data-bottom] .dock-tab.has-icon .dock-tab-badge[data-kind='ok'] {
-		display: none;
 	}
 }
 .dock-tab.has-icon[data-short]::before {

@@ -177,11 +177,18 @@ async function run(language, c) {
 	}
 
 	if (c.output && existsSync(join(build, 'packs', c.pack ?? language, 'runner.js'))) {
+		// Pressing Run moves nothing: Stop takes Run's place at Run's size, and the buttons beside it stay.
+		const before = await headerButtons(page);
 		await page.locator('header button.run').click();
+		await page.locator('header button.stop').waitFor({ timeout: 10_000 }).catch(() => {});
+		const during = await headerButtons(page);
 		const status = page.locator('.terminal .status');
 		const ended = await status.filter({ hasText: /Exited|Stopped/ }).waitFor({ timeout: 240_000 }).then(() => true, () => false);
 		const shown = (await page.locator('.terminal pre').textContent()) ?? '';
 		check(ended && /code 0/.test((await status.textContent()) ?? '') && shown.includes(c.output), `Run prints "${c.output}" (${(await status.textContent())?.trim()}: ${JSON.stringify(shown.slice(0, 200))})`);
+		const after = await headerButtons(page);
+		const moved = [during, after].flatMap((now) => Object.keys(before).filter((k) => now[k] !== before[k]).map((k) => `${k}: ${before[k]} → ${now[k] ?? 'gone'}`));
+		check(moved.length === 0, `the header's buttons stay put through a run${moved.length ? ` (${moved.join('; ')})` : ''}`);
 	}
 
 	if (c.testOutput && existsSync(join(build, 'packs', c.pack ?? language, 'runner.js'))) {
@@ -246,6 +253,21 @@ async function run(language, c) {
  * `#expect`) pass on Test. The macro plugins and swift-testing are fetched
  * then, and not before.
  */
+/** Each visible header button's place and size ("x,y wxh", rounded), by its text or label. */
+async function headerButtons(page) {
+	return page.evaluate(() =>
+		Object.fromEntries(
+			[...document.querySelectorAll('header button')]
+				.filter((b) => b.getClientRects().length > 0)
+				.map((b, i) => {
+					const r = b.getBoundingClientRect();
+					const name = b.classList.contains('run') ? 'Run/Stop' : b.getAttribute('aria-label') || b.textContent?.trim() || `button ${i}`;
+					return [name, `${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)}`];
+				}),
+		),
+	);
+}
+
 async function swiftMacros(page, check, requests) {
 	const fetched = (name) => requests.some((u) => u.endsWith(`/packs/swift/${name}`));
 	check(!fetched('SwiftMacroPlugins.wasm') && !fetched('swift-testing.tar'), 'the sample, which uses no macro, fetched neither the macro plugins nor swift-testing');

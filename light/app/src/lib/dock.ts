@@ -81,10 +81,10 @@ const ICONS: Record<string, string> = {
 
 /** A mark on a tab: a view's compile state, or the problem count. `busy` shows a spinner instead of text. */
 export interface TabBadge {
-	/** What the badge shows: a mark or a count, drawn by CSS so the tab's text stays its title alone. */
+	/** What the badge shows, a count, drawn by CSS so the tab's text stays its title alone. */
 	text: string;
-	kind: 'ok' | 'error' | 'busy' | 'count';
-	/** What the badge means, in words, for its tooltip ("3 problems", "Compiled"). */
+	kind: 'count';
+	/** What the badge means, in words, for its tooltip ("3 problems"). */
 	says: string;
 }
 
@@ -92,22 +92,20 @@ export interface TabBadge {
  * A compiler output view's panel. The view itself (compiler-view.ts, with
  * its grammars) is loaded the first time one opens; until then the panel is
  * empty. The panel tells the explorer when it opens, closes, and comes to
- * the front or goes behind another tab, so a hidden view compiles nothing,
- * and shows the view's state on its tab.
+ * the front or goes behind another tab, so a hidden view compiles nothing.
+ * Its tab carries no ✓, ✗ or spinner: the view's own header says how its
+ * compile went, and a mark that comes and goes moves the tabs beside it.
  */
 class CompilerViewRenderer implements IContentRenderer {
 	readonly element = document.createElement('div');
 	private view: CompilerView | null = null;
 	private disposed = false;
 	private visibility: { dispose(): void } | null = null;
-	private unsubscribe: (() => void) | null = null;
 
 	constructor(
 		private readonly kind: ExploreKind,
 		private readonly workspace: Workspace,
 		private readonly host: () => Omit<ViewHost, 'explorer'>,
-		/** Shows how the view's compile went on its tab (✓, ✗, or busy), to be seen from another tab. */
-		private readonly setBadge: (badge: TabBadge | null) => void,
 	) {
 		this.element.className = 'dock-panel';
 	}
@@ -118,14 +116,6 @@ class CompilerViewRenderer implements IContentRenderer {
 		if (!explorer) return;
 		this.visibility = params.api.onDidVisibilityChange((e) => explorer.setVisible(this.kind, e.isVisible));
 		explorer.opened(this.kind);
-		const badge = () => {
-			const { status } = explorer.views[this.kind];
-			this.setBadge(status === 'ok' ? { text: '✓', kind: 'ok', says: 'Up to date' } : status === 'error' ? { text: '✗', kind: 'error', says: 'Failed to compile' } : status === 'idle' ? null : { text: '', kind: 'busy', says: 'Compiling' });
-		};
-		this.unsubscribe = explorer.subscribe((k) => {
-			if (k === this.kind) badge();
-		});
-		badge();
 		import('./compiler-view').then(
 			({ createCompilerView }) => {
 				if (!this.disposed) this.view = createCompilerView(this.element, this.kind, { ...this.host(), explorer });
@@ -138,7 +128,6 @@ class CompilerViewRenderer implements IContentRenderer {
 
 	dispose(): void {
 		this.disposed = true;
-		this.unsubscribe?.();
 		this.visibility?.dispose();
 		this.view?.dispose();
 	}
@@ -356,7 +345,7 @@ class TabRenderer implements ITabRenderer {
 	setBadge(badge: TabBadge | null): void {
 		this.badge.hidden = badge === null;
 		if (!badge) return;
-		// The mark is the badge's data, drawn by CSS: a suite or a screen reader reading the tab gets its title, not "LLVM IR✓".
+		// The count is the badge's data, drawn by CSS: a suite or a screen reader reading the tab gets its title, not "Problems3".
 		this.badge.dataset['text'] = badge.text;
 		this.badge.dataset['kind'] = badge.kind;
 		this.badge.title = badge.says;
@@ -430,7 +419,6 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	let opening = false;
 	/** True while a change of mode moves panels: the moves are not the person's. */
 	let arranging = false;
-	const badgeOf = (id: string) => (badge: TabBadge | null) => tabs.get(id)?.setBadge(badge);
 
 	const dock: DockviewApi = createDockview(element, {
 		className: 'dockview-theme-yukibana',
@@ -450,9 +438,9 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 				case 'call-hierarchy':
 					return new SvelteRenderer(CallHierarchy, workspace);
 				case VIEWS['llvm-ir'].component:
-					return new CompilerViewRenderer('llvm-ir', workspace, () => viewHost, badgeOf(VIEWS['llvm-ir'].id));
+					return new CompilerViewRenderer('llvm-ir', workspace, () => viewHost);
 				case VIEWS.asm.component:
-					return new CompilerViewRenderer('asm', workspace, () => viewHost, badgeOf(VIEWS.asm.id));
+					return new CompilerViewRenderer('asm', workspace, () => viewHost);
 				default: {
 					const r = new EditorRenderer(workspace, navigation);
 					editors.set(id, r);
