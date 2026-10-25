@@ -10,10 +10,15 @@
  * pack that stops needing something drops it with no change of format
  * (D21 in the architecture plan).
  *
- * A session reads its source's needs with {@link parseRequires}, picks the
- * one for what it is about to start with {@link needFor}, and asks
- * {@link requirementProblem} before it creates a worker or fetches a byte;
- * a problem is shown by its `reason` and nothing is started.
+ * A session asks, in this order, before it creates a worker or fetches a
+ * byte: {@link protocolProblem}, with the major the pack says it was built
+ * for; then {@link parseRequires} on its needs; then {@link needFor}, for
+ * what it is about to start; then {@link requirementProblem}. A problem at
+ * any step is shown by its `reason` (a parse's by its `problems`) and
+ * nothing is started. The protocol comes first because a pack of another
+ * major may declare its needs in a shape this copy cannot read, and its
+ * reader should be told the page is older than the pack, not shown the
+ * parser's complaint about a field it has never heard of.
  */
 import type { RunMode } from './runner.ts';
 
@@ -22,8 +27,8 @@ import type { RunMode } from './runner.ts';
  * messages to and from a pack's workers and the shape of what a pack
  * declares. A pack says which major it was built for (pack.json
  * `protocol`), and a page refuses a pack of another major by name
- * ({@link requirementProblem}) rather than starting a worker that would
- * misread it. It changes only when a change breaks a page or a pack of the
+ * ({@link protocolProblem}) rather than reading its needs or starting a
+ * worker that would misread it. It changes only when a change breaks a page or a pack of the
  * previous major; anything optional a receiver may ignore keeps it.
  *
  * It is not the npm version of @yukibana/protocol, which is unversioned
@@ -223,7 +228,9 @@ function readOthers(worker: WorkerKind, entry: Record<string, unknown>, problems
  * ignored, because a need nobody reads is a need nobody meets: a host would
  * start the worker and it would fail later, with a worse reason. A new
  * field therefore comes with a new {@link PROTOCOL_MAJOR}, or is added here
- * before any pack declares it.
+ * before any pack declares it. That is why a caller asks
+ * {@link protocolProblem} first: a newer pack's needs are the very thing
+ * this may fail to read, and its reader is owed the protocol's reason.
  */
 export function parseRequires(value: unknown): ParsedRequires {
 	const problems: string[] = [];
@@ -363,32 +370,46 @@ function subject({ pack, worker, call }: Starting): string {
 }
 
 /**
+ * Why a pack built for protocol major `protocol` cannot be used by this
+ * page, or null when it is this page's own {@link PROTOCOL_MAJOR}. `pack`
+ * is its name as a reader knows it, for the reason. A session asks this
+ * before {@link parseRequires}, since nothing else a pack of another major
+ * says can be trusted to be in a shape this copy reads; the reason says
+ * which side is older and who has to update. It takes a {@link Starting}
+ * as it is, or just the pack's name and major.
+ */
+export function protocolProblem({ pack, protocol }: Pick<Starting, 'pack' | 'protocol'>): RequirementProblem | null {
+	if (protocol === PROTOCOL_MAJOR) return null;
+	const versions = `(the pack speaks protocol ${protocol}, the page ${PROTOCOL_MAJOR})`;
+	return {
+		kind: 'protocol',
+		pack: protocol,
+		page: PROTOCOL_MAJOR,
+		reason:
+			protocol > PROTOCOL_MAJOR
+				? `${pack} cannot start: this page's editor is older than its pack ${versions}. ` +
+					"The page's owner needs to update the page's Yukibana modules."
+				: `${pack} cannot start: its pack is older than this page's editor ${versions}. ` +
+					`Whoever hosts the pack needs to serve a build of it for protocol ${PROTOCOL_MAJOR}.`,
+	};
+}
+
+/**
  * Why `need` (from {@link needFor}) cannot be met where it would start,
  * or null when it can. Pure: it reads only its arguments, so a session
  * asks it before it creates a worker or fetches anything, and an unmet
  * need costs the reader no download.
  *
  * Checked in this order, the first that applies answering: a pack of
- * another protocol major (nothing else it says can be trusted), a worker
+ * another protocol major ({@link protocolProblem}, asked again here so a
+ * caller that skipped it still cannot start one), a worker
  * the pack does not have (`need` null), then the need itself, with every
  * unmet field in one reason. `optional-stdin` is never a problem;
  * {@link requirementLimitation} says what it costs.
  */
 export function requirementProblem(need: Need | null, starting: Starting, context: StartingContext): RequirementProblem | null {
-	if (starting.protocol !== PROTOCOL_MAJOR) {
-		const versions = `(the pack speaks protocol ${starting.protocol}, the page ${PROTOCOL_MAJOR})`;
-		return {
-			kind: 'protocol',
-			pack: starting.protocol,
-			page: PROTOCOL_MAJOR,
-			reason:
-				starting.protocol > PROTOCOL_MAJOR
-					? `${starting.pack} cannot start: this page's editor is older than its pack ${versions}. ` +
-						"The page's owner needs to update the page's Yukibana modules."
-					: `${starting.pack} cannot start: its pack is older than this page's editor ${versions}. ` +
-						`Whoever hosts the pack needs to serve a build of it for protocol ${PROTOCOL_MAJOR}.`,
-		};
-	}
+	const protocol = protocolProblem(starting);
+	if (protocol !== null) return protocol;
 	if (need === null) {
 		return { kind: 'absent', reason: `${starting.pack} has no ${WORKER_NAMES[starting.worker]}.` };
 	}

@@ -16,7 +16,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { needFor, parseRequires, PROTOCOL_MAJOR, requirementLimitation, requirementProblem } from '../protocol/requirements.ts';
+import { needFor, parseRequires, PROTOCOL_MAJOR, protocolProblem, requirementLimitation, requirementProblem } from '../protocol/requirements.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => JSON.parse(readFileSync(join(here, 'fixtures/requires', name), 'utf8'));
@@ -135,6 +135,21 @@ test("a pack built for another protocol major is refused by name before its need
 	assert.equal(older?.kind, 'protocol');
 	assert.match(older.reason, /its pack is older than this page's editor/);
 	assert.match(older.reason, new RegExp(`a build of it for protocol ${PROTOCOL_MAJOR}`));
+});
+
+test("a pack of a newer major whose needs this page cannot read is refused because the page is older, not because its needs are malformed", () => {
+	// What a session does with a pack.json, in the order the module says.
+	const pack = { name: 'C++', protocol: PROTOCOL_MAJOR + 1, requires: { runner: { default: { crossOriginIsolated: 'no', sameOriginPacks: false, webgpu: true } } } };
+	assert.equal(parseRequires(pack.requires).ok, false, 'the fixture is a shape this page cannot read');
+
+	const problem = protocolProblem({ pack: pack.name, protocol: pack.protocol });
+	assert.equal(problem?.kind, 'protocol');
+	assert.match(problem.reason, /^C\+\+ cannot start: this page's editor is older than its pack/);
+	assert.match(problem.reason, /update the page's Yukibana modules/);
+	assert.doesNotMatch(problem.reason, /webgpu|not a need/);
+
+	assert.equal(protocolProblem({ pack: pack.name, protocol: PROTOCOL_MAJOR }), null, "a pack of the page's own major goes on to have its needs read");
+	assert.deepEqual(protocolProblem(starting('C++', 'runner')), null, 'a Starting is asked as it is');
 });
 
 test('asking for a worker the pack does not have is refused by name, never taken as needing nothing', () => {
