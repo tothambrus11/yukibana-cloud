@@ -34,6 +34,9 @@ function fakeCache() {
 			const body = new Uint8Array(await response.arrayBuffer());
 			entries.set(href, { body, status: response.status, headers: Object.fromEntries(response.headers) });
 		},
+		async keys() {
+			return [...entries.keys()].map((url) => ({ url }));
+		},
 		async delete(href) {
 			this.deleted.push(href);
 			return entries.delete(href);
@@ -45,11 +48,10 @@ function fakeCache() {
 	};
 }
 
-function setup() {
-	const parsed = parseFileTable(TABLE_JSON, VERSION);
+function setup(tableJson = TABLE_JSON, caches = { app: fakeCache(), packs: fakeCache() }) {
+	const parsed = parseFileTable(tableJson, VERSION);
 	assert.ok('table' in parsed, JSON.stringify(parsed));
-	const app = fakeCache();
-	const packs = fakeCache();
+	const { app, packs } = caches;
 	const reports = [];
 	const verified = new VerifiedCache({
 		table: parsed.table,
@@ -152,6 +154,39 @@ test("only the network's copy that is the build's goes into a cache; another bui
 	assert.equal(packs.entries.size, 0);
 	assert.equal(await verified.store('packs/javascript/server.wasm', new Response(PACK)), true);
 	assert.deepEqual(packs.entries.get('https://light.example/packs/javascript/server.wasm').body, PACK);
+});
+
+/** The next build's worker over the same caches, its table listing `packFiles` (path to bytes) for packs. */
+const nextBuild = (caches, packFiles) =>
+	setup(JSON.stringify({ version: VERSION, shell: [''], files: { '': listed(INDEX), ...Object.fromEntries(Object.entries(packFiles).map(([path, bytes]) => [path, listed(bytes)])) } }), caches).verified;
+const pathOf = (href) => (href.startsWith('https://light.example/') ? href.slice('https://light.example/'.length) : null);
+
+test('a pack file the worker caches is kept across an update that lists the same sha256', async () => {
+	const { verified, app, packs } = setup();
+	assert.equal(await verified.store('packs/javascript/server.wasm', new Response(PACK)), true);
+	const next = nextBuild({ app, packs }, { 'packs/javascript/server.wasm': PACK });
+	assert.equal(await next.prunePacks(packs, pathOf), 0);
+	assert.deepEqual(packs.entries.get('https://light.example/packs/javascript/server.wasm')?.body, PACK);
+	assert.deepEqual(await bytesOf(await next.cached('packs/javascript/server.wasm')), PACK);
+});
+
+test('an update drops the cached pack files it changed or no longer has, and those without a hash header', async () => {
+	const { verified, app, packs } = setup();
+	assert.equal(await verified.store('packs/javascript/server.wasm', new Response(PACK)), true);
+	packs.plant('https://light.example/packs/old/gone.wasm', PACK, { 'X-Yukibana-Hash': sha(PACK) });
+	packs.plant('https://light.example/packs/javascript/unmarked.wasm', CHUNK);
+	const changed = PACK.slice();
+	changed[0] ^= 1;
+	const next = nextBuild({ app, packs }, { 'packs/javascript/server.wasm': changed, 'packs/javascript/unmarked.wasm': CHUNK });
+	assert.equal(await next.prunePacks(packs, pathOf), 3);
+	assert.equal(packs.entries.size, 0);
+});
+
+test('a pack file cached by a build that wrote 20-digit hashes is kept while its prefix matches', async () => {
+	const { app, packs } = setup();
+	packs.plant('https://light.example/packs/javascript/server.wasm', PACK, { 'X-Yukibana-Hash': sha(PACK).slice(0, 20) });
+	assert.equal(await nextBuild({ app, packs }, { 'packs/javascript/server.wasm': PACK }).prunePacks(packs, pathOf), 0);
+	assert.equal(packs.entries.size, 1);
 });
 
 test("the file table is refused, by name, when it is missing, malformed or another build's", () => {

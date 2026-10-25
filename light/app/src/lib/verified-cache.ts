@@ -37,10 +37,14 @@
  * 200 whose Content-Type comes from the path (as deploy/worker.js gives
  * it) and whose Content-Length is the table's size, so a program cannot
  * add a `Refresh`, a redirect or another type to bytes that are right.
+ * A pack entry the worker stores does carry `HASH_HEADER`, but only for
+ * `prunePacks` to decide what is worth keeping across an update; it is
+ * never read to decide what is served.
  *
  * No DOM: the worker has none. Caches, `fetch` and reporting are passed in,
  * so tests/unit/verified-cache.test.mjs drives it with fakes.
  */
+import { HASH_HEADER } from './offline-cache.ts';
 import { Sha256 } from './sha256.ts';
 
 /** One file of the build, as the table lists it. */
@@ -181,6 +185,11 @@ export interface CacheLike {
 	delete(request: string): Promise<boolean>;
 }
 
+/** The pack cache as `prunePacks` walks it: a `CacheLike` that also lists what it holds. */
+export interface PackCacheLike extends CacheLike {
+	keys(): Promise<readonly { url: string }[]>;
+}
+
 export interface VerifiedCacheOptions {
 	table: FileTable;
 	/** Which cache holds a path: the packs cache for a pack file, this build's app cache for the rest. */
@@ -268,7 +277,12 @@ export class VerifiedCache {
 		const href = url(path);
 		if (isPack(path)) {
 			try {
-				await cache.put(href, new Response(response.body.pipeThrough(verifying(file, path, () => undefined)), { headers: { 'Content-Type': contentTypeOf(path), 'Content-Length': String(file.size) } }));
+				// The hash header is what `prunePacks` keeps an entry by when the
+				// next build activates. Without it (as this branch first was),
+				// every pack file cached on demand was dropped and downloaded
+				// again by the next app update, whether or not it had changed.
+				const headers = { 'Content-Type': contentTypeOf(path), 'Content-Length': String(file.size), [HASH_HEADER]: file.sha256 };
+				await cache.put(href, new Response(response.body.pipeThrough(verifying(file, path, () => undefined)), { headers }));
 				return true;
 			} catch (e) {
 				report(`${path}: not cached (${e instanceof Error ? e.message : String(e)})`);
@@ -284,6 +298,30 @@ export class VerifiedCache {
 		await cache.put(href, this.served(path, file, bytes));
 		this.memo.set(path, bytes);
 		return true;
+	}
+
+	/**
+	 * Empties the pack cache of what this build would not serve, when the
+	 * build activates: every entry whose path the table does not list, or
+	 * whose `HASH_HEADER` is not the sha256 the table lists for it. The
+	 * header is the writer's word, so this only saves downloads (an entry
+	 * kept is still checked byte for byte whenever it is served); an entry
+	 * without one is dropped, since nothing says which build's it is. A
+	 * 20-digit header is a build's from before full sha256s, kept while its
+	 * prefix matches, so that update did not re-download every pack.
+	 * `pathOf` gives a stored URL's path relative to the app's root, or null
+	 * outside it. Resolves to the number of entries deleted.
+	 */
+	async prunePacks(cache: PackCacheLike, pathOf: (href: string) => string | null): Promise<number> {
+		let deleted = 0;
+		for (const request of await cache.keys()) {
+			const path = pathOf(request.url);
+			const sha256 = path === null ? undefined : this.listed(path)?.sha256;
+			const header = (await cache.match(request.url))?.headers.get(HASH_HEADER) ?? '';
+			const same = sha256 !== undefined && header !== '' && (header === sha256 || (header.length === 20 && sha256.startsWith(header)));
+			if (!same && (await cache.delete(request.url))) deleted++;
+		}
+		return deleted;
 	}
 
 	private async drop(cache: CacheLike, href: string, message: string): Promise<void> {

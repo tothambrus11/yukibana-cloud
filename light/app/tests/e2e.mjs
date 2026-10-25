@@ -1332,12 +1332,12 @@ async function integrity() {
 		if (pack) {
 			// Fetched through the worker, which caches it once it is checked.
 			await page.evaluate((path) => fetch(path).then((r) => r.arrayBuffer()), pack.path);
-			const cached = await until(() => page.evaluate(async (path) => !!(await (await caches.open('packs')).match(new URL(path, location.href).href)), pack.path), 30_000);
-			check(cached, `the service worker caches ${pack.path} when it is fetched`);
+			const cached = await until(() => page.evaluate(async ({ path, hash }) => (await (await caches.open('packs')).match(new URL(path, location.href).href))?.headers.get('X-Yukibana-Hash') === hash, { path: pack.path, hash: pack.hash }), 30_000);
+			check(cached, `the service worker caches ${pack.path} when it is fetched, with the sha256 the next build keeps it by`);
 		}
 
-		const planted = await page.evaluate(async ({ packPath }) => {
-			const code = `onmessage = async ({ data: { origin, packPath } }) => {
+		const planted = await page.evaluate(async ({ packPath, packHash }) => {
+			const code = `onmessage = async ({ data: { origin, packPath, packHash } }) => {
 				const app = await caches.open((await caches.keys()).find((k) => k.startsWith('app-')));
 				const page = '<!doctype html><title>planted</title><p id="planted">a program wrote this page</p>';
 				const sha = async (s) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -1349,7 +1349,9 @@ async function integrity() {
 					const real = await packs.match(origin + '/' + packPath);
 					const bytes = new Uint8Array(await real.arrayBuffer());
 					bytes[bytes.length >> 1] ^= 1;
-					await packs.put(origin + '/' + packPath, new Response(bytes, { headers: real.headers }));
+					// With the hash header the build lists, set here rather than
+					// copied, so the forgery does not depend on what the worker stored.
+					await packs.put(origin + '/' + packPath, new Response(bytes, { headers: { ...Object.fromEntries(real.headers), 'X-Yukibana-Hash': packHash } }));
 				}
 				postMessage('planted');
 			};`;
@@ -1358,9 +1360,9 @@ async function integrity() {
 				worker.onmessage = (e) => resolve(e.data);
 				worker.onerror = (e) => reject(new Error(e.message));
 			});
-			worker.postMessage({ origin: location.origin, packPath });
+			worker.postMessage({ origin: location.origin, packPath, packHash });
 			return answer;
-		}, { packPath: pack?.path ?? null });
+		}, { packPath: pack?.path ?? null, packHash: pack?.hash ?? null });
 		check(planted === 'planted', 'a dedicated worker on the origin rewrote index.html, offline.json and a pack file in the caches');
 
 		// The next visit: a service worker that has stopped since, so nothing it remembered is in play.

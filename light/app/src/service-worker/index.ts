@@ -37,7 +37,7 @@
  */
 import { version } from '$app/env';
 import { self as sw } from '$app/service-worker';
-import { appCacheName, DIRECT_HEADER, HASH_HEADER, isPackPath, PACKS_CACHE } from '../lib/offline-cache';
+import { appCacheName, DIRECT_HEADER, isPackPath, PACKS_CACHE } from '../lib/offline-cache';
 import { parseFileTable, VerifiedCache } from '../lib/verified-cache';
 
 const APP = appCacheName(version);
@@ -96,19 +96,11 @@ sw.addEventListener('activate', (event) => {
 	event.waitUntil(
 		(async () => {
 			await Promise.all((await caches.keys()).filter((k) => k !== APP && k !== PACKS_CACHE).map((k) => caches.delete(k)));
-			// Keep only the pack files this build lists with the same hash. The
-			// header is the writer's word, so this only saves downloads: what
-			// is kept is still checked byte for byte whenever it is served. A
-			// 20-digit header is a build's from before full sha256s, kept while
-			// its prefix matches, so this update does not re-download every pack.
+			// Keep only the pack files this build lists with the same hash
+			// (verified-cache.ts's prunePacks says why that is safe).
 			if (verified) {
-				const packs = await caches.open(PACKS_CACHE);
-				for (const request of await packs.keys()) {
-					const path = pathOf(request.url);
-					const header = (await packs.match(request))?.headers.get(HASH_HEADER) ?? '';
-					const sha256 = path === null ? undefined : verified.listed(path)?.sha256;
-					if (!sha256 || !header || !(header === sha256 || (header.length === 20 && sha256.startsWith(header)))) await packs.delete(request);
-				}
+				const deleted = await verified.prunePacks(await caches.open(PACKS_CACHE), pathOf);
+				if (deleted) console.info(`service worker: dropped ${deleted} cached pack file(s) this build does not list with the same sha256`);
 			}
 			await sw.clients.claim();
 		})(),
