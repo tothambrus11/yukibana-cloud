@@ -118,7 +118,9 @@ publish() {
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
     tar --zstd -cf "$tmp/$name" -C "$PACKS" "$pack"
     ls -l "$tmp/$name"
-    gh release upload "$TAG" "$tmp/$name" --repo "$r"
+    # Another run may have stored the same build meanwhile: that is a success.
+    gh release upload "$TAG" "$tmp/$name" --repo "$r" ||
+      gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -qxF "$name"
   fi
   # All but the pack's KEEP newest go. A release of the app (light-v*)
   # holds its own copy of every pack, so nothing it needs is lost.

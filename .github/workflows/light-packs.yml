@@ -52,12 +52,12 @@ on:
         type: boolean
         default: false
 
-# One run per commit: the push and the pull request event of the same commit
-# queue behind each other instead of building the same packs twice, and the
-# second finds the first's outputs in the store. A newer commit cancels
-# nothing: a pack that built leaves its output and its cache for the next.
+# One run at a time per branch or pull request, the newest waiting (GitHub
+# drops the ones in between): a run that builds a pack stores it, and the next
+# run finds it there, rather than both building the same pack at once. The
+# push to main and a pull request are separate queues.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ inputs.upload && 'upload' || 'check' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.upload && 'upload' || 'check' }}
   cancel-in-progress: false
 
 permissions:
