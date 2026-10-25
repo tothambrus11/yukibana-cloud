@@ -85,6 +85,35 @@ edition. Negative tests are the only ones that catch a policy accidentally
 widened. `npm run db:test` runs them against the local stack; CI runs them on
 every push, after rebuilding the database from empty.
 
+## A sibling subdomain is another person's page
+
+Light, at light.yukibana.dev, runs programs people paste into it, and it is
+the same site as cloud.yukibana.dev: the browser sends the cloud's SameSite
+Lax cookies with every request a page there makes here, and that page can
+set cookies for the whole of yukibana.dev. Until Light moves to a domain of
+its own, the cloud protects itself, by these rules:
+
+* **No cookie-authenticated GET has side effects.** A GET handler and a
+  `load` only read. (The login callback and the IDE-login routes change
+  cookies, and only cookies this host alone can set.)
+* **Cookie-authenticated writes are forms this site's pages submit, from its
+  own origin.** `forgery` in `app/src/lib/server/forgery.ts`, called first by
+  the hook, refuses any other non-GET request without a bearer: another
+  Origin, none, a `Sec-Fetch-Site` other than `same-origin`, or a body that
+  is not a form. SvelteKit's own origin check is not this rule: it lets a
+  `text/plain` POST through, and it is off under `vite dev`.
+* **Every other write is bearer-only** (`requireBearer`).
+* **The session cookies are `__Host-` cookies** (`SESSION_COOKIE` in
+  `app/src/lib/session-cookie.ts`, used by both the Worker's and the page's
+  client): Secure, path `/`, no Domain, so nothing but this host can set one
+  and a cookie tossed from a sibling is never read as a session. A new cookie
+  that carries authority gets the prefix too.
+
+The negatives are `app/tests/integration/sibling.test.ts`: every route,
+read from `src/routes`, sent what a light.yukibana.dev page can send, with a
+signed-in teacher's cookies, against the real app; nothing in the database
+may change and nobody may be signed in or out.
+
 ## Everything is TypeScript, and the types say what the code means
 
 `app/` is SvelteKit 3 on the oxc/rolldown toolchain (Vite 8, oxlint

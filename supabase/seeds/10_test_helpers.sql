@@ -87,6 +87,38 @@ as $$
   select project_id from public.project p where p.slug = $1
 $$;
 
+-- What the registry holds, as one digest per table: every table in public
+-- (audit_log among them) and Auth's record of who is signed in. Equal before
+-- and after a request means the request changed nothing anyone could see,
+-- which is how the integration suite shows that a page on a sibling
+-- subdomain could not act as the person viewing it. Security definer so a
+-- test can take it as anyone; it reads, and returns digests, not rows.
+create or replace function tests.fingerprint()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  t record;
+  digest text;
+  result jsonb := '{}';
+begin
+  for t in
+    select schemaname, tablename from pg_catalog.pg_tables
+    where schemaname = 'public'
+       or (schemaname = 'auth' and tablename in ('users', 'identities', 'sessions', 'refresh_tokens'))
+    order by 1, 2
+  loop
+    execute format('select coalesce(md5(string_agg(x::text, %L order by x::text)), %L) from %I.%I x', '|', 'empty', t.schemaname, t.tablename)
+      into digest;
+    result := result || jsonb_build_object(t.schemaname || '.' || t.tablename, digest);
+  end loop;
+  return result;
+end
+$$;
+
 -- Run the rest of the transaction as this account, the way the Worker does
 -- for a request: the `authenticated` role, and the claims a JWT would carry.
 -- Not security definer: Postgres forbids changing `role` inside one.

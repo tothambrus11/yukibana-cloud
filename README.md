@@ -45,6 +45,10 @@ npm run dev:vars                # .dev.vars from what the stack reports
 npm run dev                     # http://127.0.0.1:5173
 ```
 
+Open it as 127.0.0.1 or localhost, not a LAN address: the session cookies
+are `__Host-` cookies, which must be Secure, and browsers keep a Secure
+cookie over plain http only for those two hosts.
+
 Log in with GitHub, or by email code: every mail the local stack sends lands
 in its catcher at http://127.0.0.1:54324, so any address works, including the
 seeded alice@, bob@, ta@ and teacher@yukibana.local. Then make yourself the

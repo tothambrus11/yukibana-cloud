@@ -54,8 +54,9 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
 
 | Module | Responsibility |
 | --- | --- |
-| `hooks.server.ts` | Every request: read and check the configuration, verify the session, make `/api/` errors JSON. |
-| `lib/server/session.ts`, `lib/claims.ts` | The verified JWT claims of the caller, from a bearer header or the cookies, and which of them reach the database. |
+| `hooks.server.ts` | Every request: refuse a write this site's pages did not send, read and check the configuration, verify the session, make `/api/` errors JSON. |
+| `lib/server/forgery.ts` | Which requests may write on the strength of the cookies: a form from this site's own origin, or anything with a bearer. |
+| `lib/server/session.ts`, `lib/session-cookie.ts`, `lib/claims.ts` | The verified JWT claims of the caller, from a bearer header or the `__Host-` session cookies, and which of them reach the database. |
 | `lib/server/context.ts` | `withContext`: a database client, the bucket and the configuration for one request, closed after the response. `requireClaims`, `requireBearer`, `answering`. |
 | `lib/server/db.ts` | `asUser` and `asPublisher`: the only two ways to run a query. |
 | `lib/server/storage.ts` | `Bucket`, the one S3 implementation, and presigned URLs. |
@@ -112,7 +113,13 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
 * **The Worker trusts a request only after Auth's keys say so.** The hook
   verifies the JWT (`getClaims`) on every request; a bearer header wins over
   cookies. Enrolling and publishing through the API demand a bearer, so a
-  cross-site form cannot make a browser's cookie do either.
+  cross-site form cannot make a browser's cookie do either; any other write
+  without a bearer must be a form from the site's own origin, which the hook
+  checks before anything else. That holds against a page on a sibling
+  subdomain too (Light, at light.yukibana.dev, is the same site), and the
+  session cookies' `__Host-` names keep such a page from setting a session
+  of its choosing (CLAUDE.md, "A sibling subdomain is another person's
+  page").
 * **The Worker reaches Postgres through Hyperdrive, as `yukibana_app`, and
   immediately becomes someone else.** Each query runs in a transaction that
   sets the role to `authenticated` with the caller's claims (`asUser`), or

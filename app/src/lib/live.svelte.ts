@@ -12,14 +12,16 @@
  *  says so; the last release reloads once.
  *
  *  Browser only. The session is the one @supabase/ssr keeps in cookies,
- *  readable by the page on purpose; supabase-js passes its access token to
- *  Realtime and renews it as it refreshes.
+ *  readable by the page on purpose, under the name and options the Worker
+ *  writes them with (#lib/session-cookie); supabase-js passes its access
+ *  token to Realtime and renews it as it refreshes.
  */
 
 import { createBrowserClient } from '@supabase/ssr';
 import { REALTIME_SUBSCRIBE_STATES, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
 import { invalidateAll } from '$app/navigation';
 import { report } from './report';
+import { SESSION_COOKIE_OPTIONS } from './session-cookie';
 
 /** What a page may show about the live connection. `stale` is true while
  *  news has arrived that a hold kept from being shown: what is on screen is
@@ -101,7 +103,7 @@ async function apply(config: { url: string; key: string; topics: readonly string
   }
   if (client === null || clientFor !== `${config.url} ${config.key}`) {
     for (const topic of channels.keys()) await leave(topic);
-    client = createBrowserClient(config.url, config.key);
+    client = createBrowserClient(config.url, config.key, { cookieOptions: SESSION_COOKIE_OPTIONS });
     clientFor = `${config.url} ${config.key}`;
   }
   // Private channels are joined with the session's token; without it the
