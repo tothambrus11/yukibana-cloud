@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { filterAsm, filterIr, demangleLines, projectPath, inProject } from './src/emit-filter.js';
+import { filterAsm, filterIr, demangleLines, projectPath, inProject, linesWithCode, optimises } from './src/emit-filter.js';
 import { TARGETS } from './src/targets.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'tests/fixtures');
@@ -81,6 +81,59 @@ test("each instruction keeps the column of the expression it computes, so the pa
         // A function's own line has no column.
         assert.equal(atWithColumn(ir, /^define .*@_Z8distanceRK5PointS1_\(/).column, 0, id);
     }
+});
+
+test("code of a project function inlined into another names the call it was inlined at as `via`", () => {
+    // dot() (main.cpp:6-7) inlined into the call on main.cpp:19, and a
+    // header's code inlined into dot(): both map to line 7, via line 19.
+    const asm = filterAsm([
+        '\t.file\t0 "/workspace" "main.cpp"',
+        '\t.file\t1 "/usr/include" "x.h"',
+        '\t.text',
+        '\t.globl\tf                               # -- Begin function f',
+        'f:',
+        '\t.loc\t0 19 21 prologue_end            # main.cpp:19:21',
+        '\tmov\tr11, qword ptr [rdi]',
+        '\t.loc\t0 7 16                          # main.cpp:7:16 @[ main.cpp:19:17 ]',
+        '\timul\tr11d, edx',
+        '\t.loc\t1 43 28                         # /usr/include/x.h:43:28 @[ main.cpp:7:24 @[ main.cpp:19:17 ] ]',
+        '\tadd\teax, 1',
+        '\tret',
+        '                                        # -- End function',
+    ].join('\n'));
+    assert.deepEqual(atWithColumn(asm, /mov\s/), { file: 'main.cpp', line: 19, column: 21 });
+    assert.deepEqual(atWithColumn(asm, /imul/), { file: 'main.cpp', line: 7, column: 16, via: { file: 'main.cpp', line: 19 } });
+    assert.deepEqual(atWithColumn(asm, /add\s/), { file: 'main.cpp', line: 7, column: 24, via: { file: 'main.cpp', line: 19 } });
+    const ir = filterIr([
+        'define i32 @f() !dbg !8 {',
+        '  %a = mul nsw i32 1, 2, !dbg !19',
+        '  ret i32 %a, !dbg !22',
+        '}',
+        '!1 = !DIFile(filename: "main.cpp", directory: "/workspace")',
+        '!8 = distinct !DISubprogram(name: "f", scope: !1, file: !1, line: 18)',
+        '!19 = !DILocation(line: 7, column: 16, scope: !20, inlinedAt: !21)',
+        '!20 = distinct !DISubprogram(name: "dot", scope: !1, file: !1, line: 6)',
+        '!21 = distinct !DILocation(line: 19, column: 17, scope: !8)',
+        '!22 = !DILocation(line: 20, column: 3, scope: !8)',
+    ].join('\n'));
+    assert.deepEqual(atWithColumn(ir, /= mul/), { file: 'main.cpp', line: 7, column: 16, via: { file: 'main.cpp', line: 19 } });
+    assert.deepEqual(atWithColumn(ir, /ret i32/), { file: 'main.cpp', line: 20, column: 3 });
+});
+
+test('the lines with code at -O0 are counted per project line, for the views to mark what -O2 left no code for', () => {
+    assert.ok(optimises(['-O2']) && optimises(['-O0', '-O2']) && optimises(['-Os']));
+    assert.ok(!optimises([]) && !optimises(['-O2', '-O0']));
+    for (const { id } of TARGETS) {
+        const o0 = linesWithCode(read(id, 'geometry.cpp.O0.view.ll'));
+        const at = (line) => o0.find((l) => l.file === 'geometry.cpp' && l.line === line);
+        // geometry.cpp:8, `return std::hypot(a.x - b.x, a.y - b.y);`, loads, subtracts and calls.
+        assert.ok(at(8)?.count > 3, `${id}: ${JSON.stringify(at(8))}`);
+        assert.ok(o0.every((l) => !l.file.startsWith('/') && l.count > 0), id);
+        // Every line with code at -O2 has code at -O0.
+        const o2 = filterIr(read(id, 'geometry.cpp.O2.view.ll')).lines.filter((l) => l && l.file === 'geometry.cpp' && l.column);
+        for (const l of o2) assert.ok(at(l.line), `${id}: geometry.cpp:${l.line}`);
+    }
+    assert.deepEqual(linesWithCode(''), []);
 });
 
 test('a function maps to its own lines: Point::norm to geometry.cpp 5, distance to geometry.cpp 8', () => {

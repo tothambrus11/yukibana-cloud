@@ -566,8 +566,9 @@ int main() {
 	check(tabs.includes('LLVM IR') && tabs.includes('Assembly'), `the views are tabs called LLVM IR and Assembly (${tabs.join(', ')})`);
 
 	await place(page, 'distance(points');
-	const mapped = await page.locator('[data-view="asm"] .yk-mapped').first().waitFor({ timeout: 10_000 }).then(() => true, () => false);
-	check(mapped, `the caret on main.cpp's distance( call lights up its assembly (${await page.locator('[data-view="asm"] .yk-mapped').count()} .yk-mapped)`);
+	const focused = '[data-view="asm"] .yk-row:is(.yk-sec, .yk-prim)';
+	const mapped = await page.locator(focused).first().waitFor({ timeout: 10_000 }).then(() => true, () => false);
+	check(mapped, `the caret on main.cpp's distance( call lights up its assembly (${await page.locator(focused).count()} focused rows)`);
 
 	await setText(page, 'main.cpp', `${sample}\nint extra_function_xyz(int v) { return v * 7; }\n`);
 	const updated = await viewShows(page, 'asm', (t) => t.includes('extra_function_xyz'), 10_000);

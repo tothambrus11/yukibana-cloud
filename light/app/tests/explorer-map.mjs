@@ -8,7 +8,7 @@
 //   node --test tests/explorer-map.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { hueGroups, isViewSource, lineKey, outputLinesFor, partAt, partFromChain, runsOf, runToReveal, shortFlags, sourceOf, viewSourceFor } from '../src/lib/explorer-map.ts';
+import { hueGroups, isStatement, isViewSource, linesWithoutCode, lineKey, outputLinesFor, partAt, partFromChain, runIndex, runsOf, runToReveal, stepRun, shortFlags, sourceOf, viewSourceFor } from '../src/lib/explorer-map.ts';
 
 // main:                      1  null
 //   push rbp                 2  main.cpp:6
@@ -151,4 +151,34 @@ test('a view scrolls only when none of the line\'s places is in view, and then t
 	assert.deepEqual(runToReveal(runs, 50, 80), { start: 40, end: 41 });
 	assert.deepEqual(runToReveal(runs, 70, 85), { start: 90, end: 90 });
 	assert.equal(runToReveal([], 1, 30), null);
+});
+
+test('◂ ▸ go round the places of a line, from the one in view or the first', () => {
+	const runs = [{ start: 3, end: 5 }, { start: 40, end: 41 }, { start: 90, end: 90 }];
+	assert.equal(runIndex(runs, 4), 0);
+	assert.equal(runIndex(runs, 40.5), 1);
+	assert.equal(runIndex(runs, 20), -1);
+	assert.deepEqual(stepRun(runs, 0, 1), { start: 40, end: 41 });
+	assert.deepEqual(stepRun(runs, 2, 1), { start: 3, end: 5 });
+	assert.deepEqual(stepRun(runs, 0, -1), { start: 90, end: 90 });
+	assert.deepEqual(stepRun(runs, -1, 1), { start: 3, end: 5 });
+	assert.deepEqual(stepRun(runs, -1, -1), { start: 90, end: 90 });
+	assert.equal(stepRun([], 0, 1), null);
+});
+
+test('statements are the lines an optimiser can leave without code; braces and function heads are not', () => {
+	for (const t of ['    int y = 3;', '    return a.x * b.x;', '    for (int i = 0; i < n; ++i) {', '    if (x) {', '    } else {', '    total += v;'])
+		assert.ok(isStatement(t), t);
+	for (const t of ['}', '    };', '', 'static int dot(Point a, Point b) {', 'struct Point {'])
+		assert.ok(!isStatement(t), t);
+});
+
+test('a statement with code only without optimisation is one the optimised output left without code', () => {
+	const src = ['int main() {', '    int unused = 4;', '    int y = 3;', '    return y;', '}'];
+	const textOf = (file, line) => (file === 'main.cpp' ? (src[line - 1] ?? null) : null);
+	const o0 = [{ file: 'main.cpp', line: 1, count: 3 }, { file: 'main.cpp', line: 2, count: 1 }, { file: 'main.cpp', line: 3, count: 1 }, { file: 'main.cpp', line: 4, count: 2 }, { file: 'main.cpp', line: 5, count: 1 }];
+	const asm = [null, { file: 'main.cpp', line: 4, column: 5 }];
+	const ir = [{ file: 'main.cpp', line: 4, column: 12 }];
+	assert.deepEqual([...linesWithoutCode([o0, o0], [asm, ir], textOf)], [['main.cpp:2', 1], ['main.cpp:3', 1]]);
+	assert.equal(linesWithoutCode([], [asm], textOf).size, 0);
 });

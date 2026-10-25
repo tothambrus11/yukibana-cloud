@@ -12,7 +12,7 @@
 //     options: { demangle, intel, directives, library } }
 // Worker to app:
 //   { type: 'loading', label, loaded, total }
-//   { type: 'result', id, emit, ok: true, text, lines, target, triple, flags, ms }
+//   { type: 'result', id, emit, ok: true, text, lines, unoptimized?, target, triple, flags, ms }
 //   { type: 'result', id, emit, ok: false, error, target, ms }
 //
 // The current target's compiled module is kept while the target's compiler
@@ -22,7 +22,7 @@
 
 import { createToolchain, compileArgs } from './toolchain.js';
 import { targetOf, unsupportedMessage } from './targets.js';
-import { filterAsm, filterIr, demangleLines } from './emit-filter.js';
+import { filterAsm, filterIr, demangleLines, linesWithCode, optimises } from './emit-filter.js';
 import { loadDemangler as loadLLVMDemangler } from './demangler.js';
 
 /* global CC_WASM_SIZE, CC_CROSS_WASM_SIZE, WASI_SYSROOT_SIZE, SYSROOT_SIZE, DEMANGLE_WASM_SIZE, TARGET_SIZES */
@@ -100,7 +100,28 @@ async function emit({ id, emit: kind, files, path, options }) {
         return done({ ok: false, error: projectPaths(result.text) || `clang exited with status ${result.code}\n`, target: target.id });
     const filtered = (ir ? filterIr : filterAsm)(decoder.decode(result.out[out]), opts);
     const text = demangle ? demangleLines(filtered.text, demangle) : filtered.text;
-    return done({ ok: true, text, lines: filtered.lines, target: target.id, triple: target.triple, flags });
+    const unoptimized = optimises(flags) ? await unoptimizedLines(target, files, path) : null;
+    return done({ ok: true, text, lines: filtered.lines, ...(unoptimized && { unoptimized }), target: target.id, triple: target.triple, flags });
+}
+
+/** The last -O0 compile: what it compiled, and the lines that had code. */
+let unoptimizedLast = null;
+
+/**
+ * The project lines that have code at -O0 (emit-filter.js linesWithCode),
+ * for the ∅ marks: the IR at -O0, which skips the backend, so it is quick.
+ * The views compile the same files one after the other, so the last answer
+ * is kept for the next. Null when clang fails.
+ */
+async function unoptimizedLines(target, files, path) {
+    const flags = [...compileArgs(target, files, path, { view: true }), '-S', '-emit-llvm', '-O0'];
+    const key = JSON.stringify([target.id, flags, path, files]);
+    if (unoptimizedLast?.key === key) return unoptimizedLast.lines;
+    const out = '.yukibana/unoptimized.ll';
+    const result = await toolchain.tool(target, 'clang', [...flags, '-fno-color-diagnostics', path, '-o', out], files, [out], { quiet: true });
+    const lines = result.code === 0 && result.out[out] ? linesWithCode(decoder.decode(result.out[out])) : null;
+    unoptimizedLast = { key, lines };
+    return lines;
 }
 
 /** The newest request of each kind not yet started. */

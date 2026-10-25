@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { colourOf, contrast, EDITOR, LINE_NUMBERS, OWN_RULES, raise, raisedRules, rgbOf, TEXT_CONTRAST, viewText } from '../src/lib/palette.ts';
-import { CRITERIA, judge, liftFor, linkStyleSheet, partContrast, SHADE } from '../src/lib/link-colours.ts';
+import { CRITERIA, judge, liftFor, linkStyleSheet, partContrast, SHADE, NO_CODE } from '../src/lib/link-colours.ts';
 
 /** Monaco's vs and vs-dark rules, read from its source (theme.svelte.ts imports the same objects). */
 const themes = readFileSync(new URL('../node_modules/monaco-editor/esm/vs/editor/standalone/common/themes.js', import.meta.url), 'utf8');
@@ -89,4 +89,9 @@ test('the style sheet sets both themes and a class per hue', () => {
 	assert.match(css, /:root\[data-theme='dark'\] \{[^}]*--yk-lift-strong: 1\.\d+/);
 	assert.match(css, /:root\[data-theme='light'\], :root:not\(\[data-theme\]\) \{[^}]*--yk-lift-strong: 0\.\d+/);
 	for (let i = 0; i < 8; i++) assert.match(css, new RegExp(`\\.yk-h${i} \\{ --yk-h: \\d+; \\}`));
+});
+
+test('the ∅ of a statement without code reads at 4.5:1 on the editor and on the caret line', () => {
+	for (const t of ['dark', 'light'])
+		for (const bg of [EDITOR[t].background, EDITOR[t].caretLine]) assert.ok(contrast(rgbOf(NO_CODE[t]), rgbOf(bg)) >= 4.5, `${t} ${NO_CODE[t]} on ${bg}`);
 });

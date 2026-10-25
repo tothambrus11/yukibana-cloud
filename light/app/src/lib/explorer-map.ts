@@ -18,14 +18,54 @@ export interface SourceLine {
 /**
  * Where an output line came from: its source line, and the column there the
  * compiler recorded (1-based; 0 or absent: none), which is where the
- * expression the line computes starts, or its operator (packs/CONTRACT.md).
+ * expression the line computes starts, or its operator, and, for code of a
+ * project function inlined into another, the call it was inlined at
+ * (packs/CONTRACT.md).
  */
 export interface MappedLine extends SourceLine {
 	column?: number;
+	via?: SourceLine;
 }
 
 /** Per output line, in order, the source line it came from, or null (labels, directives, lines with no location). */
 export type LineMap = readonly (MappedLine | null)[];
+
+/** A project line that has code without optimisation, and how many instructions (packs/CONTRACT.md, `unoptimized`). */
+export interface LineCode extends SourceLine {
+	count: number;
+}
+
+/**
+ * Whether source text `text` (one line) is a statement, the kind of line
+ * whose code an optimiser can remove: not a closing brace, and not a
+ * function's (or class's) opening line, which have code without
+ * optimisation (prologue, epilogue) that no optimised build keeps anyway.
+ */
+export function isStatement(text: string): boolean {
+	const t = text.trim();
+	if (t === '' || t === '}' || t === '};') return false;
+	return !(t.endsWith('{') && !/^(if|for|while|switch|else|do|case|default)\b/.test(t) && !/^}\s*else\b/.test(t));
+}
+
+/**
+ * The statements an optimised output left no code for: the lines of
+ * `unoptimized` (from every view) that none of `maps` has code for, whose
+ * text (`textOf`; null: unknown) is a statement, with their instruction
+ * count without optimisation, keyed by `lineKey`.
+ */
+export function linesWithoutCode(unoptimized: readonly (readonly LineCode[])[], maps: readonly LineMap[], textOf: (file: string, line: number) => string | null): Map<string, number> {
+	const mapped = new Set<string>();
+	for (const map of maps) for (const at of map) if (at) mapped.add(lineKey(at.file, at.line));
+	const out = new Map<string, number>();
+	for (const list of unoptimized)
+		for (const l of list) {
+			const key = lineKey(l.file, l.line);
+			if (mapped.has(key) || out.has(key)) continue;
+			const text = textOf(l.file, l.line);
+			if (text !== null && isStatement(text)) out.set(key, l.count);
+		}
+	return out;
+}
 
 /**
  * The output lines (1-based, ascending) that came from line `line` of
@@ -209,6 +249,22 @@ export function partAt(parts: readonly Part[], column: number): Part | null {
 }
 
 export const samePart = (a: Part | null, b: Part | null) => !!a && !!b && a.start === b.start && a.end === b.end;
+
+/** The index of the run of `runs` that line `line` is in (a fraction, such as a view's middle, counts), or -1. */
+export function runIndex(runs: readonly { start: number; end: number }[], line: number): number {
+	return runs.findIndex((r) => r.start <= line && line <= r.end);
+}
+
+/**
+ * The run ◂ (`dir` -1) or ▸ (`dir` 1) goes to from run `at` of `runs`
+ * (-1: from none, which goes to the first, or with ◂ to the last), round
+ * from the last to the first and back; null when there are no runs.
+ */
+export function stepRun(runs: readonly { start: number; end: number }[], at: number, dir: -1 | 1): { start: number; end: number } | null {
+	if (runs.length === 0) return null;
+	const from = at < 0 ? (dir > 0 ? -1 : 0) : at;
+	return runs[(from + dir + runs.length) % runs.length]!;
+}
 
 /**
  * Which of `runs` (output line runs, as runsOf gives them) to bring into a

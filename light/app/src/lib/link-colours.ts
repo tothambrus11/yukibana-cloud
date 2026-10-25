@@ -42,7 +42,9 @@ export const HUES = [200, 30, 285, 135, 345, 55, 245, 170] as const;
  * rows; `fadeBg`: the share of the resting tint a row keeps while another
  * line has focus; `fadeText`: the opacity of a faded row's text, and
  * `fadePlain` of an unmapped row's; `partL`: the lightness of the source's
- * selected-expression fill, whose text is the editor's background colour.
+ * selected-expression fill, whose text is the editor's background colour;
+ * `barL`: the lightness of the focused rows' bar, of the outline of the row
+ * the focus came from, and of the views' ruler ticks.
  */
 export interface Shade {
 	s: number;
@@ -54,6 +56,7 @@ export interface Shade {
 	fadeText: number;
 	fadePlain: number;
 	partL: number;
+	barL: number;
 }
 
 /**
@@ -64,8 +67,8 @@ export interface Shade {
  * too little in the app; 0.55 (ΔE 0.060) still darkens its text only to 0.65.
  */
 export const SHADE: Record<Theme, Shade> = {
-	dark: { s: 85, l: 38, rest: 0.08, focus: 0.16, strong: 0.45, fadeBg: 0.4, fadeText: 0.9, fadePlain: 0.9, partL: 72 },
-	light: { s: 85, l: 64, rest: 0.1, focus: 0.25, strong: 0.55, fadeBg: 0.4, fadeText: 0.9, fadePlain: 0.9, partL: 28 },
+	dark: { s: 85, l: 38, rest: 0.08, focus: 0.16, strong: 0.45, fadeBg: 0.4, fadeText: 0.9, fadePlain: 0.9, partL: 72, barL: 62 },
+	light: { s: 85, l: 64, rest: 0.1, focus: 0.25, strong: 0.55, fadeBg: 0.4, fadeText: 0.9, fadePlain: 0.9, partL: 28, barL: 40 },
 };
 
 /** Ambrus's criteria (2026-10-24); see the top of the file. ΔE is OKLab's, 0.02 about the least anyone notices. */
@@ -166,6 +169,12 @@ export function partContrast(theme: Theme, shade: Shade): number {
 	return min;
 }
 
+/** The colour of the ∅ that marks a statement the optimised output has no code for (the prototype's, at least 4.5:1 on the editor). */
+export const NO_CODE: Record<Theme, Hex> = { dark: '#e39a62', light: '#a2501a' };
+
+/** The tick colour of hue `hue` (an index into HUES) in a view's ruler, in `theme`: the focused rows' bar colour. */
+export const rulerColour = (theme: Theme, hue: number) => `hsl(${HUES[hue % HUES.length]}, 70%, ${SHADE[theme].barL}%)`;
+
 /**
  * The style sheet of the linked views, for the token colours `text` of each
  * theme (palette.ts; what `judge` checks): the shade's numbers and the text
@@ -173,8 +182,12 @@ export function partContrast(theme: Theme, shade: Shade): number {
  * linking.ts puts on rows (`yk-row`, a hue `yk-hN` and a state), on the
  * text over them (`yk-tx`), on line numbers (`yk-ln`), on the source's
  * selected expression (`yk-part-fill`, one box under it, and `yk-part` on
- * its text, which Monaco splits into a span per token) and on the positions
- * the compiler recorded on the focused line (`yk-at`).
+ * its text, which Monaco splits into a span per token), on the positions
+ * the compiler recorded on the focused line (`yk-at`), on the row the focus
+ * came from (`yk-origin`), on the focused rows while a peek is away from
+ * the caret's line (`yk-peek`: a dashed bar), and on the call an inlined
+ * function's focused code came from (`yk-site`: hatched in the focused
+ * line's hue, `yk-sN`).
  */
 export function linkStyleSheet(text: Record<Theme, readonly Hex[]>): string {
 	const vars = (theme: Theme) => {
@@ -183,11 +196,11 @@ export function linkStyleSheet(text: Record<Theme, readonly Hex[]>): string {
 		const max = CRITERIA.maxLift[theme];
 		return [
 			`--yk-s: ${s.s}%`, `--yk-l: ${s.l}%`, `--yk-rest: ${s.rest}`, `--yk-focus: ${s.focus}`, `--yk-strong: ${s.strong}`,
-			`--yk-fade-bg: ${s.fadeBg}`, `--yk-fade-text: ${s.fadeText}`, `--yk-fade-plain: ${s.fadePlain}`, `--yk-part-l: ${s.partL}%`,
+			`--yk-fade-bg: ${s.fadeBg}`, `--yk-fade-text: ${s.fadeText}`, `--yk-fade-plain: ${s.fadePlain}`, `--yk-part-l: ${s.partL}%`, `--yk-bar-l: ${s.barL}%`, `--yk-none: ${NO_CODE[theme]}`,
 			`--yk-lift: ${j.focusLift ?? max}`, `--yk-lift-strong: ${j.strongLift ?? max}`, `--yk-part-text: ${EDITOR[theme].panel}`,
 		].join('; ');
 	};
-	const hues = HUES.map((h, i) => `.yk-h${i} { --yk-h: ${h}; }`).join('\n');
+	const hues = HUES.map((h, i) => `.yk-h${i} { --yk-h: ${h}; } .yk-s${i} { --yk-sh: ${h}; }`).join('\n');
 	return `
 :root[data-theme='dark'] { ${vars('dark')}; }
 :root[data-theme='light'], :root:not([data-theme]) { ${vars('light')}; }
@@ -196,13 +209,18 @@ ${hues}
 .yk-row.yk-fade { background: hsl(var(--yk-h) var(--yk-s) var(--yk-l) / calc(var(--yk-rest) * var(--yk-fade-bg))); }
 .yk-row.yk-sec { background: hsl(var(--yk-h) var(--yk-s) var(--yk-l) / var(--yk-focus)); }
 .yk-row.yk-prim { background: hsl(var(--yk-h) var(--yk-s) var(--yk-l) / var(--yk-strong)); }
-.yk-row.yk-sec::before, .yk-row.yk-prim::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: hsl(var(--yk-h) 70% var(--yk-part-l)); }
+.yk-row.yk-sec::before, .yk-row.yk-prim::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: hsl(var(--yk-h) 70% var(--yk-bar-l)); }
+.yk-row.yk-peek::before { background: repeating-linear-gradient(180deg, hsl(var(--yk-h) 70% var(--yk-bar-l)) 0 4px, transparent 4px 7px); }
+.yk-origin { box-shadow: inset 0 0 0 1px hsl(var(--yk-h) 70% var(--yk-bar-l)); }
+.yk-site { background-image: repeating-linear-gradient(135deg, transparent 0 6px, hsl(var(--yk-sh) 70% var(--yk-l) / 0.35) 6px 8px); box-shadow: inset 0 0 0 1px hsl(var(--yk-sh) 60% var(--yk-bar-l) / 0.8); }
 .yk-tx.yk-faded { opacity: var(--yk-fade-text); }
 .yk-tx.yk-plain { opacity: var(--yk-fade-plain); }
 .yk-tx.yk-lift, .yk-ln.yk-lift { filter: brightness(var(--yk-lift)); }
 .yk-tx.yk-lift-strong, .yk-ln.yk-lift-strong { filter: brightness(var(--yk-lift-strong)); }
 .monaco-editor .yk-part-fill { background: hsl(var(--yk-h) 65% var(--yk-part-l)); border-radius: 3px; }
 .monaco-editor .yk-part { color: var(--yk-part-text) !important; font-weight: 700; filter: none !important; }
-.yk-at { text-decoration: underline dotted 2px hsl(var(--yk-h) 70% var(--yk-part-l)); text-underline-offset: 3px; }
+.monaco-editor .yk-none { overflow: visible; }
+.monaco-editor .yk-none::before { content: '∅'; color: var(--yk-none); font-weight: 600; font-size: 0.85em; padding-left: 2px; }
+.yk-at { text-decoration: underline dotted 2px hsl(var(--yk-h) 70% var(--yk-bar-l)); text-underline-offset: 3px; }
 `;
 }

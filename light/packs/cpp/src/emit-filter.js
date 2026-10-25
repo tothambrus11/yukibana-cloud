@@ -155,16 +155,54 @@ export function filterAsm(text, { directives = false, library = false } = {}) {
  * The mapped location of a `.loc`: its file, line and column, or, for a file
  * outside the project, the innermost project location in the inlining chain
  * the `.loc`'s comment spells out (`allocate.h:43:28 @[ main.cpp:7:24 ]`).
+ * When the chain goes on to another project location, the function was
+ * inlined there, and that call's file and line are the location's `via`.
  */
 function locationOf(file, line, column, comment) {
     if (!file || line === 0) return null;
-    if (inProject(file)) return { file, line, column };
+    const chain = [];
     for (const m of comment.matchAll(/@\[\s*([^\s:]+):(\d+):(\d+)/g)) {
         const at = projectPath(m[1]);
-        if (inProject(at) && Number(m[2]) > 0) return { file: at, line: Number(m[2]), column: Number(m[3]) };
+        if (inProject(at) && Number(m[2]) > 0) chain.push({ file: at, line: Number(m[2]), column: Number(m[3]) });
     }
+    if (inProject(file)) return withVia({ file, line, column }, chain[0]);
+    if (chain.length) return withVia(chain[0], chain[1]);
     return { file, line, column };
 }
+
+/**
+ * Whether clang's arguments `flags` optimise: the last `-O` wins, and only
+ * `-O0` (or no `-O` at all) does not.
+ */
+export function optimises(flags) {
+    const level = flags.filter((f) => /^-O/.test(f)).at(-1);
+    return level !== undefined && level !== '-O0';
+}
+
+/**
+ * The project lines that have code without optimisation, with how many IR
+ * instructions each has: what the views compare an optimised output with,
+ * to mark the statements it left no code for. `ir` is clang's IR of the
+ * same source at -O0 (`-S -emit-llvm -gline-tables-only`). Never throws.
+ */
+export function linesWithCode(ir) {
+    const count = new Map();
+    const { text, lines } = filterIr(ir, { library: true });
+    const rows = text.split('\n');
+    lines.forEach((at, i) => {
+        // Instructions only: a `define` line maps to the function's own line.
+        if (!at || !inProject(at.file) || !/^\s/.test(rows[i] ?? '')) return;
+        const key = `${at.file}\n${at.line}`;
+        count.set(key, (count.get(key) ?? 0) + 1);
+    });
+    return [...count].map(([key, n]) => {
+        const [file, line] = key.split('\n');
+        return { file, line: Number(line), count: n };
+    });
+}
+
+/** `at`, with the call it was inlined into as `via` when there is one. */
+const withVia = (at, call) => (call ? { ...at, via: { file: call.file, line: call.line } } : at);
 
 const METADATA = /^(!\d+) = (distinct )?!(\w*)/;
 const NAMED_METADATA = /^(![A-Za-z_.][\w.]*) = !\{(.*)\}$/;
@@ -210,9 +248,11 @@ export function filterIr(text, { library = false } = {}) {
         return null;
     };
     // A DILocation's file and line; through its inlinedAt chain, the
-    // innermost one in the project when it is itself outside.
+    // innermost one in the project when it is itself outside, with the next
+    // project location of the chain, the call it was inlined into, as `via`.
     const locationOfNode = (id) => {
         let first;
+        let mapped = null;
         for (let n = id, guard = 0; n && guard < 100; guard++) {
             const body = nodes.get(n) ?? '';
             const line = Number(field(body, 'line') ?? 0);
@@ -222,10 +262,13 @@ export function filterIr(text, { library = false } = {}) {
                 first = here;
                 if (!here) return null;
             }
-            if (here && inProject(here.file)) return here;
+            if (here && inProject(here.file)) {
+                if (mapped) return withVia(mapped, here);
+                mapped = here;
+            }
             n = field(body, 'inlinedAt');
         }
-        return first ?? null;
+        return mapped ?? first ?? null;
     };
     const subprogramLine = (id) => {
         const body = nodes.get(id) ?? '';

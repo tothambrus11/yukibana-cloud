@@ -9,7 +9,9 @@
  * the views and the source are drawn as one picture by linking.ts: every
  * mapped line tinted with its own hue, the caret's line (or, with Ctrl/Cmd
  * held, the one under the mouse) in focus in every pane, down to the part of
- * the line. Ctrl/Cmd+click on an output line opens its source line.
+ * the line. Ctrl/Cmd+click on an output line opens its source line, and
+ * ◂ ▸ in the toolbar step through the places of the focused line's code
+ * when it is in more than one.
  *
  * Loaded by dynamic `import()` from dock.ts when a view first opens, with
  * the grammars it needs (asm-languages.ts), so a session that never opens
@@ -75,6 +77,10 @@ function addStyles(): void {
 .yk-view-toggles button { padding: 0.05rem 0.5rem; border: 1px solid var(--gray-5); border-radius: 0.35rem; background: var(--gray-6); color: var(--gray-3); font: inherit; cursor: pointer; }
 .yk-view-toggles button[aria-pressed='true'] { border-color: var(--accent); color: var(--white); }
 .yk-view-toggles button:hover { color: var(--white); }
+.yk-view-nav { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; font-family: var(--font-mono); }
+.yk-view-nav[hidden] { display: none; }
+.yk-view-nav button { padding: 0 0.4rem; border: 1px solid var(--gray-5); border-radius: 0.35rem; background: var(--gray-6); color: var(--gray-3); font: inherit; line-height: 1.4; cursor: pointer; }
+.yk-view-nav button:hover { color: var(--white); }
 .yk-view-progress { height: 2px; background: transparent; }
 .yk-view-progress > span { display: block; height: 100%; width: 0; background: var(--accent-high); transition: width 0.2s; }
 .yk-view-progress.indeterminate > span { width: 30%; animation: yk-view-slide 1.2s ease-in-out infinite; }
@@ -113,7 +119,22 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	info.className = 'yk-view-info';
 	const toggles = document.createElement('div');
 	toggles.className = 'yk-view-toggles';
-	bar.append(info, toggles);
+	// ◂ ▸ through the places of the focused line's code, when it is in more than one (linking.ts `places`).
+	const nav = document.createElement('div');
+	nav.className = 'yk-view-nav';
+	nav.hidden = true;
+	const navCount = span('yk-view-nav-count', '');
+	const navButton = (dir: -1 | 1, label: string, title: string) => {
+		const b = document.createElement('button');
+		b.type = 'button';
+		b.textContent = label;
+		b.title = title;
+		b.setAttribute('aria-label', title);
+		b.addEventListener('click', () => linker.step(kind, dir));
+		return b;
+	};
+	nav.append(navCount, navButton(-1, '◂', 'Previous place of this line'), navButton(1, '▸', 'Next place of this line'));
+	bar.append(info, nav, toggles);
 	const progress = document.createElement('div');
 	progress.className = 'yk-view-progress';
 	const progressFill = document.createElement('span');
@@ -159,6 +180,10 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	const outputSource = (line: number | undefined): SourceLine | null => (shown && shown.status !== 'error' && line !== undefined ? sourceOf(shown.lines, line) : null);
 
 	const disposables: Monaco.IDisposable[] = [
+		linker.onPlaces(kind, (places) => {
+			nav.hidden = !places;
+			if (places) navCount.textContent = `line ${places.line} · ${places.at >= 0 ? `${places.at + 1} of ` : ''}${places.count} places`;
+		}),
 		editor.onMouseDown((e) => {
 			if (!(e.event.ctrlKey || e.event.metaKey)) return;
 			const source = outputSource(e.target.position?.lineNumber);
@@ -244,7 +269,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 			show(view.text, kind === 'llvm-ir' ? 'llvm-ir' : asmLanguageOf(view.target ?? 'wasm32-wasi'));
 			shown = view;
 		}
-		linker.setView(kind, editor, shown && shown.status !== 'error' ? shown.lines : null);
+		linker.setView(kind, editor, shown && shown.status !== 'error' ? shown.lines : null, shown?.unoptimized ?? []);
 	};
 	const unsubscribe = explorer.subscribe((k) => {
 		if (k === kind) render();

@@ -296,7 +296,11 @@ Explorer to app:
 { type: 'result', id, emit, ok: true,
   text: string,                                     // the output, filtered
   lines: ({ file: string; line: number;             // per line of text: its source line,
-            column: number } | null)[],             //   and the column there (1-based; 0: none)
+            column: number,                         //   and the column there (1-based; 0: none),
+            via?: { file: string; line: number }   //   and the call it was inlined at, if any
+          } | null)[],
+  unoptimized?: { file: string; line: number;       // when the output is optimised: the project lines
+                  count: number }[],               //   with code without optimisation, and how much
   target: string,                                   // the target's id (C/C++: cpp-targets.ts)
   triple: string, flags: string[],                  // what the toolbar shows: the triple, clang's arguments
   ms: number }                                      // how long the compile took
@@ -310,7 +314,13 @@ a project path, or the path the compiler printed for a header outside the
 project; `column` is where on the line the code's expression starts, as the
 compiler's line tables record it (C and C++: the `.loc` and `DILocation`
 column, the operator of a binary expression), or 0 when they record
-none; a request that a newer one of the same `emit` replaced may get no
+none; `via`, when present, is the project line of the call a project
+function's code was inlined at (C and C++: the next project location of
+the `inlinedAt` chain), which the source marks while that code has focus;
+`unoptimized`, sent only when the compile optimises, lists the project
+lines that have code at -O0 (C and C++: IR instructions per line), so
+the source can mark the statements the optimised output has no code for;
+a request that a newer one of the same `emit` replaced may get no
 answer, and the app keeps only the answer to the newest `id` of each. The
 app maps the caret both ways with `lines` (the source line's output lines
 are highlighted, and the output line's source line), tells the parts of a

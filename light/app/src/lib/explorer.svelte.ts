@@ -14,7 +14,7 @@
  */
 import type { ExploreKind, Files } from './languages';
 import type { CppTargetId } from './cpp-targets';
-import { viewSourceFor, type LineMap } from './explorer-map';
+import { viewSourceFor, type LineCode, type LineMap } from './explorer-map';
 
 /** What a view shows. */
 export interface ViewState {
@@ -30,6 +30,8 @@ export interface ViewState {
 	text: string;
 	/** Per line of `text`, the source line it came from (explorer-map.ts). */
 	lines: LineMap;
+	/** When the output is optimised, the project lines that have code without optimisation (explorer-map.ts), else empty. */
+	unoptimized: readonly LineCode[];
 	/** The target the output is for, null before the first answer or when the project's target is unsupported. */
 	target: CppTargetId | null;
 	/** That target's triple, '' until known. */
@@ -77,12 +79,12 @@ export const DEFAULT_VIEW_OPTIONS: Readonly<Record<ExploreKind, ViewOptions>> = 
 	asm: { demangle: true, intel: false, directives: false, library: false },
 };
 
-const empty = (): ViewState => ({ status: 'idle', text: '', lines: [], target: null, triple: '', flags: [], ms: 0, error: '', progress: null, path: null });
+const empty = (): ViewState => ({ status: 'idle', text: '', lines: [], unoptimized: [], target: null, triple: '', flags: [], ms: 0, error: '', progress: null, path: null });
 
 /** Messages explorer.js posts. */
 type FromExplorer =
 	| { type: 'loading'; label: string; loaded: number; total: number }
-	| { type: 'result'; id: number; emit: ExploreKind; ok: true; text: string; lines: LineMap; target: CppTargetId; triple: string; flags: string[]; ms: number }
+	| { type: 'result'; id: number; emit: ExploreKind; ok: true; text: string; lines: LineMap; unoptimized?: LineCode[]; target: CppTargetId; triple: string; flags: string[]; ms: number }
 	| { type: 'result'; id: number; emit: ExploreKind; ok: false; error: string; target: CppTargetId | null; ms: number };
 
 export class Explorer {
@@ -283,7 +285,7 @@ export class Explorer {
 		if (m.type !== 'result' || !KINDS.includes(m.emit) || m.id !== this.latest[m.emit]) return;
 		const view = this.views[m.emit];
 		this.set(m.emit, m.ok
-			? { ...view, status: 'ok', text: m.text, lines: m.lines, target: m.target, triple: m.triple, flags: m.flags, ms: m.ms, error: '', progress: null }
+			? { ...view, status: 'ok', text: m.text, lines: m.lines, unoptimized: m.unoptimized ?? [], target: m.target, triple: m.triple, flags: m.flags, ms: m.ms, error: '', progress: null }
 			: { ...view, status: 'error', target: m.target, ms: m.ms, error: m.error, progress: null });
 		this.changed(m.emit);
 	}
