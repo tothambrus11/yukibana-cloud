@@ -1116,6 +1116,36 @@ async function previewing(page, check) {
 	const mark = await (await inner())?.evaluate(() => window.yukibanaMark).catch(() => 'gone');
 	check(reloaded && mark === undefined, `a TypeScript edit reloads the page (button says Edited: ${reloaded}, mark after: ${mark})`);
 
+	// An edit with an error does not reload: the last good page stays (its
+	// mark survives) and the bar says why; the fix reloads it, 300 ms after
+	// the typing stops plus a check and a build.
+	const status = page.locator('.preview-bar .preview-status');
+	await (await inner())?.evaluate(() => (window.yukibanaMark = 'kept'));
+	// A dangling `+`: the next line, typed after, completes the expression.
+	await page.keyboard.type("button.textContent = 'Broken' +\n");
+	const refused = await status.filter({ hasText: /Not reloaded: \d+ errors?/ }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+	const stayed = await (await inner())?.evaluate(() => window.yukibanaMark).catch(() => 'gone');
+	check(refused && stayed === 'kept', `an edit with a TypeScript error leaves the page as it was and says why (${JSON.stringify(await status.textContent())}, mark: ${stayed})`);
+	await page.keyboard.type("'Fixed';\n");
+	const t0 = Date.now();
+	const fixed = await frame.locator('#increment', { hasText: 'BrokenFixed' }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+	const fixedMs = Date.now() - t0;
+	check(fixed && fixedMs < 5_000 && (await status.textContent()) === '', `the fix reloads the page (${fixedMs} ms after the last keystroke) and the bar is clear`);
+
+	// With Auto reload off, edits wait for Reload; the choice is remembered.
+	await page.locator('.preview-bar .preview-auto input').uncheck();
+	await (await inner())?.evaluate(() => (window.yukibanaMark = 'kept'));
+	await page.locator('.dv-groupview .monaco-editor').first().click();
+	await page.keyboard.press('Control+End');
+	await page.keyboard.type("button.textContent = 'Manual';\n");
+	await page.waitForTimeout(2_000);
+	const waited = await (await inner())?.evaluate(() => window.yukibanaMark).catch(() => 'gone');
+	check(waited === 'kept' && (await status.textContent()) === 'Edited since the last reload', `with Auto reload off an edit does not reload the page (mark: ${waited}, ${JSON.stringify(await status.textContent())})`);
+	await page.locator('.preview-bar .preview-reload').click();
+	const manual = await frame.locator('#increment', { hasText: 'Manual' }).waitFor({ timeout: 15_000 }).then(() => true, () => false);
+	check(manual, 'Reload shows the edits made while Auto reload was off');
+	await page.locator('.preview-bar .preview-auto input').check();
+
 	// Run again with the Preview already in front loads the page once, not
 	// twice, in one new iframe: re-activating the panel used to take the
 	// iframe out of the DOM and put it back (a reload) just before the new

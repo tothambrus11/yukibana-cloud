@@ -75,7 +75,12 @@ function log(type: P.MessageType, message: string): void {
 }
 
 class ResponseError extends Error {
-  constructor(readonly code: number, message: string) {
+  constructor(
+    readonly code: number,
+    message: string,
+    /** The error's `data`, such as a refused pull's `retriggerRequest`. */
+    readonly data?: unknown,
+  ) {
     super(message);
   }
 }
@@ -135,7 +140,8 @@ function drain(): void {
       } catch (e) {
         const err = e instanceof ResponseError ? e : null;
         if (!err) log(1, `${m.method} failed: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
-        send({ id: m.id, error: { code: err?.code ?? -32603, message: e instanceof Error ? e.message : String(e) } });
+        const message = e instanceof Error ? e.message : String(e);
+        send({ id: m.id, error: err?.data === undefined ? { code: err?.code ?? -32603, message } : { code: err.code, message, data: err.data } });
       }
     } else {
       try {
@@ -543,20 +549,7 @@ async function publishDiagnostics(): Promise<void> {
     if (projectVersion !== version) return; // a newer run is scheduled
     const doc = docs.get(path);
     if (!doc) continue;
-    let diags: TS.Diagnostic[] = [];
-    if (SCRIPT_EXT.test(path)) {
-      diags = [
-        ...service.getSyntacticDiagnostics(path),
-        ...service.getSemanticDiagnostics(path),
-        ...service.getSuggestionDiagnostics(path),
-      ];
-    } else if (path === configPath) {
-      // Option errors (an unknown or unbundled "lib", say) belong to no
-      // script; they point into the config file, so they are shown there.
-      const global = service.getCompilerOptionsDiagnostics().filter((d) => !d.file || d.file.fileName === path);
-      diags = [...configErrors, ...global];
-    }
-    const items = diags.map((d) => diagnostic(doc, d));
+    const items = diagnosticsOf(service, path, doc);
     const key = JSON.stringify(items);
     if (published.get(path) !== key) {
       published.set(path, key);
@@ -564,6 +557,24 @@ async function publishDiagnostics(): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 0));
   }
+}
+
+/**
+ * The diagnostics of one project file as they stand: a script's syntax,
+ * types and suggestions, or the config file's option errors. Other files
+ * have none. Call `options()` first, which refreshes `configErrors`.
+ */
+function diagnosticsOf(service: TS.LanguageService, path: string, doc: Doc): P.Diagnostic[] {
+  let diags: TS.Diagnostic[] = [];
+  if (SCRIPT_EXT.test(path)) {
+    diags = [...service.getSyntacticDiagnostics(path), ...service.getSemanticDiagnostics(path), ...service.getSuggestionDiagnostics(path)];
+  } else if (path === configPath) {
+    // Option errors (an unknown or unbundled "lib", say) belong to no
+    // script; they point into the config file, so they are shown there.
+    const global = service.getCompilerOptionsDiagnostics().filter((d) => !d.file || d.file.fileName === path);
+    diags = [...configErrors, ...global];
+  }
+  return diags.map((d) => diagnostic(doc, d));
 }
 
 function diagnostic(doc: Doc, d: TS.Diagnostic): P.Diagnostic {
@@ -827,6 +838,9 @@ const requests: Record<string, Handler> = {
         documentRangeFormattingProvider: true,
         codeActionProvider: { codeActionKinds: ['quickfix', 'source.organizeImports'] },
         semanticTokensProvider: { legend: { tokenTypes: TOKEN_TYPES, tokenModifiers: TOKEN_MODIFIERS }, full: true },
+        // Pulled for the whole project only (`workspace/diagnostic`); a
+        // file's diagnostics are pushed.
+        diagnosticProvider: { interFileDependencies: true, workspaceDiagnostics: true },
       },
       serverInfo: { name: 'yukibana-typescript-ls', version: `${__PACK_VERSION__} (TypeScript ${ts.version})` },
     };
@@ -983,6 +997,32 @@ const requests: Record<string, Handler> = {
       return [symbol];
     };
     return (ls().getNavigationTree(path).childItems ?? []).flatMap(convert);
+  },
+
+  /**
+   * Every project file's diagnostics, computed now from the text the
+   * client last sent: the app's web preview asks before it reloads, and
+   * reloads only when there are no errors. Messages are handled in order,
+   * so the edits sent before this request are in the answer. Diagnostics
+   * are also pushed (`publishDiagnostics`), but only when they change, so a
+   * client cannot tell from the pushes whether its latest edit was checked.
+   * While an imported package's types are downloading, its import would be
+   * reported missing, so the pull is refused with ServerCancelled and
+   * `retriggerRequest`, as LSP 3.17 says, and the client asks again.
+   */
+  'workspace/diagnostic'(): P.WorkspaceDiagnosticReport {
+    if ([...lazyTypes.values()].includes('loading')) {
+      throw new ResponseError(-32802, "An imported package's types are still loading", { retriggerRequest: true } satisfies P.DiagnosticServerCancellationData);
+    }
+    const service = ls();
+    options(); // refreshes configErrors
+    const items = [...docs].map(([path, doc]): P.WorkspaceFullDocumentDiagnosticReport => ({
+      kind: 'full',
+      uri: doc.uri,
+      version: doc.version,
+      items: diagnosticsOf(service, path, doc),
+    }));
+    return { items };
   },
 
   'workspace/symbol'(params: P.WorkspaceSymbolParams): P.SymbolInformation[] {

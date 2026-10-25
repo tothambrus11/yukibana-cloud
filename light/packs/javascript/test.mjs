@@ -178,6 +178,20 @@ const bad = await diagnostics(W + 'main.js', (d) => d.some((x) => x.code === 234
 const err = bad?.find((x) => x.code === 2345);
 check('an argument of the wrong type is an error under @ts-check', !!err && err.severity === 1 && err.range.start.line === 6, err ?? bad);
 
+// 1b. The project's errors pulled at once (the web preview asks before it
+// reloads): the edit just sent is in the answer, without waiting for a push.
+await change('main.js', files['main.js'] + `const broken = ;\n`);
+const pulled = await request('workspace/diagnostic', { previousResultIds: [] });
+const pulledMain = pulled?.items?.find((i) => i.uri === W + 'main.js');
+check(
+  'a pull of the workspace diagnostics includes an edit sent just before it',
+  init?.capabilities?.diagnosticProvider?.workspaceDiagnostics === true && pulledMain?.kind === 'full' && pulledMain.items.some((x) => x.severity === 1 && x.range.start.line === 7),
+  pulledMain,
+);
+await change('main.js', files['main.js'].replace(`const broken = ;\n`, ''));
+const repulled = await request('workspace/diagnostic', { previousResultIds: [] });
+check('a pull after the fix has only the error that is still there', repulled?.items?.find((i) => i.uri === W + 'main.js')?.items.filter((x) => x.severity === 1).length === 1, repulled);
+
 // 2. Completion at a member access, with the member's JSDoc on resolve.
 await change('main.js', files['main.js'] + `v.\n`);
 const completion = await request('textDocument/completion', {

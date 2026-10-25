@@ -444,12 +444,18 @@ once per preview.
   `warn/error` (as stderr), and uncaught errors and rejections to the app,
   which prints them in the terminal. The app accepts these messages only
   from that iframe's window.
-* **Live reload:** edits are gathered for 300 ms. If every changed file is
-  a stylesheet of the page, the app posts the new text and the bridge
-  replaces that `<style>`, so the page reloads nothing and keeps its state.
-  Any other change rebuilds the page and reloads the iframe. This is live
-  reload, not hot module replacement. A build error (a missing import)
-  goes to the terminal, and the last page stays.
+* **Live reload:** the app waits for 300 ms without an edit. If every
+  changed file is a stylesheet of the page, it posts the new text and the
+  bridge replaces that `<style>`, so the page reloads nothing and keeps its
+  state. Any other change first asks this pack's server for the project's
+  errors (`workspace/diagnostic`, a pull answered from the text sent so
+  far) and rebuilds the page and reloads the iframe only when there are
+  none; otherwise the errors go to the terminal and the last page stays.
+  One check or build runs at a time, and edits made meanwhile go into the
+  next. With the Preview's **Auto reload** off, edits wait for its
+  **Reload** button. This is live reload, not hot module replacement. A
+  build error (a missing import) also goes to the terminal, and the last
+  page stays.
 * **Packages:** `import p5 from 'p5'` works in a page (see "Packages"):
   the page gets an import map, right after the bridge, that maps `p5` to
   p5.js as one `data:` URL. Every module keeps the bare specifier, so the

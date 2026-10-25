@@ -71,6 +71,16 @@ export interface ClientOptions {
 }
 
 const MARKER_OWNER = 'lsp';
+/** LSP's "server cancelled": a pull the server refused for now; with `retriggerRequest`, ask again. */
+const SERVER_CANCELLED = -32802;
+/** How long to wait before asking again for diagnostics a server refused for now. */
+const RETRIGGER_MS = 250;
+
+/** An error-severity diagnostic of a project file, as `workspaceErrors` gives it. */
+export interface ProjectError {
+	uri: monaco.Uri;
+	diagnostic: lsp.Diagnostic;
+}
 const LOG_LEVELS: Record<number, LogLevel> = { 1: 'error', 2: 'warning', 3: 'info', 4: 'log', 5: 'log' };
 
 /** One running language server and everything registered on its behalf. */
@@ -414,6 +424,39 @@ export class LanguageClient {
 		const params = { textDocument: { uri: model.uri.toString() }, positions: positions.map(c.toPosition) };
 		const ranges = await this.ask<lsp.SelectionRange[]>(model, 'textDocument/selectionRange', params, new monaco.CancellationTokenSource().token);
 		return ranges && ranges.length === positions.length ? ranges : null;
+	}
+
+	/**
+	 * The project's errors as the server sees them now, edits sent so far
+	 * included: pulled with `workspace/diagnostic`, for the web preview,
+	 * which reloads only without them (preview.ts). Pushed diagnostics
+	 * (`publishDiagnostics`, the editor's markers) cannot say that: a server
+	 * pushes when they change, so silence after an edit may mean "still
+	 * checking" as well as "unchanged". A pull the server refuses for now
+	 * (ServerCancelled with `retriggerRequest`, as when a package's types are
+	 * still loading) is asked again until `signal` aborts. Null when the
+	 * server cannot pull for the workspace, stopped, `signal` aborted, or it
+	 * failed (logged, as `ask` does).
+	 */
+	async workspaceErrors(signal: AbortSignal): Promise<ProjectError[] | null> {
+		if (!this.ready || this.capabilities.diagnosticProvider?.workspaceDiagnostics !== true) return null;
+		for (;;) {
+			try {
+				const report = await this.connection.request<lsp.WorkspaceDiagnosticReport>('workspace/diagnostic', { previousResultIds: [] } satisfies lsp.WorkspaceDiagnosticParams, signal);
+				return report.items.flatMap((item) =>
+					item.kind === 'full' ? item.items.filter((d) => d.severity === 1).map((diagnostic) => ({ uri: monaco.Uri.parse(item.uri), diagnostic })) : [],
+				);
+			} catch (e) {
+				if (signal.aborted || this.stopping || (e instanceof ResponseError && e.code === REQUEST_CANCELLED)) return null;
+				const retrigger = e instanceof ResponseError && e.code === SERVER_CANCELLED && (e.data as lsp.DiagnosticServerCancellationData | undefined)?.retriggerRequest !== false;
+				if (!retrigger) {
+					this.options.events.log('error', `workspace/diagnostic: ${e instanceof Error ? e.message : String(e)}`);
+					return null;
+				}
+				await new Promise((resolve) => setTimeout(resolve, RETRIGGER_MS));
+				if (signal.aborted || !this.ready) return null;
+			}
+		}
 	}
 
 	/**

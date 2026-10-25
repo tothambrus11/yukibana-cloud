@@ -259,6 +259,29 @@ body {
 	color-scheme: light dark;
 	background: Canvas;
 }
+/* Above the page: Auto reload, Reload, and why the page is not up to date. */
+.preview-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	min-height: 1.9rem;
+	padding: 0 0.5rem;
+	border-bottom: 1px solid var(--gray-5);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+.preview-auto {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	cursor: pointer;
+}
+.preview-status {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--gray-3);
+}
 .preview-empty {
 	margin: 1rem;
 	color: var(--gray-3);

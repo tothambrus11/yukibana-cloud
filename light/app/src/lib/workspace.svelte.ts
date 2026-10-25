@@ -142,7 +142,7 @@ export class Workspace {
 	explorer: Explorer | null = null;
 	private explorerLoad: Promise<Explorer> | null = null;
 	/** A web project's page, shown in the Preview panel; its console goes to the terminal. */
-	readonly preview = new Preview(this.runner);
+	readonly preview = new Preview(this.runner, (signal) => this.projectErrors(signal));
 	/**
 	 * The call hierarchy the Call Hierarchy panel shows: of the function
 	 * last asked about (Show Call Hierarchy), null before that and once the
@@ -692,6 +692,28 @@ export class Workspace {
 		this.callHierarchy = null;
 		this.clientState = { kind: 'stopped' };
 		await client?.stop();
+	}
+
+	/**
+	 * The project's errors for the web preview, which reloads only without
+	 * them, as `path:line:column: message`. Asked of the language server
+	 * (`workspaceErrors`), which answers for the edits made so far. A server
+	 * that cannot be asked (one without workspace diagnostics, or none
+	 * running yet) leaves the editor's error markers, which may lag the
+	 * latest edit.
+	 */
+	private async projectErrors(signal: AbortSignal): Promise<string[]> {
+		const pulled = this.client ? await this.client.workspaceErrors(signal) : null;
+		const errors = pulled
+			? pulled.map(({ uri, diagnostic: d }) => ({ uri, line: d.range.start.line + 1, column: d.range.start.character + 1, message: d.message }))
+			: monaco.editor
+					.getModelMarkers({})
+					.filter((m) => m.severity === monaco.MarkerSeverity.Error)
+					.map((m) => ({ uri: m.resource, line: m.startLineNumber, column: m.startColumn, message: m.message }));
+		return errors.flatMap(({ uri, line, column, message }) => {
+			const path = WORKSPACE.pathOf(uri);
+			return path !== null && this.models.has(path) ? [`${path}:${line}:${column}: ${message}`] : [];
+		});
 	}
 
 	private refreshProblems(): void {
