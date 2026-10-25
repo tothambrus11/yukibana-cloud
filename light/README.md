@@ -18,16 +18,55 @@ serve.py              a static server that sends the headers the app wants
 
 ## Trying it
 
+On Linux (Ubuntu 24.04 is what CI runs), with git, curl, zstd and Node 22
+or later:
+
 ```sh
-for p in javascript python scala swift cpp; do (cd packs/$p && ./build.sh); done
-cd app && npm ci && npm run build
+./setup.sh                       # the app's dependencies and every pack, prebuilt
+cd app && npm run dev            # http://localhost:5173
+```
+
+`setup.sh` downloads each language pack already built from exactly the
+sources checked out, from the pack store (below), so a working setup takes
+minutes and compiles nothing. Run it again after a pull: only packs whose
+sources changed are downloaded again. `./setup.sh python cpp` sets up just
+those packs; `./setup.sh --build cpp` builds that pack from source with its
+`build.sh`, installing the Debian/Ubuntu packages its `deps.apt` lists first
+(`--no-install` only names them); `--latest` takes the newest build of a pack
+whose exact sources CI has not built yet (a local commit) instead of
+building it. `./setup.sh --help` says the rest.
+
+Each `build.sh` caches what it downloads and compiles in
+`~/.cache/yukibana-packs`. The C++ and Swift builds compile LLVM and take
+hours the first time; the others take minutes. A pack that is not there is
+reported in the app as not installed, and the rest still work.
+
+For the built site, as it is deployed:
+
+```sh
+cd app && npm run build
 python3 ../serve.py build        # http://localhost:8000
 ```
 
-Each `build.sh` caches what it downloads and compiles in
-`~/.cache/yukibana-packs`. The C++ and Swift builds compile LLVM and take a
-long time the first time; the others take minutes. A pack that is not built
-is reported in the app as not installed, and the rest still work.
+### The pack store, CI and releases
+
+A pack's output (`app/static/packs/<pack>`) depends only on its directory:
+`build.sh` pins every download by sha256. So every build that passed its
+tests is kept as `<pack>-<tree>.tar.zst` on the repository's rolling
+`light-packs` prerelease, where `<tree>` is the git tree id of
+`packs/<pack>` (`scripts/pack-store.sh tree <pack>`).
+
+* `.github/workflows/light-packs.yml` runs on every push that touches a pack.
+  A pack whose tree has a build already is downloaded in seconds; a pack
+  that changed is built and tested by its `build.sh` and stored. So a pack is
+  tested on the push that changed it.
+* `.github/workflows/light-ci.yml` checks the app (types, unit tests, the
+  JavaScript pack end to end) on every push.
+* Pushing a `light-v*` tag runs `.github/workflows/light-release.yml`: the
+  packs as above (normally all downloaded), the app built with all of them
+  and smoke-tested in Chromium, and the GitHub release of the tag with
+  `yukibana-light-<tag>.zip` and `packs.json` (the tree each pack was built
+  from). Run by hand, it only uploads the archive as the run's artifact.
 
 `serve.py` sends `Cross-Origin-Opener-Policy` and
 `Cross-Origin-Embedder-Policy`, and the `.br` or `.gz` sibling of a file

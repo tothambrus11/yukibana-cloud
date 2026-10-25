@@ -5,3 +5,4 @@ app/.svelte-kit/
 *.tsbuildinfo
 # The repository ignores **/lib (TypeScript output); this app keeps sources there.
 !app/src/lib/
+.pack-trees/
