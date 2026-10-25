@@ -67,7 +67,8 @@ else
   # shadowed by an old cache; what configuring cannot show is what the tree
   # records (llvm-lib.sh, llvm_made_by), and it follows the patches of the
   # sources it compiles.
-  keep_tree $B "$(llvm_made_by)"
+  made_by=$(llvm_made_by)   # assigned first, so a failure stops the script
+  keep_tree $B "$made_by"
   follow_patch $B "$HERE/patches/clangd-browser.patch" "$SRC"
   follow_patch $B "$HERE/patches/wasm-ld-only.patch" "$SRC"
   $NICE emcmake cmake -S "$SRC/llvm" -B $B "${cmake_args[@]}" >/dev/null

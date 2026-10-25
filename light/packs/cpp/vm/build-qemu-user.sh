@@ -78,6 +78,7 @@ if [ "$(cat "$ART/user.stamp" 2>/dev/null)" = "$stamp" ]; then echo "qemu user: 
 # a check that emsdk_env.sh existed once relinked this binary with another
 # release while user.stamp named the pinned one.
 emsdk_use
+EM_TREE_MADE_BY=$(emsdk_tree_made_by)   # build-user's record: the Emscripten and its path
 export PATH=$QC/venv/bin:$PATH
 
 # --- the patched tree: hard links to build-qemu.sh's tree, so it costs no space;
@@ -125,11 +126,13 @@ configured() {
   grep -qF -- "'--extra-cflags=$CFLAGS'" "$f" 2>/dev/null && grep -qF -- "'--extra-ldflags=$LDFLAGS'" "$f"
 }
 # Compiled against the dependencies and with the Emscripten MADE_OF names, which
-# configuring again would not show (keep_tree); the trees above remove it when
+# configuring again would not show (keep_tree), and configured once with that
+# Emscripten's path (emsdk_tree_made_by); the trees above remove it when
 # they change.
 configured || rm -rf "$B"
 keep_tree "$B" "$(sha256sum < "$HERE/../toolchains/vm/pins.sh" | cut -d' ' -f1) pins.sh
-$MADE_OF"
+$MADE_OF
+$EM_TREE_MADE_BY"
 if ! configured; then
   cd "$B"
   PKG_CONFIG_PATH=$TARGET/lib/pkgconfig CC=emcc CXX=em++ "$UT/configure" --static \

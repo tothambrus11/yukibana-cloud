@@ -8,12 +8,17 @@
 # llvm_made_by: prints what made a build tree of the LLVM source with the
 # pack's Emscripten (clangd's, cc's and cc-cross's: the same lines, so that
 # build-cross.sh may still be pointed at cc's tree): the source tarball and
-# emsdk_made_by. Both stand behind paths ninja sees as unchanged (the
-# CMake cache holds emcc's path, not its version). The native table
+# emsdk_tree_made_by. Both stand behind paths ninja sees as unchanged (the
+# CMake cache holds emcc's path, not its version), and the Emscripten's path
+# is in the tree's CMake files (emsdk_tree_made_by says why), so it is
+# called after emsdk_use. The native table
 # generators are not in it: their binaries are inputs of every generated
 # file, which ninja regenerates when they change.
 llvm_made_by() {
-  printf 'llvm %s %s\n%s' "$LLVM_VERSION" "$LLVM_SHA256" "$(emsdk_made_by)"
+  local emsdk
+  # Assigned first: a failure inside printf's argument would be lost.
+  emsdk=$(emsdk_tree_made_by) || return 1
+  printf 'llvm %s %s\n%s' "$LLVM_VERSION" "$LLVM_SHA256" "$emsdk"
 }
 
 # llvm_lld_sources: makes $CACHE/llvm-project-$LLVM_VERSION.src/lld the

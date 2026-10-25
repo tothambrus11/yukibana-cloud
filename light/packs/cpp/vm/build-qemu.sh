@@ -66,6 +66,7 @@ fetch() { # url sha256 file
 # (vm/README.md); the pack is on 6.0.13 now (plan D52).
 EM_MADE_BY=$(emsdk_made_by)
 emsdk_use
+EM_TREE_MADE_BY=$(emsdk_tree_made_by)   # the build tree's record: the Emscripten and its path
 # meson 1.5 (QEMU 8.2's configure wants a newer one than distributions ship)
 # and setuptools, whose distutils shim glib 2.75's gdbus-codegen imports
 # (distutils.version): Python 3.12 dropped distutils, and a venv made by 3.12
@@ -171,7 +172,8 @@ done
 # --- configure (once per build tree) and build
 export PKG_CONFIG_LIBDIR=$TARGET/lib/pkgconfig PKG_CONFIG_PATH=$TARGET/lib/pkgconfig EM_PKG_CONFIG_PATH=$TARGET/lib/pkgconfig CPATH=$TARGET/include
 # A tree configured with other flags (config.status records the command) starts over,
-# and so does one compiled by another Emscripten or against other dependencies,
+# and so does one compiled by another Emscripten, or by one installed elsewhere
+# (its build.ninja calls emcc by path: emsdk_tree_made_by), or against other dependencies,
 # which configuring again would not show (keep_tree). The QEMU tree itself is
 # checked above (patch_ok), and a change of it removes this one.
 configured() {
@@ -180,7 +182,7 @@ configured() {
   grep -qF -- "'--target-list=x86_64-softmmu,aarch64-softmmu,riscv64-softmmu'" "$f" && grep -qF -- "'--without-default-devices'" "$f"
 }
 configured || rm -rf "$BUILD"
-keep_tree "$BUILD" "$EM_MADE_BY
+keep_tree "$BUILD" "$EM_TREE_MADE_BY
 deps $(sha256sum < "$TARGET/.yk-made-by" | cut -d' ' -f1)"
 if ! configured; then
   cd "$BUILD"

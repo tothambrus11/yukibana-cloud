@@ -156,6 +156,24 @@ emsdk_made_by() {
   printf 'emsdk %s %s %s %s' "$EMSDK_VERSION" "$EMSDK_COMMIT" "$EMSDK_RELEASE" "$EMSDK_BINARIES_SHA256"
 }
 
+# emsdk_tree_made_by: prints emsdk_made_by and, on a second line, where
+# that Emscripten is installed ("emsdk at <dir>", as emsdk_use found it),
+# for keep_tree of a tree configured with it: the em-cache, the LLVM trees
+# (llvm_made_by), QEMU's build trees. CMake's CMakeSystem.cmake includes
+# Emscripten.cmake by that absolute path, and a QEMU tree configured once
+# calls emcc by it, so a tree kept after the install moved failed at
+# configure (CMake: "include could not find requested file") or at build,
+# and emcc empties its cache itself when the LLVM_ROOT under it moves.
+# pack-toolchain.sh stages a unit at the same path every time (stage_of),
+# so the path moves only with TMPDIR, and then the trees start from empty
+# instead of failing. A stamp names the Emscripten by emsdk_made_by alone:
+# it says what the outputs are made of, not where their maker was. Dies
+# unless emsdk_use has run.
+emsdk_tree_made_by() {
+  [ -n "${EMSDK_AT:-}" ] || die "emsdk_tree_made_by: no Emscripten in use; call emsdk_use first"
+  printf '%s\nemsdk at %s' "$(emsdk_made_by)" "$EMSDK_AT"
+}
+
 # need_unit <unit>: checks that the build was given the cpp unit <unit> it
 # needs (its toolchains/<this unit>/needs names cpp/<unit>), at
 # $DEP_<UNIT>, and sources that unit's exported pins
@@ -182,17 +200,20 @@ need_unit() {
 # upstream/bin (clang, llvm-strip, llvm-ar) on PATH.
 # The install is read-only, as every dependency is, and emcc writes the
 # system libraries it compiles on first use into its cache, so EM_CACHE is
-# $CACHE/em-cache, which records the Emscripten that filled it (keep_tree)
-# and is emptied for another. It is set after emsdk_env.sh, which clears
-# an EM_CACHE it finds. Nothing writes into the install (plan D52).
+# $CACHE/em-cache, which records the Emscripten that filled it and where
+# (keep_tree, emsdk_tree_made_by) and is emptied for another. It is set
+# after emsdk_env.sh, which clears an EM_CACHE it finds. Nothing writes into
+# the install (plan D52). Sets EMSDK_AT, the install's physical path, which
+# emsdk_tree_made_by records.
 emsdk_use() {
   need_unit emsdk
   local dir="$DEP_EMSDK/build-only/emsdk"
   [ -x "$dir/upstream/emscripten/emcc" ] && [ -f "$dir/.emscripten" ] ||
     die "the emsdk unit at $DEP_EMSDK has no installed Emscripten (build-only/emsdk/upstream/emscripten/emcc)"
+  EMSDK_AT="$(cd "$dir" && pwd -P)"
   # shellcheck disable=SC1091
   source "$dir/emsdk_env.sh" >/dev/null 2>&1
-  keep_tree "$CACHE/em-cache" "$(emsdk_made_by)"
+  keep_tree "$CACHE/em-cache" "$(emsdk_tree_made_by)"
   export EM_CACHE="$CACHE/em-cache"
 }
 

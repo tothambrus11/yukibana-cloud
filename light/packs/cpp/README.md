@@ -341,8 +341,8 @@ Every step that is skipped instead has a stamp of its inputs.
 | `musl-*` | the tarball's pin |
 | `build-native` | the LLVM tarball, the host's clang, its cmake arguments (configured once); ninja runs every time |
 | `emsdk` (the emsdk unit's) | the emsdk commit, and a finished install (`emcc` and `.emscripten`); never modified after it is installed |
-| `em-cache` | the Emscripten (`emsdk_made_by`): the system libraries emcc compiles on first use, outside the read-only install |
-| `build-wasm`, `build-wasm-cc`, `build-wasm-cross` | the LLVM tarball and the Emscripten (`emsdk_made_by`: tag, commit, release and its SHA-256), plus the patches of what each compiles (cmake runs every time, so flags reach it) |
+| `em-cache` | the Emscripten and where it is installed (`emsdk_tree_made_by`): the system libraries emcc compiles on first use, outside the read-only install |
+| `build-wasm`, `build-wasm-cc`, `build-wasm-cross` | the LLVM tarball and the Emscripten (`emsdk_tree_made_by`: tag, commit, release and its SHA-256, and the install's path, which CMake's files include by name), plus the patches of what each compiles (cmake runs every time, so flags reach it) |
 | `cxx-headers` | the LLVM tarball and its cmake arguments |
 | `wasi/wasi-sdk-*` | the tarball's pin |
 | `artifacts/{cc,cc-cross}/STAMP` | LLVM version and tarball pin, `emcc --version`, the cmake arguments, the lld patch |
@@ -352,8 +352,8 @@ Every step that is skipped instead has a stamp of its inputs.
 | `node_modules` | `package-lock.json` (`npm_deps`, `glue-lib.sh`) |
 | `qemu-wasm/venv` | the python and the meson and setuptools pins |
 | `qemu-wasm/work/{target,src}` | the dependencies' pins, Emscripten, and the text of `build_deps` |
-| `qemu-wasm/work/build-run` | Emscripten and the dependencies' record; the QEMU tree is checked by commit and patch-id |
-| `qemu-wasm/work/{qemu-user-src,user-compat,build-user}`, `user.stamp` | the QEMU tree's content, the dependencies' record, the UAPI and musl headers, `USER_INITIAL_MEMORY_MB` |
+| `qemu-wasm/work/build-run` | Emscripten and where it is installed (`emsdk_tree_made_by`; configured once, its build.ninja calls emcc by path) and the dependencies' record; the QEMU tree is checked by commit and patch-id |
+| `qemu-wasm/work/{qemu-user-src,user-compat,build-user}`, `user.stamp` | the QEMU tree's content, the dependencies' record, the UAPI and musl headers, `USER_INITIAL_MEMORY_MB`; `build-user` also where the Emscripten is installed (`emsdk_tree_made_by`) |
 | `qemu-wasm/linux-*`, `kbuild/*`, `src/strace-*` | the tarball's pin; Kbuild follows its config and compiler |
 | `strace-<arch>.stamp` | also the compiler `cc.sh` runs (`CLANG`), not always `clang-18`'s version |
 

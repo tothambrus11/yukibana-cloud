@@ -131,22 +131,64 @@ const diff = (...files) => files.map((f) => `--- a/${f}\n+++ b/${f}\n@@ -1 +1 @@
 
 test('a build tree made by another LLVM or Emscripten is built again from empty, and one made by the same is kept', () => {
     const dir = fresh();
-    ok(`keep_tree tree "$(llvm_made_by)"; touch tree/object.o`, { cwd: dir });
-    ok(`keep_tree tree "$(llvm_made_by)"`, { cwd: dir });
+    // EMSDK_AT is where emsdk_use found the install; the test after this one
+    // moves it.
+    const env = { EMSDK_AT: '/emsdk' };
+    ok(`keep_tree tree "$(llvm_made_by)"; touch tree/object.o`, { cwd: dir, env });
+    ok(`keep_tree tree "$(llvm_made_by)"`, { cwd: dir, env });
     assert.ok(fs.existsSync(path.join(dir, 'tree/object.o')), 'the same makers keep the tree');
-    const r = ok(`EMSDK_COMMIT=0000000000000000000000000000000000000000; keep_tree tree "$(llvm_made_by)"`, { cwd: dir });
+    const r = ok(`EMSDK_COMMIT=0000000000000000000000000000000000000000; keep_tree tree "$(llvm_made_by)"`, { cwd: dir, env });
     assert.ok(!fs.existsSync(path.join(dir, 'tree/object.o')), 'another emsdk starts the tree again');
     assert.match(r.err, /tree was made by something else/);
     assert.match(r.err, /emsdk \d+\.\d+\.\d+ 0{40} [0-9a-f]{40} [0-9a-f]{64}/, 'the message names what differs');
-    assert.match(fs.readFileSync(path.join(dir, 'tree/.yk-made-by'), 'utf8'), /^yukibana-tree\/1\nllvm \d+\.\d+\.\d+ [0-9a-f]{64}\nemsdk \d+\.\d+\.\d+ 0{40} [0-9a-f]{40} [0-9a-f]{64}\n$/);
-    const r2 = ok(`EMSDK_RELEASE=${'1'.repeat(40)}; keep_tree tree "$(llvm_made_by)"`, { cwd: dir });
+    assert.match(fs.readFileSync(path.join(dir, 'tree/.yk-made-by'), 'utf8'), /^yukibana-tree\/1\nllvm \d+\.\d+\.\d+ [0-9a-f]{64}\nemsdk \d+\.\d+\.\d+ 0{40} [0-9a-f]{40} [0-9a-f]{64}\nemsdk at \/emsdk\n$/);
+    const r2 = ok(`EMSDK_RELEASE=${'1'.repeat(40)}; keep_tree tree "$(llvm_made_by)"`, { cwd: dir, env });
     assert.match(r2.err, /tree was made by something else/, 'another toolchain release under the same emsdk commit starts it again too');
+});
+
+test('an Emscripten installed at another path starts the trees configured with it and its cache again, and at the same path keeps them', () => {
+    // CMake's CMakeSystem.cmake includes Emscripten.cmake by absolute path,
+    // a QEMU tree configured once calls emcc by it, and emcc empties its
+    // cache when LLVM_ROOT moves: a tree kept across a move failed at
+    // configure. Two installs of one Emscripten, at two paths, as two
+    // stages would hold the emsdk unit; and a link to the first.
+    const { DEP_EMSDK: first } = fakeUnits();
+    fs.writeFileSync(path.join(first, 'build-only/emsdk/emsdk_env.sh'), ':\n');
+    const second = fresh();
+    fs.cpSync(first, second, { recursive: true });
+    const linked = path.join(fresh(), 'emsdk-link');
+    fs.symlinkSync(first, linked);
+    const dir = fresh();
+    const build = (dep) =>
+        ok('emsdk_use; made_by=$(llvm_made_by); keep_tree build-wasm "$made_by"; touch build-wasm/CMakeCache.txt em-cache/sanity.txt', { cwd: dir, env: { DEP_EMSDK: dep } });
+    build(first);
+    write(path.join(dir, 'build-wasm/CMakeCache.txt'), 'configured');
+    write(path.join(dir, 'em-cache/sanity.txt'), 'filled');
+    const again = build(first);
+    assert.doesNotMatch(again.err, /something else/);
+    assert.equal(fs.readFileSync(path.join(dir, 'build-wasm/CMakeCache.txt'), 'utf8'), 'configured', 'the same install at the same path keeps the tree');
+    assert.equal(fs.readFileSync(path.join(dir, 'em-cache/sanity.txt'), 'utf8'), 'filled', 'and the cache');
+    build(linked);
+    assert.equal(fs.readFileSync(path.join(dir, 'build-wasm/CMakeCache.txt'), 'utf8'), 'configured', 'a link to the same install is the same path');
+    const moved = build(second);
+    assert.match(moved.err, /build-wasm was made by something else/);
+    assert.match(moved.err, /em-cache was made by something else/);
+    assert.ok(moved.err.includes(`emsdk at ${fs.realpathSync(second)}/build-only/emsdk`), moved.err);
+    assert.equal(fs.readFileSync(path.join(dir, 'build-wasm/CMakeCache.txt'), 'utf8'), '', 'the moved install starts the tree from empty');
+    assert.equal(fs.readFileSync(path.join(dir, 'em-cache/sanity.txt'), 'utf8'), '', 'and the cache');
+});
+
+test("a tree's record cannot be taken before an Emscripten is in use", () => {
+    const r = bash('made_by=$(llvm_made_by); echo "kept as $made_by"');
+    assert.notEqual(r.status, 0);
+    assert.match(r.err, /no Emscripten in use; call emsdk_use first/);
+    assert.doesNotMatch(r.out, /kept as/);
 });
 
 test('a build tree that does not say what made it is not reused', () => {
     const dir = fresh();
     write(path.join(dir, 'build-wasm/bin/clangd.js'), 'from some earlier run');
-    const r = ok(`keep_tree build-wasm "$(llvm_made_by)"`, { cwd: dir });
+    const r = ok(`keep_tree build-wasm "$(llvm_made_by)"`, { cwd: dir, env: { EMSDK_AT: '/emsdk' } });
     assert.deepEqual(fs.readdirSync(path.join(dir, 'build-wasm')), ['.yk-made-by']);
     assert.match(r.err, /does not say what made it/);
 });

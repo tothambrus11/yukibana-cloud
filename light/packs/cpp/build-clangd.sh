@@ -90,7 +90,10 @@ ldflags="-pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=4 -sMODULARIZE -sEXPORT
 # being shadowed by the first run's cache. What configuring cannot show
 # (another LLVM tarball, another Emscripten under the same emcc path, a
 # changed patch) is what the tree records (llvm-lib.sh, llvm_made_by).
-keep_tree build-wasm "$(llvm_made_by)"
+# Assigned first: a failure inside an argument's $(...) would not stop the
+# script, and the tree would be kept under a record missing its lines.
+made_by=$(llvm_made_by)
+keep_tree build-wasm "$made_by"
 follow_patch build-wasm "$HERE/patches/clangd-browser.patch" "$SRC"
 $NICE emcmake cmake -S "$SRC/llvm" -B build-wasm -G Ninja \
     -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_EXE_LINKER_FLAGS="$ldflags" \

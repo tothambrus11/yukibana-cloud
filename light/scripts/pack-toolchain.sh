@@ -51,7 +51,8 @@
 #                  when another run stored it meanwhile: a toolchain fetched
 #                  in its place names that run's commit, and publish and
 #                  archive refuse it (pack-store.sh clean_toolchain_key).
-#                  Then toolchain.sh runs in a stage holding only the unit's
+#                  Then toolchain.sh runs in a stage (at the same path at
+#                  every build of the unit, stage_of) holding only the unit's
 #                  inputs and, read-only at $DEP_<UNIT>, the units it needs
 #                  (toolchain_stage), under `env -i` with only
 #                  toolchain_env_args, from the unit's own directory; its
@@ -487,7 +488,8 @@ build() {
   commit=dirty
   [ -n "$reasons" ] || commit="$(git -C "$LIGHT" rev-parse HEAD)"
 
-  stage="$(mktemp -d "${TMPDIR:-/tmp}/pack-toolchain-stage.XXXXXX")"
+  stage="$(stage_of "$id")"
+  remove_tree "$stage"
   toolchain_stage "$id" "$stage" "$@"
   out="$(toolchain_env_args "$id" "$stage")"
   mapfile -t args <<<"$out"
@@ -511,6 +513,22 @@ build() {
   mv "$part" "$dir"
   part=""
   say "$id: built toolchain $key"
+}
+
+# The stage of unit $1: ${TMPDIR:-/tmp}/pack-toolchain-stage-<pack>-<unit>,
+# the same path at every build of the unit, whatever its key. A unit's build
+# keeps trees in PACK_CACHE between builds, and a tree records the absolute
+# paths of what configured it: CMake's CMakeSystem.cmake includes
+# Emscripten.cmake from $DEP_EMSDK, a QEMU tree configured once calls emcc
+# there, and emcc empties its cache when the LLVM_ROOT under it moves. The
+# stage was once a fresh mktemp directory, so every build after the first
+# found its kept trees naming a deleted Emscripten and failed at configure,
+# and recompiled Emscripten's system libraries each time. Like the
+# toolchain's <dir>.part and the unit's trees in PACK_CACHE, the stage
+# belongs to one build of the unit at a time: whatever a killed build left
+# there is removed before the next one stages.
+stage_of() {
+  printf '%s/pack-toolchain-stage-%s-%s\n' "${TMPDIR:-/tmp}" "${1%%/*}" "${1#*/}"
 }
 
 # The sidecar of pack $1.

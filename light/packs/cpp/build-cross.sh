@@ -88,7 +88,8 @@ fi
 # The tree records what made it (llvm-lib.sh, llvm_made_by), which is
 # cc's too (llvm-lib.sh), and follows the patches of the sources it
 # compiles.
-keep_tree "$B" "$(llvm_made_by)"
+made_by=$(llvm_made_by)   # assigned first, so a failure stops the script
+keep_tree "$B" "$made_by"
 follow_patch "$B" "$HERE/patches/clangd-browser.patch" "$SRC"
 follow_patch "$B" "$HERE/patches/elf-ld-only.patch" "$LLD"
 $NICE emcmake cmake -S "$SRC/llvm" -B "$B" "${cmake_args[@]}" >/dev/null

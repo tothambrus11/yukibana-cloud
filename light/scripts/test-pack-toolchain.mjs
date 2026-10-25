@@ -816,6 +816,32 @@ test('a dependency is linked read-only: the unit built with it cannot write into
     clean();
 });
 
+test('a unit is staged at the same path at every build, so the trees it keeps find the units it needs where they were', async () => {
+    // A unit's build keeps trees in PACK_CACHE that name what configured
+    // them by absolute path (CMake includes Emscripten.cmake from
+    // $DEP_EMSDK). The stage was once a fresh temporary directory, so every
+    // build after the first found its trees naming a deleted dependency.
+    await ensureStub();
+    const script = path.join(root, 'light/packs/stub/toolchains/libs/toolchain.sh');
+    const original = fs.readFileSync(script, 'utf8');
+    const stage = path.join(tmp, 'pack-toolchain-stage-stub-libs');
+    const build = async (edit) => {
+        put('light/packs/stub/toolchains/libs/toolchain.sh', `${original}# ${edit}\nprintf '%s\\n' "$DEP_COMPILERS" > "$OUT/share/where.txt"\nls "$(dirname "$DEP_COMPILERS")" > "$OUT/share/deps.txt"\n`, 0o755);
+        const { dir, r } = await ensureUnit('stub/libs', {}, '--build-dirty');
+        assert.match(r.err, /stub\/libs: building toolchain/);
+        return { where: fs.readFileSync(path.join(dir, 'share/where.txt'), 'utf8').trim(), deps: fs.readFileSync(path.join(dir, 'share/deps.txt'), 'utf8').trim() };
+    };
+    const first = await build('one edit');
+    assert.equal(first.where, path.join(stage, 'deps/stub/compilers'));
+    // What a killed build left in the stage is gone before the next stages.
+    fs.mkdirSync(path.join(stage, 'deps/stub/planted'), { recursive: true });
+    const second = await build('another edit, so another key');
+    assert.equal(second.where, first.where, 'the same path under another key');
+    assert.equal(second.deps, 'compilers');
+    assert.equal(fs.existsSync(stage), false, 'and the stage is removed after the build');
+    clean();
+});
+
 test('taking the libraries from the store never downloads the compilers', async () => {
     const { dirs } = await ensureStub();
     const [compilers, libs] = dirs;
