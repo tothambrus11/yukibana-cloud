@@ -56,6 +56,8 @@ jobs:
       javascript-key: ${{ steps.javascript.outputs.key }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: app
         uses: ./.github/actions/once
         with:
@@ -85,6 +87,8 @@ jobs:
         working-directory: light/app
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -119,6 +123,8 @@ jobs:
         working-directory: light
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Node 22: the runner's test report is Node 22's, and test-run.mjs
       # compares it line for line with this machine's `node --test` (Node 24

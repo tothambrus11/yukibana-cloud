@@ -1,12 +1,13 @@
 # Every check, on every push and pull request.
 #
-# `app` is the fast half: lint, typecheck, unit tests and a production build,
-# no services. `stack` proves the database and the app agree: the real
-# Supabase image and a real S3 server on the runner, every migration applied
-# from empty, the pgTAP suite, and the integration suite driving the server
-# modules through the app's own connection role. A migration that lints
-# badly, a policy that widens, a starter that ships a hidden test: each is a
-# red check here rather than a surprise in production.
+# `app`, `cli` and `demo` are the fast half, one job per project: lint,
+# typecheck, unit tests and a build, no services. `stack` proves the
+# database and the app agree: the real Supabase image and a real S3 server
+# on the runner, every migration applied from empty, the pgTAP suite, and
+# the integration suite driving the server modules through the app's own
+# connection role. A migration that lints badly, a policy that widens, a
+# starter that ships a hidden test: each is a red check here rather than a
+# surprise in production.
 name: CI
 
 # Pushes to main (which the Database workflow deploys after) and pull
@@ -37,28 +38,43 @@ concurrency:
 permissions:
   contents: read
 
-# What both jobs read: every directory and file their checks, builds and
-# stack are made from, and this file. A push that changes none of them (a
-# doc page, the devcontainer, Yukibana Light) runs neither job again; see
-# .github/actions/once. A check that starts reading something new adds it here.
+# What each job reads: every directory and file its checks, builds and stack
+# are made from, and this file. A job that passed on exactly these inputs
+# does not run again until one of them changes (a run by hand runs every
+# job); see .github/actions/once. A check that
+# starts reading something new adds it here, and a project that starts
+# depending on another lists the other one too (demo/electron uses the CLI).
 env:
-  INPUTS: |
+  # Every job. The projects install from their own lockfiles; only the
+  # stack installs the root's tools (Supabase, squawk, wrangler).
+  COMMON_INPUTS: |
+    .github/workflows/ci.yml
+  APP_INPUTS: |
+    app
+    wrangler.jsonc
+  CLI_INPUTS: |
+    cli
+    action
+    docs/yukibana.schema.json
+  DEMO_INPUTS: |
+    demo
+    cli
+  # The stack runs the app's server modules against the database, the
+  # bucket and the scripts, so it reads nearly everything but the docs.
+  STACK_INPUTS: |
+    package.json
+    package-lock.json
+    .npmrc
     app
     cli
-    demo
-    docs
     ops
     scripts
     supabase
     dev
-    package.json
-    package-lock.json
-    .npmrc
     .squawk.toml
     .env.example
     .dev.vars.example
     wrangler.jsonc
-    .github/workflows/ci.yml
 
 jobs:
   # Which jobs already passed on exactly these inputs.
@@ -68,56 +84,132 @@ jobs:
     outputs:
       app-done: ${{ steps.app.outputs.done }}
       app-key: ${{ steps.app.outputs.key }}
+      cli-done: ${{ steps.cli.outputs.done }}
+      cli-key: ${{ steps.cli.outputs.key }}
+      demo-done: ${{ steps.demo.outputs.done }}
+      demo-key: ${{ steps.demo.outputs.key }}
       stack-done: ${{ steps.stack.outputs.done }}
       stack-key: ${{ steps.stack.outputs.key }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: app
         uses: ./.github/actions/once
         with:
           name: ci-app
-          paths: ${{ env.INPUTS }}
+          paths: ${{ env.COMMON_INPUTS }}${{ env.APP_INPUTS }}
+      - id: cli
+        uses: ./.github/actions/once
+        with:
+          name: ci-cli
+          paths: ${{ env.COMMON_INPUTS }}${{ env.CLI_INPUTS }}
+      - id: demo
+        uses: ./.github/actions/once
+        with:
+          name: ci-demo
+          paths: ${{ env.COMMON_INPUTS }}${{ env.DEMO_INPUTS }}
       - id: stack
         uses: ./.github/actions/once
         with:
           name: ci-stack
-          paths: ${{ env.INPUTS }}
+          paths: ${{ env.COMMON_INPUTS }}${{ env.STACK_INPUTS }}
 
+  # The registry: lint, typecheck, unit tests and a production build, no
+  # services.
   app:
     needs: plan
     if: needs.plan.outputs.app-done != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.app-key }}
+
+  # The CLI, and the course fixture checked with the CLI it builds.
+  cli:
+    needs: plan
+    if: needs.plan.outputs.cli-done != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Check the fixture with the built CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/fixture"
+          tar -xzf tests/fixtures/repo.tar.gz -C "$RUNNER_TEMP/fixture" --strip-components=1
+          node dist/index.js check "$RUNNER_TEMP/fixture" --folder calc
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.cli-key }}
+
+  # The desktop demo, against the CLI library it imports (file:../../cli),
+  # built first as `npm run check` builds it.
+  demo:
+    needs: plan
+    if: needs.plan.outputs.demo-done != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            package-lock.json
-            app/package-lock.json
             cli/package-lock.json
             demo/electron/package-lock.json
-      - run: npm run install:all
-      - name: Lint, typecheck, unit tests
-        run: npm run check
-      - name: Build the app
-        working-directory: app
-        run: npm run build
-      - name: Build the CLI and check the fixture with it
-        run: |
-          npm run build --prefix cli
-          mkdir -p /tmp/fixture && tar -xzf cli/tests/fixtures/repo.tar.gz -C /tmp/fixture --strip-components=1
-          node cli/dist/index.js check /tmp/fixture --folder calc
+      - run: npm ci --no-audit --no-fund --prefix cli && npm run build --prefix cli
+      - run: npm ci --no-audit --no-fund --prefix demo/electron
+      - run: npm run lint --prefix demo/electron
+      - run: npm run typecheck --prefix demo/electron
+      - run: npm test --prefix demo/electron
       - uses: ./.github/actions/once
         with:
-          record: ${{ needs.plan.outputs.app-key }}
+          record: ${{ needs.plan.outputs.demo-key }}
 
   stack:
     needs: plan
     if: needs.plan.outputs.stack-done != 'true'
     # Must be a VM runner: a `container:` job breaks Supabase's bind mounts.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       # Auth needs a GitHub provider configured to start; nothing logs in here.
       SUPABASE_AUTH_EXTERNAL_GITHUB_CLIENT_ID: ci-placeholder
@@ -130,6 +222,8 @@ jobs:
       - name: Keep the stack's ports out of the ephemeral range
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22

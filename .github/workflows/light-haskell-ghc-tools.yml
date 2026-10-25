@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Restored and saved apart, the store kept even when the build fails:
       # ghc-lib-parser is most of the build, and a failure after it is the

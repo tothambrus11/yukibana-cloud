@@ -59,6 +59,8 @@ jobs:
       key: ${{ steps.once.outputs.key }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: once
         uses: ./.github/actions/once
         with:
@@ -82,6 +84,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.done != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # The stack publishes fixed host ports, 54320-54329 (supabase/config.toml),
       # which lie in Linux's ephemeral range: any outgoing connection, such as an
@@ -90,8 +93,10 @@ jobs:
       - name: Keep the stack's ports out of the ephemeral range
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build devcontainer and run the smoke test inside it
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           runCmd: |
             ./scripts/preflight.sh
