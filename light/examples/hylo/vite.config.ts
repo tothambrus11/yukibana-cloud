@@ -5,7 +5,7 @@
 // import.meta.url)` references.
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { defineConfig, type Plugin } from 'vite';
+import { defaultClientConditions, defineConfig, type Plugin } from 'vite';
 
 /**
  * Cross-origin isolation, so a program can read what is typed (stdin is a
@@ -49,11 +49,17 @@ export default defineConfig({
 		},
 	},
 	plugins: [isolateAllButTheDocsPage()],
+	// @yukibana/protocol and @yukibana/runtime are `file:` links to
+	// light/modules, so the page bundles their sources, which this condition
+	// names (their package.json); without it a link resolves to their dist/,
+	// which only light/modules/build.mjs writes. A site outside this
+	// repository installs the built tarballs instead and sets nothing (M9a).
+	resolve: { conditions: ['@yukibana/source', ...defaultClientConditions] },
 	worker: { format: 'es' },
 	// hylo-wasm's README: dependency optimisation would move the loader away from the compiler's files.
 	optimizeDeps: { exclude: ['@hylo-lang/hylo-wasm'] },
 	server: {
-		// @yukibana/protocol and @yukibana/runtime are links to light/modules until MP1 publishes them.
+		// @yukibana/protocol and @yukibana/runtime are links to light/modules (resolve, above).
 		fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../../modules', import.meta.url))] },
 	},
 });

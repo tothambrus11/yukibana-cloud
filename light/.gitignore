@@ -7,3 +7,4 @@ app/.svelte-kit/
 !app/src/lib/
 .pack-trees/
 .wrangler/
+modules/*/dist/

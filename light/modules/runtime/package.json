@@ -1,9 +1,27 @@
 {
 	"name": "@yukibana/runtime",
-	"private": true,
-	"version": "0.0.0",
+	"version": "0.1.0",
+	"description": "Yukibana Light's runners in a browser: what a session starts from, where a runner lives, and a page's runners shared by its snippets.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tothambrus11/yukibana-cloud.git",
+		"directory": "light/modules/runtime"
+	},
 	"type": "module",
+	"sideEffects": false,
 	"exports": {
-		".": "./index.ts"
+		".": {
+			"@yukibana/source": "./index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"*.ts",
+		"README.md"
+	],
+	"dependencies": {
+		"@yukibana/protocol": "^0.1.0"
 	}
 }

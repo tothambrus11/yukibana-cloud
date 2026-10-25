@@ -38,8 +38,12 @@ page ── RunnerPool ── runner worker ─┬─ compiler worker (hylo-wasm
 ```
 
 The page depends on `@yukibana/protocol` and `@yukibana/runtime` as
-`file:` links to `light/modules` until MP1 publishes them as tarballs; it
-imports them by name, as the Hylo site will.
+`file:` links to `light/modules`, and imports them by name, as the Hylo
+site will. A link is not an install: the page's Vite, TypeScript and unit
+tests set the `@yukibana/source` condition, so they read the modules'
+sources and need no build, where the Hylo site installs the built tarballs
+of a `light-modules-v*` release and sets nothing (`light/modules/README.md`,
+Packages; step M9a checks a page that does).
 
 ## What the spike checks
 

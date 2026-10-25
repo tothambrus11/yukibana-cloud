@@ -46,3 +46,36 @@ protocol project that would compile a source reaching for a page or Node
 beside them rather than in them, since a test imports `node:test`; the same
 `npm run test:unit` runs them, as does
 `node --test "light/modules/**/*.test.mjs"` from the repository root.
+
+## Packages
+
+`@yukibana/protocol` and `@yukibana/runtime` are also packages a site
+outside this repository installs (step MP1 of the architecture plan; the
+Monaco integration follows once its feature API is settled, MP2). A host's
+Node refuses to strip types inside `node_modules`, and Vite's SSR leaves
+dependencies external, so the sources alone fail in a prerender such as
+Astro's. `node build.mjs` (with `light/app` installed) therefore writes each
+module's `dist/`: JavaScript and declarations with their maps, every import
+of another module written as its package name, and every built file read
+back so that an import a host could not follow fails the build.
+`node build.mjs --pack <dir>` then makes the tarballs.
+
+* **Exports.** `types` and `default` name `dist/`. A first condition,
+  `@yukibana/source`, names the sources (`index.ts`): this repository's own
+  hosts that link a module rather than install it (`examples/hylo`) set it
+  in their Vite, TypeScript and Node, so they need no build. Nowhere else
+  should: from `node_modules`, Node refuses it.
+* **Versions.** Semver from 0.1.0, one version for both, released together:
+  the runtime depends on `^<version>` of the protocol beside it, and the
+  tag `light-modules-v<version>` publishes both tarballs as a GitHub release
+  (`.github/workflows/light-modules.yml`), never the repository's latest.
+  Until a registry is chosen, a host installs both tarballs by their release
+  URLs; with the protocol's tarball installed beside it, npm never asks a
+  registry for the runtime's dependency.
+* **No side effects** (`sideEffects: false`), as the rules above promise, so
+  a bundler drops what a host does not use.
+
+`tests/package.test.mjs` installs the tarballs `build.mjs` makes into a
+project of its own and loads them as a host would: in Node, in TypeScript
+(resolving as Node and as a bundler) and in a Vite SSR build that Node then
+runs.

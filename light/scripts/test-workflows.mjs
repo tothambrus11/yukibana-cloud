@@ -232,6 +232,7 @@ const UNIT_WORKFLOW = './.github/workflows/light-toolchain-unit.yml';
 const unitWorkflow = readWorkflow(UNIT_WORKFLOW);
 const cachesWorkflow = readWorkflow(`${WORKFLOWS}/light-caches.yml`);
 const releaseWorkflow = readWorkflow(`${WORKFLOWS}/light-release.yml`);
+const modulesWorkflow = readWorkflow(`${WORKFLOWS}/light-modules.yml`);
 const jobs = workflow.jobs;
 /** @param {Job} job */
 const stepsOf = (job) => job.steps ?? [];
@@ -267,6 +268,7 @@ const PINNED = [
     `${WORKFLOWS}/light-toolchain-unit.yml`,
     `${WORKFLOWS}/light-caches.yml`,
     `${WORKFLOWS}/light-release.yml`,
+    `${WORKFLOWS}/light-modules.yml`,
     '.github/actions/once/action.yml',
 ];
 
@@ -533,6 +535,30 @@ test('a light-v release is published only once every asset is attached', () => {
     assert.match(run, /gh release create [^\n]*--draft/);
     assert.ok(run.indexOf('--draft=false') > run.indexOf('gh release create'), 'published after the draft is made');
     assert.match(String(publish.if), ON_TAG);
+});
+
+test("the modules' tarballs are released only from a light-modules-v tag, tested first, whole, and never as the latest release", () => {
+    // Light's own release (light-v*) stays the repository's latest; the
+    // modules' tarballs are what a docs site installs by URL (step MP1).
+    const ON_MODULES_TAG = /^startsWith\(github\.ref, 'refs\/tags\/light-modules-v'\)$/;
+    assert.deepEqual(modulesWorkflow.on.push, { tags: ['light-modules-v*'] });
+    assert.deepEqual(modulesWorkflow.permissions, { contents: 'read' });
+    for (const [name, job] of Object.entries(modulesWorkflow.jobs)) {
+        const writes = Object.entries(job.permissions ?? {}).filter(([, level]) => level === 'write');
+        if (writes.length > 0) assert.match(String(job.if), ON_MODULES_TAG, `job ${name} asks to write off a modules tag`);
+    }
+    const pack = stepsOf(/** @type {Job} */ (modulesWorkflow.jobs.pack)).map((step) => String(step.run ?? ''));
+    const at = (pattern) => pack.findIndex((run) => pattern.test(run));
+    assert.ok(at(/node --test "\.\.\/modules\/\*\*\/\*\.test\.mjs"/) !== -1, 'the modules are tested, the installed packages among them');
+    assert.ok(at(/node --test/) < at(/build\.mjs --pack/), 'tested before they are packed');
+    const publish = /** @type {Job} */ (modulesWorkflow.jobs.publish);
+    assert.match(String(publish.if), ON_MODULES_TAG);
+    assert.deepEqual(publish.needs, 'pack');
+    const run = String(stepsOf(publish).find((s) => /gh release create/.test(String(s.run ?? '')))?.run);
+    assert.match(run, /gh release create [^\n]*--draft --latest=false/);
+    assert.match(run, /gh release edit [^\n]*--draft=false --latest=false/);
+    assert.ok(run.indexOf('--draft=false') > run.indexOf('gh release create'), 'published after the draft is made');
+    for (const name of ['protocol', 'runtime']) assert.match(run, new RegExp(`modules/yukibana-${name}-\\$version\\.tgz`), name);
 });
 
 // What a runner sets in every job without a workflow saying so.

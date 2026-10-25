@@ -2,7 +2,8 @@
 # request and to main, in a few minutes:
 #
 # - app: type-check (svelte-check, the service worker, the shared modules),
-#   the unit tests (the modules' import boundaries among them), and
+#   the unit tests (the modules' import boundaries among them, and their
+#   tarballs installed and loaded as another site would), and
 #   the Download test for the languages whose tools the runner image has
 #   (Node: JavaScript, TypeScript, web, p5.js).
 # - javascript: the JavaScript/TypeScript pack built from npm (no toolchain

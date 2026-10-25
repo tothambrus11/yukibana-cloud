@@ -119,10 +119,16 @@ function problemsOf(root, module, path, source) {
 	return problems;
 }
 
-/** Every TypeScript or JavaScript source file under `dir`. */
+/**
+ * Every TypeScript or JavaScript source file under `dir`, the module's own:
+ * not what build.mjs writes into its dist/, which a host installs and
+ * build.mjs checks itself (the built files name `.js`, and another module
+ * by its package name).
+ */
 function sourcesUnder(dir) {
 	return readdirSync(dir, { recursive: true, withFileTypes: true })
 		.filter((entry) => entry.isFile() && /\.(m?ts|m?js)$/.test(entry.name))
+		.filter((entry) => !relative(dir, entry.parentPath).split(sep).includes('dist'))
 		.map((entry) => join(entry.parentPath, entry.name));
 }
 

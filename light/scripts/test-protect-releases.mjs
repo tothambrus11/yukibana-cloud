@@ -63,7 +63,7 @@ function protect(state) {
     }
 }
 
-test('the stores exist before release immutability is on, and light-v tags can neither move nor be deleted', () => {
+test('the stores exist before release immutability is on, and neither a light-v nor a light-modules-v tag can move or be deleted', () => {
     const r = protect({});
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(Object.keys(r.state.releases).sort(), ['light-packs', 'light-toolchains']);
@@ -76,7 +76,7 @@ test('the stores exist before release immutability is on, and light-v tags can n
     const [ruleset] = r.state.rulesets;
     assert.equal(ruleset.target, 'tag');
     assert.equal(ruleset.enforcement, 'active');
-    assert.deepEqual(ruleset.conditions.ref_name.include, ['refs/tags/light-v*']);
+    assert.deepEqual(ruleset.conditions.ref_name.include, ['refs/tags/light-v*', 'refs/tags/light-modules-v*']);
     assert.deepEqual(ruleset.rules.map((/** @type {{ type: string }} */ x) => x.type).sort(), ['deletion', 'update']);
 });
 

@@ -1,0 +1,129 @@
+# Packs @yukibana/protocol and @yukibana/runtime (light/modules) into the
+# tarballs a host outside this repository installs, a documentation site's
+# playground above all (step MP1 of the architecture plan): each built to
+# dist/*.js and .d.ts by light/modules/build.mjs, then `npm pack`.
+#
+# Pushing a light-modules-v<version> tag publishes them as the GitHub
+# release of that tag, with the two .tgz files as its assets, once the tag
+# names the version both package.json files carry (the modules are released
+# together: the runtime depends on the protocol beside it). The release is
+# never the repository's latest, which stays Light's own (light-v*). Until a
+# registry is chosen (the plan's D12: npm under @yukibana is recommended),
+# a host installs both tarballs from the release by URL.
+# Run by hand (Actions, "Run workflow"), it only uploads the tarballs as the
+# run's artifact yukibana-modules-<run number>.
+#
+# Every run first type-checks the modules and runs their tests, among them
+# light/modules/tests/package.test.mjs, which installs the very tarballs
+# build.mjs makes into a project of its own and loads them in Node, in
+# TypeScript and in a Vite SSR build.
+name: Yukibana Light modules
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - light-modules-v*
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    name: Build, test and pack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # The modules have no node_modules of their own: their check, their
+    # tests and build.mjs use the app's TypeScript and Vite.
+    defaults:
+      run:
+        working-directory: light/app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # 24: setup-node's npm cache runs npm at the repository root, whose
+      # package.json (the IDE's) requires Node 24 (devEngines).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/app/package-lock.json
+
+      - name: Install the app's dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check the modules
+        run: npx tsc -p ../modules/protocol && npx tsc -p ../modules/runtime
+
+      - name: The modules' tests, the installed packages' among them
+        run: node --test "../modules/**/*.test.mjs"
+
+      - name: Build and pack
+        run: node ../modules/build.mjs --pack "$RUNNER_TEMP/modules"
+
+      - name: The tag names the modules' version
+        if: startsWith(github.ref, 'refs/tags/light-modules-v')
+        run: |
+          want="${GITHUB_REF_NAME#light-modules-v}"
+          wrong=()
+          for m in protocol runtime; do
+            have="$(node -p "require('../modules/$m/package.json').version")"
+            [ "$have" = "$want" ] || wrong+=("@yukibana/$m is $have, but the tag says $want")
+          done
+          if [ "${#wrong[@]}" -gt 0 ]; then
+            printf '::error::%s\n' "${wrong[@]}" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: yukibana-modules-${{ github.run_number }}
+          path: ${{ runner.temp }}/modules/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/light-modules-v')
+    needs: pack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: yukibana-modules-${{ github.run_number }}
+          path: modules
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#light-modules-v}"
+          base="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          cat > notes.md <<EOF
+          \`@yukibana/protocol\` and \`@yukibana/runtime\` $version, built from $GITHUB_SHA by [run $GITHUB_RUN_ID]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID).
+
+          Install both, so that the runtime's dependency on the protocol is met by this release and npm never asks a registry for it:
+
+          \`\`\`sh
+          npm install $base/yukibana-protocol-$version.tgz $base/yukibana-runtime-$version.tgz
+          \`\`\`
+
+          What they promise is in \`light/modules/README.md\` and each module's README, which the tarballs carry.
+          EOF
+          # A draft first, with both tarballs, then published: with release
+          # immutability on (light/scripts/protect-releases.sh), publishing
+          # is what locks the assets and the tag, so it comes last. Never
+          # the latest release, which is Light's own.
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --latest=false \
+            --title "Yukibana Light modules $version" --notes-file notes.md \
+            "modules/yukibana-protocol-$version.tgz" "modules/yukibana-runtime-$version.tgz"
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false

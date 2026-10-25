@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR
 # Makes Light's releases immutable, once, as a repository admin: a published
-# light-v* release can then change neither its assets nor its tag, and no
-# light-v* tag can be moved or deleted. Run it by hand with gh signed in as
+# light-v* release (Light) or light-modules-v* release (the modules'
+# tarballs, light-modules.yml) can then change neither its assets nor its
+# tag, and no such tag can be moved or deleted. Run it by hand with gh signed in as
 # an admin of the repository; running it again changes nothing.
 #
 #   light/scripts/protect-releases.sh
@@ -14,7 +15,9 @@
 #      whole repository, locks what is published while it is on. Created
 #      first, they are published before it is.
 #   2. creates or updates the tag ruleset "light-v releases": on
-#      refs/tags/light-v*, no update (a tag cannot move) and no deletion.
+#      refs/tags/light-v* and refs/tags/light-modules-v*, no update (a tag
+#      cannot move) and no deletion. (A host pins a modules release by its
+#      URL, so a moved tag would change what an install from it gets.)
 #      Creating a tag stays allowed: that is how a release starts.
 #   3. turns release immutability on.
 #   4. checks that neither store says it is immutable. If one does, the
@@ -61,7 +64,7 @@ body="$(node -e '
     name: process.argv[1],
     target: "tag",
     enforcement: "active",
-    conditions: { ref_name: { include: ["refs/tags/light-v*"], exclude: [] } },
+    conditions: { ref_name: { include: ["refs/tags/light-v*", "refs/tags/light-modules-v*"], exclude: [] } },
     rules: [{ type: "update" }, { type: "deletion" }],
   }));
 ' "$RULESET")"

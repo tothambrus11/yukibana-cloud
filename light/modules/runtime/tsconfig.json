@@ -5,5 +5,7 @@
 	"compilerOptions": {
 		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"]
 	},
-	"include": ["."]
+	"include": ["."],
+	// What build.mjs writes: the module's sources are the project, not its output.
+	"exclude": ["dist"]
 }
