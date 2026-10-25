@@ -17,7 +17,9 @@ do $$
 declare
   found text;
   definitions text;
-  expected constant text := '(unknown)';
+  expected constant text :=
+    'ensure_rls on ddl_command_end {"CREATE TABLE","CREATE TABLE AS","SELECT INTO"} enabled=O owner=postgres'
+    || ' -> rls_auto_enable() owner=postgres acl={postgres=X/postgres} def=6998ea6b4c2480f5d2e34b5dcf3f8d36';
 begin
   select coalesce(string_agg(format('%s on %s %s enabled=%s owner=%s -> %s owner=%s acl=%s def=%s',
                                     e.evtname, e.evtevent, coalesce(e.evttags::text, '{}'), e.evtenabled,
