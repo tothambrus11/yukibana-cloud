@@ -20,7 +20,10 @@
 # its toolchain units are fetched from the toolchain store, or built, and
 # assembled here in seconds (its build.sh, through
 # scripts/pack-toolchain.sh). Until T8 it is assembled again on every run
-# and never recorded as current.
+# and never recorded as current. While the toolchain store lacks a unit
+# (before main's CI has built it), the pack is skipped with a note: with
+# --latest it is the store's newest build of the whole pack instead, and
+# --build builds the units here, which takes hours.
 #
 # A pack that is built here gets the Debian/Ubuntu packages its deps.apt
 # (a split pack: each unit's toolchains/<unit>/deps.apt) lists first
@@ -135,7 +138,7 @@ build_pack() {
   fi
 }
 
-to_build=() fetched=() kept=()
+to_build=() fetched=() kept=() skipped=()
 for p in "${packs[@]}"; do
   if in_list "$p" "${build[@]}"; then to_build+=("$p"); continue; fi
   if is_split "$p"; then
@@ -144,8 +147,18 @@ for p in "${packs[@]}"; do
     "$TOOLCHAIN" ensure "$p" --fetch-only $latest >/dev/null || status=$?
     case "$status" in
       0) (cd "$HERE/packs/$p" && ALLOW_OTHER_TOOLCHAIN="${latest:+1}" ./build.sh ${latest:+--any}) && fetched+=("$p") ;;
-      3|4) echo "setup.sh: the toolchain store lacks a unit of packs/$p as checked out; building it" >&2
-           to_build+=("$p") ;;
+      3|4)
+        # A unit nobody has stored yet compiles for hours (LLVM, QEMU), so
+        # it is never built unasked: --latest takes the newest stored build
+        # of the whole pack instead, as a branch deploy does (light-packs.yml,
+        # "A deploy takes the newest stored build"), and --build builds it.
+        if [ -n "$latest" ]; then
+          echo "setup.sh: the toolchain store has no units of packs/$p yet; taking the newest stored build of the whole pack (not these sources)" >&2
+          "$STORE" fetch "$p" --any && fetched+=("$p")
+        else
+          echo "setup.sh: the toolchain store lacks a unit of packs/$p as checked out, and building one takes hours: rerun with --latest for the newest stored build (minutes), or --build $p to build it; skipping $p" >&2
+          skipped+=("$p")
+        fi ;;
       *) exit "$status" ;;
     esac
     continue
@@ -176,6 +189,7 @@ say "Done"
 [ ${#kept[@]} -eq 0 ] || echo "up to date: ${kept[*]}"
 [ ${#fetched[@]} -eq 0 ] || echo "downloaded: ${fetched[*]}"
 [ ${#to_build[@]} -eq 0 ] || echo "built: ${to_build[*]}"
+[ ${#skipped[@]} -eq 0 ] || echo "skipped: ${skipped[*]} (see above: --latest or --build)"
 cat <<'EOF'
 
 Run it:   cd app && npm run dev            (http://localhost:5173, reloads on edits)
