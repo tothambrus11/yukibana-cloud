@@ -4,9 +4,10 @@
 // wasm at the highest brotli level on every app build takes many minutes.
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
-const root = new URL('../build/', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../build/', import.meta.url));
 const compressible = /\.(html|js|mjs|css|json|svg|webmanifest|txt|xml|wasm|ttf)$/;
 
 async function* files(dir) {

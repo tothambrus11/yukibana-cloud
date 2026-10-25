@@ -20,7 +20,8 @@ const monacoWorkers: Plugin = {
 	enforce: 'pre',
 	resolveId(source, importer) {
 		if (importer?.includes('/monaco-editor/') && source.endsWith('/internal/common/workers.js')) {
-			return decodeURIComponent(new URL('./src/lib/monaco-workers.ts', import.meta.url).pathname);
+			// On Windows a file URL's path is /C:/...: the drive letter goes first.
+			return decodeURIComponent(new URL('./src/lib/monaco-workers.ts', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
 		}
 		return null;
 	},

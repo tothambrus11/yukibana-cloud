@@ -14,9 +14,10 @@ import { createHash } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, gzipSync } from 'node:zlib';
 
-const app = new URL('..', import.meta.url).pathname;
+const app = fileURLToPath(new URL('..', import.meta.url));
 const build = join(app, 'build');
 const viteManifest = JSON.parse(await readFile(join(app, '.svelte-kit/output/client/.vite/manifest.json'), 'utf8'));
 const { version } = JSON.parse(await readFile(join(build, '_app/version.json'), 'utf8'));
@@ -28,7 +29,7 @@ async function* walk(dir) {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const path = join(dir, entry.name);
 		if (entry.isDirectory()) yield* walk(path);
-		else if (entry.isFile() && !(/\.(br|gz)$/.test(entry.name) && existsSync(path.replace(/\.(br|gz)$/, '')))) yield relative(build, path);
+		else if (entry.isFile() && !(/\.(br|gz)$/.test(entry.name) && existsSync(path.replace(/\.(br|gz)$/, '')))) yield relative(build, path).replaceAll('\\', '/');
 	}
 }
 
