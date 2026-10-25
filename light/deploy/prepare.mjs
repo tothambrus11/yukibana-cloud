@@ -4,7 +4,8 @@
 // hundreds of MiB (the Haskell pack's GHC root file system is 257 MiB raw,
 // 35 MiB as brotli). So:
 //
-// * The .gz copies are not uploaded: the Worker serves the .br one, which
+// * The .gz copies of files are not uploaded (a .gz with no file beside it is
+//   an archive of its own and is): the Worker serves the .br one, which
 //   the edge recompresses for a client without brotli (worker.js).
 // * A file over the limit whose .br copy is within it is uploaded as that
 //   copy only.
@@ -23,7 +24,7 @@
 //   node deploy/prepare.mjs [app/build]
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const LIMIT = 25 * 1024 * 1024;
@@ -35,7 +36,7 @@ if (!existsSync(root)) throw new Error(`${root} does not exist: build the app fi
 const url = (path) => `/${relative(root, path).split('\\').join('/')}`;
 const size = (path) => (existsSync(path) ? statSync(path).size : Infinity);
 
-const ignored = ['*.gz', 'blobs.json.br'];
+const ignored = ['blobs.json.br'];
 /** URL path -> { key, encoding }: what the Worker serves from R2. */
 const blobs = {};
 const uploads = [];
@@ -49,7 +50,17 @@ function walk(dir) {
 			walk(path);
 			continue;
 		}
-		if (/\.(gz|br)$/.test(entry.name) || entry.name === '.assetsignore' || path === join(root, 'blobs.json')) continue;
+		if (entry.name === '.assetsignore' || path === join(root, 'blobs.json')) continue;
+		// A .gz or .br next to the file it compresses is that file's copy: the
+		// .br is counted with it below, the .gz is left out. One with no such
+		// file is a file of its own, an archive the pack ships compressed
+		// (python/typeshed-stdlib.tar.gz, cpp/sysroot.tar.gz); leaving those out
+		// as copies once made them 404.
+		const ext = extname(entry.name);
+		if ((ext === '.gz' || ext === '.br') && existsSync(join(dir, basename(entry.name, ext)))) {
+			if (ext === '.gz') ignored.push(url(path));
+			continue;
+		}
 		const raw = size(path);
 		const br = size(`${path}.br`);
 		if (raw > LIMIT || (br !== Infinity && br > LIMIT)) {
