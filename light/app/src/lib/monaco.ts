@@ -24,6 +24,7 @@ import { StandaloneNotificationService, StandaloneServices } from 'monaco-editor
 import { MessageController } from 'monaco-editor/editor/contrib/message/browser/messageController';
 import { OneReference } from 'monaco-editor/editor/contrib/gotoSymbol/browser/referencesModel';
 import { ICommandService } from 'monaco-editor/platform/commands/common/commands';
+import { IQuickInputService } from 'monaco-editor/platform/quickinput/common/quickInput';
 import { IListService } from 'monaco-editor/platform/list/browser/listService';
 import { pathOf, ROOT_URI } from './project';
 import { AppDialogService, WorkspaceBulkEditService } from './workspace-edits';
@@ -250,6 +251,46 @@ void document.fonts.load(`13.5px ${EDITOR_FONT.split(',')[0]}`).then(() => monac
  */
 export function showEditorMessage(editor: monaco.editor.ICodeEditor, text: string, position: monaco.IPosition): void {
 	MessageController.get(editor)?.showMessage(text, position);
+}
+
+/** A row of a quick pick: its text, its icon, and which letters of the label to highlight. */
+export interface QuickPickItem {
+	label: string;
+	description?: string;
+	iconClasses?: string[];
+	/** Ranges of the label in UTF-16 units, `end` excluded. */
+	highlights?: { label?: { start: number; end: number }[] };
+}
+
+/** The part of Monaco's quick pick the app uses (its `IQuickPick`). */
+export interface QuickPick<T extends QuickPickItem> {
+	items: readonly T[];
+	/** The row Enter would choose. */
+	readonly activeItems: readonly T[];
+	placeholder: string | undefined;
+	/** Shows a progress bar while true. */
+	busy: boolean;
+	/** Whether Monaco filters and highlights the rows by the label, the description, or sorts them by the label; all on by default. */
+	matchOnLabel: boolean;
+	matchOnDescription: boolean;
+	sortByLabel: boolean;
+	onDidChangeValue(listener: (value: string) => void): monaco.IDisposable;
+	onDidAccept(listener: () => void): monaco.IDisposable;
+	onDidHide(listener: () => void): monaco.IDisposable;
+	show(): void;
+	hide(): void;
+	dispose(): void;
+}
+
+/**
+ * A new quick pick: the box at the top of the editor that Go to Symbol
+ * (Ctrl+Shift+O) and the command palette (F1) use, for a picker of the
+ * app's own (Go to Symbol in Workspace, which standalone Monaco lacks).
+ * Only while an editor has focus: Monaco places the box in the focused
+ * editor, and throws without one.
+ */
+export function createQuickPick<T extends QuickPickItem>(): QuickPick<T> {
+	return (StandaloneServices.get(IQuickInputService) as { createQuickPick(): QuickPick<T> }).createQuickPick();
 }
 
 export { monaco };

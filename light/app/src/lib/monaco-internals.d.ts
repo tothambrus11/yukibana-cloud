@@ -35,6 +35,10 @@ declare module 'monaco-editor/platform/list/browser/listService' {
 	/** Tracks the list or tree that last had focus (`lastFocusedList`). */
 	export const IListService: ServiceId;
 }
+declare module 'monaco-editor/platform/quickinput/common/quickInput' {
+	/** The quick input box (Go to Symbol's, the command palette's); its `createQuickPick` needs an editor with focus. */
+	export const IQuickInputService: ServiceId;
+}
 declare module 'monaco-editor/platform/commands/common/commands' {
 	/** Runs a registered command by id (`executeCommand`). */
 	export const ICommandService: ServiceId;

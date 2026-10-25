@@ -55,6 +55,12 @@ const CASES = {
 		hover: 'Point',
 		// norm is called by distance, Main's main and the test suite's main; distance calls norm.
 		callHierarchy: { file: 'Geometry.hs', root: 'norm (Point x y)', name: 'norm', callers: ['distance', 'main', 'main'], callerFile: 'Main.hs', callSite: 'print (norm b)', other: 'distance a b =', otherName: 'distance', callees: ['norm'], none: 'putStrLn' },
+		// Ctrl+T from Main.hs: `dist` finds distance in Geometry.hs, at its equation.
+		workspaceSymbol: { from: 'Main.hs', query: 'dist', name: 'distance', file: 'Geometry.hs', line: 'distance a b = norm' },
+		// Ctrl+Shift+O in Geometry.hs: a field is listed under its constructor.
+		outline: { file: 'Geometry.hs', query: 'py', name: 'py', container: 'Point' },
+		// HLS's inlay hints on Main.hs's let bindings; a double click writes the signature.
+		inlayHint: { file: 'Main.hs', hint: ':: Point', written: '  let a :: Point\n      a = Point 0 0\n' },
 	},
 };
 
@@ -209,6 +215,9 @@ async function run(language, c) {
 	if (language === 'python') await peek(page, check);
 	if (c.callHierarchy) await callHierarchy(page, check, c.callHierarchy);
 	if (language === 'haskell') await typeLens(page, check);
+	if (c.workspaceSymbol) await workspaceSymbols(page, check, c.workspaceSymbol);
+	if (c.outline) await nestedOutline(page, check, c.outline);
+	if (c.inlayHint) await inlayHints(page, check, c.inlayHint);
 	if (language === 'cpp') await cppBridge(page, check, lspLog);
 	if (language === 'typescript') await renameFromUse(page, check);
 	if (language === 'python') await undoRename(page, check, { file: 'main.py', needle: 'distance(a, b)', from: 'distance', name: 'dist3', declarationFile: 'geometry.py', declaration: 'def dist3(', edit: '\n# edited\n' });
@@ -722,6 +731,76 @@ async function typeLens(page, check) {
 		check(written, 'clicking the type lens writes the signature above the binding');
 	}
 	await setText(page, 'Main.hs', text);
+}
+
+/**
+ * Go to Symbol in Workspace (client.ts, lsp/workspace-symbols.ts), for a
+ * server with workspace symbols: Ctrl+T opens the picker, the query lists
+ * `name` in `file` first, and Enter opens that file with the caret on the
+ * line that declares it, in an editor with focus.
+ */
+async function workspaceSymbols(page, check, w) {
+	await openFile(page, w.from);
+	await page.locator('.dv-groupview .monaco-editor').first().click();
+	await page.keyboard.press('Control+t');
+	const input = page.locator('.quick-input-widget input');
+	const opened = await input.waitFor({ timeout: 10_000 }).then(() => true, () => false);
+	await page.keyboard.type(w.query);
+	const listed = await page
+		.waitForFunction((name) => document.querySelector('.quick-input-list .monaco-list-row .label-name')?.textContent?.trim() === name, w.name, { timeout: 15_000 })
+		.then(() => true, () => false);
+	const first = listed ? ((await page.locator('.quick-input-list .monaco-list-row').first().textContent()) ?? '').replace(/\s+/g, ' ').trim() : '';
+	check(opened && listed && first.includes(w.file), `Ctrl+T lists ${w.name} first for "${w.query}": ${JSON.stringify(first)}`);
+	if (!listed) {
+		await page.keyboard.press('Escape');
+		return;
+	}
+	await page.keyboard.press('Enter');
+	const jumped = await page.locator('.dv-tab.dv-active-tab .dock-tab', { hasText: w.file }).first().waitFor({ timeout: 10_000 }).then(() => true, () => false);
+	await page.waitForTimeout(300);
+	const line = await page.evaluate(() => {
+		const e = globalThis.monaco.editor.getEditors().find((x) => x.hasTextFocus());
+		const p = e?.getPosition();
+		return p ? e.getModel().getLineContent(p.lineNumber) : null;
+	});
+	check(jumped && !!line?.startsWith(w.line), `choosing it opens ${w.file} at ${JSON.stringify(line)}, its editor focused`);
+}
+
+/**
+ * The nested outline (packs' document symbols, Monaco's Go to Symbol): in
+ * `file`, Ctrl+Shift+O and the query list `name` with its container.
+ */
+async function nestedOutline(page, check, o) {
+	await openFile(page, o.file);
+	await page.locator('.dv-groupview .monaco-editor').first().click();
+	await page.keyboard.press('Control+Shift+o');
+	await page.locator('.quick-input-widget input').waitFor({ timeout: 10_000 }).catch(() => {});
+	await page.keyboard.type(o.query);
+	const row = page.locator('.quick-input-list .monaco-list-row', { has: page.locator('.label-name', { hasText: new RegExp(`^\\s*${o.name}\\s*$`) }) }).first();
+	const found = await row.waitFor({ timeout: 15_000 }).then(() => true, () => false);
+	const container = found ? ((await row.locator('.label-description').textContent()) ?? '').trim() : null;
+	check(found && container === o.container, `Go to Symbol lists ${o.name} under ${JSON.stringify(container)}`);
+	await page.keyboard.press('Escape');
+}
+
+/**
+ * Inlay hints (client.ts, any server's; Haskell's are HLS's local binding
+ * types): `hint` is shown in `file`, and a double click on it applies its
+ * edit, which writes `written`.
+ */
+async function inlayHints(page, check, h) {
+	await openFile(page, h.file);
+	const text = await modelText(page, h.file);
+	const hint = page.locator('.dv-groupview .view-line span', { hasText: new RegExp(`^\\s*${h.hint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s')}\\s*$`) }).first();
+	const shown = await hint.waitFor({ timeout: 60_000 }).then(() => true, () => false);
+	check(shown, `an inlay hint ${JSON.stringify(h.hint)} is shown in ${h.file}`);
+	if (!shown) return;
+	await hint.dblclick();
+	const written = await page
+		.waitForFunction(([path, w]) => globalThis.monaco.editor.getModels().find((m) => m.uri.path === `/workspace/${path}`)?.getValue().includes(w), [h.file, h.written], { timeout: 10_000 })
+		.then(() => true, () => false);
+	check(written, `double-clicking the hint writes its signature: ${JSON.stringify((await modelText(page, h.file))?.split('\n').slice(5, 9))}`);
+	if (text !== null) await setText(page, h.file, text);
 }
 
 /** Opens a project file from the explorer and waits for its tab. */

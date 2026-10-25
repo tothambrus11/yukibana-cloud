@@ -5,12 +5,14 @@
  * selected language.
  */
 import type * as lsp from 'vscode-languageserver-protocol';
-import { monaco, showEditorMessage } from '../monaco';
+import { createQuickPick, monaco, showEditorMessage, type QuickPickItem } from '../monaco';
 import { applyWorkspaceEdit } from '../workspace-edits';
 import { Connection, REQUEST_CANCELLED, ResponseError } from './connection';
 import * as c from './convert';
 import { reasonOf, toFolds, toSelectionChain } from './plain';
 import { whenLanguage, type CallDirection } from './call-hierarchy';
+import { toInlayHint } from './inlay-hints';
+import { symbolRows, type SymbolRow } from './workspace-symbols';
 
 /** What a pack reports while it downloads, from the `yukibana/loading` notification. */
 export interface LoadingProgress {
@@ -77,6 +79,7 @@ export class LanguageClient {
 	private stopping = false;
 	private readonly semanticTokensChanged = new monaco.Emitter<void>();
 	private readonly codeLensesChanged = new monaco.Emitter<monaco.languages.CodeLensProvider>();
+	private readonly inlayHintsChanged = new monaco.Emitter<void>();
 	/**
 	 * Listeners for the errors a server shows (`window/showMessage` of type
 	 * Error) while a request that wants them is pending: Phpactor reports a
@@ -190,6 +193,8 @@ export class LanguageClient {
 					didChangeWatchedFiles: { dynamicRegistration: false },
 					semanticTokens: { refreshSupport: true },
 					codeLens: { refreshSupport: true },
+					inlayHint: { refreshSupport: true },
+					symbol: { symbolKind: { valueSet: Array.from({ length: 26 }, (_, i) => (i + 1) as lsp.SymbolKind) }, resolveSupport: { properties: ['location.range'] } },
 				},
 				textDocument: {
 					synchronization: { dynamicRegistration: false, didSave: false, willSave: false, willSaveWaitUntil: false },
@@ -243,7 +248,7 @@ export class LanguageClient {
 						multilineTokenSupport: false,
 						overlappingTokenSupport: false,
 					},
-					inlayHint: {},
+					inlayHint: { resolveSupport: { properties: ['tooltip', 'textEdits', 'label.tooltip'] } },
 					codeLens: {},
 				},
 			},
@@ -310,7 +315,11 @@ export class LanguageClient {
 			if (this.codeLenses) this.codeLensesChanged.fire(this.codeLenses);
 			return null;
 		});
-		for (const m of ['workspace/inlayHint/refresh', 'workspace/diagnostic/refresh']) conn.onRequest(m, () => null);
+		conn.onRequest('workspace/inlayHint/refresh', () => {
+			this.inlayHintsChanged.fire();
+			return null;
+		});
+		conn.onRequest('workspace/diagnostic/refresh', () => null);
 	}
 
 	private closed(error: Error | null): void {
@@ -323,6 +332,7 @@ export class LanguageClient {
 		for (const d of this.disposables.splice(0)) d.dispose();
 		this.semanticTokensChanged.dispose();
 		this.codeLensesChanged.dispose();
+		this.inlayHintsChanged.dispose();
 		this.options.events.loading(null);
 		if (error && !this.stopping) {
 			this.options.events.log('error', error.message);
@@ -820,25 +830,118 @@ export class LanguageClient {
 			);
 		}
 
+		// Inlay hints, any server's (HLS's: local bindings' types). Asked
+		// again when the server says they changed (after a check), not only
+		// when the text does; a hint without its tooltip or edits is
+		// resolved when shown, if the server resolves them.
 		if (caps.inlayHintProvider) {
+			const resolve = typeof caps.inlayHintProvider === 'object' && !!caps.inlayHintProvider.resolveProvider;
+			const original = new WeakMap<monaco.languages.InlayHint, lsp.InlayHint>();
+			const convert = (h: lsp.InlayHint) => {
+				const hint = toInlayHint(h);
+				original.set(hint, h);
+				return hint;
+			};
 			add(
 				L.registerInlayHintsProvider(selector, {
+					onDidChangeInlayHints: this.inlayHintsChanged.event,
 					provideInlayHints: async (model, range, token) => {
 						const hints = await this.ask<lsp.InlayHint[]>(model, 'textDocument/inlayHint', { textDocument: doc(model), range: c.toLspRange(range) }, token);
-						return {
-							hints: (hints ?? []).map((h) => ({
-								label: typeof h.label === 'string' ? h.label : h.label.map((p) => p.value).join(''),
-								position: { lineNumber: h.position.line + 1, column: h.position.character + 1 },
-								...(h.kind !== undefined && { kind: h.kind as monaco.languages.InlayHintKind }),
-								...(h.paddingLeft !== undefined && { paddingLeft: h.paddingLeft }),
-								...(h.paddingRight !== undefined && { paddingRight: h.paddingRight }),
-							})),
-							dispose: () => {},
-						};
+						return { hints: (hints ?? []).map(convert), dispose: () => {} };
 					},
+					...(resolve && {
+						resolveInlayHint: async (hint, token) => {
+							const h = original.get(hint);
+							const model = monaco.editor.getModels().find((m) => this.owns(m));
+							if (!h || !model) return hint;
+							const resolved = await this.ask<lsp.InlayHint>(model, 'inlayHint/resolve', h, token);
+							return resolved ? convert(resolved) : hint;
+						},
+					}),
 				}),
 			);
 		}
+
+		// Go to Symbol in Workspace (Ctrl+T, as in VS Code), for any server
+		// that searches its workspace: standalone Monaco has no picker for
+		// it, so it is a quick pick of the app's, ranked the same way for
+		// every language (workspace-symbols.ts). In every editor, since the
+		// symbols are the whole project's.
+		if (caps.workspaceSymbolProvider) {
+			const resolve = typeof caps.workspaceSymbolProvider === 'object' && !!caps.workspaceSymbolProvider.resolveProvider;
+			add(
+				monaco.editor.addEditorAction({
+					id: 'yukibana.workspaceSymbols',
+					label: 'Go to Symbol in Workspace...',
+					keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT],
+					run: () => this.showWorkspaceSymbols(resolve),
+				}),
+			);
+		}
+	}
+
+	/**
+	 * The Go to Symbol in Workspace picker: asks `workspace/symbol` as the
+	 * query is typed (the last answer replacing the rows, an older request
+	 * cancelled), and goes to the chosen symbol's start. A symbol the
+	 * server gave without a range is resolved first when the server can
+	 * (`resolve`), else its file is opened.
+	 */
+	private showWorkspaceSymbols(resolve: boolean): void {
+		const model = this.models.values().next().value?.model;
+		if (!model) return;
+		type Item = QuickPickItem & { row: SymbolRow };
+		const picker = createQuickPick<Item>();
+		picker.placeholder = 'Type the name of a symbol to go to';
+		// The rows come ranked and highlighted (workspace-symbols.ts).
+		picker.matchOnLabel = false;
+		picker.matchOnDescription = false;
+		picker.sortByLabel = false;
+		let pending: monaco.CancellationTokenSource | null = null;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const search = (query: string) => {
+			pending?.cancel();
+			const source = new monaco.CancellationTokenSource();
+			pending = source;
+			picker.busy = true;
+			void this.ask<(lsp.SymbolInformation | lsp.WorkspaceSymbol)[]>(model, 'workspace/symbol', { query }, source.token).then((symbols) => {
+				if (pending !== source) return;
+				picker.items = symbolRows(symbols, query, this.options.rootUri).map((row) => ({ label: row.label, description: row.description, iconClasses: row.iconClasses, highlights: { label: row.highlights }, row }));
+				picker.busy = false;
+			});
+		};
+		picker.onDidChangeValue((value) => {
+			clearTimeout(timer);
+			timer = setTimeout(() => search(value), 80);
+		});
+		picker.onDidAccept(() => {
+			const row = picker.activeItems[0]?.row;
+			picker.hide();
+			if (row) void this.goToSymbol(row, resolve);
+		});
+		picker.onDidHide(() => {
+			clearTimeout(timer);
+			pending?.cancel();
+			pending = null;
+			picker.dispose();
+		});
+		picker.show();
+		search('');
+	}
+
+	/** Opens a workspace symbol's file with the caret at its start, and focuses that editor. */
+	private async goToSymbol(row: SymbolRow, resolve: boolean): Promise<void> {
+		let { uri, range } = row;
+		const model = this.models.values().next().value?.model;
+		if (!range && resolve && model) {
+			const resolved = await this.ask<lsp.WorkspaceSymbol>(model, 'workspaceSymbol/resolve', row.symbol, new monaco.CancellationTokenSource().token);
+			if (resolved && 'range' in resolved.location) ({ uri, range } = resolved.location);
+		}
+		const target = monaco.Uri.parse(uri);
+		const start = range && { startLineNumber: range.start.line + 1, startColumn: range.start.character + 1, endLineNumber: range.start.line + 1, endColumn: range.start.character + 1 };
+		this.options.events.open(target, start ?? undefined);
+		// After the picker has handed the focus back to the editor it opened from.
+		setTimeout(() => monaco.editor.getEditors().find((e) => e.getModel()?.uri.toString() === target.toString() && e.getDomNode()?.isConnected)?.focus());
 	}
 
 	/**
