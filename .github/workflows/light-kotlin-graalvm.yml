@@ -1,0 +1,99 @@
+# Builds GraalVM Community with Web Image from source
+# (light/packs/kotlin/graalvm/build.sh) and publishes it, with its
+# corresponding source, as a GitHub release: the GraalVM the Kotlin pack's
+# kotlinc/build.sh downloads (GRAALVM_RELEASE, pinned by GRAALVM_SHA256)
+# to compile kotlinc to WebAssembly. Oracle ships Web Image prebuilt only
+# under terms that do not allow shipping the pack (graalvm/build.sh says
+# more), so this is the licence-clean way to have it.
+#
+# Pushing the tag kotlinc/build.sh's GRAALVM_RELEASE names publishes the
+# release, built from that commit. "Run workflow" builds it as a draft
+# instead (once this workflow is on the default branch), which nobody else
+# sees until it is published from its page. A release of that name that
+# exists already is left alone, and the run fails saying so: a release that
+# build.sh pins by hash is never replaced.
+name: Kotlin pack GraalVM release
+
+on:
+  workflow_dispatch:
+    inputs:
+      draft:
+        description: Make the release a draft (publish it from its page afterwards)
+        type: boolean
+        default: true
+  push:
+    tags:
+      - kotlin-graalvm-*
+
+permissions:
+  contents: write # the release
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Which release
+        id: pin
+        run: |
+          tag=$(sed -n 's/^GRAALVM_RELEASE=\(.*\)$/\1/p' light/packs/kotlin/kotlinc/build.sh)
+          file=$(sed -n 's/^GRAALVM_FILE=\(.*\)$/\1/p' light/packs/kotlin/kotlinc/build.sh)
+          if [ -z "$tag" ] || [ -z "$file" ]; then
+            echo "::error::kotlinc/build.sh pins no GRAALVM_RELEASE or GRAALVM_FILE" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME is not the release kotlinc/build.sh pins ($tag)" >&2
+            exit 1
+          fi
+          { echo "tag=$tag"; echo "file=$file"; } >> "$GITHUB_OUTPUT"
+
+      - name: Is there a release already?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pin.outputs.tag }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $TAG exists already; nothing to do" >&2
+            exit 1
+          fi
+
+      - name: Build
+        env:
+          YK_CACHE: ${{ runner.temp }}/graalvm-cache
+        run: light/packs/kotlin/graalvm/build.sh "$RUNNER_TEMP/dist"
+
+      # The file kotlinc/build.sh downloads must be one this build made.
+      - name: Check
+        env:
+          FILE: ${{ steps.pin.outputs.file }}
+        working-directory: ${{ runner.temp }}/dist
+        run: |
+          test -f "$FILE"
+          sha256sum -c SHA256SUMS
+          echo "GRAALVM_SHA256=$(sha256sum "$FILE" | cut -d' ' -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pin.outputs.tag }}
+          DRAFT: ${{ inputs.draft }}
+        working-directory: ${{ runner.temp }}/dist
+        run: |
+          {
+            echo "GraalVM Community with Web Image, built from source for the Kotlin pack of Yukibana Light (light/packs/kotlin), which compiles kotlinc to WebAssembly with it."
+            echo
+            echo '```'
+            cat SOURCES.txt
+            echo '```'
+          } > notes.md
+          as_draft=()
+          if [ "$DRAFT" = true ]; then as_draft=(--draft); fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Kotlin pack: GraalVM Community with Web Image ($TAG)" --notes-file notes.md \
+            "${as_draft[@]}" \
+            ./*.tar.gz SOURCES.txt SHA256SUMS

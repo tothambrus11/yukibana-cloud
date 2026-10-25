@@ -14,7 +14,8 @@
 #   runner.js, program.js              the runner (CONTRACT.md, "Running a program"), and
 #                                      the worker a program runs in
 #   manifest.json                      file names, sizes and versions
-#   LICENSE-*.txt                      the packages' licences
+#   LICENSE-*.txt, SOURCES.txt         the packages' licences, and where the source of kc.js.wasm's GPL
+#                                      parts is (kotlinc/build.sh)
 #   *.gz, *.br                         compressed siblings
 #
 # Idempotent; the npm tarballs are cached in $PACK_CACHE/kotlin (default
@@ -79,7 +80,7 @@ sed 's|const file = await runtime.fetchData(wasmPath);|const file = globalThis.y
 grep -q ykWasmBytes "$OUT/kc.js" || { echo "kc.js: the line that fetches the wasm moved" >&2; exit 1; }
 cp "$KC/kc.js.wasm" "$KC/kc.js.wasm.gz" "$KC/kc.js.wasm.br" "$OUT/"
 cp "$KC/lib/kotlin-stdlib-wasm-wasi.klib" "$KC/lib/kotlin-test-wasm-wasi.klib" "$OUT/"
-cp "$KC/LICENSE-graalvm.txt" "$KC/LICENSE-kotlin.txt" "$OUT/"
+cp "$KC/LICENSE-graalvm.txt" "$KC/LICENSE-kotlin.txt" "$KC/LICENSE-openjdk.txt" "$KC/SOURCES.txt" "$OUT/"
 
 cp "$HERE"/src/server.js "$HERE"/src/check.js "$HERE"/src/kotlinc.js "$HERE"/src/runner.js "$HERE"/src/program.js "$OUT/"
 node "$HERE/scripts/finish.mjs" "$OUT" "$WEB_TREE_SITTER_VERSION" "$KOTLIN_GRAMMAR_VERSION" "$KC/versions.json"

@@ -243,7 +243,7 @@ no DOM and no npm packages except fast-check, for property-based tests
 | Rust | rust-analyzer's IDE crates (ra_ap_ide 0.0.358) with our LSP layer, std 1.98 sources | Miri 1.78 (rustc's MIR interpreter, not a compiler), quickcheck 1.0.3 | 4.2 MB; quickcheck sources 0.47 MB when Cargo.toml names it | 29.8 MB; quickcheck 1.6 MB when Cargo.toml names it |
 | PHP | Phpactor 2026.10.07 on PHP 8.4 (php-wasm) | PHP 8.4.25's CLI (php-wasm), PHPUnit 12.5, Eris 1.3 | 7.6 MB | 2 KB (the same php.wasm); Test 0.6 MB, Eris 45 KB when used |
 | Java | javac (OpenJDK 25u) compiled to WebAssembly GC by TeaVM 0.16.0 (teavm-javac), with our language service on its trees | the same javac, then TeaVM linking the program to WebAssembly GC in the browser; JUnit Jupiter 5.14 | 2.0 MB | 2.3 MB (TeaVM's class library) |
-| Kotlin | kotlinc 2.4.21 (K2) compiled to WebAssembly GC by GraalVM Web Image, for diagnostics; ours on tree-sitter-kotlin 1.1.0 for the rest | the same kotlinc, compiling for Kotlin/Wasm (WASI), run in a worker; kotlin.test | 23.5 MB | 3 KB (the same files) |
+| Kotlin | kotlinc 2.4.21 (K2) compiled to WebAssembly GC by GraalVM Web Image, for diagnostics; ours on tree-sitter-kotlin 1.1.0 for the rest | the same kotlinc, compiling for Kotlin/Wasm (WASI), run in a worker; kotlin.test | 23.0 MB | 3 KB (the same files) |
 | Haskell | GHC 9.14 (GHC's wasm backend) through the GHC API, our LSP layer on its diagnostics and `.hie` files; hlint 3.10 and ormolu 0.8.0.2 | GHC's bytecode interpreter, as `runghc` (one session across runs, as GHCi); hspec 2.11 and QuickCheck 2.19 | 33.2 MB; hlint 3.6 MB after the first check, ormolu 3.3 MB on the first Format | 3 KB (the same files) |
 
 Sizes are brotli transfer sizes. The app itself is 1.2 MB, icons included.
@@ -323,6 +323,13 @@ every file it can serve, with sizes and the sha256 of each, in
 serves from, checking each file against its sha256, and asks the browser
 for persistent storage first.
 
+**Licences**, in the status bar, opens the Licences dialog: the licences
+of the npm packages the app is built from (`licenses/app.txt`, written by
+`app/scripts/licenses.mjs` during `npm run build`), and each installed
+pack's `LICENSE*`, `NOTICE*` and `SOURCES*` files, found in `offline.json`.
+A pack that ships GPL code says in `SOURCES.txt` where its corresponding
+source is (the Kotlin pack's GraalVM: `packs/kotlin/graalvm/`).
+
 The service worker serves a cached file only when its bytes have the
 sha256 the build lists, the page itself included, and otherwise deletes it
 and goes to the network: programs run on the app's origin and can write
@@ -338,7 +345,7 @@ fails to load and is deleted (`app/src/lib/verified-cache.ts`).
 | --- | --- | --- |
 | The app (precached) | 1.2 MB | 4.9 MB |
 | The app's lazy files | 0.5 MB | 2.8 MB |
-| Every pack (Python 5.9, JavaScript 1.6, C++ 48.5, Swift 48.5, Scala 6.0, Rust 32.5, PHP 7.9, Java 4.4, Kotlin 23.5) | 178 MB | 833 MB |
+| Every pack (Python 5.9, JavaScript 1.6, C++ 48.5, Swift 48.5, Scala 6.0, Rust 32.5, PHP 7.9, Java 4.4, Kotlin 23.0) | 178 MB | 833 MB |
 
 A new build installs in the background and the top bar offers "New
 version: reload"; until then the tab keeps the build it runs. Its app cache
@@ -420,9 +427,8 @@ after weeks without a visit, persistent storage or not.
 * **Kotlin**: real kotlinc, but programs are Kotlin/Wasm for WASI: Kotlin's
   common standard library, no `java.*` (no `Scanner`, no files). Completion
   and hover still come from the syntax trees, so library members are not
-  completed. kotlinc is a 23.5 MB first download, and the language
-  server and the runner each hold one (about 570 MB each in Chromium). The GraalVM that
-  builds it is an early-access release (packs/kotlin/README.md).
+  completed. kotlinc is a 23.0 MB first download, and the language
+  server and the runner each hold one (about 570 MB each in Chromium).
   Download's Gradle build runs and tests it on the JVM.
 * **Haskell**: real GHC, but a 33 MB first download and 5 to 8 s before
   the first diagnostics; the packages are a fixed set (base, containers,

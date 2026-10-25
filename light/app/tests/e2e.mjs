@@ -8,7 +8,7 @@
 // Serves app/build with ../serve.py on a free port. Exits non-zero naming
 // every check that failed.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
@@ -92,6 +92,7 @@ try {
 	if (languages.includes('python') && languages.includes('javascript')) await switching();
 	await downloading();
 	await integrity();
+	await licences();
 	if (languages.includes('python') && languages.includes('web')) await lazyServices();
 	if (languages.includes('python')) await offlineUse();
 } finally {
@@ -1524,6 +1525,44 @@ async function lazyServices() {
 	for (let i = 0; i < 100 && !workers.includes('html'); i++) await page.waitForTimeout(100);
 	check(workers.includes('html') && workers.includes('css'), `opening index.html fetches the HTML worker (workers: ${workers.join(', ')})`);
 	await context.close();
+}
+
+/**
+ * The Licences dialog lists the app's npm licences and every installed
+ * pack's licence files, and each link opens a file the build has: a
+ * licence that is listed but 404s is not disclosed.
+ */
+async function licences() {
+	const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+	const check = (ok, what) => {
+		console.log(`${ok ? 'ok  ' : 'FAIL'} licences: ${what}`);
+		if (!ok) failures.push(`licences: ${what}`);
+	};
+	try {
+		await page.goto(`http://127.0.0.1:${port}/`);
+		await page.click('footer button.licenses-link');
+		const dialog = page.locator('dialog.licenses');
+		await dialog.locator('table').waitFor({ timeout: 10_000 });
+		const links = await dialog.locator('a').evaluateAll((as) => as.map((a) => a.href));
+		const statuses = await page.evaluate(async (urls) => Promise.all(urls.map(async (u) => [u, (await fetch(u)).status])), links);
+		const broken = statuses.filter(([, status]) => status !== 200);
+		check(links.length > 1 && broken.length === 0, `every one of the ${links.length} links opens a file (${broken.map(([u, st]) => `${u}: ${st}`).join(', ') || 'none broken'})`);
+		const app = await page.evaluate(async () => (await fetch('licenses/app.txt')).text());
+		check(/^svelte \d/m.test(app) && /^monaco-editor \d/m.test(app), 'licenses/app.txt has Svelte and Monaco');
+		const installed = readdirSync(join(build, 'packs'), { withFileTypes: true })
+			.filter((d) => d.isDirectory() && readdirSync(join(build, 'packs', d.name)).some((f) => /^licen[cs]e/i.test(f)))
+			.map((d) => d.name);
+		const shown = await dialog.locator('tr[data-pack]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-pack')));
+		const missing = installed.filter((p) => !shown.includes(p));
+		check(missing.length === 0, `every pack with a licence file has a row (${missing.join(', ') || 'none missing'})`);
+		if (installed.includes('kotlin')) {
+			const kotlin = (await dialog.locator('tr[data-pack="kotlin"]').textContent()) ?? '';
+			const wanted = ['LICENSE-kotlin.txt', 'LICENSE-graalvm.txt', 'LICENSE-openjdk.txt', 'SOURCES.txt'];
+			check(wanted.every((f) => kotlin.includes(f)), `the Kotlin row has kotlinc's, GraalVM's and OpenJDK's licences and SOURCES.txt (${kotlin.trim().replace(/\s+/g, ' ')})`);
+		}
+	} finally {
+		await page.close();
+	}
 }
 
 /**

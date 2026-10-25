@@ -26,6 +26,7 @@
 	import { buildSummary, openBuildSettings } from '../lib/build-settings';
 	import MoreMenu from '../lib/components/MoreMenu.svelte';
 	import Popover from '../lib/components/Popover.svelte';
+	import Licenses from '../lib/components/Licenses.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
 	import { projectLanguageOf } from '../lib/project';
@@ -43,6 +44,7 @@
 	let dock: ReturnType<typeof createDock> | undefined;
 	let offlineDialog = $state<Offline>();
 	let serverMenu = $state<Popover>();
+	let licensesDialog = $state<Licenses>();
 	/** Set when a new build is installed and waiting: activates it and reloads. */
 	let applyUpdate = $state<(() => void) | null>(null);
 
@@ -211,6 +213,7 @@
 <main class="dock" bind:this={dockElement}></main>
 
 <Offline bind:this={offlineDialog} />
+<Licenses bind:this={licensesDialog} />
 
 <footer class="status-bar">
 	<button class="server" popovertarget="server-menu" aria-haspopup="menu" title={serverFull || 'Language server'}>
@@ -250,6 +253,7 @@
 			<span title="Warnings"><span class="dot warning"></span>{warnings}</span>
 		</span>
 	</button>
+	<button class="licenses-link" onclick={() => licensesDialog?.show()} title="The licences of the app and of each language's compilers and tools">Licences</button>
 </footer>
 
 <style>
@@ -421,6 +425,19 @@
 	.dock {
 		flex: 1;
 		min-height: 0;
+	}
+	.licenses-link {
+		flex: none;
+		padding: 0;
+		border: 0;
+		background: none;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
+	}
+	.licenses-link:hover {
+		color: var(--white);
+		text-decoration: underline;
 	}
 	.status-bar {
 		display: flex;

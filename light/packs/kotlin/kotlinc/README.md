@@ -67,7 +67,8 @@ The pack's README rules out every way of running a JVM program in a browser:
 * **Doppio:** unmaintained.
 
 The list missed **GraalVM Web Image**. It is the WebAssembly GC backend of
-`native-image`, experimental, and part of Oracle GraalVM 25.1. It is a
+`native-image`, experimental, in oracle/graal's `web-image/` (GPLv2 with the
+Classpath Exception), and shipped prebuilt only in Oracle GraalVM 25.1. It is a
 closed-world AOT compiler with the full JDK class library, not a subset.
 Reflection, resources and service loading work from reachability metadata,
 which `native-image-agent` traces on HotSpot. That is exactly what kotlinc
@@ -113,7 +114,7 @@ The other ideas I checked:
   stdlib imports only `fd_write`, `fd_read`, `poll_oneoff` and `random_get`,
   and `readln()` reads stdin through them.
 
-### Build-time workarounds (Web Image 25.1 EA)
+### Build-time workarounds (Web Image 25.4)
 
 * **Interfaces that redeclare `equals`, `hashCode` or `toString`.** Web
   Image's single-abstract-method check counts these on `@FunctionalInterface`
@@ -122,8 +123,9 @@ The other ideas I checked:
   the jars. They change nothing at run time.
 * **Unstructured locking.** Web Image has no support method for the
   `UNSTRUCTURED_LOCKING` bytecode exception and aborts.
-  `tools/PatchWebImage.java` maps it to the `IncompatibleClassChangeError`
-  one in the builder. The path only runs when monitors are misused.
+  `../graalvm/patches/web-image-unstructured-locking.patch` adds one that
+  creates the `IllegalMonitorStateException` SubstrateVM's own lowering
+  does. The path only runs when monitors are misused.
 * **The jline config inside `kotlin-compiler.jar`.** It names files the jar
   does not have, so the build removes it.
 * **Memory.** The builder needs about 8 GB of heap. `wasm-as` then needs
@@ -181,12 +183,15 @@ The other ideas I checked:
   on FIR inside this same image, the way the Java pack's
   `LanguageService.java` works on javac's trees, and exposed next to
   `compile`.
-* **Toolchain risk.** Web Image is experimental, and the build pins an Oracle
-  GraalVM *early-access* build, whose terms say it is not for production.
-  The Web Image source is open (oracle/graal, `web-image/`, GPLv2 with the
-  Classpath Exception), so a release build could use a GraalVM built from
-  source, or Oracle GraalVM 25.1 once it ships under its usual free terms.
-  Both builder bugs above should go upstream.
+* **Toolchain risk.** Web Image is experimental. Oracle ships it prebuilt
+  only in Oracle GraalVM, under terms (the early adopter ones, for the 25.1
+  builds that have it) that do not allow shipping the pack, and GraalVM
+  Community's releases leave it out. So the build uses GraalVM Community
+  25.4.4.1.1 with Web Image, built from the same commit as Oracle's
+  Community release by `../graalvm/build.sh` (ten minutes) and published
+  with its corresponding source as a release of this repository
+  (`.github/workflows/light-kotlin-graalvm.yml`). Both builder bugs above
+  should go upstream.
 
 ## Building and testing
 
@@ -196,10 +201,12 @@ node --experimental-wasm-exnref test/run-node.mjs dist test/demo
 node test/browser.mjs dist                                   # playwright from the global node_modules
 ```
 
-`build.sh` pins and checks GraalVM `jdk-25e1-25.0.3-ea.32`, binaryen 133,
-kotlinc 2.4.21 and kotlin-test-wasm-wasi 2.4.21 by sha256, and caches them
+`build.sh` pins and checks the GraalVM release `kotlin-graalvm-25.4.4.1.1-1`,
+binaryen 133, kotlinc 2.4.21 and kotlin-test-wasm-wasi 2.4.21 by sha256
+(`YK_GRAALVM_HOME=<a GraalVM home>` uses one `../graalvm/build.sh` made
+instead), and caches them
 in `$YK_CACHE` (default `~/.cache/yukibana-kotlin-wasm`; the pack's build
 passes `$PACK_CACHE/kotlin/kotlinc-build`).
-The image takes about 5 minutes to build, with a peak of about 10 GB.
+The image takes about 6 minutes to build on four cores, with a peak of about 11 GB.
 `config/traced-reachability-metadata.json` is the tracing agent's output for
 the compilations `test/run-node.mjs` makes. Delete it to trace again.

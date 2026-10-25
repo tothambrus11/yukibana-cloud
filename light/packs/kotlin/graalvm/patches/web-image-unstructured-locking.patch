@@ -1,0 +1,39 @@
+Web Image: a support method for the UNSTRUCTURED_LOCKING bytecode exception.
+
+Web Image maps each kind of bytecode exception to a method of its
+ImplicitExceptions that creates it, and has none for UNSTRUCTURED_LOCKING,
+which SubstrateVM's graph builder emits wherever a method's monitors are not
+structured (JVMS 2.11.10). The build then aborts in
+WebImageImplicitExceptionsFeature.getSupportMethodName on the first such
+method; kotlinc has several. This adds the method, creating the
+IllegalMonitorStateException SubstrateVM's own lowering creates, and maps
+the kind to it. The path only runs when monitors are misused.
+
+diff --git a/web-image/src/com.oracle.svm.hosted.webimage/src/com/oracle/svm/hosted/webimage/codegen/WebImageImplicitExceptionsFeature.java b/web-image/src/com.oracle.svm.hosted.webimage/src/com/oracle/svm/hosted/webimage/codegen/WebImageImplicitExceptionsFeature.java
+index a13eb740..a8717a4c 100644
+--- a/web-image/src/com.oracle.svm.hosted.webimage/src/com/oracle/svm/hosted/webimage/codegen/WebImageImplicitExceptionsFeature.java
++++ b/web-image/src/com.oracle.svm.hosted.webimage/src/com/oracle/svm/hosted/webimage/codegen/WebImageImplicitExceptionsFeature.java
+@@ -91,6 +91,7 @@ public final class WebImageImplicitExceptionsFeature implements InternalFeature
+             case ILLEGAL_ARGUMENT_EXCEPTION_ARGUMENT_IS_NOT_AN_ARRAY -> "createNewArgumentIsNotArrayException";
+             case ASSERTION_ERROR_OBJECT -> "createNewAssertionErrorObject";
+             case ASSERTION_ERROR_NULLARY -> "createNewAssertionErrorNullary";
++            case UNSTRUCTURED_LOCKING -> "createNewUnstructuredLockingException";
+ 
+             default -> throw GraalError.shouldNotReachHereUnexpectedValue(exceptionKind);
+         };
+diff --git a/web-image/src/com.oracle.svm.webimage/src/com/oracle/svm/webimage/functionintrinsics/ImplicitExceptions.java b/web-image/src/com.oracle.svm.webimage/src/com/oracle/svm/webimage/functionintrinsics/ImplicitExceptions.java
+index 2380fa8a..9ec6d5db 100644
+--- a/web-image/src/com.oracle.svm.webimage/src/com/oracle/svm/webimage/functionintrinsics/ImplicitExceptions.java
++++ b/web-image/src/com.oracle.svm.webimage/src/com/oracle/svm/webimage/functionintrinsics/ImplicitExceptions.java
+@@ -113,6 +113,11 @@ public class ImplicitExceptions {
+         return new ArithmeticException("/ by zero");
+     }
+ 
++    @NeverInline("outlining for smaller code size")
++    public static IllegalMonitorStateException createNewUnstructuredLockingException() {
++        return new IllegalMonitorStateException("Unstructured locking encountered. Native Image enforces structured locking (JVMS 2.11.10)");
++    }
++
+     @NeverInline("outlining for smaller code size")
+     public static AssertionError createNewAssertionErrorNullary() {
+         return new AssertionError();

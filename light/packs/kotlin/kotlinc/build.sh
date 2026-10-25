@@ -11,8 +11,8 @@
 #                       kotlin-test-wasm-wasi.klib (Maven Central; kotlinc's zip has no kotlin.test
 #                       for Kotlin/Wasm)
 #
-# Steps: download and check the pinned GraalVM EA, binaryen and kotlinc; patch two builder bugs
-# and the compiler's jars (tools/); compile the service, the substitutions and the tracing driver;
+# Steps: download and check the pinned GraalVM, binaryen and kotlinc; patch the compiler's jars
+# (tools/); compile the service, the substitutions and the tracing driver;
 # trace kotlinc's reflection on HotSpot with native-image-agent (unless config/ already has it);
 # build the image; assemble dist/.
 #
@@ -22,11 +22,13 @@ set -euo pipefail
 
 KOTLIN_VERSION=2.4.21
 KOTLIN_SHA256=7cc140e76daf416a0424a5557f99afd7ca89ebd463ea1101261e3e01c33e75cd
-# Oracle GraalVM 25.1 early access ("25e1"): Web Image needs 25.1 or later, and only Oracle
-# GraalVM ships it prebuilt (the source is in oracle/graal, web-image/, GPLv2 with CPE).
-GRAALVM_TAG=jdk-25e1-25.0.3-ea.32
-GRAALVM_FILE=graalvm-jdk-25e1-25.0.3-ea.32_linux-x64_bin.tar.gz
-GRAALVM_SHA256=46342977b254c57e3f870aa58aba1af152751e027e8390f3bfbd956d4cce3ef7
+# GraalVM Community 25.4 with Web Image, which Oracle builds but does not ship for Community:
+# built from source by ../graalvm/build.sh and published, with its corresponding source, as the
+# release $GRAALVM_RELEASE of this repository (.github/workflows/light-kotlin-graalvm.yml). With
+# YK_GRAALVM_HOME set, that GraalVM is used instead (one ../graalvm/build.sh made, say).
+GRAALVM_RELEASE=kotlin-graalvm-25.4.4.1.1-1
+GRAALVM_FILE=graalvm-community-webimage-25.4.4.1.1-linux-x64.tar.gz
+GRAALVM_SHA256=0000000000000000000000000000000000000000000000000000000000000000
 BINARYEN_VERSION=133
 BINARYEN_SHA256=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
 # Maven Central publishes no .sha256 for it; this is the file's, checked against its .sha1
@@ -43,7 +45,9 @@ fetch() { # fetch <url> <file> <sha256>: into $CACHE, verified
     [ -f "$dst" ] || { curl -fsSL -o "$dst.part" "$1"; mv "$dst.part" "$dst"; }
     echo "$3  $dst" | sha256sum -c --quiet || { rm -f "$dst"; echo "checksum mismatch: $2" >&2; exit 1; }
 }
-fetch "https://github.com/graalvm/oracle-graalvm-ea-builds/releases/download/$GRAALVM_TAG/$GRAALVM_FILE" "$GRAALVM_FILE" "$GRAALVM_SHA256"
+if [ -z "${YK_GRAALVM_HOME:-}" ]; then
+    fetch "https://github.com/tothambrus11/yukibana-cloud/releases/download/$GRAALVM_RELEASE/$GRAALVM_FILE" "$GRAALVM_FILE" "$GRAALVM_SHA256"
+fi
 fetch "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-x86_64-linux.tar.gz" \
     "binaryen-$BINARYEN_VERSION.tar.gz" "$BINARYEN_SHA256"
 fetch "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN_VERSION/kotlin-compiler-$KOTLIN_VERSION.zip" \
@@ -51,13 +55,13 @@ fetch "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN_VERSION/ko
 fetch "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-test-wasm-wasi/$KOTLIN_VERSION/kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib" \
     "kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib" "$KOTLIN_TEST_WASI_SHA256"
 
-if [ ! -d "$CACHE/graalvm" ]; then
-    mkdir -p "$CACHE/graalvm.part" && tar xzf "$CACHE/$GRAALVM_FILE" -C "$CACHE/graalvm.part" --strip-components=1
-    mv "$CACHE/graalvm.part" "$CACHE/graalvm"
+G="${YK_GRAALVM_HOME:-$CACHE/$GRAALVM_RELEASE}"
+if [ ! -d "$G" ]; then
+    rm -rf "$G.part" && mkdir -p "$G.part" && tar xzf "$CACHE/$GRAALVM_FILE" -C "$G.part" --strip-components=1
+    mv "$G.part" "$G"
 fi
 [ -d "$CACHE/binaryen" ] || { tar xzf "$CACHE/binaryen-$BINARYEN_VERSION.tar.gz" -C "$CACHE" && mv "$CACHE/binaryen-version_$BINARYEN_VERSION" "$CACHE/binaryen"; }
 [ -d "$CACHE/kotlinc" ] || unzip -q "$CACHE/kotlin-compiler-$KOTLIN_VERSION.zip" -d "$CACHE"
-G="$CACHE/graalvm"
 export JAVA_HOME="$G" PATH="$G/bin:$CACHE/binaryen/bin:$PATH"
 KLIB="$CACHE/kotlinc/lib"
 B="$CACHE/build"
@@ -65,19 +69,6 @@ rm -rf "$B" && mkdir -p "$B"/{jars,tools,trace,service,subst,image}
 
 # Our tools, against the compiler's shaded ASM.
 javac -nowarn -cp "$KLIB/kotlin-compiler.jar" -d "$B/tools" "$HERE"/tools/src/yk/*.java
-
-# The builder: Web Image has no support method for the UNSTRUCTURED_LOCKING bytecode exception
-# and aborts on the first method that has one (tools/src/yk/PatchWebImage.java). Patched in a
-# copy of the jar, put first on the builder's class path.
-WI_JAR="$G/lib/svm/tools/svm-wasm/builder/svm-wasm.jar"
-WI_CLASS=com/oracle/svm/hosted/webimage/codegen/WebImageImplicitExceptionsFeature.class
-if ! unzip -p "$WI_JAR" "$WI_CLASS" | cmp -s - "$CACHE/patched-$(basename "$WI_CLASS")" 2>/dev/null; then
-    mkdir -p "$B/wi" && (cd "$B/wi" && unzip -q -o "$WI_JAR" "$WI_CLASS")
-    java -cp "$B/tools:$KLIB/kotlin-compiler.jar" yk.PatchWebImage "$B/wi/$WI_CLASS" "$B/wi/patched.class"
-    cp -n "$WI_JAR" "$WI_JAR.orig" || true
-    cp "$B/wi/patched.class" "$B/wi/$WI_CLASS" && (cd "$B/wi" && zip -q "$WI_JAR" "$WI_CLASS")
-    cp "$B/wi/patched.class" "$CACHE/patched-$(basename "$WI_CLASS")"
-fi
 
 # The compiler's jars, without the jline native-image configuration kotlin-compiler.jar carries
 # (it names files the jar does not have) and without interfaces' abstract redeclarations of
@@ -156,11 +147,56 @@ sed 's|const wasmPath = config.wasm_path \|\| runtime.getCurrentFile() + ".wasm"
     "$B/image/kc.js" > "$DIST/kc.js"
 grep -q ykWasmPath "$DIST/kc.js" || { echo "kc.js: the wasm path line moved" >&2; exit 1; }
 cp "$B/image/kc.js.wasm" "$DIST/"
-# The image is kotlinc (Apache 2.0, with its third-party notices) linked with GraalVM's runtime
-# and class library (the GraalVM Free Terms, with the early adopter licence, for this build).
-cp "$G/LICENSE.txt" "$DIST/LICENSE-graalvm.txt"
-cat "$CACHE/kotlinc/license/LICENSE.txt" "$CACHE/kotlinc/license/NOTICE.txt" "$CACHE/kotlinc/license/COPYRIGHT.txt" > "$DIST/LICENSE-kotlin.txt"
-printf '{"kotlin":"%s","graalvm":"%s","binaryen":"%s"}\n' "$KOTLIN_VERSION" "$GRAALVM_TAG" "$BINARYEN_VERSION" > "$DIST/versions.json"
+# The image is kotlinc linked with GraalVM's runtime and the JDK's class library, so the pack
+# ships all three licences, each file with its parts under a header:
+#   LICENSE-kotlin.txt   kotlinc: Apache 2.0, its NOTICE, and the licences of what it bundles
+#                        (license/third_party/, less testdata/, which is only in its tests)
+#   LICENSE-graalvm.txt  Native Image and Web Image's runtime (GPLv2 with the Classpath
+#                        Exception), and jimfs and Guava, Web Image's file system (Apache 2.0)
+#   LICENSE-openjdk.txt  the JDK's class library (GPLv2 with the Classpath Exception), with the
+#                        third-party notices of every module the image may take classes from
+#   SOURCES.txt          where the corresponding source of the GPL parts is
+section() { # section <title> <file>...: each file under a header
+    printf '%s\n%s\n%s\n\n' "$(printf '=%.0s' {1..78})" "$1" "$(printf '=%.0s' {1..78})"
+    shift
+    for f in "$@"; do printf -- '--- %s ---\n\n' "$(basename "$f")"; cat "$f"; printf '\n\n'; done
+}
+KL="$CACHE/kotlinc/license"
+{
+    section "Kotlin compiler $KOTLIN_VERSION (kotlinc), standard library and kotlin.test" "$KL/LICENSE.txt" "$KL/NOTICE.txt" "$KL/COPYRIGHT.txt"
+    section "Third-party software in the Kotlin compiler" "$KL/README.md" $(find "$KL/third_party" -maxdepth 1 -type f | LC_ALL=C sort)
+} > "$DIST/LICENSE-kotlin.txt"
+mkdir -p "$B/legal" && (cd "$B/legal" && unzip -q -o "$G/lib/svm/tools/svm-wasm/builder/svm-wasm-guava.jar" META-INF/LICENSE)
+{
+    section "GraalVM Community $(sed -n 's/^GRAALVM_VERSION="\(.*\)"$/\1/p' "$G/release"): Native Image and Web Image" "$G/LICENSE_NATIVEIMAGE.txt"
+    section "jimfs and Guava, in Web Image's runtime (Apache License 2.0)" "$B/legal/META-INF/LICENSE"
+} > "$DIST/LICENSE-graalvm.txt"
+{
+    section "OpenJDK class library ($(sed -n 's/^JAVA_RUNTIME_VERSION="\(.*\)"$/\1/p' "$G/release"))" \
+        "$G/legal/java.base/LICENSE" "$G/legal/java.base/ASSEMBLY_EXCEPTION" "$G/legal/java.base/ADDITIONAL_LICENSE_INFO"
+    # One copy of each notice: modules share many (symbolic links to java.base's).
+    section "Third-party software in the OpenJDK class library" \
+        $(find -L "$G/legal" -type f -name '*.md' -printf '%f %p\n' | LC_ALL=C sort -u -k1,1 | cut -d' ' -f2)
+} > "$DIST/LICENSE-openjdk.txt"
+cat > "$DIST/SOURCES.txt" <<SOURCES
+kc.js and kc.js.wasm are the Kotlin compiler $KOTLIN_VERSION compiled to WebAssembly by
+GraalVM Community with Web Image, built from source by Yukibana Light
+(light/packs/kotlin in https://github.com/tothambrus11/yukibana-cloud).
+
+They contain GraalVM's Native Image and Web Image runtime and the OpenJDK class
+library, which are licensed under the GPL version 2 with the Classpath Exception
+(LICENSE-graalvm.txt, LICENSE-openjdk.txt). Their corresponding source, and the
+patches and script the GraalVM was built with, are attached to the release
+$GRAALVM_RELEASE:
+
+  https://github.com/tothambrus11/yukibana-cloud/releases/tag/$GRAALVM_RELEASE
+
+The Kotlin compiler's source is https://github.com/JetBrains/kotlin at tag
+v$KOTLIN_VERSION; the patches applied to its jars and the service around it are
+in light/packs/kotlin/kotlinc of the repository above.
+SOURCES
+GRAALVM_VERSION="$(sed -n 's/^GRAALVM_VERSION="\(.*\)"$/\1/p' "$G/release")"
+printf '{"kotlin":"%s","graalvm":"%s","binaryen":"%s"}\n' "$KOTLIN_VERSION" "$GRAALVM_VERSION" "$BINARYEN_VERSION" > "$DIST/versions.json"
 # The build directory is about 300 MB nobody reads again.
 rm -rf "$B"
 ls -l "$DIST" "$DIST/lib"

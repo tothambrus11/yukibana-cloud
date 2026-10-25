@@ -45,17 +45,17 @@ compiles with. Numbers and data classes print as on the JVM
 
 | file | raw | gzip | brotli | what |
 |---|---|---|---|---|
-| `kc.js.wasm` | 90.9 MB | 31.1 MB | **20.5 MB** | kotlinc and our service (`kotlinc/service/`), WebAssembly GC |
+| `kc.js.wasm` | 88.9 MB | 30.3 MB | **20.0 MB** | kotlinc and our service (`kotlinc/service/`), WebAssembly GC |
 | `kc.js` | 111 KB | | 18 KB | GraalVM's loader, patched by `build.sh` to take the bytes `kotlinc.js` downloaded |
 | `kotlin-stdlib-wasm-wasi.klib` | 11.7 MB | | 2.5 MB | the standard library for Kotlin/Wasm WASI, with stored zip entries |
 | `kotlin-test-wasm-wasi.klib` | 264 KB | | 78 KB | `kotlin.test` for it, from Maven Central |
 | `tree-sitter-kotlin.wasm`, `tree-sitter.wasm`, `tree-sitter.js` | 3.80 MB | | 255 KB | the grammar 1.1.0 and web-tree-sitter 0.25.10, as published |
 | `server.js`, `check.js`, `kotlinc.js` | | | 15 KB | ours: the language server, its checker, the loader |
 | `runner.js`, `program.js` | | | 7 KB | ours: the runner, the program's worker |
-| `manifest.json`, `LICENSE-*.txt` | | | | sizes and versions; the licences |
+| `manifest.json`, `LICENSE-*.txt`, `SOURCES.txt` | | | | sizes and versions; the licences, and where the GPL parts' source is |
 
 The language server and the runner share every large file by URL, so the
-browser downloads them once: **23.5 MB** with brotli for the pack. The
+browser downloads them once: **23.0 MB** with brotli for the pack. The
 syntax features answer as soon as tree-sitter has loaded (0.27 MB);
 kotlinc's diagnostics follow once it has downloaded and started.
 
@@ -80,7 +80,7 @@ Chromium (headless, Playwright) on a 4-core cloud container, from
 | Test of the sample (kotlin.test linked for the first time) | 3.4 s |
 | Stop of an endless loop to the next run's output | 2.1 s, kotlinc kept |
 
-The warm-up's first compile is slow because V8 tiers up kotlinc's 91 MB
+The warm-up's first compile is slow because V8 tiers up kotlinc's 89 MB
 of code as it runs; it happens while the person reads the sample, which
 is why the runner is started ahead (`warmRunner`).
 
@@ -211,25 +211,25 @@ library is part of the JVM's.
   extension functions on library types, no smart casts. Rename misses what
   references misses: a simple string template (`"$name"`), an override of a
   renamed member, a named argument (`copy(x = 1.0)`).
-* **Memory:** kotlinc is a 91 MB WebAssembly module, and the server's
+* **Memory:** kotlinc is an 89 MB WebAssembly module, and the server's
   checker and the runner each hold one: about 570 MB of the tab's memory each in Chromium, 1.1 GB for both.
 * **No formatting, no quick fixes, no property-based or mutation
   testing.** kotest-property and PIT need the JVM; they work in the
   downloaded Gradle build.
-* **The GraalVM build is an early-access one** (`kotlinc/README.md`,
-  "Toolchain risk"): Oracle GraalVM 25.1 EA, whose licence is for
-  development and evaluation. Web Image is GPLv2 with the Classpath
-  Exception in oracle/graal; a GraalVM built from that source, or the 25.1
-  release, should replace it before Light depends on this pack.
 
 ## Licences
 
-kotlinc (`LICENSE-kotlin.txt`: Apache 2.0, with its notices) and
-`kotlin.test` are JetBrains', Apache 2.0. `kc.js.wasm` also contains
-GraalVM's runtime and Java class library (`LICENSE-graalvm.txt`, the
-GraalVM Free Terms and Conditions with the Early Adopter licence for this
-build). web-tree-sitter and tree-sitter-kotlin are MIT
-(`LICENSE-web-tree-sitter.txt`, `LICENSE-tree-sitter-kotlin.txt`).
+kotlinc, its standard library and `kotlin.test` are JetBrains', Apache 2.0
+(`LICENSE-kotlin.txt`, with kotlinc's NOTICE and the licences of the
+libraries it bundles). `kc.js.wasm` also contains GraalVM's Native Image and
+Web Image runtime, with jimfs and Guava (`LICENSE-graalvm.txt`), and the
+OpenJDK class library (`LICENSE-openjdk.txt`, with its third-party notices):
+GPLv2 with the Classpath Exception, and Apache 2.0 for jimfs and Guava.
+That GraalVM is Community, built from source (`graalvm/build.sh`), and its
+corresponding source is attached to the release `SOURCES.txt` names.
+web-tree-sitter and tree-sitter-kotlin are MIT
+(`LICENSE-web-tree-sitter.txt`, `LICENSE-tree-sitter-kotlin.txt`). The app
+lists every one of these files in its Licences dialog.
 
 ## Building and testing
 
