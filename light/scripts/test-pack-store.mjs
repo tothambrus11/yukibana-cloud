@@ -161,14 +161,24 @@ async function key(pack = 'tool', vars = {}) {
     assert.match(k, /^[0-9a-f]{40}$/);
     return k;
 }
-/** A toolchain archive whose toolchain.json says `manifest` (written as given). */
+/** The toolchain.json fields listing `files` (path -> content), as a build writes them. */
+const listing = (files) => ({
+    format: 1,
+    knobs: {},
+    built: '2026-10-01T00:00:00.000Z',
+    files: Object.entries(files)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([p, content]) => ({ path: p, size: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex'), mtime: '0.000000000' })),
+    links: [],
+});
+/** A toolchain archive of `files` whose toolchain.json is their listing with `manifest` over it. */
 function toolchainArchive(manifest, files = { 'bin/cc': '#!/bin/sh\necho cc\n' }) {
     const dir = fs.mkdtempSync(path.join(root, 'tc-'));
     for (const [rel, content] of Object.entries(files)) {
         fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
         fs.writeFileSync(path.join(dir, rel), content);
     }
-    fs.writeFileSync(path.join(dir, 'toolchain.json'), JSON.stringify(manifest));
+    fs.writeFileSync(path.join(dir, 'toolchain.json'), JSON.stringify({ ...listing(files), ...manifest }));
     const file = `${dir}.tar.zst`;
     execFileSync('tar', ['--zstd', '-cf', file, '-C', dir, '.']);
     const bytes = fs.readFileSync(file);
@@ -181,7 +191,8 @@ async function builtToolchain(manifest = {}) {
     const dir = fs.mkdtempSync(path.join(root, 'built-'));
     fs.mkdirSync(path.join(dir, 'bin'));
     fs.writeFileSync(path.join(dir, 'bin/cc'), '#!/bin/sh\n');
-    const m = { pack: 'tool', key: await key(), commit: git('rev-parse', 'HEAD'), ...manifest };
+    const m = { ...listing({ 'bin/cc': '#!/bin/sh\n' }), pack: 'tool', key: await key(), commit: git('rev-parse', 'HEAD'), ...manifest };
+    m.files[0].mtime = execFileSync('stat', ['-c', '%.9Y', path.join(dir, 'bin/cc')], { encoding: 'utf8' }).trim();
     fs.writeFileSync(path.join(dir, 'toolchain.json'), JSON.stringify(m));
     return dir;
 }
@@ -190,7 +201,7 @@ const exists = (rel) => fs.existsSync(path.join(root, rel));
 before(async () => {
     fs.mkdirSync(path.join(light, 'scripts'), { recursive: true });
     fs.mkdirSync(path.join(light, 'packs/demo'), { recursive: true });
-    for (const name of ['pack-store.sh', 'toolchain-env.sh']) fs.copyFileSync(path.join(SCRIPTS, name), path.join(light, 'scripts', name));
+    for (const name of ['pack-store.sh', 'toolchain-env.sh', 'toolchain-manifest.mjs']) fs.copyFileSync(path.join(SCRIPTS, name), path.join(light, 'scripts', name));
     // The stand-in gh: hands its arguments to the server and answers as it says.
     put(
         'bin/gh',
@@ -356,11 +367,11 @@ test('an output-changing setting gives another key, and a setting the pack does 
 });
 
 test('a malformed toolchain setting is named, and no key is given', async () => {
-    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'LTO variant\nJOBS sometimes  # how many\n');
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'lto variant\nJOBS sometimes  # how many\n');
     const r = await store('toolchain-key', 'tool');
     assert.notEqual(r.code, 0);
     assert.equal(r.out, '');
-    assert.match(r.err, /toolchain\.env:4: 'LTO variant' is not 'NAME source\|variant {2}# why'/);
+    assert.match(r.err, /toolchain\.env:4: 'lto variant' is not 'NAME source\|variant {2}# why'/);
     assert.match(r.err, /toolchain\.env:5: 'JOBS sometimes {2}# how many'/);
     clean();
 });
@@ -508,15 +519,18 @@ test('a toolchain is fetched for exactly its inputs, read-only, with each file r
     assert.equal(fs.readFileSync(path.join(dir, 'bin/cc'), 'utf8'), '#!/bin/sh\necho cc\n');
     assert.equal(fs.statSync(path.join(dir, 'bin/cc')).mode & 0o222, 0);
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'toolchain.json'), 'utf8'));
-    assert.deepEqual(manifest.stat['bin/cc'], { size: 18, mtimeMs: fs.statSync(path.join(dir, 'bin/cc')).mtimeMs });
-    assert.equal(manifest.stat['toolchain.json'], undefined);
+    const [size, mtime] = execFileSync('stat', ['-c', '%s %.9Y', path.join(dir, 'bin/cc')], { encoding: 'utf8' }).trim().split(' ');
+    assert.deepEqual(
+        manifest.files.map((f) => [f.path, f.size, f.mtime]),
+        [['bin/cc', Number(size), mtime]],
+    );
     assert.equal(exists(`cache/built/tool/${k}.part`), false);
     // Fetching again replaces the read-only copy.
     const again = await store('toolchain-fetch', 'tool');
     assert.equal(again.code, 0, again.err);
 });
 
-test('a fetched toolchain is refused when its manifest names other inputs', async () => {
+test('a fetched toolchain is refused when its manifest names other inputs or other files', async () => {
     const k = await key();
     const commitId = git('rev-parse', 'HEAD');
     const target = path.join(root, 'fetched-other');
@@ -524,6 +538,10 @@ test('a fetched toolchain is refused when its manifest names other inputs', asyn
         [{ pack: 'tool', key: 'e'.repeat(40), commit: commitId }, /toolchain\.json names the inputs "e{40}", not [0-9a-f]{40}/],
         [{ pack: 'other', key: k, commit: commitId }, /toolchain\.json is of pack "other", not tool/],
         [{ pack: 'tool', key: k, commit: 'HEAD' }, /toolchain\.json names no commit/],
+        [{ pack: 'tool', key: k, commit: 'dirty' }, /a dirty toolchain is never stored/],
+        [{ pack: 'tool', key: k, commit: commitId, files: [] }, /bin\/cc is not listed in toolchain\.json/],
+        [{ pack: 'tool', key: k, commit: commitId, files: listing({ 'bin/cc': 'other bytes\n' }).files }, /bin\/cc is \d+ bytes, not the \d+ listed/],
+        [{ pack: 'tool', key: k, commit: commitId, files: listing({ 'bin/cc': '#!/bin/sh\necho CC\n' }).files }, /bin\/cc does not have the sha256 listed/],
     ]) {
         toolchains = new Map([[`toolchain-tool-${k}.tar.zst`, { bytes: toolchainArchive(manifest), created: '2026-10-01T00:00:00Z' }]]);
         const r = await store('toolchain-fetch', 'tool', target);

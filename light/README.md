@@ -65,6 +65,16 @@ the output-changing settings of its `toolchain.env`
 key. `scripts/pack-store.sh toolchain-key-report <pack> <base>` says what
 changed a key.
 
+`scripts/pack-toolchain.sh` is the one way from those inputs to a pack:
+`ensure <pack>` reuses the local toolchain, fetches it from the store, or
+builds it (its `toolchain.sh` run in a copy of only its inputs, under
+`env -i` with only the variables `toolchain-env.sh` lets through, and its
+declared `toolchain.outputs` checked), and prints its directory; uncommitted
+inputs or a set output-changing setting are built only with `--build-dirty`
+and never published. `assemble <pack> <dir>` links the read-only toolchain
+into `app/static/packs/<pack>` and runs the pack's `glue.sh` over it, in
+seconds. Its header has the glossary and the pin rule.
+
 * `.github/workflows/light-packs.yml` runs on every push that touches a pack.
   A pack whose tree has a build already is only looked up; a pack that
   changed is built and tested by its `build.sh` and stored. So a pack is

@@ -39,6 +39,8 @@ on:
       - light/packs/**
       - light/scripts/pack-store.sh
       - light/scripts/toolchain-env.sh
+      - light/scripts/pack-toolchain.sh
+      - light/scripts/toolchain-manifest.mjs
       - light/setup.sh
       - .github/workflows/light-packs.yml
       - .github/actions/once/**
@@ -47,6 +49,8 @@ on:
       - light/packs/**
       - light/scripts/pack-store.sh
       - light/scripts/toolchain-env.sh
+      - light/scripts/pack-toolchain.sh
+      - light/scripts/toolchain-manifest.mjs
       - light/setup.sh
       - .github/workflows/light-packs.yml
       - .github/actions/once/**
@@ -95,6 +99,9 @@ jobs:
             light/scripts/pack-store.sh
             light/scripts/test-pack-store.mjs
             light/scripts/toolchain-env.sh
+            light/scripts/pack-toolchain.sh
+            light/scripts/toolchain-manifest.mjs
+            light/scripts/test-pack-toolchain.mjs
             light/setup.sh
             .github/workflows/light-packs.yml
 
@@ -112,9 +119,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Lint the store and setup scripts
-        run: shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-env.sh setup.sh
+        run: shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-env.sh scripts/pack-toolchain.sh setup.sh
       - name: Test the store
         run: node --test scripts/test-pack-store.mjs
+      - name: Test building and assembling toolchains
+        run: node --test scripts/test-pack-toolchain.mjs
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.store-key }}

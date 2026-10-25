@@ -59,11 +59,12 @@
 #       toolchain of HEAD's inputs, refusing one built from anything else.
 #       Never deletes: from 800 assets it warns, at 1000 it fails.
 #
-# A toolchain directory holds toolchain.json, written by its build:
-# {"pack": "<pack>", "key": "<key>", "commit": "<40-hex commit it was built
-# at>"}; a fetch adds a local "stat" section, {"<path>": {"size": bytes,
-# "mtimeMs": ms}} for every other file, by which a later run tells an
-# untouched copy without hashing it.
+# A toolchain directory holds toolchain.json, written by its build
+# (pack-toolchain.sh ensure; the format is toolchain-manifest.mjs's): its
+# pack, key, commit, set variant knobs, and every other file with its size,
+# sha256 and mtime. A fetch checks every file against it and records the
+# local mtimes, by which a later run tells an untouched copy without hashing
+# it. A store toolchain names the 40-hex commit it was built at.
 #
 # Environment: LIGHT_PACKS_REPO (default: the origin's GitHub repository, else
 # tothambrus11/yukibana-cloud), LIGHT_PACKS_TAG (light-packs), KEEP (8),
@@ -462,33 +463,10 @@ toolchain_fetch() {
   tmp=""
   [ -f "$part/toolchain.json" ] || die "$name holds no toolchain.json"
   chmod u+w "$part/toolchain.json"
-  # shellcheck disable=SC2016 # JavaScript's own ${...}, not the shell's
-  node -e '
-    const fs = require("node:fs"), path = require("node:path");
-    const [dir, pack, key, name] = process.argv.slice(1);
-    const file = path.join(dir, "toolchain.json");
-    const fail = (why) => { console.error(`pack-store.sh: ${name}: ${why}`); process.exit(1); };
-    let m;
-    try { m = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { fail(`toolchain.json is not JSON: ${e.message}`); }
-    if (m === null || typeof m !== "object" || Array.isArray(m)) fail("toolchain.json is not an object");
-    if (m.pack !== pack) fail(`toolchain.json is of pack ${JSON.stringify(m.pack)}, not ${pack}`);
-    if (m.key !== key) fail(`toolchain.json names the inputs ${JSON.stringify(m.key)}, not ${key}`);
-    if (typeof m.commit !== "string" || !/^[0-9a-f]{40}$/.test(m.commit)) fail(`toolchain.json names no commit (${JSON.stringify(m.commit)})`);
-    const stat = {};
-    const walk = (rel) => {
-      for (const e of fs.readdirSync(path.join(dir, rel), { withFileTypes: true })) {
-        const p = rel ? `${rel}/${e.name}` : e.name;
-        if (e.isDirectory()) walk(p);
-        else if (e.isFile() && p !== "toolchain.json") {
-          const s = fs.lstatSync(path.join(dir, p));
-          stat[p] = { size: s.size, mtimeMs: s.mtimeMs };
-        }
-      }
-    };
-    walk("");
-    m.stat = Object.fromEntries(Object.entries(stat).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
-    fs.writeFileSync(file, JSON.stringify(m, null, 1) + "\n");
-  ' "$part" "$pack" "$key" "$name"
+  # The manifest is checked file by file (size and sha256: the archive's own
+  # sha256 says only that it is the asset, not that the asset is honest),
+  # then each file's local mtime recorded for the cheap reuse check.
+  node "$LIGHT/scripts/toolchain-manifest.mjs" adopt "$part" "$pack" "$key" || die "$name: refused"
   find "$part" -type f -exec chmod a-w {} +
   remove_tree "$dir"
   mv "$part" "$dir"
@@ -516,6 +494,9 @@ $dirty"
   [ "$mpack" = "$pack" ] || die "$dir is a toolchain of $mpack, not $pack"
   [ "$mkey" = "$key" ] || die "$pack: $dir was built from the inputs $mkey, but HEAD's inputs and settings give $key"
   [ "$mcommit" = "$head" ] || die "$pack: $dir was built at $mcommit, not at HEAD ($head)"
+  # And it is still exactly what its manifest lists, file by file.
+  node "$LIGHT/scripts/toolchain-manifest.mjs" check "$dir" "$pack" "$key" >/dev/null ||
+    die "$pack: $dir is not the toolchain its toolchain.json lists"
   name="toolchain-$pack-$key.tar.zst"
   r="$(repo)"
   if ! gh release view "$TOOLCHAINS_TAG" --repo "$r" >/dev/null 2>&1; then
