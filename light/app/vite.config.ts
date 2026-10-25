@@ -44,6 +44,24 @@ const moduleAliases = Object.fromEntries(
 	['protocol', 'runtime', 'monaco'].map((name) => [`@yukibana/${name}`, `${modules}/${name}/index.ts`]),
 );
 
+/**
+ * Where svelte-check finds `monaco-editor` for the modules' sources: their
+ * `import type … from 'monaco-editor'` is resolved from their own folder,
+ * beside the app rather than in it, where no node_modules has Monaco. It
+ * names the declarations of `editor.api`, the very ones the app's
+ * `monaco-editor/editor/editor.api` imports have, so a value the app hands
+ * `@yukibana/monaco` is of the type the module names (modules/monaco's own
+ * tsconfig.json says the same for `tsc -p ../modules/monaco`). Only the
+ * bare name is mapped, so the app's own subpath imports resolve as before;
+ * it is a type-only import, so Vite never sees it. A host that installs
+ * the module resolves Monaco from its own node_modules and needs none of
+ * this. Relative to the generated tsconfig, node_modules/$app/tsconfig.json.
+ */
+function monacoTypes(config: Record<string, unknown>): void {
+	const options = config['compilerOptions'] as { paths?: Record<string, string[]> };
+	options.paths = { ...options.paths, 'monaco-editor': ['../monaco-editor/esm/vs/editor/editor.api.d.ts'] };
+}
+
 export default defineConfig({
 	plugins: [
 		monacoWorkers,
@@ -55,6 +73,7 @@ export default defineConfig({
 			// to become cross-origin isolated.
 			serviceWorker: { register: false },
 			alias: moduleAliases,
+			typescript: { config: monacoTypes },
 		}),
 	],
 	// The dev server serves files only from the directories it allows; the

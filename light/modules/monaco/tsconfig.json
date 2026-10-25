@@ -5,9 +5,15 @@
 	"compilerOptions": {
 		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
 		// monaco's `import type` only (H1: the host's Monaco is injected,
-		// never bundled), resolved from the app's installed copy.
+		// never bundled), resolved from the app's installed copy. It names
+		// the declarations of `editor.api`, the ones the app's own
+		// `monaco-editor/editor/editor.api` import has, so a value the app
+		// passes is of the very type convert.ts names. It used to name the
+		// package's folder, whose `typings` (editor.main.d.ts) monaco-editor
+		// 0.57.0 does not ship, so an import of Monaco's types failed to
+		// resolve: unnoticed while nothing imported one.
 		"paths": {
-			"monaco-editor": ["../../app/node_modules/monaco-editor"]
+			"monaco-editor": ["../../app/node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
 		}
 	},
 	"include": ["."]

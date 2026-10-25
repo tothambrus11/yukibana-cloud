@@ -1,13 +1,11 @@
 // Unit tests of the Go to Symbol in Workspace picker's rows
-// (src/lib/lsp/workspace-symbols.ts) and of inlay hints as Monaco shows
-// them (src/lib/lsp/inlay-hints.ts): ranking, highlights, what a row says
+// (src/lib/lsp/workspace-symbols.ts): ranking, highlights, what a row says
 // and where it goes, for any server's answer.
 //
 //   node --test tests/unit/workspace-symbols.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { matchOf, symbolRows } from '../../src/lib/lsp/workspace-symbols.ts';
-import { toInlayHint, toTooltip } from '../../src/lib/lsp/inlay-hints.ts';
 
 const ROOT = 'file:///workspace/';
 const range = (line, sc, ec) => ({ start: { line, character: sc }, end: { line, character: ec } });
@@ -69,28 +67,4 @@ test('the highlights are the letters the query matched', () => {
 	assert.deepEqual(matchOf('dst', 'distance'), { rank: 6, highlights: [{ start: 0, end: 1 }, { start: 2, end: 4 }] });
 	assert.equal(matchOf('Distance', 'distance')?.rank, 1);
 	assert.equal(matchOf('x y', 'xy')?.rank, 0);
-});
-
-test("an inlay hint's position, kind, padding and edits as Monaco's, counted from 1", () => {
-	const hint = toInlayHint({
-		position: { line: 2, character: 7 },
-		label: ':: Point',
-		kind: 1,
-		paddingLeft: true,
-		textEdits: [{ range: range(2, 6, 6), newText: 'a :: Point\n      ' }],
-	});
-	assert.deepEqual(hint, {
-		label: ':: Point',
-		position: { lineNumber: 3, column: 8 },
-		kind: 1,
-		paddingLeft: true,
-		textEdits: [{ range: { startLineNumber: 3, startColumn: 7, endLineNumber: 3, endColumn: 7 }, text: 'a :: Point\n      ' }],
-	});
-});
-
-test("a hint's label parts keep their text and tooltips; Markdown tooltips stay Markdown, plain ones plain", () => {
-	const hint = toInlayHint({ position: { line: 0, character: 0 }, label: [{ value: 'x:', tooltip: { kind: 'markdown', value: '**x**' } }, { value: ' ' }], tooltip: { kind: 'plaintext', value: 'a parameter' } });
-	assert.deepEqual(hint.label, [{ label: 'x:', tooltip: { value: '**x**' } }, { label: ' ' }]);
-	assert.equal(hint.tooltip, 'a parameter');
-	assert.equal(toTooltip(undefined), undefined);
 });

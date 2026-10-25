@@ -13,6 +13,28 @@ files, the theme, and Monaco's editor services for a host that wants them.
   that registers it and is removed by disposing what that call returned.
 * It never parses `yukibana.json`, and keeps nothing in `localStorage`.
 
+## What is here
+
+| File | What |
+|---|---|
+| `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, folds, smart select, inlay hints, a refused rename's reason |
+
+Two things a conversion cannot make without the host's Monaco, and how
+`convert.ts` does without it:
+
+* **Monaco's enums** are written out as numbers, in tables typed as the
+  installed Monaco's own enums, so a Monaco upgrade that renumbers, adds or
+  removes a member fails `npm run check` (and `tests/convert.test.mjs`
+  proves that the check fires).
+* **A document's model** is the host's to name: a conversion that meets a
+  server's URI asks the host's `UriOf`, and a place in a document it
+  answers null for is left out, or, in a workspace edit, named in
+  `unsupported` rather than dropped. Light's app answers with
+  `monaco.Uri.parse`; a host with a model per snippet answers from its
+  session's map (step M7).
+
+Its tests are `../tests/convert.test.mjs`, run with the other modules'.
+
 ## Allowed imports
 
 Files of this module, `@yukibana/runtime` and `@yukibana/protocol`, by

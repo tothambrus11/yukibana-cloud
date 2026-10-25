@@ -2,8 +2,9 @@
  * The call hierarchy panel's rows, from LSP's answers, as plain data: what
  * a row names, where its calls are, and whether expanding it would only
  * repeat what is above it. Nothing here needs Monaco at run time, so the
- * unit tests load it in Node. Lines and columns of a `CallSite` are
- * Monaco's: counted from 1.
+ * unit tests load it in Node. A `CallSite`'s range is the server's, counted
+ * from 0; the panel converts it when it goes there (`@yukibana/monaco`'s
+ * `toMonacoRange`), and `siteLabel` writes it as a person counts.
  *
  * LSP puts the call sites of both directions in one field, `fromRanges`,
  * but not in the same file: an incoming call's are in the caller's file
@@ -12,16 +13,16 @@
  * settled, so the panel never has to know.
  */
 import type * as lsp from 'vscode-languageserver-protocol';
-import type * as monaco from 'monaco-editor/editor/editor.api';
 
 /** Which calls a tree shows: who calls a function (`incoming`), or what it calls (`outgoing`). */
 export type CallDirection = 'incoming' | 'outgoing';
 
-/** A call, or the root's own name: a range in a file, in Monaco's lines and columns. */
+/** A call, or the root's own name: a range in a file. */
 export interface CallSite {
 	/** The file's URI as the server sent it. */
 	uri: string;
-	range: monaco.IRange;
+	/** The range as the server sent it: lines and characters from 0. */
+	range: lsp.Range;
 }
 
 /** One row of a call hierarchy tree. */
@@ -47,11 +48,6 @@ export interface CallRow {
 	recursive: boolean;
 }
 
-/** An LSP range as Monaco's. */
-export function toMonacoRange(r: lsp.Range): monaco.IRange {
-	return { startLineNumber: r.start.line + 1, startColumn: r.start.character + 1, endLineNumber: r.end.line + 1, endColumn: r.end.character + 1 };
-}
-
 /**
  * Whether two items are the same function: the same file, name and place
  * of the name. Two answers about one function are different objects (and
@@ -63,7 +59,7 @@ export function sameItem(a: lsp.CallHierarchyItem, b: lsp.CallHierarchyItem): bo
 
 /** The root row of a tree: the function asked about, its sites its own name. */
 export function rootRow(item: lsp.CallHierarchyItem): CallRow {
-	return { item, sites: [{ uri: item.uri, range: toMonacoRange(item.selectionRange) }], recursive: false };
+	return { item, sites: [{ uri: item.uri, range: item.selectionRange }], recursive: false };
 }
 
 /**
@@ -85,7 +81,7 @@ export function toRows(
 		const item = direction === 'incoming' ? (call as lsp.CallHierarchyIncomingCall).from : (call as lsp.CallHierarchyOutgoingCall).to;
 		const uri = direction === 'incoming' ? item.uri : parent.uri;
 		const ranges = call.fromRanges.length ? [...call.fromRanges].sort(byStart) : null;
-		const sites = ranges ? ranges.map((r) => ({ uri, range: toMonacoRange(r) })) : [{ uri: item.uri, range: toMonacoRange(item.selectionRange) }];
+		const sites = ranges ? ranges.map((range) => ({ uri, range })) : [{ uri: item.uri, range: item.selectionRange }];
 		return { item, sites, recursive: path.some((p) => sameItem(p, item)) };
 	});
 	return rows.sort((a, b) => compareSites(a.sites[0]!, b.sites[0]!) || a.item.name.localeCompare(b.item.name));
@@ -111,6 +107,11 @@ export function placeOf(item: lsp.CallHierarchyItem, rootUri: string): string {
 export function whenLanguage(languages: readonly string[]): string {
 	const ids = languages.filter((l) => /^[\w.-]+$/.test(l));
 	return ids.length ? ids.map((l) => `editorLangId == ${l}`).join(' || ') : 'false';
+}
+
+/** Where a call is in its file, as a person counts and as the editor's status bar says it: `12:5`, line then column, from 1. */
+export function siteLabel(site: CallSite): string {
+	return `${site.range.start.line + 1}:${site.range.start.character + 1}`;
 }
 
 /** How many call sites a row has, in words: `1 call`, `3 calls`. */
@@ -158,7 +159,7 @@ function byStart(a: lsp.Range, b: lsp.Range): number {
 }
 
 function compareSites(a: CallSite, b: CallSite): number {
-	return a.uri.localeCompare(b.uri) || a.range.startLineNumber - b.range.startLineNumber || a.range.startColumn - b.range.startColumn;
+	return a.uri.localeCompare(b.uri) || byStart(a.range, b.range);
 }
 
 /** `decodeURIComponent`, keeping a malformed escape as it is rather than throwing. */

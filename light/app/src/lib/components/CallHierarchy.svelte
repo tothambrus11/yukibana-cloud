@@ -6,14 +6,15 @@
 -->
 <script lang="ts">
 	import { WORKSPACE } from '../project';
-	import { callsLabel, iconOf, placeOf, type CallSite } from '../lsp/call-hierarchy';
+	import { toMonacoRange } from '@yukibana/monaco';
+	import { callsLabel, iconOf, placeOf, siteLabel, type CallSite } from '../lsp/call-hierarchy';
 	import type { CallNode } from '../call-hierarchy.svelte';
 	import type { Workspace } from '../workspace.svelte';
 
 	let { workspace }: { workspace: Workspace } = $props();
 
 	const tree = $derived(workspace.callHierarchy);
-	const go = (site: CallSite) => workspace.showSite(site.uri, site.range);
+	const go = (site: CallSite) => workspace.showSite(site.uri, toMonacoRange(site.range));
 	/** Right opens a row, Left closes it or goes to its parent's row, as in a tree view. */
 	function keys(e: KeyboardEvent, node: CallNode) {
 		if (e.key === 'ArrowRight' && node.expandable && !node.expanded) void node.expand();
@@ -46,7 +47,7 @@
 		{#if depth > 0 && node.row.sites.length > 1}
 			<div class="sites" style:padding-left="{2.1 + depth * 1}rem">
 				{#each node.row.sites as site, i (i)}
-					<button class="site" title="Go to this call" onclick={() => go(site)}>{site.range.startLineNumber}:{site.range.startColumn}</button>
+					<button class="site" title="Go to this call" onclick={() => go(site)}>{siteLabel(site)}</button>
 				{/each}
 			</div>
 		{/if}

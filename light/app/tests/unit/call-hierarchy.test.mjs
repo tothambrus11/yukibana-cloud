@@ -4,7 +4,7 @@
 //   node --test tests/unit/call-hierarchy.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { callsLabel, iconOf, placeOf, rootRow, sameItem, toRows, whenLanguage } from '../../src/lib/lsp/call-hierarchy.ts';
+import { callsLabel, iconOf, placeOf, rootRow, sameItem, siteLabel, toRows, whenLanguage } from '../../src/lib/lsp/call-hierarchy.ts';
 
 const ROOT = 'file:///workspace/';
 const range = (sl, sc, el, ec) => ({ start: { line: sl, character: sc }, end: { line: el, character: ec } });
@@ -18,7 +18,7 @@ const main = item('main', 'Main.hs', 5);
 test("the root row goes to the function's own name", () => {
 	assert.deepEqual(rootRow(norm), {
 		item: norm,
-		sites: [{ uri: ROOT + 'Geometry.hs', range: { startLineNumber: 21, startColumn: 1, endLineNumber: 21, endColumn: 5 } }],
+		sites: [{ uri: ROOT + 'Geometry.hs', range: at(20, 0, 4) }],
 		recursive: false,
 	});
 });
@@ -28,10 +28,10 @@ test("a caller's calls are in the caller's file, in the order they are written",
 	assert.equal(rest.length, 0);
 	assert.equal(row.item, main);
 	assert.deepEqual(
-		row.sites.map((s) => [s.uri, s.range.startLineNumber, s.range.startColumn]),
+		row.sites.map((s) => [s.uri, siteLabel(s)]),
 		[
-			[ROOT + 'Main.hs', 8, 5],
-			[ROOT + 'Main.hs', 10, 11],
+			[ROOT + 'Main.hs', '8:5'],
+			[ROOT + 'Main.hs', '10:11'],
 		],
 	);
 });
@@ -40,12 +40,12 @@ test("a callee's calls are in the file of the function that calls it, not the ca
 	const sqrt = item('sqrt', 'lib/Prelude.hs', 1);
 	const [row] = toRows('outgoing', main, [{ to: sqrt, fromRanges: [at(6, 2, 6)] }]);
 	assert.equal(row.sites[0].uri, ROOT + 'Main.hs');
-	assert.equal(row.sites[0].range.startLineNumber, 7);
+	assert.equal(siteLabel(row.sites[0]), '7:3');
 });
 
 test('a call the server gave no place for goes to the function it names', () => {
 	const [row] = toRows('incoming', norm, [{ from: distance, fromRanges: [] }]);
-	assert.deepEqual(row.sites, [{ uri: ROOT + 'Geometry.hs', range: { startLineNumber: 26, startColumn: 1, endLineNumber: 26, endColumn: 9 } }]);
+	assert.deepEqual(row.sites, [{ uri: ROOT + 'Geometry.hs', range: at(25, 0, 8) }]);
 });
 
 test('callers are listed by file and then by where they first call', () => {

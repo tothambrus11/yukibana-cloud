@@ -4,8 +4,12 @@
  * Monaco's types, so it never bundles, configures or starts an editor of its
  * own, and importing it registers nothing.
  *
- * Empty until the conversions, the language features and the opt-in editor
- * services move here. What it promises, and may import, is in ./README.md
- * and is enforced by ../boundaries.test.mjs.
+ * - convert.ts: every conversion between a language server's values and
+ *   Monaco's, as pure functions; a document's model is the host's to name
+ *   (`UriOf`).
+ *
+ * Still to come: the language features, the models and the opt-in editor
+ * services (../README.md says the order). What it promises, and may import,
+ * is in ./README.md and is enforced by ../boundaries.test.mjs.
  */
-export {};
+export * from './convert.ts';

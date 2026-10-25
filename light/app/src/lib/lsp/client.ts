@@ -27,10 +27,8 @@ import type * as lsp from 'vscode-languageserver-protocol';
 import { createQuickPick, monaco, showEditorMessage, type QuickPickItem } from '../monaco';
 import { applyWorkspaceEdit } from '../workspace-edits';
 import { Connection, isLoadingProgress, loadingDone, LOADING_METHOD, REQUEST_CANCELLED, ResponseError, type LoadingProgress } from '@yukibana/protocol';
-import * as c from './convert';
-import { reasonOf, toFolds, toSelectionChain } from './plain';
+import * as c from '@yukibana/monaco';
 import { whenLanguage, type CallDirection } from './call-hierarchy';
-import { toInlayHint } from './inlay-hints';
 import { symbolRows, type SymbolRow } from './workspace-symbols';
 
 /** Lifecycle of a client as the status bar shows it. */
@@ -71,6 +69,20 @@ export interface ClientOptions {
 }
 
 const MARKER_OWNER = 'lsp';
+
+/**
+ * The model a server's document URI names. Here a model's URI is the URI
+ * the server sees (the project's files under the one workspace root), so
+ * it is the same URI, parsed, and never null: a document no model holds is
+ * still converted, and opening it is what finds out that it is not there.
+ */
+const uriOf: c.UriOf = (uri) => monaco.Uri.parse(uri);
+
+/** The URI string a server sent, written as Monaco writes the same URI: the key of `models` and `diagnostics`. */
+function uriKey(uri: string): string {
+	return monaco.Uri.parse(uri).toString();
+}
+
 /** LSP's "server cancelled": a pull the server refused for now; with `retriggerRequest`, ask again. */
 const SERVER_CANCELLED = -32802;
 /** How long to wait before asking again for diagnostics a server refused for now. */
@@ -328,7 +340,7 @@ export class LanguageClient {
 			const d = p as lsp.ShowDocumentParams;
 			const uri = monaco.Uri.parse(d.uri);
 			if (d.external || !monaco.editor.getModel(uri)) return { success: false };
-			events.open(uri, d.selection && c.toRange(d.selection));
+			events.open(uri, d.selection && c.toMonacoRange(d.selection));
 			return { success: true };
 		});
 		conn.onRequest('workspace/applyEdit', async (p) => {
@@ -384,11 +396,11 @@ export class LanguageClient {
 	}
 
 	private publishDiagnostics(p: lsp.PublishDiagnosticsParams): void {
-		const key = c.uriKey(p.uri);
+		const key = uriKey(p.uri);
 		const entry = this.models.get(key);
 		if (!entry) return;
 		this.diagnostics.set(key, p.diagnostics);
-		monaco.editor.setModelMarkers(entry.model, MARKER_OWNER, p.diagnostics.map(c.toMarker));
+		monaco.editor.setModelMarkers(entry.model, MARKER_OWNER, p.diagnostics.map((d) => c.toMarker(d, uriOf)));
 	}
 
 	/**
@@ -397,8 +409,8 @@ export class LanguageClient {
 	 * Ctrl+Z in any of them offers to undo it in all.
 	 */
 	private async applyEdit(edit: lsp.WorkspaceEdit, label: string | undefined): Promise<boolean> {
-		const { edit: converted, unsupported } = c.toWorkspaceEdit(edit);
-		for (const u of unsupported) this.options.events.log('warning', `not applied (file operations are not supported): ${u}`);
+		const { edit: converted, unsupported } = c.toWorkspaceEdit(edit, uriOf);
+		for (const u of unsupported) this.options.events.log('warning', `not applied: ${u}`);
 		try {
 			await applyWorkspaceEdit(converted, label ?? 'Workspace edit');
 		} catch (e) {
@@ -421,7 +433,7 @@ export class LanguageClient {
 	 */
 	async selectionRanges(model: monaco.editor.ITextModel, positions: monaco.IPosition[]): Promise<lsp.SelectionRange[] | null> {
 		if (!this.capabilities.selectionRangeProvider || positions.length === 0) return null;
-		const params = { textDocument: { uri: model.uri.toString() }, positions: positions.map(c.toPosition) };
+		const params = { textDocument: { uri: model.uri.toString() }, positions: positions.map(c.toLspPosition) };
 		const ranges = await this.ask<lsp.SelectionRange[]>(model, 'textDocument/selectionRange', params, new monaco.CancellationTokenSource().token);
 		return ranges && ranges.length === positions.length ? ranges : null;
 	}
@@ -466,7 +478,7 @@ export class LanguageClient {
 	 * as `ask` does), stopped, or no longer has a file to ask from.
 	 */
 	async calls(direction: CallDirection, item: lsp.CallHierarchyItem): Promise<(lsp.CallHierarchyIncomingCall | lsp.CallHierarchyOutgoingCall)[] | null> {
-		const model = this.models.get(c.uriKey(item.uri))?.model ?? this.models.values().next().value?.model;
+		const model = this.models.get(uriKey(item.uri))?.model ?? this.models.values().next().value?.model;
 		if (!model || !this.capabilities.callHierarchyProvider) return null;
 		const method = direction === 'incoming' ? 'callHierarchy/incomingCalls' : 'callHierarchy/outgoingCalls';
 		return this.ask(model, method, { item }, new monaco.CancellationTokenSource().token);
@@ -485,7 +497,7 @@ export class LanguageClient {
 		const items = await this.ask<lsp.CallHierarchyItem[]>(
 			model,
 			'textDocument/prepareCallHierarchy',
-			{ textDocument: { uri: model.uri.toString() }, position: c.toPosition(position) },
+			{ textDocument: { uri: model.uri.toString() }, position: c.toLspPosition(position) },
 			new monaco.CancellationTokenSource().token,
 		);
 		const item = items?.[0];
@@ -530,7 +542,7 @@ export class LanguageClient {
 		const caps = this.capabilities;
 		const selector = [...this.options.languages];
 		const doc = (model: monaco.editor.ITextModel) => ({ uri: model.uri.toString() });
-		const at = (model: monaco.editor.ITextModel, position: monaco.IPosition) => ({ textDocument: doc(model), position: c.toPosition(position) });
+		const at = (model: monaco.editor.ITextModel, position: monaco.IPosition) => ({ textDocument: doc(model), position: c.toLspPosition(position) });
 		const add = (d: monaco.IDisposable) => this.disposables.push(d);
 		const L = monaco.languages;
 
@@ -546,10 +558,7 @@ export class LanguageClient {
 							'textDocument/completion',
 							{
 								...at(model, position),
-								context: {
-									triggerKind: (context.triggerKind + 1) as lsp.CompletionTriggerKind,
-									...(context.triggerCharacter !== undefined && { triggerCharacter: context.triggerCharacter }),
-								},
+								context: c.toLspCompletionContext(context),
 							},
 							token,
 						);
@@ -589,9 +598,7 @@ export class LanguageClient {
 				L.registerHoverProvider(selector, {
 					provideHover: async (model, position, token) => {
 						const hover = await this.ask<lsp.Hover>(model, 'textDocument/hover', at(model, position), token);
-						if (!hover) return null;
-						const contents = Array.isArray(hover.contents) ? hover.contents : [hover.contents];
-						return { contents: contents.map(c.toMarkdown), ...(hover.range && { range: c.toRange(hover.range) }) };
+						return hover && c.toHover(hover);
 					},
 				}),
 			);
@@ -604,46 +611,16 @@ export class LanguageClient {
 					...(provider.triggerCharacters && { signatureHelpTriggerCharacters: provider.triggerCharacters }),
 					...(provider.retriggerCharacters && { signatureHelpRetriggerCharacters: provider.retriggerCharacters }),
 					provideSignatureHelp: async (model, position, token, context) => {
-						const help = await this.ask<lsp.SignatureHelp>(
-							model,
-							'textDocument/signatureHelp',
-							{
-								...at(model, position),
-								context: {
-									triggerKind: context.triggerKind as lsp.SignatureHelpTriggerKind,
-									isRetrigger: context.isRetrigger,
-									...(context.triggerCharacter !== undefined && { triggerCharacter: context.triggerCharacter }),
-								},
-							},
-							token,
-						);
-						if (!help || help.signatures.length === 0) return null;
-						return {
-							value: {
-								activeSignature: help.activeSignature ?? 0,
-								activeParameter: help.activeParameter ?? 0,
-								signatures: help.signatures.map((s) => {
-									const documentation = c.toDocumentation(s.documentation);
-									return {
-										label: s.label,
-										...(documentation !== undefined && { documentation }),
-										...(s.activeParameter != null && { activeParameter: s.activeParameter }),
-										parameters: (s.parameters ?? []).map((p) => {
-											const pdoc = c.toDocumentation(p.documentation);
-											return { label: p.label, ...(pdoc !== undefined && { documentation: pdoc }) };
-										}),
-									};
-								}),
-							},
-							dispose: () => {},
-						};
+						const help = await this.ask<lsp.SignatureHelp>(model, 'textDocument/signatureHelp', { ...at(model, position), context: c.toLspSignatureHelpContext(context) }, token);
+						const value = help && c.toSignatureHelp(help);
+						return value && { value, dispose: () => {} };
 					},
 				}),
 			);
 		}
 
 		const locations = (method: string) => async (model: monaco.editor.ITextModel, position: monaco.Position, token: monaco.CancellationToken) =>
-			c.toLocations(await this.ask<lsp.Location | lsp.Location[] | lsp.LocationLink[]>(model, method, at(model, position), token));
+			c.toLocations(await this.ask<lsp.Location | lsp.Location[] | lsp.LocationLink[]>(model, method, at(model, position), token), uriOf);
 		if (caps.definitionProvider) add(L.registerDefinitionProvider(selector, { provideDefinition: locations('textDocument/definition') }));
 		if (caps.declarationProvider) add(L.registerDeclarationProvider(selector, { provideDeclaration: locations('textDocument/declaration') }));
 		if (caps.typeDefinitionProvider) add(L.registerTypeDefinitionProvider(selector, { provideTypeDefinition: locations('textDocument/typeDefinition') }));
@@ -654,7 +631,7 @@ export class LanguageClient {
 				L.registerReferenceProvider(selector, {
 					provideReferences: async (model, position, context, token) => {
 						const refs = await this.ask<lsp.Location[]>(model, 'textDocument/references', { ...at(model, position), context }, token);
-						return (refs ?? []).map((r) => ({ uri: monaco.Uri.parse(r.uri), range: c.toRange(r.range) }));
+						return c.toReferences(refs, uriOf);
 					},
 				}),
 			);
@@ -665,7 +642,7 @@ export class LanguageClient {
 				L.registerDocumentHighlightProvider(selector, {
 					provideDocumentHighlights: async (model, position, token) => {
 						const highlights = await this.ask<lsp.DocumentHighlight[]>(model, 'textDocument/documentHighlight', at(model, position), token);
-						return (highlights ?? []).map((h) => ({ range: c.toRange(h.range), kind: ((h.kind ?? 1) - 1) as monaco.languages.DocumentHighlightKind }));
+						return (highlights ?? []).map(c.toDocumentHighlight);
 					},
 				}),
 			);
@@ -700,13 +677,13 @@ export class LanguageClient {
 						} catch (e) {
 							const message = e instanceof Error ? e.message : String(e);
 							this.options.events.log('error', `textDocument/rename: ${message}`);
-							return { edits: [], rejectReason: reasonOf(message) };
+							return { edits: [], rejectReason: c.reasonOf(message) };
 						} finally {
 							this.shownErrors.delete(listener);
 						}
-						const { edit: converted, unsupported } = edit ? c.toWorkspaceEdit(edit) : { edit: { edits: [] }, unsupported: [] };
-						if (unsupported.length) return { edits: [], rejectReason: `the rename needs file operations: ${unsupported.join(', ')}` };
-						if (converted.edits.length === 0 && shown !== undefined) return { edits: [], rejectReason: reasonOf(shown) };
+						const { edit: converted, unsupported } = edit ? c.toWorkspaceEdit(edit, uriOf) : { edit: { edits: [] }, unsupported: [] };
+						if (unsupported.length) return { edits: [], rejectReason: `the rename needs changes the editor cannot make: ${unsupported.join(', ')}` };
+						if (converted.edits.length === 0 && shown !== undefined) return { edits: [], rejectReason: c.reasonOf(shown) };
 						return converted;
 					},
 					...(prepare && {
@@ -725,7 +702,7 @@ export class LanguageClient {
 								return w ? { range: new monaco.Range(position.lineNumber, w.startColumn, position.lineNumber, w.endColumn), text: w.word } : { range: new monaco.Range(1, 1, 1, 1), text: '', rejectReason: 'Nothing to rename here.' };
 							}
 							const range = 'range' in r ? r.range : r;
-							return { range: c.toRange(range), text: 'placeholder' in r ? r.placeholder : model.getValueInRange(c.toRange(range)) };
+							return { range: c.toMonacoRange(range), text: 'placeholder' in r ? r.placeholder : model.getValueInRange(c.toMonacoRange(range)) };
 						},
 					}),
 				}),
@@ -759,7 +736,7 @@ export class LanguageClient {
 				L.registerOnTypeFormattingEditProvider(selector, {
 					autoFormatTriggerCharacters: [provider.firstTriggerCharacter, ...(provider.moreTriggerCharacter ?? [])],
 					provideOnTypeFormattingEdits: async (model, position, ch, options, token) =>
-						((await this.ask<lsp.TextEdit[]>(model, 'textDocument/onTypeFormatting', { ...formatting(model, options), position: c.toPosition(position), ch }, token)) ?? []).map(c.toTextEdit),
+						((await this.ask<lsp.TextEdit[]>(model, 'textDocument/onTypeFormatting', { ...formatting(model, options), position: c.toLspPosition(position), ch }, token)) ?? []).map(c.toTextEdit),
 				}),
 			);
 		}
@@ -771,7 +748,7 @@ export class LanguageClient {
 					// folds by indentation instead of folding nothing.
 					provideFoldingRanges: async (model, _context, token) => {
 						const ranges = await this.ask<lsp.FoldingRange[]>(model, 'textDocument/foldingRange', { textDocument: doc(model) }, token);
-						return ranges && toFolds(ranges).map((f) => ({ start: f.start, end: f.end, ...(f.kind !== undefined && { kind: monaco.languages.FoldingRangeKind.fromValue(f.kind) }) }));
+						return ranges && c.toFolds(ranges).map((f) => ({ start: f.start, end: f.end, ...(f.kind !== undefined && { kind: monaco.languages.FoldingRangeKind.fromValue(f.kind) }) }));
 					},
 				}),
 			);
@@ -781,9 +758,9 @@ export class LanguageClient {
 			add(
 				L.registerSelectionRangeProvider(selector, {
 					provideSelectionRanges: async (model, positions, token) => {
-						const ranges = await this.ask<lsp.SelectionRange[]>(model, 'textDocument/selectionRange', { textDocument: doc(model), positions: positions.map(c.toPosition) }, token);
+						const ranges = await this.ask<lsp.SelectionRange[]>(model, 'textDocument/selectionRange', { textDocument: doc(model), positions: positions.map(c.toLspPosition) }, token);
 						// One chain per position, or none: Monaco pairs them by index.
-						return ranges && ranges.length === positions.length ? ranges.map(toSelectionChain) : null;
+						return ranges && ranges.length === positions.length ? ranges.map(c.toSelectionChain) : null;
 					},
 				}),
 			);
@@ -800,7 +777,7 @@ export class LanguageClient {
 				return uri.scheme !== 'file' || !!monaco.editor.getModel(uri.with({ fragment: '' }));
 			};
 			const toLink = (l: lsp.DocumentLink): monaco.languages.ILink => {
-				const link = { range: c.toRange(l.range), ...(l.target !== undefined && { url: l.target }), ...(l.tooltip !== undefined && { tooltip: l.tooltip }) };
+				const link = { range: c.toMonacoRange(l.range), ...(l.target !== undefined && { url: l.target }), ...(l.tooltip !== undefined && { tooltip: l.tooltip }) };
 				original.set(link, l);
 				return link;
 			};
@@ -833,7 +810,7 @@ export class LanguageClient {
 			const resolve = !!caps.codeLensProvider.resolveProvider;
 			const original = new WeakMap<monaco.languages.CodeLens, lsp.CodeLens>();
 			const toLens = (l: lsp.CodeLens): monaco.languages.CodeLens => {
-				const lens = { range: c.toRange(l.range), ...(l.command && { command: toCommand(l.command) }) };
+				const lens = { range: c.toMonacoRange(l.range), ...(l.command && { command: toCommand(l.command) }) };
 				original.set(lens, l);
 				return lens;
 			};
@@ -896,7 +873,7 @@ export class LanguageClient {
 			const resolve = typeof caps.inlayHintProvider === 'object' && !!caps.inlayHintProvider.resolveProvider;
 			const original = new WeakMap<monaco.languages.InlayHint, lsp.InlayHint>();
 			const convert = (h: lsp.InlayHint) => {
-				const hint = toInlayHint(h);
+				const hint = c.toInlayHint(h);
 				original.set(hint, h);
 				return hint;
 			};
@@ -996,7 +973,7 @@ export class LanguageClient {
 			if (resolved && 'range' in resolved.location) ({ uri, range } = resolved.location);
 		}
 		const target = monaco.Uri.parse(uri);
-		const start = range && { startLineNumber: range.start.line + 1, startColumn: range.start.character + 1, endLineNumber: range.start.line + 1, endColumn: range.start.character + 1 };
+		const start = range && c.toMonacoRange({ start: range.start, end: range.start });
 		this.options.events.open(target, start ?? undefined);
 		// After the picker has handed the focus back to the editor it opened from.
 		setTimeout(() => monaco.editor.getEditors().find((e) => e.getModel()?.uri.toString() === target.toString() && e.getDomNode()?.isConnected)?.focus());
@@ -1028,8 +1005,8 @@ export class LanguageClient {
 				...(a.kind !== undefined && { kind: a.kind }),
 				...(a.isPreferred !== undefined && { isPreferred: a.isPreferred }),
 				...(a.disabled && { disabled: a.disabled.reason }),
-				...(a.diagnostics && { diagnostics: a.diagnostics.map(c.toMarker) }),
-				...(a.edit && { edit: c.toWorkspaceEdit(a.edit).edit }),
+				...(a.diagnostics && { diagnostics: a.diagnostics.map((d) => c.toMarker(d, uriOf)) }),
+				...(a.edit && { edit: c.toWorkspaceEdit(a.edit, uriOf).edit }),
 				...(a.command && { command: toCommand(a.command) }),
 			};
 			original.set(action, a);
