@@ -39,8 +39,7 @@ import { NavigationHistory, type Place } from './history';
 import { baseName } from '@yukibana/runtime';
 import { WORKSPACE } from './project';
 import type { EditorHost, Workspace } from './workspace.svelte';
-import type { ExploreKind } from './languages';
-import { languageOf } from './languages';
+import { ALL_KINDS, KINDS, viewsOf, type ExploreKind } from './explore-views';
 import type { CompilerView, ViewHost } from './compiler-view';
 import type { Caret } from './linking';
 import { VIEW_TEXT } from './theme.svelte';
@@ -55,12 +54,16 @@ const EDITOR_PREFIX = 'file:';
 const editorId = (path: string) => EDITOR_PREFIX + path;
 const isEditor = (panel: IDockviewPanel) => panel.id.startsWith(EDITOR_PREFIX);
 
-/** The compiler output views' panels: id, dockview component, tab title and its short form, by kind. */
-const VIEWS: Record<ExploreKind, { id: string; component: string; title: string; short: string }> = {
-	'llvm-ir': { id: 'view:llvm-ir', component: 'llvm-ir', title: 'LLVM IR', short: 'IR' },
-	asm: { id: 'view:asm', component: 'assembly', title: 'Assembly', short: 'Asm' },
-};
-const VIEW_KINDS = Object.keys(VIEWS) as ExploreKind[];
+/**
+ * The compiler output views' panels: id, dockview component, tab title and
+ * its short form, by kind (explore-views.ts). The assembly's component is
+ * `assembly`, as it was when C++ was the only language with views (a saved
+ * layout names it).
+ */
+const VIEWS = Object.fromEntries(
+	Object.entries(KINDS).map(([kind, k]) => [kind, { id: `view:${kind}`, component: kind === 'asm' ? 'assembly' : kind, title: k.title, short: k.short }]),
+) as Record<ExploreKind, { id: string; component: string; title: string; short: string }>;
+const VIEW_KINDS = ALL_KINDS;
 const viewOfPanel = (id: string): ExploreKind | undefined => VIEW_KINDS.find((k) => VIEWS[k].id === id);
 
 /** The panels that are always there, in the order the bottom group lists them on a phone. */
@@ -261,9 +264,10 @@ class EditorRenderer implements IContentRenderer {
 			run: () => this.workspace.download(),
 		});
 		// Editors are made anew for each project, so only a language with the views offers them.
-		const explores = languageOf(this.workspace.language).explores ?? [];
-		if (explores.includes('llvm-ir')) editor.addAction({ id: 'yukibana.showIr', label: 'Show LLVM IR', run: () => void this.workspace.showView('llvm-ir') });
-		if (explores.includes('asm')) editor.addAction({ id: 'yukibana.showAsm', label: 'Show Assembly', run: () => void this.workspace.showView('asm') });
+		// The C++ views' action ids (yukibana.showIr, yukibana.showAsm) are the ones they always had.
+		const ACTION_IDS: Partial<Record<ExploreKind, string>> = { 'llvm-ir': 'yukibana.showIr', asm: 'yukibana.showAsm' };
+		for (const { kind } of viewsOf(this.workspace.language)?.views ?? [])
+			editor.addAction({ id: ACTION_IDS[kind] ?? `yukibana.show-${kind}`, label: `Show ${KINDS[kind].title}`, run: () => void this.workspace.showView(kind) });
 	}
 
 	focus(): void {
@@ -449,11 +453,9 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 					return new PreviewRenderer(workspace);
 				case 'call-hierarchy':
 					return new SvelteRenderer(CallHierarchy, workspace);
-				case VIEWS['llvm-ir'].component:
-					return new CompilerViewRenderer('llvm-ir', workspace, () => viewHost, badgeOf(VIEWS['llvm-ir'].id));
-				case VIEWS.asm.component:
-					return new CompilerViewRenderer('asm', workspace, () => viewHost, badgeOf(VIEWS.asm.id));
 				default: {
+					const view = VIEW_KINDS.find((k) => VIEWS[k].component === name);
+					if (view) return new CompilerViewRenderer(view, workspace, () => viewHost, badgeOf(VIEWS[view].id));
 					const r = new EditorRenderer(workspace, navigation);
 					editors.set(id, r);
 					return r;

@@ -135,6 +135,11 @@ jobs:
             light/packs/rust/src
             light/packs/rust/tests
             light/packs/rust/test-mir.mjs
+            light/packs/python/runner/bytecode.py
+            light/packs/python/test-bytecode.py
+            light/packs/java/src/classfile.js
+            light/packs/java/tests
+            light/packs/java/test-classfile.mjs
             light/packs/*/build.sh
             light/packs/*/glue.sh
             light/packs/*/requires.json
@@ -300,6 +305,16 @@ jobs:
       - name: Rust pack (the MIR view)
         working-directory: light/packs/rust
         run: node --test test-mir.mjs
+
+      # The runner image's CPython (3.12); the browser's is 3.14, and the
+      # tests check only what every version shows.
+      - name: Python pack (the bytecode view)
+        working-directory: light/packs/python
+        run: python3 -I test-bytecode.py
+
+      - name: Java pack (the bytecode view)
+        working-directory: light/packs/java
+        run: node --test test-classfile.mjs
 
       - name: The split packs' contract
         working-directory: light

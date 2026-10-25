@@ -19,6 +19,7 @@
 	import { createDock } from '../lib/dock';
 	import { LANGUAGE_GROUPS, languageOf, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf } from '../lib/packs';
+	import { KINDS, viewsOf } from '../lib/explore-views';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
@@ -86,6 +87,10 @@
 	const warnings = $derived(workspace.problems.filter((p) => p.severity === 'warning').length);
 	const percent = $derived(workspace.progress && workspace.progress.total > 0 ? Math.min(100, (100 * workspace.progress.loaded) / workspace.progress.total) : null);
 	const language = $derived(languageOf(workspace.language));
+	/** The language's compiler output views (explore-views.ts), none for most. */
+	const views = $derived(viewsOf(workspace.language)?.views.map((v) => v.kind) ?? []);
+	/** "the active C or C++ file" and the like, for the views' buttons. */
+	const activeSource = $derived(`the active ${shortLabel(language)} ${workspace.language === 'haskell' ? 'module' : 'file'}`);
 	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */
 	const hasBuild = $derived(workspace.language === 'cpp' || workspace.optimization !== null);
 	const summary = $derived(buildSummary(workspace));
@@ -144,20 +149,14 @@
 			<BuildSettings {workspace} />
 		{/if}
 
-		{#if language.explores?.length}
+		{#if views.length}
 			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
-				{#if language.explores.includes('llvm-ir')}
-					{@const on = workspace.viewsOpen.includes('llvm-ir')}
-					<button class="btn view" data-view="llvm-ir" aria-pressed={on} onclick={() => workspace.toggleView('llvm-ir')} title={on ? 'Close the LLVM IR view' : 'Show the LLVM IR of the active C or C++ file'}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">LLVM IR</span><span class="short">IR</span>
+				{#each views as kind (kind)}
+					{@const on = workspace.viewsOpen.includes(kind)}
+					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">{KINDS[kind].title}</span><span class="short">{KINDS[kind].short}</span>
 					</button>
-				{/if}
-				{#if language.explores.includes('asm')}
-					{@const on = workspace.viewsOpen.includes('asm')}
-					<button class="btn view" data-view="asm" aria-pressed={on} onclick={() => workspace.toggleView('asm')} title={on ? 'Close the Assembly view' : 'Show the assembly of the active C or C++ file'}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span><span class="long">Assembly</span><span class="short">Asm</span>
-					</button>
-				{/if}
+				{/each}
 			</div>
 		{/if}
 
@@ -189,11 +188,11 @@
 				</button>
 				<div class="menu-divider" role="separator" data-fold="30"></div>
 			{/if}
-			{#if language.explores?.length}
-				{#each language.explores as kind (kind)}
+			{#if views.length}
+				{#each views as kind (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
 					<button class="menu-item" role="menuitemcheckbox" aria-checked={on} data-fold="44" data-view={kind} onclick={() => workspace.toggleView(kind)}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{kind === 'asm' ? 'Assembly' : 'LLVM IR'}
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{KINDS[kind].title}
 					</button>
 				{/each}
 				<div class="menu-divider" role="separator" data-fold="44"></div>

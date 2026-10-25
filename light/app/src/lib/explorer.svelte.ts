@@ -1,7 +1,9 @@
 /**
  * The compiler output views' client: asks the pack's `explorer.js` worker
- * (packs/CONTRACT.md, "Showing compiler output") for the LLVM IR or the
- * assembly of the active C or C++ source, and keeps what each view shows.
+ * (packs/CONTRACT.md, "Showing compiler output") for the output of the
+ * active source that each view shows (the LLVM IR or the assembly of a C++
+ * source, the SIL of a Swift file, the Core of a Haskell module: the
+ * language's views, explore-views.ts), and keeps what each view shows.
  *
  * The worker is started the first time a view opens, and only then, so a
  * session that never opens one downloads nothing for them; it is stopped
@@ -13,9 +15,9 @@
  * each view is kept, so a slow compile never overwrites a newer one.
  */
 import type { PackId } from '@yukibana/runtime';
-import type { ExploreKind, Files } from './languages';
+import type { Files } from './languages';
 import { appPacks } from './packs';
-import type { CppTargetId } from './cpp-targets';
+import { ALL_KINDS, defaultOptions, viewOf, viewsOf, type ExploreKind } from './explore-views';
 import { viewSourceFor, type LineCode, type LineMap } from './explorer-map';
 
 /** What a view shows. */
@@ -28,21 +30,25 @@ export interface ViewState {
 	 * output, kept to show under "Updating…".
 	 */
 	status: 'idle' | 'loading' | 'compiling' | 'ok' | 'error';
-	/** The IR or assembly, filtered (and demangled if asked). */
+	/** The output, filtered (and demangled if asked). */
 	text: string;
 	/** Per line of `text`, the source line it came from (explorer-map.ts). */
 	lines: LineMap;
 	/** When the output is optimised, the project lines that have code without optimisation (explorer-map.ts), else empty. */
 	unoptimized: readonly LineCode[];
-	/** The target the output is for, null before the first answer or when the project's target is unsupported. */
-	target: CppTargetId | null;
+	/**
+	 * The target the output is for (a C++ target's id, cpp-targets.ts, which
+	 * the other packs use too: `wasm32-wasi`), null before the first answer
+	 * or when the project's target is unsupported.
+	 */
+	target: string | null;
 	/** That target's triple, '' until known. */
 	triple: string;
-	/** The clang arguments the output was made with. */
+	/** The compiler's arguments the output was made with, as the pack shows them. */
 	flags: readonly string[];
 	/** How long the compile took, in milliseconds. */
 	ms: number;
-	/** clang's messages (project-relative paths) when the compile failed, or why there is no output. */
+	/** The compiler's messages (project-relative paths) when the compile failed, or why there is no output. */
 	error: string;
 	/** The download in progress, while `loading`. */
 	progress: { label: string; loaded: number; total: number } | null;
@@ -50,22 +56,24 @@ export interface ViewState {
 	path: string | null;
 }
 
-/** A view's options, as the explorer protocol names them. */
-export interface ViewOptions {
-	/** Symbols demangled with LLVM's demangler. */
-	demangle: boolean;
-	/** x86-64 assembly in Intel syntax (`-masm=intel`); other targets ignore it. */
-	intel: boolean;
-	/** Assembler directives kept (`.section`, `.p2align`, …); off, only code and data are shown. */
-	directives: boolean;
-	/** Functions that come only from headers outside the project (the standard library) kept. */
-	library: boolean;
-}
+/**
+ * A view's options, as the explorer protocol names them: one boolean per
+ * toggle of the view (explore-views.ts), `demangle`, `directives`, …
+ */
+export type ViewOptions = Record<string, boolean>;
 
 /** What the explorer needs of the workspace. */
 export interface ExplorerHost {
+	/** The current language's id (languages.ts). */
+	language(): string;
 	/** The pack whose `explorer.js` serves the current language, or null when it has no views. */
 	pack(): PackId | null;
+	/**
+	 * Options every request carries besides the view's own, from the
+	 * project: Swift's optimisation level (`optimization: '-O'`), which the
+	 * top bar sets for Run and the views alike.
+	 */
+	options(): Record<string, string>;
 	/** Every file of the project as last edited. */
 	files(): Files;
 }
@@ -73,21 +81,17 @@ export interface ExplorerHost {
 /** How long after the last edit a visible view asks again. */
 const EDIT_DELAY_MS = 500;
 
-const KINDS: readonly ExploreKind[] = ['llvm-ir', 'asm'];
-
-/** The options a view starts with: assembly demangled, IR as LLVM wrote it. */
-export const DEFAULT_VIEW_OPTIONS: Readonly<Record<ExploreKind, ViewOptions>> = {
-	'llvm-ir': { demangle: false, intel: false, directives: false, library: false },
-	asm: { demangle: true, intel: false, directives: false, library: false },
-};
+/** The options of every view of language `id`, as a new session starts them. */
+const defaultsOf = (id: string): Record<ExploreKind, ViewOptions> => Object.fromEntries(ALL_KINDS.map((k) => [k, defaultOptions(id, k)])) as Record<ExploreKind, ViewOptions>;
+const byKind = <T>(make: () => T): Record<ExploreKind, T> => Object.fromEntries(ALL_KINDS.map((k) => [k, make()])) as Record<ExploreKind, T>;
 
 const empty = (): ViewState => ({ status: 'idle', text: '', lines: [], unoptimized: [], target: null, triple: '', flags: [], ms: 0, error: '', progress: null, path: null });
 
 /** Messages explorer.js posts. */
 type FromExplorer =
 	| { type: 'loading'; label: string; loaded: number; total: number }
-	| { type: 'result'; id: number; emit: ExploreKind; ok: true; text: string; lines: LineMap; unoptimized?: LineCode[]; target: CppTargetId; triple: string; flags: string[]; ms: number }
-	| { type: 'result'; id: number; emit: ExploreKind; ok: false; error: string; target: CppTargetId | null; ms: number };
+	| { type: 'result'; id: number; emit: ExploreKind; ok: true; text: string; lines: LineMap; unoptimized?: LineCode[]; target: string; triple: string; flags: string[]; ms: number }
+	| { type: 'result'; id: number; emit: ExploreKind; ok: false; error: string; target: string | null; ms: number };
 
 export class Explorer {
 	/**
@@ -95,16 +99,20 @@ export class Explorer {
 	 * this class, a whole view at a time. Raw, not deeply reactive: an
 	 * output has thousands of lines, and nothing reads into one in place.
 	 */
-	views = $state.raw<Record<ExploreKind, ViewState>>({ 'llvm-ir': empty(), asm: empty() });
-	/** Each view's options. */
-	options = $state<Record<ExploreKind, ViewOptions>>({ 'llvm-ir': { ...DEFAULT_VIEW_OPTIONS['llvm-ir'] }, asm: { ...DEFAULT_VIEW_OPTIONS.asm } });
-	/** The source the views show: the active editor's when it is a C or C++ source, else the last one that was. */
+	views = $state.raw<Record<ExploreKind, ViewState>>(byKind(empty));
+	/** Each view's options, for the current language: kept for the session per language, so a switch back finds them as they were. */
+	options = $state<Record<ExploreKind, ViewOptions>>(byKind(() => ({})));
+	/** The source the views show: the active editor's when the views can show it (a C++ source, not a header), else the last one that was. */
 	source = $state<string | null>(null);
 
 	private worker: Worker | null = null;
 	private nextId = 0;
 	/** The id of each view's newest request; an answer to any other is dropped. */
-	private readonly latest: Record<ExploreKind, number> = { 'llvm-ir': 0, asm: 0 };
+	private readonly latest: Record<ExploreKind, number> = byKind(() => 0);
+	/** Each language's options, as last set in this session. */
+	private readonly saved = new Map<string, Record<ExploreKind, ViewOptions>>();
+	/** The language `options` are of. */
+	private optionsLanguage: string | null = null;
 	/** Views whose panel is open. */
 	private readonly open = new Set<ExploreKind>();
 	/** Open views whose panel is in front (not behind another tab). */
@@ -114,7 +122,27 @@ export class Explorer {
 	private editTimer: ReturnType<typeof setTimeout> | undefined;
 	private readonly listeners = new Set<(kind: ExploreKind) => void>();
 
-	constructor(private readonly host: ExplorerHost) {}
+	constructor(private readonly host: ExplorerHost) {
+		this.loadOptions();
+	}
+
+	/** The current language's id: the one whose views are open, and whose options `options` holds. */
+	get language(): string {
+		return this.host.language();
+	}
+
+	/** The kinds the current language has views of. */
+	private kinds(): ExploreKind[] {
+		return viewsOf(this.host.language())?.views.map((v) => v.kind) ?? [];
+	}
+
+	/** Puts the current language's options in `options`, its saved ones or the defaults. */
+	private loadOptions(): void {
+		const language = this.host.language();
+		if (language === this.optionsLanguage) return;
+		this.optionsLanguage = language;
+		this.options = this.saved.get(language) ?? defaultsOf(language);
+	}
 
 	/**
 	 * Calls `listener` with a view's kind after its state or options change
@@ -165,24 +193,40 @@ export class Explorer {
 		if (this.stale.has(kind)) this.request(kind);
 	}
 
-	/** Changes one of a view's options, and asks again. */
-	setOption(kind: ExploreKind, option: keyof ViewOptions, value: boolean): void {
+	/**
+	 * Changes one of a view's options, and asks again; a shared option
+	 * (explore-views.ts `shared`, such as Haskell's -O) changes in every view
+	 * of the language.
+	 */
+	setOption(kind: ExploreKind, option: string, value: boolean): void {
 		if (this.options[kind][option] === value) return;
-		this.options[kind] = { ...this.options[kind], [option]: value };
-		this.changed(kind);
-		this.refresh(kind);
+		const toggle = viewOf(this.host.language(), kind)?.toggles.find((t) => t.key === option);
+		const kinds = toggle?.shared ? this.kinds() : [kind];
+		for (const k of kinds) this.options[k] = { ...this.options[k], [option]: value };
+		this.saved.set(this.host.language(), $state.snapshot(this.options));
+		for (const k of kinds) {
+			this.changed(k);
+			this.refresh(k);
+		}
+	}
+
+	/** Something every request carries changed (ExplorerHost `options`: Swift's level): the open views ask again. */
+	settingsChanged(): void {
+		for (const kind of this.kinds()) this.refresh(kind);
 	}
 
 	/**
-	 * The editor now shows `path` (null: no file). A C or C++ source becomes
-	 * the views' source; anything else (a header, compile_flags.txt) keeps
+	 * The editor now shows `path` (null: no file). A source the views can
+	 * show (a C or C++ source, a .swift, .rs or .hs file) becomes the views'
+	 * source; anything else (a header, compile_flags.txt, Cargo.toml) keeps
 	 * the one before, as a header's code is in the source that includes it.
 	 */
 	activeChanged(path: string | null): void {
-		const source = viewSourceFor(path, this.source);
+		const views = viewsOf(this.host.language());
+		const source = views ? viewSourceFor(path, this.source, views.isSource) : null;
 		if (source === this.source) return;
 		this.source = source;
-		for (const kind of KINDS) this.refresh(kind);
+		for (const kind of this.kinds()) this.refresh(kind);
 	}
 
 	/** A project file was edited, created, renamed or deleted: the open views ask again once editing pauses. */
@@ -192,14 +236,15 @@ export class Explorer {
 		this.editTimer = setTimeout(() => {
 			// A source deleted or renamed is no longer one to show.
 			if (this.source !== null && !(this.source in this.host.files())) this.source = null;
-			for (const kind of KINDS) this.refresh(kind);
+			for (const kind of this.kinds()) this.refresh(kind);
 		}, EDIT_DELAY_MS);
 	}
 
 	/**
 	 * Stops the worker and forgets every view's output and the source: the
 	 * language changed or the project was replaced. The views' panels are
-	 * the editor area's to close; options are kept for the session.
+	 * the editor area's to close; options are kept for the session, each
+	 * language's own.
 	 */
 	reset(): void {
 		clearTimeout(this.editTimer);
@@ -209,7 +254,8 @@ export class Explorer {
 		this.open.clear();
 		this.visible.clear();
 		this.stale.clear();
-		for (const kind of KINDS) {
+		this.loadOptions();
+		for (const kind of ALL_KINDS) {
 			this.latest[kind] = ++this.nextId;
 			this.set(kind, empty());
 			this.changed(kind);
@@ -245,7 +291,7 @@ export class Explorer {
 		const keep = view.path === path && view.status !== 'error';
 		this.set(kind, { ...(keep ? view : { ...empty(), target: view.target, triple: view.triple }), status: 'compiling', error: '', progress: null, path });
 		this.changed(kind);
-		worker.postMessage({ type: 'emit', id, emit: kind, files: { ...this.host.files() }, path, options: { ...this.options[kind] } });
+		worker.postMessage({ type: 'emit', id, emit: kind, files: { ...this.host.files() }, path, options: { ...this.host.options(), ...$state.snapshot(this.options[kind]) } });
 	}
 
 	/** The worker, started on first use; null when the language has no views. */
@@ -275,7 +321,7 @@ export class Explorer {
 
 	private receive(m: FromExplorer): void {
 		if (m.type === 'loading') {
-			for (const kind of KINDS) {
+			for (const kind of ALL_KINDS) {
 				const view = this.views[kind];
 				if (view.status !== 'loading' && view.status !== 'compiling') continue;
 				const done = m.total > 0 && m.loaded >= m.total;
@@ -284,7 +330,7 @@ export class Explorer {
 			}
 			return;
 		}
-		if (m.type !== 'result' || !KINDS.includes(m.emit) || m.id !== this.latest[m.emit]) return;
+		if (m.type !== 'result' || !ALL_KINDS.includes(m.emit) || m.id !== this.latest[m.emit]) return;
 		const view = this.views[m.emit];
 		this.set(m.emit, m.ok
 			? { ...view, status: 'ok', text: m.text, lines: m.lines, unoptimized: m.unoptimized ?? [], target: m.target, triple: m.triple, flags: m.flags, ms: m.ms, error: '', progress: null }
@@ -294,7 +340,7 @@ export class Explorer {
 
 	/** Every view that waits for an answer shows `message` instead. */
 	private failAll(message: string): void {
-		for (const kind of KINDS) {
+		for (const kind of ALL_KINDS) {
 			const view = this.views[kind];
 			if (view.status !== 'loading' && view.status !== 'compiling') continue;
 			this.latest[kind] = ++this.nextId;
