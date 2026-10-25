@@ -538,7 +538,7 @@ test('a light-v release is published only once every asset is attached', () => {
     assert.doesNotMatch(String(publish.if), /yukibana-light/, 'a branch push publishes no release');
 });
 
-test('a push to yukibana-light deploys, one deploy at a time, and builds no pack to do it', () => {
+test('a push to yukibana-light deploys, one deploy at a time, and builds no slow pack to do it', () => {
     // The integration branch goes live at light.yukibana.dev on every push
     // that changes Light, as a tag does; the stores are main's only, so a
     // deploy that built what they lack would build compilers for hours.
@@ -560,7 +560,10 @@ test('a push to yukibana-light deploys, one deploy at a time, and builds no pack
     // nothing in the pack job builds.
     const pack = stepsOf(/** @type {Job} */ (jobs.pack));
     const lookup = stepById(pack, 'output');
-    assert.equal(lookup.env?.STORED, '${{ inputs.upload && inputs.stored }}');
+    assert.equal(lookup.env?.STORED, '${{ inputs.upload && inputs.stored && !matrix.deploy-builds }}');
+    // Only a pack that builds in minutes may be built by a deploy.
+    const include = /** @type {{ pack: string, timeout: number, 'deploy-builds'?: boolean }[]} */ (/** @type {any} */ (jobs.pack).strategy.matrix.include);
+    for (const entry of include.filter((e) => e['deploy-builds'])) assert.ok(entry.timeout <= 30, `${entry.pack} says deploy-builds but may take ${entry.timeout} minutes`);
     assert.match(String(lookup.run), /any=\(--any\)/);
     assert.match(String(lookup.run), /pack-store\.sh "\$COMMAND" "\$PACK" "\$\{any\[@\]\}"/);
     assert.match(String(lookup.run), /::error title=\$PACK::[^\n]*a deploy never builds a pack/);
