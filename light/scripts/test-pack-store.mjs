@@ -10,7 +10,7 @@
 //
 //   node --test scripts/test-pack-store.mjs   (from light/; needs git, tar, zstd)
 import assert from 'node:assert/strict';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import { createServer } from 'node:http';
@@ -563,6 +563,65 @@ test("a pack's toolchain key report names the file that changed it", async () =>
     assert.match(env.out, /^M\tlight\/packs\/tool\/toolchain\.env$/m);
     assert.equal(env.out.trim().split('\n').at(-1), 'changed');
     assert.notEqual(baseKey, await key());
+});
+
+/**
+ * The names of the variables and functions toolchain-build-env.sh defines
+ * that the toolchain-key.sh in `scripts` assigns or defines again, when
+ * sourced as every store script sources it. Each such name would let an
+ * unkeyed file decide what a keyed one claims to (the variables that reach
+ * every build, or which names a knob may not take), and an identical copy
+ * is no better: the next edit lands in one of the two. Each name is made
+ * read-only, in turn, at the end of a scratch copy of the build environment,
+ * so any later assignment or definition of it fails where it happens.
+ */
+function redefinedByKey(scripts) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-store-allowlist-'));
+    try {
+        const copy = path.join(dir, 'light/scripts');
+        fs.mkdirSync(copy, { recursive: true });
+        const def = fs.readFileSync(path.join(scripts, 'toolchain-key.sh'), 'utf8');
+        const env = fs.readFileSync(path.join(scripts, 'toolchain-build-env.sh'), 'utf8');
+        fs.writeFileSync(path.join(copy, 'toolchain-key.sh'), def);
+        const own = execFileSync(
+            'bash',
+            ['-c', 'names() { compgen -v; compgen -A function; }; plain="$(names | sort)"; (source "$1"; names | sort | comm -13 <(printf "%s\\n" "$plain" plain) -)', 'bash', path.join(scripts, 'toolchain-build-env.sh')],
+            { encoding: 'utf8' },
+        )
+            .split('\n')
+            .filter(Boolean);
+        assert.ok(own.includes('TOOLCHAIN_ENV_FIXED') && own.includes('toolchain_env_args'), own.join(' '));
+        return own.filter((name) => {
+            const kind = execFileSync('bash', ['-c', `source "$1"; declare -F "$2" >/dev/null && echo -f || echo`, 'bash', path.join(scripts, 'toolchain-build-env.sh'), name], { encoding: 'utf8' }).trim();
+            fs.writeFileSync(path.join(copy, 'toolchain-build-env.sh'), `${env}\nreadonly ${kind} ${name}\n`);
+            const r = spawnSync('bash', ['-c', 'set -eu; source "$1"', 'bash', path.join(copy, 'toolchain-key.sh')], { encoding: 'utf8' });
+            return r.status !== 0 || r.stderr !== '';
+        });
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+test('what reaches every toolchain build is decided only by the keyed build environment, never by the unkeyed key definition', () => {
+    assert.deepEqual(redefinedByKey(SCRIPTS), []);
+    // The hazard itself: an allowlist entry added in toolchain-key.sh, or the
+    // whole block copied there unchanged, would reach every build with no key
+    // changing. The check above must see either.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pack-store-allowlist-'));
+    try {
+        const env = fs.readFileSync(path.join(SCRIPTS, 'toolchain-build-env.sh'), 'utf8');
+        const block = env.slice(env.indexOf('TOOLCHAIN_ENV_FIXED='), env.indexOf('\n}\n', env.indexOf('toolchain_env_reserved()')) + 3);
+        for (const [added, names] of [
+            ['TOOLCHAIN_ENV_FIXED+=(EXTRA=1)\n', ['TOOLCHAIN_ENV_FIXED']],
+            [block, ['TOOLCHAIN_ENV_FIXED', 'TOOLCHAIN_ENV_TRANSPORT', 'toolchain_env_reserved']],
+        ]) {
+            fs.copyFileSync(path.join(SCRIPTS, 'toolchain-build-env.sh'), path.join(dir, 'toolchain-build-env.sh'));
+            fs.writeFileSync(path.join(dir, 'toolchain-key.sh'), fs.readFileSync(path.join(SCRIPTS, 'toolchain-key.sh'), 'utf8') + added);
+            assert.deepEqual(redefinedByKey(dir).sort(), names);
+        }
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });
 
 test('a key report names a new input nobody has committed yet, as its key does', async () => {

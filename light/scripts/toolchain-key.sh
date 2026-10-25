@@ -39,6 +39,14 @@
 # toolchain-manifest.mjs) and the store's helpers (pack-store.sh,
 # pack-lib.sh) are part of no key either.
 #
+# For the same reason nothing that decides what reaches a build is defined
+# here: the variables every build gets and the names a knob may not take
+# (TOOLCHAIN_ENV_FIXED, TOOLCHAIN_ENV_TRANSPORT, toolchain_env_reserved) are
+# toolchain-build-env.sh's alone, and this file, sourced after it, never
+# assigns or redefines any of them. A copy here once overrode the keyed one,
+# so the allowlist every build saw came from a file no key covers;
+# test-pack-store.mjs fails if any name of that file is defined here again.
+#
 # Functions return non-zero after naming what is wrong on stderr; with
 # `set -e` and `shopt -s inherit_errexit`, `x=$(toolchain_specs p)` stops the
 # caller there.
@@ -116,41 +124,6 @@ toolchain_specs() {
     printf ':(exclude)%s/%s\n' "$dir" "$line"
   done
   echo light/scripts/toolchain-build-env.sh
-}
-
-# The variables of the caller's environment that reach every toolchain
-# build, by name when they are set, and the ones set to a fixed value
-# (NAME=value) whatever the caller has. They say where things are (PATH,
-# HOME, TMPDIR, OUT, PACK_CACHE), how hard to work (JOBS, NICE), whether this
-# is CI and how to reach GitHub (CI, GH_TOKEN), never what to build: a build
-# script must give the same bytes whatever they are, and PATH is the
-# caller's so a build finds the tools deps.apt and setup.sh installed.
-# LANG is fixed so no tool's output depends on the caller's locale.
-# Read-only: a knob of the same name is refused by toolchain_knobs.
-TOOLCHAIN_ENV_FIXED=(PATH HOME TMPDIR CI GH_TOKEN OUT PACK_CACHE JOBS NICE LANG=C.UTF-8)
-
-# The variables that only carry bytes to the build, passed when set: the
-# proxy and no-proxy settings in both cases, and the CA bundles that let a
-# TLS-intercepting proxy be trusted. They cannot change outputs, because
-# every download a toolchain.sh makes is pinned by sha256 (pins.sh): through
-# any proxy, with any CA, a download either has the pinned bytes or the build
-# fails. That is why they are not part of any key, and why a build behind a
-# proxy is still clean.
-TOOLCHAIN_ENV_TRANSPORT=(
-  HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy
-  NO_PROXY no_proxy
-  SSL_CERT_FILE SSL_CERT_DIR CURL_CA_BUNDLE REQUESTS_CA_BUNDLE GIT_SSL_CAINFO
-  NODE_EXTRA_CA_CERTS
-  npm_config_https_proxy npm_config_proxy npm_config_cafile
-)
-
-# Whether $1 names a fixed or transport variable (one a knob may not be).
-toolchain_env_reserved() {
-  local v
-  for v in "${TOOLCHAIN_ENV_FIXED[@]}" "${TOOLCHAIN_ENV_TRANSPORT[@]}"; do
-    [ "${v%%=*}" != "$1" ] || return 0
-  done
-  return 1
 }
 
 # Prints the knobs of pack $1's toolchain build as lines "NAME source" or
