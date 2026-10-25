@@ -30,7 +30,7 @@
 #   and anything else it reads: sub-scripts, patches, overlays.
 #
 # The key is the first 40 hex digits of the sha256 of the lines
-#   yukibana-toolchain/3
+#   yukibana-toolchain/4
 #   unit <pack>/<unit>
 #   <mode> <git blob id> <path>   each input in the worktree, sorted by path
 #   needs <pack>/<unit> <key>     each unit it needs, sorted
@@ -378,7 +378,7 @@ toolchain_lines() {
   mapfile -d '' -t paths < <(LC_ALL=C sort -zu "$list")
   rm -f "$list"
   # The format tag: bumped by any change that alters a key (see the header).
-  echo "yukibana-toolchain/3"
+  echo "yukibana-toolchain/4"
   echo "unit $id"
   # Modes first, then every regular file hashed by one git process (with the
   # path's filters, so a committed file gives its blob id).

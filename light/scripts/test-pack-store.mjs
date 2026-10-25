@@ -580,7 +580,7 @@ test('a comment or helper change in the key or store scripts leaves every toolch
  * computed, so the build environment may change without this test
  * noticing, as it should.
  */
-const GOLDEN = `yukibana-toolchain/3
+const GOLDEN = `yukibana-toolchain/4
 unit fix/main
 100644 cd911e2352e44b4e43d1e1e4b48f1fe65803c11b light/packs/fix/patches/a.diff
 100644 4e610c04d58371663d95ca8237eea260b08f090c light/packs/fix/src/a.c
@@ -637,7 +637,7 @@ test('a fixed unit keeps its exact key lines and key until the format tag yukiba
         assert.equal(lines, golden);
         assert.equal(keyOf('fix/main'), createHash('sha256').update(golden).digest('hex').slice(0, 40));
         const base = execFileSync('bash', ['-c', 'set -eu; source light/scripts/toolchain-key.sh; toolchain_lines fix/base'], { cwd: dir, env, encoding: 'utf8' });
-        assert.equal(base, `yukibana-toolchain/3\nunit fix/base\n100755 ${g('hash-object', 'light/packs/fix/toolchains/base/toolchain.sh')} light/packs/fix/toolchains/base/toolchain.sh\n100644 ${build} light/scripts/toolchain-build-env.sh\n`);
+        assert.equal(base, `yukibana-toolchain/4\nunit fix/base\n100755 ${g('hash-object', 'light/packs/fix/toolchains/base/toolchain.sh')} light/packs/fix/toolchains/base/toolchain.sh\n100644 ${build} light/scripts/toolchain-build-env.sh\n`);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
