@@ -319,7 +319,9 @@ for (const target of LINUX) {
         const bad = run(t, target, await build(target, withTarget({ ...sample, 'tests/properties_test.cpp': PROPERTIES.gtest(true) }, target), linkWith), '', env);
         if (bad) {
             assert.equal(bad.status, 1, bad.stdout + bad.stderr);
-            assert.match(bad.stdout, /Falsifiable after \d+ tests? and \d+ shrinks?\s+std::tuple<int, int>:\s+\(1, 1\)/);
+            // RapidCheck's seed is random, and when the first counterexample it finds is
+            // already (1, 1) it shrinks nothing and prints no "and N shrinks".
+            assert.match(bad.stdout, /Falsifiable after \d+ tests?(?: and \d+ shrinks?)?\s+std::tuple<int, int>:\s+\(1, 1\)/);
             assert.match(bad.stdout, /\[  FAILED  \] GeometryProperties\.NormIsAWholeNumber/);
         }
     });

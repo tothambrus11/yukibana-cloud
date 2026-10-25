@@ -594,7 +594,9 @@ TEST_CASE("throws something else") {
         // the report on stderr, the integrations into the framework's.
         const where = fw === 'catch2' ? /rapidcheck\/catch\.h:\d+: FAILED:/ : fw === 'doctest' ? /tests\/properties_test\.cpp:\d+: ERROR: CHECK\( holds \) is NOT correct!/ : /rapidcheck\/gtest\.h:\d+: Failure/;
         const report = bad.stdout + bad.stderr;
-        const shrunk = report.match(/Falsifiable after (\d+) tests? and (\d+) shrinks?\s+std::tuple<int, int>:\s+(\(-?\d+, -?\d+\))/);
+        // RapidCheck's seed is random, and when the first counterexample it finds is
+        // already (1, 1) it shrinks nothing and prints no "and N shrinks".
+        const shrunk = report.match(/Falsifiable after (\d+) tests?(?: and (\d+) shrinks?)?\s+std::tuple<int, int>:\s+(\(-?\d+, -?\d+\))/);
         check(
             `RapidCheck with ${FW_NAMES[fw]}: a property that fails is shrunk to (1, 1), reported with file and line, exit non-zero`,
             bad.code !== 0 && bad.code !== null && where.test(bad.stdout) && shrunk?.[3] === '(1, 1)' &&
@@ -608,7 +610,7 @@ TEST_CASE("throws something else") {
     const own = await run({ ...SAMPLE, 'main.cpp': OWN_MAIN_PROPERTIES });
     check(
         'RapidCheck from a main of its own (rc::check), no framework: the holding property passes, the false one is shrunk, exit 1',
-        own.code === 1 && /OK, passed 100 tests/.test(own.stderr) && /Falsifiable after \d+ tests? and \d+ shrinks?\s+std::tuple<int, int>:\s+\(1, 1\)/.test(own.stderr),
+        own.code === 1 && /OK, passed 100 tests/.test(own.stderr) && /Falsifiable after \d+ tests?(?: and \d+ shrinks?)?\s+std::tuple<int, int>:\s+\(1, 1\)/.test(own.stderr),
         `code=${own.code} in ${own.ms} ms`
     );
     console.log(own.stderr.trimEnd().replace(/^/gm, '    ! '));

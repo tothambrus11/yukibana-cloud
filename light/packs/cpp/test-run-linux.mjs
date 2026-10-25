@@ -297,7 +297,9 @@ for (const t of LINUX) {
         assert.equal(bad.code, 1, why(bad) + bad.stdout);
         const out = plain(bad.stdout);
         assert.ok(out, `no report: ${why(bad)}`);
-        assert.match(out, /Falsifiable after \d+ tests? and \d+ shrinks?\s+std::tuple<int, int>:\s+\(1, 1\)/);
+        // RapidCheck's seed is random, and when the first counterexample it finds is
+        // already (1, 1) it shrinks nothing and prints no "and N shrinks".
+        assert.match(out, /Falsifiable after \d+ tests?(?: and \d+ shrinks?)?\s+std::tuple<int, int>:\s+\(1, 1\)/);
         assert.match(out, /tests\/properties_test\.cpp:\d+:\s+RC_ASSERT\(p\.norm\(\) == std::floor\(p\.norm\(\)\)\)/);
         assert.match(out, /\[  FAILED  \] GeometryProperties\.NormIsAWholeNumber/);
         checkFetched(bad.fetched, arch);
