@@ -105,6 +105,14 @@ const VERSION_WAIT_MS = 1500;
  * headers). The waiting worker is the page's build; the reload that
  * follows (controllerchange) brings page and packs together. The page has
  * only just loaded, so nothing is lost.
+ *
+ * Only a worker from before 2026-10-24, when pages started coming from the
+ * worker's own cache, can control a page of another build: a later worker
+ * serves the page from the build it caches. Remove this, and the `version`
+ * message the worker answers for it, after 2027-01-31; a browser that has
+ * not opened the app since before 2026-10-24 then runs one visit with the
+ * old build's packs and gets the new build on the next, as `watchUpdates`
+ * offers it.
  */
 async function switchIfStale(registration: ServiceWorkerRegistration, applying: () => void): Promise<void> {
 	const controller = navigator.serviceWorker.controller;

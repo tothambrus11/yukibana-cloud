@@ -57,8 +57,6 @@ export class Connection {
 	 *   terminated by {@link Connection.dispose}.
 	 * @param onClose called once when the worker dies or is disposed, with
 	 *   the reason when it died on its own.
-	 */
-	/**
 	 * @param trace when given, called with every message in both directions,
 	 *   for the `?trace` debugging mode.
 	 */

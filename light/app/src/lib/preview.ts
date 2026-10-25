@@ -199,16 +199,19 @@ export class Preview {
 			this.worker = worker;
 		}
 		this.worker.postMessage({ type: 'preview', id: ++this.requested, files: { ...this.files() }, entry: this.entry });
-		// A runner that never answers leaves the panel blank and says nothing.
-		// The one seen so far was an old runner.js, from before previews
-		// existed, served by the previous version's service worker until the
-		// new version took over: it ignores `preview` requests.
+		// A runner that never answers leaves the panel blank and says nothing,
+		// so the terminal says it instead, without guessing why. The one case
+		// seen so far was a runner.js from before previews existed, which
+		// ignores `preview` requests, served by a service worker from before
+		// 2026-10-24 (see switchIfStale in pwa.ts). That case is gone after
+		// 2027-01-31, when switchIfStale is removed; the watchdog stays, for
+		// any runner that hangs or never loads.
 		clearTimeout(this.watchdog);
 		this.watchdog = setTimeout(() => {
 			this.output.print(
 				'stderr',
 				`The preview runner (packs/${this.pack}/runner.js) has not answered for ${SILENT_RUNNER_MS / 1000} s. ` +
-					'If the app just updated, an old cached copy may still be running: reload the page and press Run again.\n',
+					'Reload the page and press Run again.\n',
 			);
 		}, SILENT_RUNNER_MS);
 	}

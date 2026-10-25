@@ -197,6 +197,14 @@ jobs:
         working-directory: light/app
         run: npm run build
 
+      # The unit job has no build, so this one test is skipped there; here it
+      # runs on the build just made, and a missing build fails it.
+      - name: What the built app carries
+        working-directory: light/app
+        env:
+          BUNDLE_REQUIRED: '1'
+        run: node --test tests/unit/bundle.test.mjs
+
       - name: End-to-end (JavaScript, TypeScript, web, p5.js)
         working-directory: light/app
         run: node tests/e2e.mjs javascript typescript web p5

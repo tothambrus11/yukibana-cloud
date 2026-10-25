@@ -111,7 +111,7 @@ sw.addEventListener('activate', (event) => {
 
 sw.addEventListener('message', (event) => {
 	if (event.data === 'skip-waiting') void sw.skipWaiting();
-	// Which build this worker is (pwa.ts compares it with the page's).
+	// Which build this worker is (pwa.ts compares it with the page's; goes with switchIfStale).
 	else if (event.data === 'version') event.ports[0]?.postMessage(version);
 });
 

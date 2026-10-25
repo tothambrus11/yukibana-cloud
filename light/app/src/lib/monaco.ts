@@ -90,7 +90,9 @@ StandaloneServices.initialize({
 export const EDITOR_FONT = "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 // The editor features used, as editor.main.js imports them, minus the ones
-// this app has no use for (diff editor, colour picker, sticky scroll, ...).
+// this app has no use for (the diff editor, sticky scroll, inline
+// completions, drag and drop, font zoom, ...). The colour picker is not one
+// of them: the CSS service's colours use it, and it is imported below.
 // The `features/*/register` modules are not used: some import only part of a
 // feature (suggest/register leaves out the suggest widget).
 import 'monaco-editor/features/codicon/register'; // codicon.css

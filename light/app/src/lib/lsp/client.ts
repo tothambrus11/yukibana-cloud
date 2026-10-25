@@ -3,6 +3,25 @@
  * Monaco models kept in sync with it, and Monaco's language features
  * answered by it. The app runs one client at a time, for the project of the
  * selected language.
+ *
+ * Why not Monaco's own client (`monaco.lsp.MonacoLspClient`, checked in
+ * monaco-editor 0.57.0):
+ *
+ * - it sends `initialize` with `rootUri: null` and no `workspaceFolders`,
+ *   and answers no `workspace/workspaceFolders`, so a server never learns
+ *   the project's root, which servers use to find the project's files and
+ *   build settings;
+ * - it answers no `workspace/configuration`, which is how the Python
+ *   server here is told its type-checking mode (`settings` in languages.ts);
+ * - its constructor takes a transport and nothing else, so there are no
+ *   hooks: not for the packs' own notifications (`yukibana/loading`), not
+ *   for the reason a refused request gives, not for the features it does
+ *   not have (call hierarchy and workspace symbols are in its protocol
+ *   types but not among its features).
+ *
+ * Nor is it bundled: monaco.ts builds the editor from `editor.api`, never
+ * `editor.main` (which exports it as `lsp`), and tests/unit/bundle.test.mjs
+ * checks that the built app does not contain it.
  */
 import type * as lsp from 'vscode-languageserver-protocol';
 import { createQuickPick, monaco, showEditorMessage, type QuickPickItem } from '../monaco';

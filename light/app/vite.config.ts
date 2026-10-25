@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig, type Plugin } from 'vite';
@@ -12,16 +13,18 @@ const isolation = {
 
 /**
  * Monaco's JSON service creates its worker with `internal/common/workers.js`,
- * which imports every editor contribution as a side effect; it is replaced by
- * src/lib/monaco-workers.ts, the same function without them.
+ * which (in monaco-editor 0.57.0, the version checked) imports every editor
+ * contribution as a side effect, `diffEditor.contribution` among them: that
+ * bundles what monaco.ts leaves out and registers their services after the
+ * editor's have started. It is replaced by src/lib/monaco-workers.ts, the
+ * same function without them; that file says why in full.
  */
 const monacoWorkers: Plugin = {
 	name: 'yukibana:monaco-workers',
 	enforce: 'pre',
 	resolveId(source, importer) {
 		if (importer?.includes('/monaco-editor/') && source.endsWith('/internal/common/workers.js')) {
-			// On Windows a file URL's path is /C:/...: the drive letter goes first.
-			return decodeURIComponent(new URL('./src/lib/monaco-workers.ts', import.meta.url).pathname).replace(/^\/([A-Za-z]:)/, '$1');
+			return fileURLToPath(new URL('./src/lib/monaco-workers.ts', import.meta.url));
 		}
 		return null;
 	},
