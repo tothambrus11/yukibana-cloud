@@ -51,11 +51,11 @@ jobs:
       run:
         working-directory: light/app
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # 24: setup-node's npm cache runs npm at the repository root, whose
       # package.json (the IDE's) requires Node 24 (devEngines).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm

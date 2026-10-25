@@ -23,17 +23,16 @@
 # pack compiles LLVM three times and QEMU: about three hours from nothing,
 # minutes with its cache.
 #
-# Runs on pushes and pull requests that touch a pack, and is called by
-# light-release.yml with `upload: true`, which also uploads each pack's
-# output as the artifact pack-<pack> for the release to assemble. A pull
-# request from a fork builds but cannot write to the store.
+# Runs on pushes to main and on pull requests that touch a pack, and is
+# called by light-release.yml with `upload: true`, which also uploads each
+# pack's output as the artifact pack-<pack> for the release to assemble. A
+# pull request's run writes to the store too, unless it comes from a fork.
 name: Yukibana Light packs
 
 on:
   push:
     branches:
       - main
-      - yukibana-light
     paths:
       - light/packs/**
       - light/scripts/pack-store.sh
@@ -81,7 +80,7 @@ jobs:
       run:
         working-directory: light
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Lint the store and setup scripts
         run: shellcheck -S style scripts/pack-store.sh setup.sh
       - name: Test the store
@@ -125,7 +124,7 @@ jobs:
       run:
         working-directory: light/packs/${{ matrix.pack }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # HEAD's build of these sources, when the store has one (exit 3: none).
       - name: Fetch the pack built from these sources
@@ -156,7 +155,7 @@ jobs:
           sudo apt-get update -q
           grep -v '^#' deps.apt | xargs sudo apt-get install -y -q --no-install-recommends
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: steps.output.outputs.cache-hit != 'true'
         with:
           node-version: 22
