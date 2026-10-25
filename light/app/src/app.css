@@ -267,11 +267,18 @@ body {
 /*
  * Popovers (Popover.svelte, anchor.ts): in the top layer, beside their
  * toggle, never larger than the window; a bottom sheet on a phone.
+ *
+ * A popover that wants a width sets `--popover-width`, never `width`: a
+ * `width` of its own came after these rules with the same specificity, so
+ * it beat the phone sheet's 100% and the sheet ran off the screen (Build
+ * settings was 480 px wide in a 390 px window, the view Options 384 px in
+ * a 360 px one). Read through the variable, the sheet's 100% always wins.
  */
 .yk-popover {
 	position: fixed;
 	inset: auto;
 	margin: 0;
+	width: var(--popover-width, auto);
 	max-width: calc(100vw - 1rem);
 	max-height: calc(var(--app-height, 100dvh) - var(--nav-height) - 1rem);
 	overflow: auto;
@@ -295,7 +302,7 @@ body {
 		position-area: none;
 		inset: auto 0 0 0;
 		width: 100%;
-		max-width: none;
+		max-width: 100%;
 		margin: 0;
 		border-radius: 0.75rem 0.75rem 0 0;
 		padding-bottom: max(0.5rem, env(safe-area-inset-bottom));

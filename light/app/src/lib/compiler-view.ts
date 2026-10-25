@@ -127,7 +127,7 @@ function addStyles(): void {
 .yk-view-body { position: relative; flex: 1; min-height: 0; }
 .yk-view-editor { position: absolute; inset: 0; }
 .yk-view-note { position: absolute; inset: 0; padding: 0.75rem 1rem; color: var(--gray-3); font-size: 0.8125rem; pointer-events: none; }
-.yk-view-menu { width: 24rem; padding: 0.5rem !important; white-space: normal; font-size: 0.85rem; }
+.yk-view-menu { --popover-width: 24rem; padding: 0.5rem !important; white-space: normal; font-size: 0.85rem; }
 .yk-view-menu .toggles { display: grid; gap: 0.15rem; }
 .yk-view-menu .toggle-row small { display: block; padding: 0 0.6rem 0.3rem 1.9rem; color: var(--gray-3); font-size: 0.72rem; line-height: 1.3; }
 .yk-view-details { display: grid; gap: 0.35rem; padding: 0.2rem 0.6rem 0.4rem; }

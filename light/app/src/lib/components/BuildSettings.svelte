@@ -180,7 +180,7 @@
 		font-size: 0.78rem;
 	}
 	:global(.build-settings) {
-		width: 30rem;
+		--popover-width: 30rem;
 		padding: 0.75rem 0.9rem 0.9rem !important;
 	}
 	h2 {

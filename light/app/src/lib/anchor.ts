@@ -7,9 +7,14 @@
  * Where the browser has CSS anchor positioning, the popover is tied to its
  * anchor by `anchor-name` / `position-anchor` and placed below it, flipped
  * to the left when it would leave the viewport on the right, with its size
- * capped by app.css's `.yk-popover` rules. Elsewhere (Firefox before
- * anchor positioning, or a test that turns it off) it is placed once from
- * the anchor's rectangle and clamped to the viewport. On a phone-width
+ * capped by app.css's `.yk-popover` rules. When none of those placements
+ * fits (a 30rem Build settings under a chip in the middle of a 768 px
+ * window is too wide for either side of it), the browser keeps the first
+ * and lets it run off the screen: Build settings ended at 771 px of 768,
+ * and a view's Options menu at 1070. So the placement is measured, and one
+ * that leaves the viewport is replaced by the other way. Elsewhere (Firefox
+ * before anchor positioning, or a test that turns it off) it is placed
+ * once from the anchor's rectangle and clamped to the viewport. On a phone-width
  * window (under 40em) app.css makes it a bottom sheet instead, and nothing
  * here moves it.
  *
@@ -51,7 +56,9 @@ export function placePopover(popover: HTMLElement, anchor: HTMLElement): void {
 		}
 		popover.style.setProperty('position-anchor', name);
 		popover.classList.add('anchored');
-		return;
+		const r = popover.getBoundingClientRect();
+		if (r.left >= 0 && r.top >= 0 && r.right <= document.documentElement.clientWidth && r.bottom <= window.innerHeight) return;
+		popover.style.removeProperty('position-anchor');
 	}
 	popover.classList.remove('anchored');
 	const a = anchor.getBoundingClientRect();
