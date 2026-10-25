@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"noEmit": true,
+		"allowJs": true,
+		"checkJs": true,
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"target": "es2022",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"lib": ["es2023", "dom", "dom.iterable"],
+		"skipLibCheck": true
+	},
+	"files": ["transport.d.ts", "stdin.js", "in-page.js", "framed.js", "frame.js"]
+}
