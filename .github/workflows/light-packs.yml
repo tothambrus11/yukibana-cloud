@@ -808,6 +808,12 @@ jobs:
           - pack: swift
             timeout: 120
             free-disk: true
+          # zig.wasm is built from Zig's sources with the pinned native Zig
+          # (about 6 minutes cold, cached), the rest is downloads, so a
+          # deploy can build it.
+          - pack: zig
+            timeout: 30
+            deploy-builds: true
     env:
       PACK: ${{ matrix.pack }}
       TIMINGS: ${{ github.workspace }}/../timings
