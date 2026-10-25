@@ -418,12 +418,26 @@ are set by `build-vm.sh` or are for a person running one `vm/` script;
 (each unit's `deps.apt`); a host compiler's version is in the record of the
 tree it compiles (`build-native`, the kernel, strace).
 
-Cold time per unit is **not measured yet**. It is to be taken from the first
-pull-request run of the split (each unit job writes its time to the run's
-summary; plan step T4m) and written here, with the unit workflow's timeout
-comment; until then nothing shows that `compilers`, three LLVM trees and
-brotli at q11 in one job, stays inside the runner's 355 minutes, and if it
-comes close, cc-cross becomes a unit of its own. The figures below are the
+Cold time per unit, from the split's first pull-request runs on
+`ubuntu-24.04` runners (4 cores), the "Build the unit" step with no cache
+(runs 40198566649, 40216660518 and 40223906764, 2026-10-25). With every
+unit cached, the whole cpp job takes about 20 minutes, most of it the
+assembly and its tests:
+
+| unit | cold build |
+|---|---:|
+| musl | under 1 minute |
+| emsdk | about 1 minute (a download) |
+| vm | 23 to 37 minutes |
+| compilers | 185 minutes |
+| libs | about 13 minutes (3 with the test libraries cached) |
+
+`compilers` (clangd, cc and cc-cross: three LLVM trees, plus brotli at q11)
+is the one that matters: 185 minutes leaves 170 of the runner's 355, so
+cc-cross stays in it. Whatever every unit lists in its `paths`
+(`build-lib.sh`) re-keys every unit, but a re-keyed unit starts from its
+own Actions cache, its build trees: run 40216660518 rebuilt `compilers`
+for an edit there in about 45 minutes, not 185. The figures below are the
 single-machine build before the split.
 
 Time on this machine (4 cores shared with other builds, `-j3`, `nice`):

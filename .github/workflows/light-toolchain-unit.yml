@@ -82,10 +82,10 @@ jobs:
   unit:
     name: Unit ${{ inputs.unit }}
     runs-on: ubuntu-24.04
-    # The runner's limit: no unit is measured yet (plan step T4m takes
-    # cpp's cold times from the split's first pull-request run and records
-    # them here and in light/packs/cpp/README.md), and a unit that needs
-    # more is a unit to split, not a job to lengthen.
+    # The runner's limit. The slowest unit, cpp/compilers, builds cold in
+    # 185 minutes (light/packs/cpp/README.md has every cpp unit's time); a
+    # unit that comes within an hour of this is a unit to split, not a job
+    # to lengthen.
     timeout-minutes: 355
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
