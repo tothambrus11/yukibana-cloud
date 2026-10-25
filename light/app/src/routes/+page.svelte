@@ -434,7 +434,13 @@
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
-	.status-bar button {
+	/*
+	 * The bar's own buttons, its children only: the server menu's Popover is
+	 * rendered inside the footer, and `.status-bar button` once matched its
+	 * menu items too, made them inline and laid them side by side, with
+	 * "Show output" off the edge of the menu.
+	 */
+	.status-bar > button {
 		display: inline-flex;
 		align-items: center;
 		min-width: 0;
@@ -448,7 +454,7 @@
 		white-space: nowrap;
 		cursor: pointer;
 	}
-	.status-bar button:hover {
+	.status-bar > button:hover {
 		background: var(--gray-6);
 		color: var(--white);
 	}
