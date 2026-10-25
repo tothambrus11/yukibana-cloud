@@ -1,0 +1,15 @@
+{
+    "name": "yukibana-pack-zig",
+    "private": true,
+    "description": "Yukibana Zig pack: ZLS and the Zig compiler (without LLVM), compiled to WebAssembly, building for WASI and for x86-64 Linux (run under the C/C++ pack's QEMU-Wasm). build.sh builds it; this file holds the bundler, the WASI host and the test's browser driver.",
+    "type": "module",
+    "scripts": {
+        "build": "./build.sh",
+        "test": "node test.mjs && node test-run.mjs"
+    },
+    "devDependencies": {
+        "@bjorn3/browser_wasi_shim": "0.4.2",
+        "esbuild": "0.25.11",
+        "playwright-core": "1.56.1"
+    }
+}
