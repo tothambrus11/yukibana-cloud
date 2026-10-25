@@ -56,6 +56,8 @@ main = do
   print (M.fromList [(1 :: Int, "a")])
   print (evalState (modify (+ 1) >> get) (41 :: Int))
   print missing
+  n <- pure (length "ab")
+  print n
 `);
 fs.writeFileSync('/tmp/workspace/tests/Spec.hs', `module Main (main) where
 
@@ -132,6 +134,15 @@ const ex2 = await ask(['exports', 'Just']);
 expect('modules exporting Just, with its type', Array.isArray(ex2) && ex2.some((e) => e.module === 'Data.Maybe' && e.parent === 'Maybe'), ex2);
 const ex3 = await ask(['exports', 'norm']);
 expect('the project module exporting norm', Array.isArray(ex3) && ex3.some((e) => e.module === 'Geometry' && e.home), ex3);
+// The nested outline's declarations, and the local bindings the inlay
+// hints show (not the lambda's arguments in Spec.hs).
+const outline = first.modules?.find((m) => m.file?.endsWith('/Geometry.hs'))?.outline ?? [];
+const declared = new Set(outline.map((o) => `${o.kind}:${o.name}`));
+expect('outline of Geometry.hs', ['data:Point', 'constructor:Point', 'field:px', 'field:py', 'value:norm', 'value:unused'].every((k) => declared.has(k)), outline);
+const b1 = await ask(['binds', '/tmp/workspace/Main.hs']);
+expect('local bindings of Main.hs', Array.isArray(b1) && b1.some((b) => b.name === 'p' && b.kind === 'let' && b.type === 'Point') && b1.some((b) => b.name === 'n' && b.kind === 'bind' && b.type === 'Int'), b1);
+const b2 = await ask(['binds', '/tmp/workspace/tests/Spec.hs']);
+expect('no local bindings in Spec.hs (only a lambda)', Array.isArray(b2) && b2.length === 0, b2);
 if (!first.diagnostics || first.diagnostics.length < 3) {
     console.error('expected several diagnostics');
     process.exitCode = 1;

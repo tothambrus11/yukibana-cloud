@@ -10,8 +10,8 @@
 -- once per worker, @yukiRequest@ answers one request at a time. A request is
 -- lines of text (the first names it); an answer is JSON. The language server
 -- (server.js) checks the project with 'check' and asks 'info', 'refs',
--- 'scope', 'sig', 'tokens', 'calls', 'imports' and 'exports' about what
--- that check saw; the runner
+-- 'scope', 'sig', 'tokens', 'calls', 'binds', 'imports' and 'exports'
+-- about what that check saw; the runner
 -- (runner.js) uses 'run'.
 --
 -- A session is either an editor's (GHC's type checker only, no code: what
@@ -69,7 +69,7 @@ import GHC.Types.Error (MessageClass (..))
 import GHC.Types.Name (isInternalName, nameModule_maybe, nameOccName)
 import GHC.Types.Name.Occurrence (isDataOcc, isTcOcc, isTvOcc, occNameString)
 import GHC.Types.Name.Reader (GlobalRdrElt, ImpDeclSpec (..), ImportSpec (..), Parent (..), globalRdrEnvElts, gre_imp, gre_lcl, gre_name, gre_par)
-import GHC.Types.SrcLoc (containsSpan, mkRealSrcLoc, mkRealSrcSpan)
+import GHC.Types.SrcLoc (combineRealSrcSpans, containsSpan, mkRealSrcLoc, mkRealSrcSpan)
 import GHC.Iface.Syntax (showToIface)
 import GHC.Core.TyCo.Rep (scaledThing)
 import GHC.Tc.Utils.TcType (tcSplitFunTys, tcSplitNestedSigmaTys)
@@ -189,6 +189,7 @@ yukiRequest jsReq = do
       ["sig", f, l, c, name] -> withPos l c (\line col -> sig st f line col name)
       ["tokens", f] -> tokens st f
       ["calls", f, l, c] -> withPos l c (calls st f)
+      ["binds", f] -> yukiLocalBinds st f
       ["imports", f] -> explicitImports st f
       ["exports", name] -> exportsOf st name
       ("run" : rest) -> run st rest
@@ -213,8 +214,9 @@ foreign export javascript "yukiRequest"
 -- | @check flags... == group...@: type checks the project. Each group is a
 -- line of tab-separated source files loaded together (a program's Main and
 -- the modules it imports; a test suite's Spec, another Main). Answers every
--- diagnostic, as GHC's JSON, and per module its file, name and top-level
--- declarations.
+-- diagnostic, as GHC's JSON, and per module its file, name, top-level
+-- declarations ("tops") and, when it has a .hie file, its declarations as
+-- an outline nests them ("outline", see 'yukiOutline').
 --
 -- Every check type checks every module again (-fforce-recomp): GHC would
 -- otherwise skip an unchanged module and say nothing of its warnings,
@@ -262,7 +264,8 @@ check st args = do
             [ ("file", str f),
               ("module", str (moduleNameString (ms_mod_name ms))),
               ("hie", J.JSBool (isJust hie)),
-              ("tops", J.JSArray ds)
+              ("tops", J.JSArray ds),
+              ("outline", J.JSArray (maybe [] yukiOutline hie))
             ]
           | (f, ms, hie, ds) <- modules
         ]
@@ -861,6 +864,120 @@ calls st f line col = do
 
 flattenAst :: HieAST a -> [HieAST a]
 flattenAst n = n : concatMap flattenAst (nodeChildren n)
+
+-- * Outline
+
+-- | A module's declarations as a nested outline needs them, from its .hie
+-- file: each is {name, kind, span, sel}, "span" the whole declaration (a
+-- data type with its constructors and deriving clause, a constructor with
+-- its fields, a function with every equation and its where clause, a class
+-- with its methods, an instance with its bindings) and "sel" its name
+-- where it is declared. The kinds are "data" (a data type or a newtype),
+-- "synonym", "family", "class", "pattern" (a pattern synonym),
+-- "constructor", "field" (a record field: its name to the end of its
+-- type), "signature" (a class method's), "value" (a top-level binding, or
+-- a class's default method), "method" (an instance's binding of a method)
+-- and "instance" (no name: the server reads the head from the text; its
+-- "sel" is its "span"). Nothing is nested here: the server nests by the
+-- spans, and leaves out a "method" that is in no "instance" (the bindings
+-- a deriving clause generates, which have the clause's span). Names GHC
+-- made up are not listed.
+yukiOutline :: HieFile -> [JsonDoc]
+yukiOutline hf =
+  [ obj [("name", str nm), ("kind", str k), ("span", spanJson whole), ("sel", spanJson sel)]
+    | (nm, k, whole, sel) <- nubOn (\(_, k, _, s) -> (k, srcSpanStartLine s, srcSpanStartCol s)) (decls ++ instances)
+  ]
+  where
+    nodes =
+      [ (nodeSpan node, ni)
+        | ast <- M.elems (getAsts (hie_asts hf)),
+          node <- flattenAst ast,
+          Just ni <- [M.lookup SourceInfo (getSourcedNodeInfo (sourcedNodeInfo node))]
+      ]
+    decls =
+      [ (occNameString (nameOccName n), k, whole, sel)
+        | (sel, ni) <- nodes,
+          (Right n, d) <- M.toList (nodeIdentifiers ni),
+          not (generated n),
+          ctx <- S.toList (identInfo d),
+          Just (k, whole) <- [declOf sel ctx]
+      ]
+    -- An instance declaration is a node of its own (GHC's InstD), with no
+    -- name of its own to carry a context.
+    instances =
+      [ ("", "instance", sp, sp)
+        | (sp, ni) <- nodes,
+          any ((== "ClsInstD") . unpackFS . nodeAnnotConstr) (S.toList (nodeAnnotations ni))
+      ]
+    declOf :: RealSrcSpan -> ContextInfo -> Maybe (String, RealSrcSpan)
+    declOf sel = \case
+      Decl t (Just sp) -> (\k -> (k, sp)) <$> declKind t
+      ValBind RegularBind ModuleScope (Just sp) -> Just ("value", sp)
+      ValBind InstanceBind _ (Just sp) -> Just ("method", sp)
+      ClassTyDecl (Just sp) -> Just ("signature", sp)
+      -- A field's span is its type's: the name is put back in front.
+      RecField RecFieldDecl (Just sp) -> Just ("field", combineRealSrcSpans sel sp)
+      _ -> Nothing
+    declKind = \case
+      DataDec -> Just "data"
+      SynDec -> Just "synonym"
+      FamDec -> Just "family"
+      ClassDec -> Just "class"
+      PatSynDec -> Just "pattern"
+      ConDec -> Just "constructor"
+      -- A type family's instance equation.
+      InstDec -> Nothing
+
+-- * Local bindings
+
+-- | @binds file@: the local bindings of a file at its last check that have
+-- no type signature, with the types GHC inferred, for the server's inlay
+-- hints as HLS shows them: a let or where binding ("let"), and a variable
+-- bound by a pattern with a right-hand side ("bind": @x <- e@ in a do
+-- block, a guard or a comprehension, or a let or where pattern binding).
+-- Each is {name, kind, sel (the name where it is bound, on one line),
+-- type}. A binding with a signature, a top-level one (its type is the
+-- type lens's), a function's or a lambda's or a case alternative's
+-- argument (bound by a match, with no right-hand side of its own), and a
+-- name GHC made up are not listed.
+yukiLocalBinds :: State -> FilePath -> IO JsonDoc
+yukiLocalBinds st f =
+  lookupHie st f >>= \case
+    Nothing -> pure (J.JSArray [])
+    Just hf -> do
+      df <- inGhc st getSessionDynFlags
+      let idents =
+            [ (nodeSpan node, n, d)
+              | ast <- M.elems (getAsts (hie_asts hf)),
+                node <- flattenAst ast,
+                Just ni <- [M.lookup SourceInfo (getSourcedNodeInfo (sourcedNodeInfo node))],
+                (Right n, d) <- M.toList (nodeIdentifiers ni)
+            ]
+          signed = S.fromList [n | (_, n, d) <- idents, TyDecl `S.member` identInfo d]
+          found =
+            [ (sp, n, k, t)
+              | (sp, n, d) <- idents,
+                isInternalName n,
+                not (generated n),
+                not (n `S.member` signed),
+                Just t <- [identType d],
+                k : _ <- [mapMaybe kindOf (S.toList (identInfo d))],
+                srcSpanStartLine sp == srcSpanEndLine sp
+            ]
+      pure . J.JSArray $
+        [ obj
+            [ ("name", str (occNameString (nameOccName n))),
+              ("kind", str k),
+              ("sel", spanJson sp),
+              ("type", str (renderHieType df (recoverFullType t (hie_types hf))))
+            ]
+          | (sp, n, k, t) <- nubOn (\(sp, _, _, _) -> (srcSpanStartLine sp, srcSpanStartCol sp)) found
+        ]
+  where
+    kindOf = \case
+      ValBind RegularBind (LocalScope _) (Just _) -> Just "let"
+      PatternBind _ _ (Just _) -> Just "bind"
+      _ -> Nothing
 
 -- * Imports
 
