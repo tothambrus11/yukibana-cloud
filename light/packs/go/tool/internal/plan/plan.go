@@ -83,13 +83,9 @@ type Plan struct {
 	Errors []Error `json:"errors,omitempty"`
 }
 
-// Std answers whether an import path is a package of the standard library
-// for the target (the runner's index of it).
-type Std func(importPath string) bool
-
 // Run plans `go run` of the package in the directory of `entry` (a project
 // path, "main.go"), which must be package main.
-func Run(p *project.Project, entry string, std Std) Plan {
+func Run(p *project.Project, entry string, std project.Library) Plan {
 	l := newLoader(p, std)
 	dir := path.Dir(entry)
 	if dir == "." {
@@ -113,7 +109,7 @@ func Run(p *project.Project, entry string, std Std) Plan {
 
 // Test plans `go test ./...`: a test binary for every package with test
 // files, in the order of the project's directories.
-func Test(p *project.Project, std Std) Plan {
+func Test(p *project.Project, std project.Library) Plan {
 	l := newLoader(p, std)
 	var plan Plan
 	for _, dir := range p.Dirs() {
@@ -138,12 +134,12 @@ func Test(p *project.Project, std Std) Plan {
 // loader reads packages once each and remembers what went wrong.
 type loader struct {
 	p      *project.Project
-	std    Std
+	std    project.Library
 	pkgs   map[string]*build.Package // by directory; nil: failed
 	errors []Error
 }
 
-func newLoader(p *project.Project, std Std) *loader {
+func newLoader(p *project.Project, std project.Library) *loader {
 	l := &loader{p: p, std: std, pkgs: map[string]*build.Package{}}
 	for _, problem := range p.Problems {
 		// go.env and go.mod problems fall back to defaults; only the ones
@@ -332,15 +328,8 @@ func (l *loader) local(pkg *build.Package, imp string, positions []token.Positio
 		}
 		return dep
 	}
-	switch {
-	case imp == "C":
-		l.fail(errorAt(at, pkg.Dir, "cgo (import \"C\") is not supported here"))
-	case !l.std(imp):
-		message := fmt.Sprintf("package %s is not in std", imp)
-		if first, _, _ := strings.Cut(imp, "/"); strings.Contains(first, ".") {
-			message = fmt.Sprintf("no required module provides package %s: only the standard library and this module's packages are available here", imp)
-		}
-		l.fail(errorAt(at, pkg.Dir, message))
+	if !l.std.Has(l.p.Target, imp) {
+		l.fail(errorAt(at, pkg.Dir, l.std.ImportProblem(l.p.Target, imp)))
 	}
 	return nil
 }
@@ -369,7 +358,7 @@ func (l *loader) build(name string, pkgs []*build.Package, replace map[string]Un
 	}
 	for _, u := range b.Units {
 		for _, imp := range u.Imports {
-			if _, ok := l.p.DirOf(imp); !ok && l.std(imp) {
+			if _, ok := l.p.DirOf(imp); !ok && l.std.Has(l.p.Target, imp) {
 				std[imp] = true
 			}
 		}

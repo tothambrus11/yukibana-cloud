@@ -8,9 +8,12 @@ import (
 	"yukibana.dev/light/packs/go/tool/internal/project"
 )
 
-// std is a standard library with what the cases import.
-func std(path string) bool {
-	return slices.Contains([]string{"fmt", "math", "os", "reflect", "strings", "testing", "testing/internal/testdeps"}, path)
+// std is a standard library with what the cases import, for the default
+// target, which leaves net/http out.
+var std = libraryOf(project.DefaultTarget, []string{"embed", "fmt", "math", "os", "reflect", "strings", "testing", "testing/internal/testdeps"}, []string{"net/http"})
+
+func libraryOf(target project.Target, packages, unshipped []string) project.Library {
+	return project.NewLibrary(project.LibraryIndex{target.String(): {Packages: packages, Unshipped: unshipped}})
 }
 
 func newProject(files map[string]string) *project.Project {
@@ -68,6 +71,8 @@ func TestRunRefusesWhatGoRunRefuses(t *testing.T) {
 			"main.go:3:8: package fmtx is not in std"},
 		{"an import from another module", map[string]string{"main.go": "package main\n\nimport \"github.com/x/y\"\n\nfunc main() {}\n"}, "main.go",
 			"main.go:3:8: no required module provides package github.com/x/y"},
+		{"an unshipped package of the standard library", map[string]string{"main.go": "package main\n\nimport \"net/http\"\n\nfunc main() {}\n"}, "main.go",
+			"main.go:3:8: package net/http is in the standard library but not in the browser's copy of it"},
 		{"cgo", map[string]string{"main.go": "package main\n\nimport \"C\"\n\nfunc main() {}\n"}, "main.go", "main.go:3:8: cgo"},
 		{"two packages in one directory", map[string]string{"main.go": "package main\n", "other.go": "package other\n"}, "main.go",
 			"found packages main (main.go) and other (other.go) in ."},
@@ -87,7 +92,7 @@ func TestRunRefusesWhatGoRunRefuses(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			plan := Run(newProject(c.files), c.entry, func(p string) bool { return std(p) || p == "embed" })
+			plan := Run(newProject(c.files), c.entry, std)
 			if len(plan.Builds) > 0 || len(plan.Errors) == 0 {
 				t.Fatalf("planned %v", plan)
 			}

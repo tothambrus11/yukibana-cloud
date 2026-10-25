@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"yukibana.dev/light/packs/go/tool/internal/project"
 )
 
 // The standard library comes from this machine's go command, as archives
@@ -48,6 +50,15 @@ func stdOfTarget(t *testing.T, target string) {
 	stdCache.files[target] = files
 }
 
+// library is every target read so far, all of it shipped.
+func library() project.Library {
+	index := project.LibraryIndex{}
+	for target, pkgs := range stdCache.index {
+		index[target] = project.LibraryLists{Packages: pkgs}
+	}
+	return project.NewLibrary(index)
+}
+
 // session drives a Server as the worker does: messages in, diagnostics out,
 // and every package it needs handed over when it asks.
 type session struct {
@@ -67,7 +78,7 @@ func newSession(t *testing.T, files map[string]string) *session {
 	for _, target := range []string{"linux/amd64", "wasip1/wasm"} {
 		stdOfTarget(t, target)
 	}
-	ss := &session{t: t, s: NewServer(strings.TrimPrefix(runtime.Version(), "go"), stdCache.index), diagnostics: map[string][]Diagnostic{}}
+	ss := &session{t: t, s: NewServer(strings.TrimPrefix(runtime.Version(), "go"), library()), diagnostics: map[string][]Diagnostic{}}
 	ss.request("initialize", map[string]any{"processId": nil, "rootUri": "file:///workspace/"})
 	ss.notify("initialized", map[string]any{})
 	paths := make([]string, 0, len(files))
@@ -321,7 +332,7 @@ func TestNothingIsPublishedUntilTheStandardLibraryArrives(t *testing.T) {
 		t.Skip()
 	}
 	stdOfTarget(t, "linux/amd64")
-	s := NewServer("1.27.3", stdCache.index)
+	s := NewServer("1.27.3", library())
 	ss := &session{t: t, s: s, diagnostics: map[string][]Diagnostic{}}
 	ss.request("initialize", map[string]any{})
 	for name, text := range geometry() {

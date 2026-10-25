@@ -398,3 +398,62 @@ func (f fileInfo) Mode() fs.FileMode  { return 0o444 }
 func (f fileInfo) ModTime() time.Time { return time.Time{} }
 func (f fileInfo) IsDir() bool        { return false }
 func (f fileInfo) Sys() any           { return nil }
+
+// Library is the standard library the pack ships, per target: the packages
+// it has archives for, and the rest of the toolchain's standard library,
+// left out because a program in the browser cannot use them (networking,
+// cgo, the toolchain's own packages) or to keep the download small.
+type Library struct {
+	// Packages and Unshipped map a target ("linux/arm64") to import paths.
+	Packages  map[string]map[string]bool
+	Unshipped map[string]map[string]bool
+}
+
+// LibraryIndex is a Library as the pack's std/index.json and the worker
+// write it: per target, the two lists.
+type LibraryIndex map[string]LibraryLists
+
+// LibraryLists are one target's packages, shipped and not.
+type LibraryLists struct {
+	Packages  []string `json:"packages"`
+	Unshipped []string `json:"unshipped"`
+}
+
+// NewLibrary reads an index.
+func NewLibrary(index LibraryIndex) Library {
+	lib := Library{Packages: map[string]map[string]bool{}, Unshipped: map[string]map[string]bool{}}
+	for target, lists := range index {
+		lib.Packages[target] = set(lists.Packages)
+		lib.Unshipped[target] = set(lists.Unshipped)
+	}
+	return lib
+}
+
+func set(list []string) map[string]bool {
+	out := make(map[string]bool, len(list))
+	for _, s := range list {
+		out[s] = true
+	}
+	return out
+}
+
+// Has reports whether the pack ships the package for the target.
+func (l Library) Has(target Target, importPath string) bool {
+	return l.Packages[target.String()][importPath]
+}
+
+// ImportProblem is why an import of something that is neither the
+// module's nor a shipped standard library package fails, in the go
+// command's words where it has them.
+func (l Library) ImportProblem(target Target, importPath string) string {
+	switch {
+	case importPath == "C":
+		return `cgo (import "C") is not supported here`
+	case l.Unshipped[target.String()][importPath]:
+		return fmt.Sprintf("package %s is in the standard library but not in the browser's copy of it, which has what a program can use without a network, cgo or the toolchain", importPath)
+	}
+	if first, _, _ := strings.Cut(importPath, "/"); strings.Contains(first, ".") {
+		return fmt.Sprintf("no required module provides package %s: only the standard library and this module's packages are available here", importPath)
+	}
+	return fmt.Sprintf("package %s is not in std", importPath)
+}

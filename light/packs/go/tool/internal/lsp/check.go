@@ -16,18 +16,6 @@ import (
 	"yukibana.dev/light/packs/go/tool/internal/project"
 )
 
-// Std is the standard library of one target, as far as it has arrived: the
-// worker downloads a package's archive when the server first asks for it
-// (Snapshot.Missing) and hands it over with Server.AddStd.
-type Std interface {
-	// Has reports whether path is a package of the target's standard
-	// library, downloaded or not.
-	Has(path string) bool
-	// Data is the package's archive (export data and all), or nil when it
-	// has not arrived yet.
-	Data(path string) []byte
-}
-
 // file is a project .go file, parsed once per snapshot. A file with syntax
 // errors still has an AST, as complete as the parser could make it, which
 // completion relies on (a selector with nothing after the dot yet).
@@ -75,7 +63,7 @@ type Snapshot struct {
 	// there are any.
 	Missing []string
 
-	std      Std
+	std      project.Library
 	importer types.ImporterFrom
 }
 
@@ -83,7 +71,7 @@ type Snapshot struct {
 // beside it. stdImporter reads the standard library (shared between
 // snapshots, see Server); every import it is asked for and cannot answer
 // yet is recorded in Missing.
-func check(p *project.Project, std Std, stdImporter types.ImporterFrom, missing func() []string) *Snapshot {
+func check(p *project.Project, std project.Library, stdImporter types.ImporterFrom, missing func() []string) *Snapshot {
 	s := &Snapshot{
 		Project: p, Fset: token.NewFileSet(), files: map[string]*file{},
 		Packages: map[string]*Package{}, owner: map[string]*Package{},
@@ -242,14 +230,8 @@ func (i *localImporter) ImportFrom(importPath, _ string, _ types.ImportMode) (*t
 		}
 		return i.s.checkPackage(dir, dir, bp.Name, bp.GoFiles, nil).Types, nil
 	}
-	if importPath == "C" {
-		return nil, errors.New(`cgo (import "C") is not supported here`)
-	}
-	if !i.s.std.Has(importPath) {
-		if first, _, _ := strings.Cut(importPath, "/"); strings.Contains(first, ".") {
-			return nil, fmt.Errorf("no required module provides package %s: only the standard library and this module's packages are available here", importPath)
-		}
-		return nil, fmt.Errorf("package %s is not in std", importPath)
+	if !i.s.std.Has(p.Target, importPath) {
+		return nil, errors.New(i.s.std.ImportProblem(p.Target, importPath))
 	}
 	return i.s.importer.ImportFrom(importPath, "", 0)
 }

@@ -43,11 +43,12 @@ type Output struct {
 // Server is one session's state.
 type Server struct {
 	toolchain string
-	// index lists each target's standard library packages ("linux/amd64"
-	// to import paths); data holds the archives that have arrived, by
-	// target and import path.
-	index map[string]map[string]bool
-	data  map[string]map[string][]byte
+	// std is what the pack ships of each target's standard library; data
+	// holds the archives that have arrived, by target and import path (the
+	// worker downloads a package when a check first asks for it, see
+	// Need, and hands it over with AddStd).
+	std  project.Library
+	data map[string]map[string][]byte
 
 	docs        map[string]string // project path -> text
 	initialized bool
@@ -65,20 +66,12 @@ type Server struct {
 }
 
 // NewServer starts a session for the Go toolchain `toolchain` ("1.27.3")
-// whose standard library has, per target, the packages in `index`.
-func NewServer(toolchain string, index map[string][]string) *Server {
-	s := &Server{
-		toolchain: toolchain, index: map[string]map[string]bool{}, data: map[string]map[string][]byte{},
+// whose standard library is `std`.
+func NewServer(toolchain string, std project.Library) *Server {
+	return &Server{
+		toolchain: toolchain, std: std, data: map[string]map[string][]byte{},
 		docs: map[string]string{}, published: map[string]string{}, missing: map[string]bool{},
 	}
-	for target, pkgs := range index {
-		set := map[string]bool{}
-		for _, p := range pkgs {
-			set[p] = true
-		}
-		s.index[target] = set
-	}
-	return s
 }
 
 // AddStd hands over a standard library package's archive. The next check
@@ -90,15 +83,6 @@ func (s *Server) AddStd(target, importPath string, data []byte) {
 	s.data[target][importPath] = data
 	s.snapshot = nil
 }
-
-// stdOf is the Std of one target, over what has arrived.
-type stdOf struct {
-	s      *Server
-	target string
-}
-
-func (st stdOf) Has(path string) bool    { return st.s.index[st.target][path] }
-func (st stdOf) Data(path string) []byte { return st.s.data[st.target][path] }
 
 func (s *Server) project() *project.Project {
 	return project.New(s.docs, s.toolchain)
@@ -112,9 +96,9 @@ func (s *Server) check() *Snapshot {
 	p := s.project()
 	if s.stdImporter == nil || p.Target != s.stdTarget {
 		s.stdTarget = p.Target
-		std := stdOf{s, p.Target.String()}
+		target := p.Target.String()
 		s.stdImporter = importer.ForCompiler(token.NewFileSet(), "gc", func(path string) (io.ReadCloser, error) {
-			data := std.Data(path)
+			data := s.data[target][path]
 			if data == nil {
 				s.missing[path] = true
 				return nil, fmt.Errorf("package %s has not been downloaded yet", path)
@@ -126,7 +110,7 @@ func (s *Server) check() *Snapshot {
 	// What this check asks for and lacks; an import deleted since the
 	// last check is no longer waited for.
 	clear(s.missing)
-	s.snapshot = check(p, stdOf{s, p.Target.String()}, s.stdImporter, func() []string {
+	s.snapshot = check(p, s.std, s.stdImporter, func() []string {
 		var out []string
 		for path := range s.missing {
 			out = append(out, path)

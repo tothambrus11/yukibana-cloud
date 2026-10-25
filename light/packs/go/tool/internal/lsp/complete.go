@@ -96,7 +96,7 @@ func (s *Server) completeImport(a *at, lit *ast.BasicLit, offset int) []Completi
 		path := a.snap.Project.ImportPath(dir)
 		items = append(items, CompletionItem{Label: path, Kind: kindModule, SortText: "0" + path, TextEdit: &TextEdit{Range: r, NewText: path}})
 	}
-	for path := range s.index[a.snap.Project.Target.String()] {
+	for path := range s.std.Packages[a.snap.Project.Target.String()] {
 		if strings.Contains(path, "internal") || strings.HasPrefix(path, "vendor/") {
 			continue
 		}

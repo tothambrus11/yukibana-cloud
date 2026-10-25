@@ -80,8 +80,14 @@ func hostProject(t *testing.T, files map[string]string) *project.Project {
 	return p
 }
 
-func stdOfHost(path string) bool {
-	return exec.Command("go", "list", "-e", "-f", "{{if not .Standard}}x{{end}}", path).Run() == nil && !strings.Contains(path, ".")
+// hostLibrary is the whole standard library of this machine's target.
+func hostLibrary(t *testing.T) project.Library {
+	out, err := exec.Command("go", "list", "std").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := project.Target{GOOS: runtime.GOOS, GOARCH: runtime.GOARCH}
+	return project.NewLibrary(project.LibraryIndex{target.String(): {Packages: strings.Fields(string(out))}})
 }
 
 var geometry = map[string]string{
@@ -93,7 +99,7 @@ var geometry = map[string]string{
 
 func TestAPlannedRunBuildsWithTheRealCompilerAndLinker(t *testing.T) {
 	p := hostProject(t, maps.Clone(geometry))
-	plan := Run(p, "main.go", stdOfHost)
+	plan := Run(p, "main.go", hostLibrary(t))
 	if len(plan.Errors) > 0 {
 		t.Fatal(plan.Errors)
 	}
@@ -105,7 +111,7 @@ func TestAPlannedRunBuildsWithTheRealCompilerAndLinker(t *testing.T) {
 
 func TestAPlannedTestRunsTheTestsAndExamplesOfBothTestPackages(t *testing.T) {
 	p := hostProject(t, maps.Clone(geometry))
-	plan := Test(p, stdOfHost)
+	plan := Test(p, hostLibrary(t))
 	if len(plan.Errors) > 0 || len(plan.Builds) != 1 {
 		t.Fatal(plan)
 	}
@@ -121,7 +127,7 @@ func TestAFailingTestFailsItsBinary(t *testing.T) {
 	files := maps.Clone(geometry)
 	files["point/point_test.go"] = strings.Replace(files["point/point_test.go"], "2.5", "3", 1)
 	p := hostProject(t, files)
-	plan := Test(p, stdOfHost)
+	plan := Test(p, hostLibrary(t))
 	out, err := exec.Command(buildNative(t, p, plan.Builds[0], t.TempDir())).CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "--- FAIL: TestHalf") || !strings.Contains(string(out), "point_test.go:7: half") {
 		t.Errorf("want TestHalf to fail at point_test.go:7: %v\n%s", err, out)

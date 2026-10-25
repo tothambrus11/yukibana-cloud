@@ -29,7 +29,7 @@ var output []byte
 
 var (
 	toolchain string
-	index     map[string][]string
+	library   project.Library
 	server    *lsp.Server
 )
 
@@ -82,22 +82,23 @@ func answer(f func() any) {
 	output = out
 }
 
-// yk_init takes {"toolchain": "1.27.3", "std": {"linux/amd64": [paths...]}}:
-// the Go version and every target's standard library packages (the pack's
+// yk_init takes {"toolchain": "1.27.3", "std": {"linux/amd64": {"packages":
+// [...], "unshipped": [...]}}}: the Go version and what the pack ships of
+// every target's standard library (project.LibraryIndex, from the pack's
 // std/index.json). It must come first, once.
 //
 //go:wasmexport yk_init
 func ykInit(ptr, n uint32) {
 	answer(func() any {
 		var in struct {
-			Toolchain string              `json:"toolchain"`
-			Std       map[string][]string `json:"std"`
+			Toolchain string               `json:"toolchain"`
+			Std       project.LibraryIndex `json:"std"`
 		}
 		if err := json.Unmarshal(bytesAt(ptr, n), &in); err != nil {
 			panic(err)
 		}
-		toolchain, index = in.Toolchain, in.Std
-		server = lsp.NewServer(toolchain, index)
+		toolchain, library = in.Toolchain, project.NewLibrary(in.Std)
+		server = lsp.NewServer(toolchain, library)
 		return map[string]bool{"ok": true}
 	})
 }
@@ -143,16 +144,11 @@ func ykPlan(ptr, n uint32) {
 			panic(err)
 		}
 		p := project.New(in.Files, toolchain)
-		std := map[string]bool{}
-		for _, path := range index[p.Target.String()] {
-			std[path] = true
-		}
-		has := func(path string) bool { return std[path] }
 		var pl plan.Plan
 		if in.Test {
-			pl = plan.Test(p, has)
+			pl = plan.Test(p, library)
 		} else {
-			pl = plan.Run(p, in.Entry, has)
+			pl = plan.Run(p, in.Entry, library)
 		}
 		return struct {
 			plan.Plan
