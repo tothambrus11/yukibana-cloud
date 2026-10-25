@@ -2,12 +2,14 @@
 // runs it: app/static served over http, `new Worker('/packs/kotlin/server.js',
 // { type: 'module' })` in Chromium, one JSON-RPC object per postMessage. A
 // two-file project (Main.kt uses Point and distance from Geometry.kt) and a
-// README that must be ignored. The server reads syntax only (README.md):
-// checks syntax errors, completion of names and of a project class's
-// members, hover with KDoc, definition and references across files,
-// symbols, signature help, an enum's entries (after `Color.` and in `when`),
-// rename and what it refuses, deleting a file, and malformed and late
-// requests.
+// README that must be ignored. Checks syntax errors (tree-sitter's, until
+// kotlinc is ready), completion of names and of a project class's members,
+// hover with KDoc, definition and references across files, symbols,
+// signature help, an enum's entries (after `Color.` and in `when`), rename
+// and what it refuses; then kotlinc's diagnostics once it has started: a
+// type error where it is, kotlin.test resolving in a test file, java.*
+// not existing on Kotlin/Wasm, a deleted file's declarations becoming
+// unresolved; and malformed and late requests.
 //
 //   node test.mjs            (after ./build.sh; needs playwright-core)
 
@@ -284,6 +286,36 @@ try {
     const rw = await lsp.request('textDocument/rename', { ...at(M, 4, 31), newName: 'when' });
     check('a rename to a keyword is refused', /keyword/.test(rw.error?.message ?? ''), JSON.stringify(rw.result ?? rw.error));
 
+    // kotlinc: wait until it has started (it downloads about 25 MB).
+    const t0 = Date.now();
+    let ready = null;
+    while (!ready && Date.now() - t0 < 180000) {
+        ready = (await lsp.log()).find((m) => m.method === 'window/logMessage' && /^kotlinc .* ready/.test(m.params.message));
+        if (!ready) await page.waitForTimeout(250);
+    }
+    check('kotlinc starts in the server\'s checker worker', !!ready, `${ready?.params.message} (${await lsp.elapsed()} ms after the worker started)`);
+    mark = (await lsp.log()).length;
+    await change(M, MAIN + 'val wrong: Int = "no"\n');
+    let kd = await diagnostics(M, (d) => d.some((x) => x.source === 'kotlinc'), mark);
+    const wrong = kd?.find((d) => d.source === 'kotlinc');
+    check('a type error is kotlinc\'s, an error on its line, in its words', wrong?.severity === 1 && wrong.range.start.line === 7 && /mismatch/.test(wrong.message) && /String/.test(wrong.message) && /Int/.test(wrong.message),
+        JSON.stringify(kd));
+    mark = (await lsp.log()).length;
+    const fixedAt = Date.now();
+    await change(M, MAIN);
+    kd = await diagnostics(M, (d) => d.length === 0, mark);
+    check('fixing it clears it', kd?.length === 0, `${JSON.stringify(kd)} (${Date.now() - fixedAt} ms after the edit)`);
+    const T = 'src/test/kotlin/GeometryTest.kt';
+    mark = (await lsp.log()).length;
+    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri(T), languageId: 'kotlin', version: 1, text: 'import kotlin.test.Test\nimport kotlin.test.assertEquals\n\nclass GeometryTest {\n    @Test\n    fun norm() {\n        assertEquals(5.0, Point(3.0, 4.0).norm())\n    }\n}\n' } });
+    kd = await diagnostics(T, () => true, mark);
+    check('a test file using kotlin.test and the project\'s Point has no errors', kd?.length === 0, JSON.stringify(kd));
+    mark = (await lsp.log()).length;
+    await change(M, 'import java.util.Scanner\n\n' + MAIN);
+    kd = await diagnostics(M, (d) => d.length > 0, mark);
+    check('java.util is unresolved: programs are Kotlin/Wasm, without the JDK', kd?.some((d) => d.range.start.line === 0 && /java/.test(d.message)), JSON.stringify(kd));
+    await change(M, MAIN);
+
     const malformed = await lsp.request('textDocument/completion', {});
     check('a completion request without a document or position is refused as InvalidParams', malformed.error?.code === -32602, JSON.stringify(malformed.error));
 
@@ -291,6 +323,8 @@ try {
     await lsp.notify('textDocument/didClose', { textDocument: { uri: uri(G) } });
     const gone = await lsp.request('textDocument/definition', at(M, 4, 31));
     check('after Geometry.kt is deleted, `distance` has no definition', (gone.result ?? []).length === 0, JSON.stringify(gone.result));
+    const unresolved = await diagnostics(M, (d) => d.some((x) => /Point/.test(x.message)), mark);
+    check('after Geometry.kt is deleted, kotlinc reports Point unresolved in Main.kt', unresolved?.some((d) => d.source === 'kotlinc' && /Unresolved reference/i.test(d.message)), JSON.stringify(unresolved?.map((d) => d.message)));
 
     const readme = (await lsp.log()).filter((m) => m.method === 'textDocument/publishDiagnostics' && m.params.uri === uri('README.md'));
     check('a non-Kotlin project file is not parsed', readme.length === 0);
