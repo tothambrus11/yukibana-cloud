@@ -1,0 +1,5 @@
+{
+  "Cargo.toml": "[package]\nname = \"shapes\"\nedition = \"2021\"\n",
+  "src/main.rs": "use shapes::{norm, Point};\n\nfn square(x: i32) -> i32 {\n    x * x\n}\n\nfn main() {\n    let v: Vec<i32> = (1..=10).map(square).collect();\n    let total: i32 = v.iter().sum();\n    println!(\"{total} {}\", norm(Point { x: 3.0, y: 4.0 }));\n}\n",
+  "src/lib.rs": "pub struct Point {\n    pub x: f64,\n    pub y: f64,\n}\n\npub fn norm(p: Point) -> f64 {\n    (p.x * p.x + p.y * p.y).sqrt()\n}\n"
+}
