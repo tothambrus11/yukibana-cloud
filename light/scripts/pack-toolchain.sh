@@ -12,6 +12,12 @@
 #         reuse    $TOOLCHAIN_CACHE/built/<pack>/<key> when its toolchain.json
 #                  still lists every file at its size and mtime (not with
 #                  --rebuild); one that does not is removed, naming the file.
+#                  A toolchain built dirty is not reused once the build
+#                  would be clean: committing exactly the inputs it was
+#                  built from keeps the key, and reusing it then would leave
+#                  a toolchain that is never published or recorded as
+#                  HEAD's in place of one that can be. It is removed, and
+#                  the clean one fetched or built.
 #         fetch    from the store, unless the build would be dirty or
 #                  --no-fetch is given. --any then fetches the pack's newest
 #                  toolchain whatever its key, saying it is not this commit's
@@ -29,14 +35,19 @@
 #       app/static/packs/<pack>): links the toolchain's files (copies them
 #       where links are impossible), runs the pack's glue.sh over them, checks
 #       the glue left every toolchain file as it was, writes the sidecar, and
-#       swaps the result in. Refuses a toolchain of other inputs unless
-#       ALLOW_OTHER_TOOLCHAIN=1 (set by setup.sh --latest) and that toolchain
-#       has every output HEAD's toolchain.outputs declares and passes the
-#       glue's versions check.
+#       swaps the result in. Refuses a toolchain that lacks an output
+#       packs/<pack>/toolchain.outputs declares, every time: the file is no
+#       input of the key, so an output declared after a toolchain of the
+#       same key was built or stored is checked here or nowhere. Refuses a
+#       toolchain of other inputs unless ALLOW_OTHER_TOOLCHAIN=1 (set by
+#       setup.sh --latest) and that toolchain has every output HEAD's
+#       toolchain.outputs declares and passes the glue's versions check.
 #   pack-toolchain.sh record-state <pack>
 #       Prints "<tree of packs/<pack>> <blob of pack-toolchain.sh> <blob of
-#       toolchain-build-env.sh> <key>", the state setup.sh records for a pack
-#       assembled at HEAD, or exits 5 naming why the assembled pack is not
+#       toolchain-manifest.mjs> <key>", the state setup.sh records for a pack
+#       assembled at HEAD: the pack, assembly as the glossary defines it, and
+#       the toolchain (whose key already covers the build environment). Or
+#       exits 5 naming why the assembled pack is not
 #       HEAD's: an uncommitted change to the pack or to assembly, a dirty
 #       build, or another commit's toolchain.
 #
@@ -132,16 +143,6 @@ die() { say "$*"; exit 1; }
 stage=""
 part=""
 trap '[ -z "$stage" ] || remove_tree "$stage"; [ -z "$part" ] || remove_tree "$part"' EXIT
-
-# Exits 2 unless pack $1 exists, has a plain name and is split.
-split_pack() {
-  [[ "$1" =~ ^[a-z][a-z0-9]*$ ]] || { say "'$1' is not a pack name"; exit 2; }
-  [ -d "$LIGHT/packs/$1" ] || { say "no pack $1 (packs/$1)"; exit 2; }
-  if [ ! -f "$LIGHT/packs/$1/toolchain.paths" ]; then
-    say "$1 has no toolchain (packs/$1/toolchain.paths): build it with its build.sh"
-    exit 2
-  fi
-}
 
 key_of() { "$STORE" toolchain-key "$1"; }
 
@@ -255,18 +256,25 @@ ensure() {
     esac
     shift
   done
-  local key dir reasons why out rc
+  local key dir reasons res mcommit out rc
   key="$(key_of "$pack")"
   dir="$TOOLCHAIN_CACHE/built/$pack/$key"
   reasons="$(dirty_reasons "$pack")"
 
   if [ -z "$rebuild" ] && [ -d "$dir" ]; then
-    if why="$(node "$MANIFEST" check "$dir" "$pack" "$key" 2>&1 >/dev/null)"; then
-      say "$pack: reusing toolchain $key"
-      use "$pack" "$dir"
-      return 0
+    # On success check prints only "<key> <commit>"; on failure only its
+    # one line naming why.
+    if res="$(node "$MANIFEST" check "$dir" "$pack" "$key" 2>&1)"; then
+      read -r _ mcommit <<<"$res"
+      if [ "$mcommit" != dirty ] || [ -n "$reasons" ]; then
+        say "$pack: reusing toolchain $key"
+        use "$pack" "$dir"
+        return 0
+      fi
+      say "$pack: not reusing $dir: it was built dirty, and these inputs are committed and no variant knob is set, so a clean toolchain of the same key replaces it"
+    else
+      say "$pack: not reusing $dir: ${res#toolchain-manifest.mjs: }"
     fi
-    say "$pack: not reusing $dir: ${why#toolchain-manifest.mjs: }"
     remove_tree "$dir"
   fi
 
@@ -374,6 +382,17 @@ assemble() {
     res="$(node "$MANIFEST" check "$dir" "$pack" "$key")" || die "$pack: $dir is not a toolchain of HEAD's inputs ($key) as its toolchain.json lists"
     read -r mkey mcommit <<<"$res"
   fi
+  # A toolchain of this key has every output the worktree declares. Checked
+  # whichever way the toolchain came (built, reused or fetched), because
+  # toolchain.outputs is no input of the key: an output declared after this
+  # toolchain was built keeps the key and would otherwise never be looked
+  # for. (Another commit's toolchain was checked against HEAD's file above.)
+  if [ "$other" = 0 ]; then
+    [ -f "$LIGHT/packs/$pack/toolchain.outputs" ] ||
+      die "$pack: packs/$pack/toolchain.outputs is missing: a toolchain must declare what it builds"
+    check_outputs "$(cat "$LIGHT/packs/$pack/toolchain.outputs")" "$dir" ||
+      die "$pack: the toolchain $mkey lacks outputs packs/$pack/toolchain.outputs declares; as that file is no input of the key, declare a new output in the same change as the toolchain.sh edit that builds it"
+  fi
   writable="$(find "$dir" -type f ! -path "$dir/toolchain.json" -perm /222 -print -quit)"
   [ -z "$writable" ] || die "$pack: $writable is writable; a toolchain's files are read-only, so that assembly cannot write into it"
 
@@ -430,7 +449,10 @@ record_state() {
   [ "$sother" != 1 ] || refuse "it was assembled over another commit's toolchain"
   key="$(key_of "$pack")"
   [ "$skey" = "$key" ] || refuse "it was assembled over the toolchain $skey, but HEAD's inputs give $key"
-  echo "$tree $(git -C "$LIGHT" hash-object scripts/pack-toolchain.sh) $(git -C "$LIGHT" hash-object scripts/toolchain-build-env.sh) $key"
+  # Assembly is this script and toolchain-manifest.mjs (the glossary): a
+  # change to either can change what an assembled pack is, so either is a
+  # field. toolchain-build-env.sh is not: it is a line of the key already.
+  echo "$tree $(git -C "$LIGHT" hash-object scripts/pack-toolchain.sh) $(git -C "$LIGHT" hash-object scripts/toolchain-manifest.mjs) $key"
 }
 
 case "${1:-}" in

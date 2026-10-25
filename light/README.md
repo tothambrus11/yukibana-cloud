@@ -61,9 +61,9 @@ A split pack (one with `packs/<pack>/toolchain.paths`) is never kept there.
 Its toolchain, the part that takes hours, is kept on the `light-toolchains`
 prerelease as `toolchain-<pack>-<key>.tar.zst`, where `<key>` hashes exactly
 the inputs `toolchain_specs <pack>` in `scripts/toolchain-key.sh` names and
-the output-changing settings of its `toolchain.env`
+the output-changing settings of its `toolchain.env` that are set
 (`scripts/pack-store.sh toolchain-key <pack>`), so a glue edit keeps the
-key. `scripts/pack-store.sh toolchain-key-report <pack> <base>` says what
+key, and so does a comment in `toolchain.env`, which is no input itself. `scripts/pack-store.sh toolchain-key-report <pack> <base>` says what
 changed a key. Of the scripts, only `scripts/toolchain-build-env.sh`, what
 reaches a build, is an input of every key, so changing it rebuilds every
 toolchain; `toolchain-key.sh` is pinned by a test instead and changes what

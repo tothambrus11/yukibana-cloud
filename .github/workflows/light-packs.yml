@@ -31,7 +31,9 @@
 # (light/scripts/test-workflows.mjs checks both). Run light-packs on main for
 # the commit first. A release run also never skips a pack: each one uploads
 # its output as the artifact pack-<pack>, and what it was made from (`tree
-# <tree>` or `toolchain <key>`) as pack-key-<pack>. An unsplit pack that the
+# <tree>` or `toolchain <key>`) as toolchain-key-<pack>, a name no
+# `pack-*` pattern matches, so the release merges every pack-* artifact
+# into static/packs as it is. An unsplit pack that the
 # store lacks is still built by a release, as before toolchains existed.
 #
 # Which packs are split is data: every step below asks whether this pack has
@@ -101,7 +103,7 @@ on:
   workflow_call:
     inputs:
       upload:
-        description: Upload each pack's output as the artifact pack-<pack>, and what it was made from as pack-key-<pack>
+        description: Upload each pack's output as the artifact pack-<pack>, and what it was made from as toolchain-key-<pack>
         type: boolean
         default: false
 
@@ -551,33 +553,30 @@ jobs:
             sed 's/^\(.*\)|\([0-9]*\)$/| \1 | \2 |/' "$TIMINGS"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # What the uploaded pack was made from, for the release: its own
-      # artifact, so it never lands in static/packs, and removed before the
-      # pack is uploaded.
+      # What the uploaded pack was made from, for the release: one file
+      # named after the pack, written outside the checkout so it is never
+      # part of the pack, in an artifact of its own whose name no pack-*
+      # pattern matches.
       - name: Record what the pack was made from
         if: inputs.upload
         env:
           SPLIT: ${{ steps.kind.outputs.split }}
           KEY: ${{ steps.toolchain.outputs.key }}
         run: |
-          mkdir -p ../../app/static/packs/.keys
+          mkdir -p "$RUNNER_TEMP/toolchain-key"
           if [ "$SPLIT" = true ]; then
             echo "toolchain $KEY"
           else
             echo "tree $(../../scripts/pack-store.sh tree "$PACK")"
-          fi > "../../app/static/packs/.keys/$PACK"
+          fi > "$RUNNER_TEMP/toolchain-key/$PACK"
 
       - uses: actions/upload-artifact@v6
         if: inputs.upload
         with:
-          name: pack-key-${{ matrix.pack }}
-          path: light/app/static/packs/.keys/${{ matrix.pack }}
+          name: toolchain-key-${{ matrix.pack }}
+          path: ${{ runner.temp }}/toolchain-key/${{ matrix.pack }}
           if-no-files-found: error
           retention-days: 3
-
-      - name: Keep the key out of the pack
-        if: inputs.upload
-        run: rm -rf ../../app/static/packs/.keys
 
       # The artifact's root is static/packs, so it holds <pack>/ and the
       # release can merge every pack into one static/packs.

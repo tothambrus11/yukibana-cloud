@@ -55,6 +55,16 @@ let toolchainsExist = true;
 const ghCalls = [];
 const release = (tag) =>
     tag === 'light-packs' ? { exists: releaseExists, assets } : tag === 'light-toolchains' ? { exists: toolchainsExist, assets: toolchains } : { exists: false, assets: new Map() };
+/** The release ids the server answers with, by tag. */
+const RELEASE_IDS = { 'light-packs': 1, 'light-toolchains': 2 };
+/**
+ * How many assets the server embeds in a release looked up by tag. GitHub
+ * documents no bound on that list, so the server shortens it, as GitHub may:
+ * only paging through /releases/<id>/assets sees the rest.
+ */
+const EMBEDDED = 3;
+/** Every asset-list request the server answered, as its URL. */
+const assetPages = [];
 
 /** What `gh release view|create|upload|delete-asset <tag> …` does to the releases. */
 function gh(args) {
@@ -82,17 +92,31 @@ function gh(args) {
 
 const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    const tag = /^\/repos\/test\/repo\/releases\/tags\/([^/]+)$/.exec(req.url)?.[1];
-    if (tag) {
-        const r = release(tag);
-        if (!r.exists) return res.writeHead(404).end(JSON.stringify({ message: 'Not Found', status: '404' }));
-        const list = [...r.assets].map(([name, a]) => ({
+    const listOf = (tag) =>
+        [...release(tag).assets].map(([name, a]) => ({
             name,
             created_at: a.created,
             digest: a.digest ?? `sha256:${createHash('sha256').update(a.bytes).digest('hex')}`,
             browser_download_url: `${base}/download/${tag}/${name}`,
         }));
-        return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ assets: list }));
+    const json = (body) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+    // A repository whose every request is over the rate limit, as GitHub
+    // answers an address that asked too often without credentials.
+    if (req.url.startsWith('/repos/test/limited/')) return res.writeHead(403).end(JSON.stringify({ message: 'API rate limit exceeded for 127.0.0.1.' }));
+    const tag = /^\/repos\/test\/repo\/releases\/tags\/([^/]+)$/.exec(req.url)?.[1];
+    if (tag) {
+        if (!release(tag).exists) return res.writeHead(404).end(JSON.stringify({ message: 'Not Found', status: '404' }));
+        return json({ id: RELEASE_IDS[tag], tag_name: tag, assets: listOf(tag).slice(0, EMBEDDED) });
+    }
+    const page = /^\/repos\/test\/repo\/releases\/(\d+)\/assets\?(.*)$/.exec(req.url);
+    if (page) {
+        assetPages.push(req.url);
+        const ptag = Object.keys(RELEASE_IDS).find((t) => RELEASE_IDS[t] === Number(page[1]));
+        if (!ptag || !release(ptag).exists) return res.writeHead(404).end(JSON.stringify({ message: 'Not Found', status: '404' }));
+        const q = new URLSearchParams(page[2]);
+        const per = Math.min(Number(q.get('per_page') ?? 30), 100);
+        const n = Number(q.get('page') ?? 1);
+        return json(listOf(ptag).slice((n - 1) * per, n * per));
     }
     if (req.url === '/gh' && req.method === 'POST') {
         let body = '';
@@ -377,12 +401,11 @@ test('a comment or helper change in the key or store scripts leaves every toolch
  * is a line of every key but no part of how keys are computed: the build
  * environment may change without this test noticing, as it should.
  */
-const GOLDEN = `yukibana-toolchain/1
+const GOLDEN = `yukibana-toolchain/2
 pack fix
 100644 4e610c04d58371663d95ca8237eea260b08f090c light/packs/fix/src/a.c
 120000 6bc0e647512d2a0bef4f26111e484dc87df7f5ca light/packs/fix/src/link.c
 100644 d8805c92f24d9461a93c9a318ab62da581e3988c light/packs/fix/src/new.c
-100644 e4ff82f9205d73ddc5d359fd797b95d1f028e0f0 light/packs/fix/toolchain.env
 100755 666656ac3528feb4be6109698f22ab4d535b0148 light/packs/fix/toolchain.sh
 100644 <build env> light/scripts/toolchain-build-env.sh
 100644 cd911e2352e44b4e43d1e1e4b48f1fe65803c11b light/shared/patch.diff
@@ -445,6 +468,24 @@ test('an output-changing setting gives another key, and a setting the pack does 
     assert.equal(await key('other', { OPT: '2' }), await key('other'));
 });
 
+test('a comment or a source setting added to toolchain.env rebuilds nothing, and only a set output-changing setting does', async () => {
+    const plain = await key();
+    const opt = await key('tool', { OPT: '2' });
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), '# a note on the settings\nPROXYLESS source  # where sources come from\n');
+    assert.equal(await key(), plain);
+    assert.equal(await key('tool', { OPT: '2', PROXYLESS: '1' }), opt);
+    // Nor is the build dirty for it: the file is no input.
+    const dirty = await store('toolchain-dirty', 'tool');
+    assert.equal(dirty.code, 1, dirty.out + dirty.err);
+    commit('a note on the settings');
+    assert.equal(await key(), plain);
+    // A newly declared output-changing setting counts once it is set.
+    fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'LTO variant  # link-time optimisation: another compiler\n');
+    assert.equal(await key(), plain);
+    assert.notEqual(await key('tool', { LTO: '1' }), plain);
+    git('reset', '-q', '--hard', 'HEAD~1');
+});
+
 test('a malformed toolchain setting is named, and no key is given', async () => {
     fs.appendFileSync(path.join(root, 'light/packs/tool/toolchain.env'), 'lto variant\nJOBS sometimes  # how many\n');
     const r = await store('toolchain-key', 'tool');
@@ -505,7 +546,7 @@ test('a dirty toolchain names the files that make it dirty', async () => {
 test('a pack without a toolchain keeps its tree as its key', async () => {
     const r = await store('toolchain-key', 'demo');
     assert.equal(r.code, 2);
-    assert.match(r.err, /demo has no toolchain \(packs\/demo\/toolchain\.paths\): its tree is its key/);
+    assert.match(r.err, /demo has no toolchain \(packs\/demo\/toolchain\.paths\): it is built whole by its build\.sh, and its tree is its key/);
     assert.equal((await store('tree', 'demo')).out.trim(), git('rev-parse', 'HEAD:light/packs/demo'));
     assert.equal((await store('toolchain-dirty', 'demo')).code, 2);
 });
@@ -560,7 +601,9 @@ test("a pack's toolchain key report names the file that changed it", async () =>
     assert.equal(env.code, 0, env.err);
     assert.match(env.out, /^old env: \(none\)$/m);
     assert.match(env.out, /^new env: env LTO=1$/m);
-    assert.match(env.out, /^M\tlight\/packs\/tool\/toolchain\.env$/m);
+    // Named once: toolchain.env is no input, so only the report's own
+    // line for it names it, never the diff of the inputs as well.
+    assert.equal(env.out.match(/^M\tlight\/packs\/tool\/toolchain\.env$/gm)?.length, 1, env.out);
     assert.equal(env.out.trim().split('\n').at(-1), 'changed');
     assert.notEqual(baseKey, await key());
 });
@@ -573,7 +616,9 @@ test("a change to the key's definition is named by the key report, with both key
     const base = git('rev-parse', 'HEAD');
     const baseKey = await key();
     const def = path.join(light, 'scripts/toolchain-key.sh');
-    fs.writeFileSync(def, fs.readFileSync(def, 'utf8').replace('echo "yukibana-toolchain/1"', 'echo "yukibana-toolchain/2"'));
+    const text = fs.readFileSync(def, 'utf8');
+    assert.match(text, /echo "yukibana-toolchain\/\d+"/);
+    fs.writeFileSync(def, text.replace(/echo "yukibana-toolchain\/(\d+)"/, (_, n) => `echo "yukibana-toolchain/${Number(n) + 1}"`));
     commit('the key means something else now');
     try {
         const newKey = await key();
@@ -682,6 +727,44 @@ test('a key report against a commit the clone does not have says so', async () =
     const r = await store('toolchain-key-report', 'tool', missing);
     assert.equal(r.code, 6);
     assert.match(r.err, new RegExp(`base commit ${missing} is not in this clone; fetch it first`));
+});
+
+test('a bad pack name is bad usage, exit 2, like a pack that is not split', async () => {
+    for (const args of [['toolchain-key', 'No_Such'], ['toolchain-has', 'nosuch'], ['toolchain-key', 'demo']]) {
+        const r = await store(...args);
+        assert.equal(r.code, 2, `${args.join(' ')}: ${r.err}`);
+        assert.match(r.err, /^pack-store\.sh: /);
+    }
+});
+
+test('a store holding more toolchains than one page of the API lists still finds every one of them', async () => {
+    toolchains = new Map();
+    // The toolchain asked for is the last of 250: past the list GitHub
+    // embeds in the release, and past the first two pages of its assets.
+    for (let i = 0; i < 249; i++) toolchains.set(`toolchain-other-${i.toString(16).padStart(40, '0')}.tar.zst`, { bytes: Buffer.from('x'), created: '2026-09-01T00:00:00Z' });
+    const k = await key();
+    toolchains.set(`toolchain-tool-${k}.tar.zst`, { bytes: toolchainArchive({ pack: 'tool', key: k, commit: 'b'.repeat(40) }), created: '2026-10-01T00:00:00Z' });
+    assetPages.length = 0;
+    const has = await store('toolchain-has', 'tool');
+    assert.equal(has.code, 0, has.err);
+    assert.deepEqual(assetPages, [1, 2, 3].map((n) => `/repos/test/repo/releases/2/assets?per_page=100&page=${n}`));
+    const dir = path.join(root, 'fetched-paged');
+    const fetched = await store('toolchain-fetch', 'tool', dir);
+    assert.equal(fetched.code, 0, fetched.err);
+    assert.equal(fs.readFileSync(path.join(dir, 'bin/cc'), 'utf8'), '#!/bin/sh\necho cc\n');
+    // A page of exactly 100 is not taken for the last: the next, empty, is.
+    toolchains.delete(`toolchain-other-${(0).toString(16).padStart(40, '0')}.tar.zst`);
+    assetPages.length = 0;
+    assert.equal((await store('toolchain-has', 'tool')).code, 0);
+    assert.equal(assetPages.length, 3);
+    toolchains = new Map();
+});
+
+test('an asset list GitHub refuses to give is a named failure, never a missing toolchain', async () => {
+    const r = await storeWith({ LIGHT_PACKS_REPO: 'test/limited' }, 'toolchain-has', 'tool');
+    assert.equal(r.code, 1, r.err);
+    assert.match(r.err, /pack-store\.sh: release light-toolchains of test\/limited: API rate limit exceeded/);
+    assert.doesNotMatch(r.err, /no toolchain-tool/);
 });
 
 test('no toolchain for these inputs exits 3', async () => {
@@ -795,7 +878,18 @@ test('a toolchain built from uncommitted inputs or a changed setting is never pu
 
     const setting = await storeWith({ OPT: '3' }, 'toolchain-publish', 'tool', built);
     assert.notEqual(setting.code, 0);
-    assert.match(setting.err, /was built from the inputs [0-9a-f]{40}, but HEAD's inputs and settings give [0-9a-f]{40}/);
+    assert.match(setting.err, /toolchain\.json names the inputs "[0-9a-f]{40}", not [0-9a-f]{40}/);
+    assert.match(setting.err, /is not, file for file, a toolchain of HEAD's inputs and settings \([0-9a-f]{40}\)/);
+
+    const otherPack = await store('toolchain-publish', 'tool', await builtToolchain({ pack: 'other' }));
+    assert.notEqual(otherPack.code, 0);
+    assert.match(otherPack.err, /toolchain\.json is of pack "other", not tool/);
+
+    const changed = await builtToolchain();
+    fs.appendFileSync(path.join(changed, 'bin/cc'), '# changed after the build\n');
+    const tampered = await store('toolchain-publish', 'tool', changed);
+    assert.notEqual(tampered.code, 0);
+    assert.match(tampered.err, /bin\/cc changed size/);
 
     const elsewhere = await store('toolchain-publish', 'tool', await builtToolchain({ commit: 'a'.repeat(40) }));
     assert.notEqual(elsewhere.code, 0);

@@ -69,28 +69,22 @@ jobs:
       - name: Install the app's dependencies
         run: npm ci --no-audit --no-fund
 
-      # Each artifact in a directory of its own: pack-key-<pack> matches
-      # pack-* too, and never goes in static/packs (it is downloaded again
-      # below, on its own).
+      # Every pack-<pack> artifact's root is static/packs holding <pack>/,
+      # so all of them merge into one static/packs. What each pack was made
+      # from is the artifact toolchain-key-<pack>, which pack-* never
+      # matches.
       - uses: actions/download-artifact@v7
         with:
           pattern: pack-*
-          path: ${{ runner.temp }}/artifacts
-
-      - name: Put the packs in place
-        run: |
-          mkdir -p static/packs
-          for a in "$RUNNER_TEMP"/artifacts/pack-*/; do
-            case "$(basename "$a")" in pack-key-*) continue ;; esac
-            cp -a "$a." static/packs/
-          done
+          merge-multiple: true
+          path: light/app/static/packs
 
       # What each pack was made from, as the pack job wrote it: one file
       # per pack, $RUNNER_TEMP/keys/<pack>, holding `toolchain <key>` or
       # `tree <tree id>`.
       - uses: actions/download-artifact@v7
         with:
-          pattern: pack-key-*
+          pattern: toolchain-key-*
           merge-multiple: true
           path: ${{ runner.temp }}/keys
 
@@ -105,7 +99,7 @@ jobs:
             [ -f "static/packs/$p/server.js" ] || missing+=("$p has no server.js")
             key="$RUNNER_TEMP/keys/$p"
             if [ ! -f "$key" ]; then
-              missing+=("$p has no key file (pack-key-$p)")
+              missing+=("$p has no key file (toolchain-key-$p)")
             elif ! grep -Eqx '(toolchain|tree) [0-9a-f]{40,64}' "$key"; then
               missing+=("$p's key file is not 'toolchain <key>' or 'tree <id>': $(head -c 200 "$key")")
             else

@@ -21,3 +21,34 @@ remove_tree() {
   find "$1" -type d -exec chmod u+w {} +
   rm -rf "$1"
 }
+
+# Exits 2, naming why on stderr, unless pack $1 has a plain name, exists as
+# $LIGHT/packs/$1 (LIGHT is the caller's light/ directory) and is split: has
+# toolchain.paths. 2 is "bad usage or not a split pack" in both store
+# scripts; pack-store.sh once exited 1 for a bad name where
+# pack-toolchain.sh exited 2, so a caller testing for 2 saw two meanings.
+# The message starts with the running script's name.
+split_pack() {
+  local me="${0##*/}"
+  if [[ ! "$1" =~ ^[a-z][a-z0-9]*$ ]]; then
+    echo "$me: '$1' is not a pack name" >&2
+    exit 2
+  fi
+  if [ ! -d "$LIGHT/packs/$1" ]; then
+    echo "$me: no pack $1 (packs/$1)" >&2
+    exit 2
+  fi
+  if [ ! -f "$LIGHT/packs/$1/toolchain.paths" ]; then
+    echo "$me: $1 has no toolchain (packs/$1/toolchain.paths): it is built whole by its build.sh, and its tree is its key" >&2
+    exit 2
+  fi
+}
+
+# Whether the asset list $2 (lines "<name> <sha256> <created_at> <url>", as
+# pack-store.sh's assets prints them) holds an asset named exactly $1. The
+# list is a string, never a pipe: a reader that stopped at the first match
+# would end the writer with SIGPIPE, which pipefail turns into a failure,
+# and a failure here reads as "not there".
+asset_listed() {
+  awk -v w="$1" '$1 == w { found = 1 } END { exit !found }' <<<"$2"
+}

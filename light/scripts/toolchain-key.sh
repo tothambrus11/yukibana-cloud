@@ -17,14 +17,17 @@
 # and nothing the toolchain reads may be left out of it.
 #
 # The key is the first 40 hex digits of the sha256 of the lines
-#   yukibana-toolchain/1
+#   yukibana-toolchain/2
 #   pack <pack>
 #   <mode> <git blob id> <path>   each input in the worktree, sorted by path
 #   env NAME=value                each set variant knob, sorted
 # where the inputs are the files toolchain_specs names, untracked ones
 # included and ignored ones not; light/scripts/toolchain-build-env.sh, the
 # build environment, is always one of them, so changing it rebuilds every
-# toolchain.
+# toolchain. toolchain.env is not: a knob reaches the key only as its env
+# line, so a comment or a `source` knob added there rebuilds nothing.
+# (Format 1 keyed toolchain.env's blob as well, so editing a comment in it
+# rebuilt the compilers; format 2 is the first with it left out.)
 #
 # This file is not an input of any key, though it decides every key: what it
 # computes reaches the key as the resolved lines above, so a comment, a
@@ -79,8 +82,14 @@ toolchain_spec_excludes() {
 # Prints the git pathspecs of the toolchain of pack $1, one per line, from the
 # repository root: the lines of light/packs/<pack>/toolchain.paths, then
 # exclusions of the pack's files that are never toolchain inputs
-# (toolchain.paths, toolchain.outputs, build.sh, glue.sh, requires.json),
-# then light/scripts/toolchain-build-env.sh, the build environment.
+# (toolchain.paths, toolchain.outputs, toolchain.env, build.sh, glue.sh,
+# requires.json), then light/scripts/toolchain-build-env.sh, the build
+# environment. toolchain.env is left out because what it decides reaches the
+# key already, exactly: each set variant knob as its `env` line
+# (toolchain_env_lines). Its blob would add only its comments and its
+# `source` knobs, neither of which changes a byte of the toolchain, and
+# would rebuild every compiler of the pack for either. Nor is it staged: a
+# toolchain.sh receives its knobs as variables and never reads the file.
 #
 # toolchain.paths holds one pathspec per line, magic such as `:(exclude)`
 # allowed; blank lines and lines starting with `#` are ignored. It fails
@@ -120,7 +129,7 @@ toolchain_specs() {
     echo "toolchain-key.sh: $dir/toolchain.paths names no input, only exclusions" >&2
     return 1
   fi
-  for line in toolchain.paths toolchain.outputs build.sh glue.sh requires.json; do
+  for line in toolchain.paths toolchain.outputs toolchain.env build.sh glue.sh requires.json; do
     printf ':(exclude)%s/%s\n' "$dir" "$line"
   done
   echo light/scripts/toolchain-build-env.sh
@@ -203,7 +212,7 @@ toolchain_lines() {
   mapfile -d '' -t paths < <(LC_ALL=C sort -zu "$list")
   rm -f "$list"
   # The format tag: bumped by any change that alters a key (see the header).
-  echo "yukibana-toolchain/1"
+  echo "yukibana-toolchain/2"
   echo "pack $pack"
   # Modes first, then every regular file hashed by one git process (with the
   # path's filters, so a committed file gives its blob id).

@@ -40,16 +40,25 @@ const OWN = ['OPT', 'MIRROR', 'UNDECLARED', 'SECRET_TOKEN', 'ALLOW_OTHER_TOOLCHA
 let toolchains = new Map();
 let downloads = 0;
 
+// The release by tag embeds none of its assets, so every read pages through
+// /releases/<id>/assets, as pack-store.sh must (GitHub may shorten the
+// embedded list).
 const server = createServer((req, res) => {
     const base = `http://127.0.0.1:${server.address().port}`;
-    if (req.url === '/repos/test/repo/releases/tags/light-toolchains') {
+    const json = (body) => res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+    if (req.url === '/repos/test/repo/releases/tags/light-toolchains') return json({ id: 7, tag_name: 'light-toolchains', assets: [] });
+    const page = /^\/repos\/test\/repo\/releases\/7\/assets\?(.*)$/.exec(req.url);
+    if (page) {
+        const q = new URLSearchParams(page[1]);
+        const per = Math.min(Number(q.get('per_page') ?? 30), 100);
+        const n = Number(q.get('page') ?? 1);
         const list = [...toolchains].map(([name, a]) => ({
             name,
             created_at: a.created,
             digest: `sha256:${createHash('sha256').update(a.bytes).digest('hex')}`,
             browser_download_url: `${base}/download/${name}`,
         }));
-        return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ assets: list }));
+        return json(list.slice((n - 1) * per, n * per));
     }
     const asset = req.url.startsWith('/download/') && toolchains.get(req.url.slice('/download/'.length));
     if (!asset) return res.writeHead(404).end(JSON.stringify({ message: 'Not Found', status: '404' }));
@@ -519,6 +528,52 @@ test('dirty inputs are not built without being asked', async () => {
     clean();
 });
 
+test('a toolchain built dirty is replaced by a clean one once exactly its inputs are committed', async () => {
+    removeTree(cache);
+    put('light/packs/tool/src/compiler.c', 'int main(void) { return 9; }\n');
+    const dirty = await ensure({}, '--build-dirty');
+    assert.equal(manifestOf(dirty.dir).commit, 'dirty');
+    // Still dirty: the dirty build is what there is, and it is reused.
+    assert.match((await ensure({}, '--build-dirty')).r.err, /reusing toolchain/);
+    commit('compiler 9');
+    // Committed, the same inputs give the same key; the dirty toolchain
+    // would never be published or recorded as HEAD's, so it gives way.
+    const rebuilt = await ensure();
+    assert.equal(rebuilt.dir, dirty.dir);
+    assert.match(rebuilt.r.err, /not reusing .*: it was built dirty, and these inputs are committed/);
+    assert.match(rebuilt.r.err, /building toolchain/);
+    assert.equal(manifestOf(rebuilt.dir).commit, git('rev-parse', 'HEAD'));
+    const out = path.join(root, 'out-was-dirty');
+    assert.equal((await toolchain({}, 'assemble', 'tool', rebuilt.dir, out)).code, 0);
+    const state = await toolchain({}, 'record-state', 'tool');
+    assert.equal(state.code, 0, state.err);
+    // And a clean toolchain stays reused while the inputs are dirty again.
+    put('light/packs/tool/src/glue.js', 'export const glue = 9;\n');
+    assert.match((await ensure()).r.err, /reusing toolchain/);
+    clean();
+    git('reset', '-q', '--hard', 'HEAD~1');
+});
+
+test('an output declared after its toolchain was built is looked for at every assembly', async () => {
+    const { dir } = await ensure();
+    const out = path.join(root, 'out-outputs');
+    assert.equal((await toolchain({}, 'assemble', 'tool', dir, out)).code, 0);
+    // toolchain.outputs is no input: the key, and the reused toolchain, stay.
+    const k = await key();
+    put('light/packs/tool/toolchain.outputs', 'bin/cc\nversions.json\nlib/libcc.a\n');
+    assert.equal(await key(), k);
+    const { dir: again } = await ensure();
+    assert.equal(again, dir);
+    const r = await toolchain({}, 'assemble', 'tool', again, out);
+    assert.notEqual(r.code, 0);
+    assert.match(r.err, /match no non-empty file in .*:\n {2}lib\/libcc\.a/);
+    assert.match(r.err, /lacks outputs packs\/tool\/toolchain\.outputs declares/);
+    // The pack assembled before is left as it was.
+    assert.equal(fs.readFileSync(path.join(out, 'js/glue.js'), 'utf8'), 'export const glue = 1;\n');
+    assert.equal(fs.existsSync(`${out}.part`), false);
+    clean();
+});
+
 test('--fetch-only says it would build with exit 3', async () => {
     removeTree(cache);
     const saved = toolchains;
@@ -571,11 +626,26 @@ test('a pack assembled by an uncommitted assembly script is not recorded as curr
     assert.equal((await toolchain({}, 'assemble', 'tool', dir, path.join(root, 'out-state'))).code, 0);
     const r = await toolchain({}, 'record-state', 'tool');
     assert.equal(r.code, 0, r.err);
-    const [tree, script, env, k] = r.out.trim().split(' ');
+    // The pack, assembly as the glossary names it (this script and the
+    // manifest's), and the key, which already covers the build environment.
+    const [tree, script, manifest, k, ...rest] = r.out.trim().split(' ');
+    assert.deepEqual(rest, []);
     assert.equal(tree, git('rev-parse', 'HEAD:light/packs/tool'));
     assert.equal(script, git('rev-parse', 'HEAD:light/scripts/pack-toolchain.sh'));
-    assert.equal(env, git('rev-parse', 'HEAD:light/scripts/toolchain-build-env.sh'));
+    assert.equal(manifest, git('rev-parse', 'HEAD:light/scripts/toolchain-manifest.mjs'));
     assert.equal(k, await key());
+
+    // A change to the manifest's format is a change to assembly: another state.
+    const mjs = path.join(light, 'scripts/toolchain-manifest.mjs');
+    fs.appendFileSync(mjs, '// another manifest format\n');
+    const uncommitted = await toolchain({}, 'record-state', 'tool');
+    assert.equal(uncommitted.code, 5);
+    assert.match(uncommitted.err, /uncommitted changes:\n.*light\/scripts\/toolchain-manifest\.mjs/);
+    commit('another manifest format');
+    const later = await toolchain({}, 'record-state', 'tool');
+    assert.equal(later.code, 0, later.err);
+    assert.notEqual(later.out.split(' ')[2], manifest);
+    git('reset', '-q', '--hard', 'HEAD~1');
 
     fs.appendFileSync(path.join(light, 'scripts/pack-toolchain.sh'), '# an uncommitted change to assembly\n');
     const edited = await toolchain({}, 'record-state', 'tool');

@@ -23,6 +23,8 @@
 #       newest assets. An asset that exists already is left as it is.
 #
 # Every download is checked against the sha256 GitHub records for the asset.
+# Every read of a release's assets pages through its whole asset list
+# (assets), never the first page GitHub embeds in the release itself.
 # The tree a fetched pack came from is written to ../.pack-trees/<pack>, which
 # light/setup.sh reads to skip a pack that is already current.
 #
@@ -115,21 +117,103 @@ tree() {
     git -C "$LIGHT" rev-parse "HEAD:packs/$1"
 }
 
-# The assets of release $1 (default: the pack store's) as lines
-# "<name> <sha256 or -> <created_at> <url>", or nothing when the release does
-# not exist. The API is asked without credentials unless GH_TOKEN is set (60
-# requests an hour per address).
-assets() {
+# Prints GitHub's answer to GET $API/repos/<repo>/$1, whatever its status
+# (an error is a JSON object naming it, which the reader then refuses). The
+# API is asked without credentials unless GH_TOKEN is set (60 requests an
+# hour per address).
+api_get() {
   local auth=()
-  [ -n "${GH_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GH_TOKEN")
-  curl -sSL "${auth[@]}" -H 'Accept: application/vnd.github+json' \
-    "$API/repos/$(repo)/releases/tags/${1:-$TAG}" |
-    node -e '
-      let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
-        const r = JSON.parse(s);
-        if (!Array.isArray(r.assets)) { if (r.status === "404" || r.message === "Not Found") return; throw new Error(r.message ?? s); }
-        for (const a of r.assets) console.log(a.name, (a.digest ?? "-").replace(/^sha256:/, ""), a.created_at, a.browser_download_url);
-      });'
+  [ -z "${GH_TOKEN:-}" ] || auth=(-H "Authorization: Bearer $GH_TOKEN")
+  curl -sSL "${auth[@]}" -H 'Accept: application/vnd.github+json' "$API/repos/$(repo)/$1"
+}
+
+# Assets per page asked of GitHub: its maximum. A page holding fewer is the
+# last.
+ASSETS_PER_PAGE=100
+
+# The assets of release $1 (default: the pack store's) as lines
+# "<name> <sha256 or -> <created_at> <url>", every one of them, or nothing
+# when the release does not exist; returns 1 naming the request when GitHub
+# answers anything else. The release is looked up by tag only for its id,
+# and its assets are then read page by page from /releases/<id>/assets:
+# the list a release embeds is not documented to be complete, and one
+# shortened silently would make a stored toolchain look missing, so CI would
+# rebuild a compiler and a release would refuse a pack it could have had.
+# Each step returns explicitly, as callers may run this where `set -e` is
+# off; a caller keeps the list in a variable (asset_listed), never pipes it.
+assets() {
+  local tag="${1:-$TAG}" out id page=1 n
+  out="$(api_get "releases/tags/$tag")" || return 1
+  id="$(node -e '
+    const [where, s] = process.argv.slice(1);
+    let r;
+    try { r = JSON.parse(s); } catch { console.error("pack-store.sh: " + where + ": not JSON: " + s.slice(0, 200)); process.exit(1); }
+    if (Number.isSafeInteger(r?.id)) console.log(r.id);
+    else if (r?.status !== "404" && r?.message !== "Not Found") { console.error("pack-store.sh: " + where + ": " + (r?.message ?? s.slice(0, 200))); process.exit(1); }
+  ' "release $tag of $(repo)" "$out")" || return 1
+  [ -n "$id" ] || return 0
+  while :; do
+    out="$(api_get "releases/$id/assets?per_page=$ASSETS_PER_PAGE&page=$page")" || return 1
+    out="$(node -e '
+      const [where, s] = process.argv.slice(1);
+      let r;
+      try { r = JSON.parse(s); } catch { console.error("pack-store.sh: " + where + ": not JSON: " + s.slice(0, 200)); process.exit(1); }
+      if (!Array.isArray(r)) { console.error("pack-store.sh: " + where + ": " + (r?.message ?? s.slice(0, 200))); process.exit(1); }
+      for (const a of r) console.log(a.name, (a.digest ?? "-").replace(/^sha256:/, ""), a.created_at, a.browser_download_url);
+    ' "page $page of the assets of release $tag of $(repo)" "$out")" || return 1
+    [ -n "$out" ] || return 0
+    printf '%s\n' "$out"
+    n="$(grep -c . <<<"$out")"
+    [ "$n" -ge "$ASSETS_PER_PAGE" ] || return 0
+    page=$((page + 1))
+    # GitHub holds at most 1000 assets a release: 11 pages. A server that
+    # ignored `page` would otherwise be read forever.
+    if [ "$page" -gt 50 ]; then
+      echo "pack-store.sh: release $tag of $(repo) lists more than 50 pages of assets; the API is not paging" >&2
+      return 1
+    fi
+  done
+}
+
+# The lines of asset list $2 whose asset is a build of prefix $1 (`<pack>-`
+# or `toolchain-<pack>-`) followed by 40 hex digits and .tar.zst, so that
+# pack `c` never takes pack `cpp`'s assets.
+builds_of() {
+  awk -v p="$1" 'index($1, p) == 1 && substr($1, length(p) + 1) ~ /^[0-9a-f]{40}\.tar\.zst$/' <<<"$2"
+}
+
+# The line of asset list $2 of the newest build of prefix $1 (builds_of),
+# or nothing. ISO 8601 times sort as text.
+newest_build() {
+  builds_of "$1" "$2" | sort -k3 | tail -n 1
+}
+
+# The line of asset list $2 of the asset named exactly $1, or nothing.
+asset_line() {
+  awk -v w="$1" '$1 == w' <<<"$2"
+}
+
+# Creates release $1 of repository $2 as a prerelease titled $3 with notes
+# $4, unless it exists. Several pack jobs may get here at once: one creates
+# it, the rest find it, and only a release still missing after that fails.
+release_ensure() {
+  local tag="$1" r="$2"
+  gh release view "$tag" --repo "$r" >/dev/null 2>&1 && return 0
+  gh release create "$tag" --repo "$r" --prerelease --latest=false --title "$3" --notes "$4" >/dev/null 2>&1 ||
+    gh release view "$tag" --repo "$r" >/dev/null ||
+    die "cannot create or find release $tag of $r"
+}
+
+# Uploads file $1 to release $2 of repository $3. Another run may have
+# stored the same asset meanwhile, so a failed upload is a success when the
+# release holds an asset of that name afterwards, and a failure naming the
+# asset otherwise.
+release_upload() {
+  local file="$1" tag="$2" r="$3" list
+  gh release upload "$tag" "$file" --repo "$r" && return 0
+  list="$(assets "$tag")" || die "uploading ${file##*/} to $tag failed, and its assets cannot be listed to see whether another run stored it"
+  asset_listed "${file##*/}" "$list" || die "uploading ${file##*/} to $tag failed"
+  echo "pack-store.sh: ${file##*/} was stored by another run meanwhile"
 }
 
 # Exits 2 when pack $1 is split: its output is assembled over a toolchain
@@ -143,10 +227,11 @@ not_split() {
 }
 
 has() {
-  local want
+  local want list
   not_split "$1"
   want="$1-$(tree "$1").tar.zst"
-  if assets | awk -v w="$want" '$1 == w { found = 1 } END { exit !found }'; then
+  list="$(assets)"
+  if asset_listed "$want" "$list"; then
     echo "pack-store.sh: $1: $want is in $(repo)'s $TAG release" >&2
   else
     echo "pack-store.sh: $1: no $want in $(repo)'s $TAG release" >&2
@@ -160,10 +245,9 @@ fetch() {
   want="$pack-$(tree "$pack").tar.zst"
   local list
   list="$(assets)"
-  read -r name sha _ url < <(awk -v w="$want" '$1 == w' <<<"$list") || true
+  read -r name sha _ url < <(asset_line "$want" "$list") || true
   if [ -z "${name:-}" ] && [ "$any" = --any ]; then
-    # The newest asset of the pack: ISO 8601 times sort as text.
-    read -r name sha _ url < <(awk -v p="$pack-" 'index($1, p) == 1 && $1 ~ /^[a-z]+-[0-9a-f]{40}\.tar\.zst$/' <<<"$list" | sort -k3 | tail -n 1) || true
+    read -r name sha _ url < <(newest_build "$pack-" "$list") || true
     [ -n "${name:-}" ] && echo "pack-store.sh: $pack: no build of these sources yet, taking the newest, $name" >&2
   fi
   if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no $want in $(repo)'s $TAG release" >&2; exit 3; fi
@@ -183,49 +267,35 @@ fetch() {
 }
 
 publish() {
-  local pack="$1" name r
+  local pack="$1" name r list old
   not_split "$pack"
   [ -f "$PACKS/$pack/server.js" ] || die "app/static/packs/$pack is not built (no server.js)"
   name="$pack-$(tree "$pack").tar.zst"
   r="$(repo)"
-  if ! gh release view "$TAG" --repo "$r" >/dev/null 2>&1; then
-    # Several pack jobs may get here at once: one creates, the rest find it.
-    gh release create "$TAG" --repo "$r" --prerelease --latest=false --title "Yukibana Light packs (build store)" \
-      --notes "Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup.sh); not a release of the app." \
-      >/dev/null 2>&1 || gh release view "$TAG" --repo "$r" >/dev/null
-  fi
-  if gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -xF "$name" >/dev/null; then
+  release_ensure "$TAG" "$r" "Yukibana Light packs (build store)" \
+    "Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup.sh); not a release of the app."
+  list="$(assets)"
+  if asset_listed "$name" "$list"; then
     echo "pack-store.sh: $name is in the store already"
   else
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/pack-store.XXXXXX")"
     tar --zstd -cf "$tmp/$name" -C "$PACKS" "$pack"
     ls -l "$tmp/$name"
-    # Another run may have stored the same build meanwhile: that is a success.
-    gh release upload "$TAG" "$tmp/$name" --repo "$r" ||
-      gh release view "$TAG" --repo "$r" --json assets --jq '.assets[].name' | grep -xF "$name" >/dev/null
+    release_upload "$tmp/$name" "$TAG" "$r"
   fi
-  # All but the pack's KEEP newest go. A release of the app (light-v*)
-  # holds its own copy of every pack, so nothing it needs is lost.
-  gh release view "$TAG" --repo "$r" --json assets \
-    --jq ".assets[] | select(.name | test(\"^$pack-[0-9a-f]{40}\\\\.tar\\\\.zst\$\")) | [.createdAt, .name] | @tsv" |
-    sort -r | tail -n "+$((KEEP + 1))" | cut -f2 |
-    while read -r old; do
-      echo "pack-store.sh: deleting $old"
-      gh release delete-asset "$TAG" "$old" --repo "$r" --yes
-    done
+  # All but the pack's KEEP newest go, newest by creation time (ISO 8601,
+  # which sorts as text). A release of the app (light-v*) holds its own copy
+  # of every pack, so nothing it needs is lost.
+  list="$(assets)"
+  old="$(builds_of "$pack-" "$list" | sort -r -k3 | tail -n "+$((KEEP + 1))" | cut -d' ' -f1)"
+  [ -n "$old" ] || return 0
+  while IFS= read -r name; do
+    echo "pack-store.sh: deleting $name"
+    gh release delete-asset "$TAG" "$name" --repo "$r" --yes
+  done <<<"$old"
 }
 
 # ---- Toolchains of split packs ------------------------------------------
-
-# Exits 2 unless pack $1 exists, has a plain name and is split.
-split_pack() {
-  [[ "$1" =~ ^[a-z][a-z0-9]*$ ]] || die "'$1' is not a pack name"
-  [ -d "$LIGHT/packs/$1" ] || die "no pack $1 (packs/$1)"
-  if [ ! -f "$LIGHT/packs/$1/toolchain.paths" ]; then
-    echo "pack-store.sh: $1 has no toolchain (packs/$1/toolchain.paths): its tree is its key" >&2
-    exit 2
-  fi
-}
 
 toolchain_key_report() {
   local pack="$1" base="$2" out key old_key="" f differ=""
@@ -259,9 +329,11 @@ toolchain_key_report() {
   new_env="$(toolchain_env_lines "$pack")"
   echo "old env: ${old_env:-(none)}" | sed '2,$s/^/         /'
   echo "new env: ${new_env:-(none)}" | sed '2,$s/^/         /'
-  # toolchain.paths is no input of itself and toolchain.env reaches the key
-  # only through the environment, so a change to either is shown as the key
-  # base would have had, computed from base's own files. So is a change to
+  # toolchain.paths is no input of itself, and toolchain.env is no input
+  # either (toolchain_specs leaves it out): it reaches the key only as the
+  # env lines above. So neither appears in the diff of the inputs, and a
+  # change to either is named here, once, with the key base would have had,
+  # computed from base's own files. So is a change to
   # toolchain-key.sh, the key's definition, which is no input of any key
   # either: a bumped format tag or another rule for the key's lines changes
   # every toolchain's key while no input differs, and a report that said
@@ -360,10 +432,11 @@ toolchain_dirty() {
 }
 
 toolchain_has() {
-  local pack="$1" want
+  local pack="$1" want list
   split_pack "$pack"
   want="toolchain-$pack-$(toolchain_key "$pack").tar.zst"
-  if assets "$TOOLCHAINS_TAG" | awk -v w="$want" '$1 == w { found = 1 } END { exit !found }'; then
+  list="$(assets "$TOOLCHAINS_TAG")"
+  if asset_listed "$want" "$list"; then
     echo "pack-store.sh: $pack: $want is in $(repo)'s $TOOLCHAINS_TAG release" >&2
   else
     echo "pack-store.sh: $pack: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2
@@ -379,8 +452,7 @@ toolchain_fetch() {
   dir="${1:-}"
   list="$(assets "$TOOLCHAINS_TAG")"
   if [ -n "$any" ]; then
-    # The newest toolchain of the pack: ISO 8601 times sort as text.
-    read -r name sha _ url < <(awk -v p="toolchain-$pack-" 'index($1, p) == 1 && substr($1, length(p) + 1) ~ /^[0-9a-f]{40}\.tar\.zst$/' <<<"$list" | sort -k3 | tail -n 1) || true
+    read -r name sha _ url < <(newest_build "toolchain-$pack-" "$list") || true
     if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no toolchain-$pack-* in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
     key="${name#"toolchain-$pack-"}"
     key="${key%.tar.zst}"
@@ -388,7 +460,7 @@ toolchain_fetch() {
   else
     key="$(toolchain_key "$pack")"
     want="toolchain-$pack-$key.tar.zst"
-    read -r name sha _ url < <(awk -v w="$want" '$1 == w' <<<"$list") || true
+    read -r name sha _ url < <(asset_line "$want" "$list") || true
     if [ -z "${name:-}" ]; then echo "pack-store.sh: $pack: no $want in $(repo)'s $TOOLCHAINS_TAG release" >&2; exit 3; fi
   fi
   dir="${dir:-$TOOLCHAIN_CACHE/built/$pack/$key}"
@@ -419,7 +491,7 @@ toolchain_fetch() {
 
 # shellcheck disable=SC2031 # TOOLCHAIN_ROOT is the checkout's here
 toolchain_publish() {
-  local pack="$1" dir="$2" dirty key head manifest mpack mkey mcommit name r list n size
+  local pack="$1" dir="$2" dirty key head res mcommit name r list n size
   split_pack "$pack"
   [ -f "$dir/toolchain.json" ] || die "$dir holds no toolchain.json"
   dirty="$(toolchain_dirty_paths "$pack")"
@@ -429,27 +501,20 @@ $dirty"
   fi
   key="$(toolchain_key "$pack")"
   head="$(git -C "$TOOLCHAIN_ROOT" rev-parse HEAD)"
-  manifest="$(node -e '
-    const m = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-    console.log([m.pack, m.key, m.commit].map((v) => (typeof v === "string" && /^[0-9a-z]+$/.test(v) ? v : "-")).join(" "));
-  ' "$dir/toolchain.json")"
-  read -r mpack mkey mcommit <<<"$manifest"
-  [ "$mpack" = "$pack" ] || die "$dir is a toolchain of $mpack, not $pack"
-  [ "$mkey" = "$key" ] || die "$pack: $dir was built from the inputs $mkey, but HEAD's inputs and settings give $key"
+  # The manifest's one reader checks its pack and key (HEAD's inputs and
+  # this environment's settings), names the first difference, checks every
+  # file is still as listed, and prints "<key> <commit>": only the commit is
+  # left to compare.
+  res="$(node "$LIGHT/scripts/toolchain-manifest.mjs" check "$dir" "$pack" "$key")" ||
+    die "$pack: $dir is not, file for file, a toolchain of HEAD's inputs and settings ($key)"
+  read -r _ mcommit <<<"$res"
   [ "$mcommit" = "$head" ] || die "$pack: $dir was built at $mcommit, not at HEAD ($head)"
-  # And it is still exactly what its manifest lists, file by file.
-  node "$LIGHT/scripts/toolchain-manifest.mjs" check "$dir" "$pack" "$key" >/dev/null ||
-    die "$pack: $dir is not the toolchain its toolchain.json lists"
   name="toolchain-$pack-$key.tar.zst"
   r="$(repo)"
-  if ! gh release view "$TOOLCHAINS_TAG" --repo "$r" >/dev/null 2>&1; then
-    # Several pack jobs may get here at once: one creates, the rest find it.
-    gh release create "$TOOLCHAINS_TAG" --repo "$r" --prerelease --latest=false --title "Yukibana Light toolchains (build store)" \
-      --notes "Toolchains of Yukibana Light's split packs, one asset per pack and key of its inputs: toolchain-<pack>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key). Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh; not a release of the app. Nothing is deleted automatically." \
-      >/dev/null 2>&1 || gh release view "$TOOLCHAINS_TAG" --repo "$r" >/dev/null
-  fi
+  release_ensure "$TOOLCHAINS_TAG" "$r" "Yukibana Light toolchains (build store)" \
+    "Toolchains of Yukibana Light's split packs, one asset per pack and key of its inputs: toolchain-<pack>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key). Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh; not a release of the app. Nothing is deleted automatically."
   list="$(assets "$TOOLCHAINS_TAG")"
-  if awk -v w="$name" '$1 == w { found = 1 } END { exit !found }' <<<"$list"; then
+  if asset_listed "$name" "$list"; then
     echo "pack-store.sh: $name is in the store already"
     return 0
   fi
@@ -470,9 +535,7 @@ $dirty"
   size="$(stat -c %s "$tmp/$name")"
   [ "$size" -le "$MAX_ASSET_BYTES" ] || die "$name is $size bytes, more than the $MAX_ASSET_BYTES a release asset may safely be"
   ls -l "$tmp/$name"
-  # Another run may have stored the same toolchain meanwhile: that is a success.
-  gh release upload "$TOOLCHAINS_TAG" "$tmp/$name" --repo "$r" ||
-    assets "$TOOLCHAINS_TAG" | awk -v w="$name" '$1 == w { found = 1 } END { exit !found }'
+  release_upload "$tmp/$name" "$TOOLCHAINS_TAG" "$r"
 }
 
 case "${1:-}" in

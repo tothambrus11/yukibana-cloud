@@ -221,6 +221,15 @@ test('every script the toolchain key reads starts the pack workflow', () => {
     }
 });
 
+test('what a pack was made from is uploaded beside it under a name no pack-* pattern takes for a pack', () => {
+    // The release downloads pattern pack-* straight into static/packs, so
+    // every artifact the pack job uploads whose name starts with pack- must
+    // be a pack; what it was made from is toolchain-key-<pack>.
+    const names = packSteps.filter((s) => String(s.uses ?? '').startsWith('actions/upload-artifact@')).map((s) => String(s.with?.name));
+    assert.deepEqual(names.filter((n) => n.startsWith('pack-')), ['pack-${{ matrix.pack }}']);
+    assert.ok(names.includes('toolchain-key-${{ matrix.pack }}'), names.join(' '));
+});
+
 test('the pack workflow names no split pack', () => {
     const named = packSteps.filter((s) => /matrix\.pack == 'cpp'/.test(String(s.if ?? '')));
     assert.deepEqual(named.map((s) => s.name), []);
