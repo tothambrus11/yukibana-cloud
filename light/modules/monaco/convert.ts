@@ -10,13 +10,16 @@
  * adding or subtracting one and nothing else.
  *
  * Monaco is only named, never imported as a value (H1: the host's Monaco is
- * injected). That leaves two things a conversion cannot make by itself:
+ * injected). That leaves three things a conversion cannot make by itself:
  *
  * - **Monaco's enums** (a marker's severity, a completion's kind). Their
  *   values are written here as numbers, in tables whose type is the
  *   installed Monaco's own enum (`Mirror`), so `npm run check` fails if a
  *   Monaco upgrade renumbers, adds or removes a member, rather than a
  *   warning turning into a hint on the page.
+ * - **Commands.** A server's command runs through a Monaco command the
+ *   host registers, whose id only the host knows, so a conversion that
+ *   meets one (a code action's, a code lens's) takes a {@link CommandOf}.
  * - **URIs.** A Monaco `Uri` is an object only the host's Monaco makes, and
  *   which model a server's document is is the host's to say (H5: model
  *   URIs belong to the host). So a conversion that names a document takes
@@ -61,6 +64,7 @@ const SymbolKind: Mirror<typeof monaco.languages.SymbolKind> = {
 };
 const SymbolTag: Mirror<typeof monaco.languages.SymbolTag> = { Deprecated: 1 };
 const InlayHintKind: Mirror<typeof monaco.languages.InlayHintKind> = { Type: 1, Parameter: 2 };
+const CodeActionTriggerType: Mirror<typeof monaco.languages.CodeActionTriggerType> = { Invoke: 1, Auto: 2 };
 
 // Positions and ranges.
 
@@ -443,6 +447,27 @@ export function toWorkspaceEdit(edit: lsp.WorkspaceEdit, uriOf: UriOf): { edit: 
  */
 export type CommandOf = (command: lsp.Command) => monaco.languages.Command;
 
+/** Monaco's code action trigger types as LSP's trigger kinds: a person asked (1), or the editor did (2). */
+const LSP_CODE_ACTION_TRIGGER: Readonly<Record<monaco.languages.CodeActionTriggerType, lsp.CodeActionTriggerKind>> = {
+	[CodeActionTriggerType.Invoke]: 1,
+	[CodeActionTriggerType.Auto]: 2,
+};
+
+/**
+ * Why and for what Monaco asks for code actions, as a request's `context`.
+ * The diagnostics are the caller's: those the server published that touch
+ * the range ({@link rangesTouch}), as it sent them. Monaco's own `markers`
+ * are not sent back, because a marker has lost the diagnostic's `data`,
+ * which servers read to make the fix.
+ */
+export function toLspCodeActionContext(context: monaco.languages.CodeActionContext, diagnostics: readonly lsp.Diagnostic[]): lsp.CodeActionContext {
+	return {
+		diagnostics,
+		...(context.only !== undefined && { only: [context.only] }),
+		triggerKind: LSP_CODE_ACTION_TRIGGER[context.trigger],
+	};
+}
+
 /** Whether a code action answer is a bare command, which LSP lets a server send in place of an action. */
 function isCommand(a: lsp.Command | lsp.CodeAction): a is lsp.Command {
 	return typeof a.command === 'string';
@@ -479,6 +504,28 @@ export function toCodeAction(a: lsp.Command | lsp.CodeAction, uriOf: UriOf, comm
 		},
 		unsupported,
 	};
+}
+
+// Code lenses and links.
+
+/**
+ * A code lens as Monaco's: its range, and its command as the host runs it.
+ * A lens without a command is shown once resolved, if the server resolves
+ * lenses; the caller keeps the server's lens to send back for that.
+ */
+export function toCodeLens(l: lsp.CodeLens, commandOf: CommandOf): monaco.languages.CodeLens {
+	return { range: toMonacoRange(l.range), ...(l.command && { command: commandOf(l.command) }) };
+}
+
+/**
+ * A document link as Monaco's, its target kept as the string the server
+ * wrote (Monaco opens a string as it opens a Uri). Which targets are worth
+ * showing is the caller's: Light's app leaves out a `file:` link to a file
+ * it has no model for (clangd's `#include <vector>`), which would open
+ * nothing, and only the host knows which models it has.
+ */
+export function toLink(l: lsp.DocumentLink): monaco.languages.ILink {
+	return { range: toMonacoRange(l.range), ...(l.target !== undefined && { url: l.target }), ...(l.tooltip !== undefined && { tooltip: l.tooltip }) };
 }
 
 // Folding and selection.

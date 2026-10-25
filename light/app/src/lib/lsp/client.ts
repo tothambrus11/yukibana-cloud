@@ -777,7 +777,7 @@ export class LanguageClient {
 				return uri.scheme !== 'file' || !!monaco.editor.getModel(uri.with({ fragment: '' }));
 			};
 			const toLink = (l: lsp.DocumentLink): monaco.languages.ILink => {
-				const link = { range: c.toMonacoRange(l.range), ...(l.target !== undefined && { url: l.target }), ...(l.tooltip !== undefined && { tooltip: l.tooltip }) };
+				const link = c.toLink(l);
 				original.set(link, l);
 				return link;
 			};
@@ -810,7 +810,7 @@ export class LanguageClient {
 			const resolve = !!caps.codeLensProvider.resolveProvider;
 			const original = new WeakMap<monaco.languages.CodeLens, lsp.CodeLens>();
 			const toLens = (l: lsp.CodeLens): monaco.languages.CodeLens => {
-				const lens = { range: c.toMonacoRange(l.range), ...(l.command && { command: toCommand(l.command) }) };
+				const lens = c.toCodeLens(l, toCommand);
 				original.set(lens, l);
 				return lens;
 			};
@@ -1015,7 +1015,7 @@ export class LanguageClient {
 					const result = await this.ask<(lsp.Command | lsp.CodeAction)[]>(
 						model,
 						'textDocument/codeAction',
-						{ textDocument: { uri: model.uri.toString() }, range: lspRange, context: { diagnostics, ...(context.only !== undefined && { only: [context.only] }), triggerKind: context.trigger } },
+						{ textDocument: { uri: model.uri.toString() }, range: lspRange, context: c.toLspCodeActionContext(context, diagnostics) },
 						token,
 					);
 					const actions = (result ?? []).map((a) => convert(a).action);

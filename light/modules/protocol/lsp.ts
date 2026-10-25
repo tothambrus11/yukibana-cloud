@@ -281,6 +281,20 @@ export interface WorkspaceEdit {
 	documentChanges?: readonly (TextDocumentEdit | CreateFile | RenameFile | DeleteFile)[];
 }
 
+/** Why code actions are asked for: 1 a person asked (a menu, a key), 2 the editor asked by itself (the lightbulb as the cursor moves). */
+export type CodeActionTriggerKind = 1 | 2;
+
+/**
+ * What a code action request says about where it was asked: the server's
+ * own diagnostics there (as it sent them, `data` included), the kinds of
+ * action wanted (`quickfix`, `refactor.extract`, …; absent: any) and why.
+ */
+export interface CodeActionContext {
+	diagnostics: readonly Diagnostic[];
+	only?: readonly string[];
+	triggerKind?: CodeActionTriggerKind;
+}
+
 /**
  * A change a server offers at a place: an edit, a command, or both (the
  * edit first). A server that resolves code actions may leave `edit` out
@@ -296,6 +310,30 @@ export interface CodeAction {
 	edit?: WorkspaceEdit;
 	command?: Command;
 	/** The server's own, handed back in `codeAction/resolve`. */
+	data?: unknown;
+}
+
+/**
+ * A command shown above a line (HLS's "add the signature"). A server that
+ * resolves lenses may leave `command` out until `codeLens/resolve`.
+ */
+export interface CodeLens {
+	range: Range;
+	command?: Command;
+	/** The server's own, handed back in `codeLens/resolve`. */
+	data?: unknown;
+}
+
+/**
+ * A range of a document that links somewhere (clangd's `#include`). A
+ * server that resolves links may leave `target` out until
+ * `documentLink/resolve`.
+ */
+export interface DocumentLink {
+	range: Range;
+	target?: string;
+	tooltip?: string;
+	/** The server's own, handed back in `documentLink/resolve`. */
 	data?: unknown;
 }
 

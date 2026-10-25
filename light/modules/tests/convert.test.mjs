@@ -1,8 +1,8 @@
 // A language server's answers as Monaco shows them, and Monaco's questions
 // as a server reads them (monaco/convert.ts): positions, diagnostics,
-// hovers, completions, signatures, symbols, places, edits, folds, smart
-// select and inlay hints, each as a table of what goes in and what comes
-// out. No Monaco is loaded: a "Monaco URI" here is whatever the test's
+// hovers, completions, signatures, symbols, places, edits, code actions,
+// lenses and links, folds, smart select and inlay hints, each as a table
+// of what goes in and what comes out. No Monaco is loaded: a "Monaco URI" here is whatever the test's
 // `uriOf` makes, which is all a conversion may assume of one.
 //
 //   node --test light/modules/          (Node 22.18 or later: loads the TypeScript source)
@@ -346,6 +346,26 @@ test("a code action's diagnostics become markers, and a bare command offered as 
 	assert.deepEqual(c.toCodeAction(command, uriOf, commandOf), { action: { title: 'Run tests', command: commandOf(command) }, unsupported: [] });
 });
 
+/** Monaco 0.57's CodeActionTriggerType. */
+const CodeActionTrigger = { Invoke: 1, Auto: 2 };
+
+test('code actions a person asked for are sent as invoked, and those the lightbulb asks for as automatic', () => {
+	const diagnostics = [{ range: range(0, 0, 0, 1), message: 'm', data: { fix: 1 } }];
+	assert.deepEqual(c.toLspCodeActionContext({ markers: [], trigger: CodeActionTrigger.Invoke }, diagnostics), { diagnostics, triggerKind: 1 });
+	assert.deepEqual(c.toLspCodeActionContext({ markers: [], trigger: CodeActionTrigger.Auto, only: 'quickfix' }, []), { diagnostics: [], only: ['quickfix'], triggerKind: 2 });
+});
+
+test("a code lens keeps its place and runs the server's command through the host's", () => {
+	const command = { title: 'add signature', command: 'hls.sig' };
+	assert.deepEqual(c.toCodeLens({ range: range(3, 0, 3, 4), command }, commandOf), { range: monacoRange(4, 1, 4, 5), command: commandOf(command) });
+	assert.deepEqual(c.toCodeLens({ range: range(3, 0, 3, 4), data: 1 }, commandOf), { range: monacoRange(4, 1, 4, 5) });
+});
+
+test('a document link keeps its target as the server wrote it, and its tooltip', () => {
+	assert.deepEqual(c.toLink({ range: range(0, 9, 0, 18), target: ROOT + 'util.h', tooltip: 'util.h' }), { range: monacoRange(1, 10, 1, 19), url: ROOT + 'util.h', tooltip: 'util.h' });
+	assert.deepEqual(c.toLink({ range: range(0, 9, 0, 18) }), { range: monacoRange(1, 10, 1, 19) });
+});
+
 test('folding ranges move to lines counted from 1, keep their kind, and one-line ranges are dropped', () => {
 	assert.deepEqual(
 		c.toFolds([
@@ -418,4 +438,11 @@ test("a Monaco that renumbered a marker's severity, or added one, would fail the
 	assert.deepEqual(typeErrors(header + 'export const ok: Mirror<typeof monaco.MarkerSeverity> = { Hint: 1, Info: 2, Warning: 4, Error: 8 };'), []);
 	assert.notDeepEqual(typeErrors(header + 'export const swapped: Mirror<typeof monaco.MarkerSeverity> = { Hint: 1, Info: 2, Warning: 8, Error: 4 };'), []);
 	assert.notDeepEqual(typeErrors(header + 'export const missing: Mirror<typeof monaco.MarkerSeverity> = { Hint: 1, Info: 2, Warning: 4 };'), []);
+});
+
+test('a Monaco that swapped which code action trigger is a person asking would fail the type check rather than send servers the wrong one', () => {
+	// LSP's 1|2 accepts either number, so only the mirror table catches a swap.
+	const header = "import type * as monaco from 'monaco-editor';\ntype Mirror<E> = { readonly [K in Exclude<keyof E, number>]: E[K] };\n";
+	assert.deepEqual(typeErrors(header + 'export const ok: Mirror<typeof monaco.languages.CodeActionTriggerType> = { Invoke: 1, Auto: 2 };'), []);
+	assert.notDeepEqual(typeErrors(header + 'export const swapped: Mirror<typeof monaco.languages.CodeActionTriggerType> = { Invoke: 2, Auto: 1 };'), []);
 });

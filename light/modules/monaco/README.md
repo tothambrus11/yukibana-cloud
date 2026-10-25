@@ -17,21 +17,25 @@ files, the theme, and Monaco's editor services for a host that wants them.
 
 | File | What |
 |---|---|
-| `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, code actions (one the editor can make only in part is disabled, with the reason), folds, smart select, inlay hints, a refused rename's reason |
+| `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, code actions and their context (one the editor can make only in part is disabled, with the reason), code lenses, document links, folds, smart select, inlay hints, a refused rename's reason |
 
-Two things a conversion cannot make without the host's Monaco, and how
+Three things a conversion cannot make without the host's Monaco, and how
 `convert.ts` does without it:
 
 * **Monaco's enums** are written out as numbers, in tables typed as the
   installed Monaco's own enums, so a Monaco upgrade that renumbers, adds or
   removes a member fails `npm run check` (and `tests/convert.test.mjs`
   proves that the check fires).
+* **A server's command** runs through a Monaco command the host registers,
+  so code actions and code lenses take the host's `CommandOf`.
 * **A document's model** is the host's to name: a conversion that meets a
   server's URI asks the host's `UriOf`, and a place in a document it
   answers null for is left out, or, in a workspace edit, named in
   `unsupported` rather than dropped. Light's app answers with
   `monaco.Uri.parse`; a host with a model per snippet answers from its
-  session's map (step M7).
+  session's map (step M7). Which document links are worth showing is the
+  host's too, for the same reason: Light's app leaves out a `file:` link
+  to a file it has no model for.
 
 Its tests are `../tests/convert.test.mjs`, run with the other modules'.
 
