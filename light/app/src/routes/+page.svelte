@@ -22,7 +22,8 @@
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
-	import BuildSettings, { BUILD_SETTINGS_EVENT, buildSummary } from '../lib/components/BuildSettings.svelte';
+	import BuildSettings from '../lib/components/BuildSettings.svelte';
+	import { buildSummary, openBuildSettings } from '../lib/build-settings';
 	import MoreMenu from '../lib/components/MoreMenu.svelte';
 	import Popover from '../lib/components/Popover.svelte';
 	import { theme } from '../lib/theme.svelte';
@@ -97,11 +98,6 @@
 	function reset() {
 		const label = languageOf(workspace.language).label;
 		if (confirm(`Replace your ${label} project with the sample? Your changes to it will be lost.`)) void workspace.resetProject();
-	}
-
-	/** Opens the Build settings panel next to `from`: the ⋯ button when the chip is folded away, or the status bar's summary. */
-	function openBuildSettings(from: HTMLElement | null) {
-		dispatchEvent(new CustomEvent(BUILD_SETTINGS_EVENT, { detail: from }));
 	}
 </script>
 

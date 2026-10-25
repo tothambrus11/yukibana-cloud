@@ -241,6 +241,11 @@ body {
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
+/* `hidden` hides, whatever display a class gives the element (a hidden .chip stayed visible). */
+[hidden] {
+	display: none !important;
+}
+
 /* Read by screen readers, not shown. */
 .sr-only {
 	position: absolute;

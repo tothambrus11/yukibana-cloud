@@ -12,41 +12,14 @@
   The panel can also be opened from elsewhere, anchored to what opened it:
   the ⋯ menu when the chip is folded away, the status bar's build summary,
   and a compiler output view's "Change build settings…", by dispatching
-  `BUILD_SETTINGS_EVENT` on window with the opener as its detail.
+  `BUILD_SETTINGS_EVENT` (build-settings.ts) on window with the opener as
+  its detail.
 -->
-<script lang="ts" module>
-	import { TARGET_SHORT } from '../cpp-targets';
-	import type { Workspace } from '../workspace.svelte';
-
-	/** The window event that opens the panel; its `detail` is the element to anchor it to. */
-	export const BUILD_SETTINGS_EVENT = 'yk-build-settings';
-
-	/**
-	 * The chip's summary of the build: the C++ target's short name, the
-	 * optimisation level, the sanitizers on, and a Linux target's CPUs when
-	 * more than one. Empty for a language without build settings.
-	 */
-	export function buildSummary(workspace: Workspace): string {
-		const parts: string[] = [];
-		const target = workspace.target;
-		if (target) parts.push(target.kind === 'unsupported' ? target.triple || 'Other target' : TARGET_SHORT[target.target.id]);
-		const o = workspace.optimization;
-		if (o) parts.push(o.kind === 'other' ? o.flag : o.level.flag);
-		const s = workspace.sanitizers;
-		if (s?.address || s?.undefined) parts.push(s.address && s.undefined ? 'ASan + UBSan' : s.address ? 'ASan' : 'UBSan');
-		if (target?.kind === 'target' && target.target.runtime === 'linux') {
-			const r = workspace.runOptions;
-			if (r.emulation === 'user') parts.push('user mode');
-			else if (r.cpus > 1) parts.push(`${r.cpus} CPUs`);
-			if (r.strace) parts.push('strace');
-		}
-		return parts.join(' · ');
-	}
-</script>
-
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Popover from './Popover.svelte';
+	import { BUILD_SETTINGS_EVENT, buildSummary } from '../build-settings';
+	import type { Workspace } from '../workspace.svelte';
 	import Sanitizers from './Sanitizers.svelte';
 	import { TARGETS, type CppTargetId } from '../cpp-targets';
 	import { TEST_FRAMEWORKS, type TestFramework } from '../cpp-tests';
