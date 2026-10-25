@@ -91,6 +91,9 @@ rm -rf "$K" "$W/.built"
 mkdir -p "$K/targets"
 
 step "compiler-rt for wasm32-wasip1"
+# A run that failed before the chmod below left read-only copies here, and
+# CI's cache keeps them: rm cannot empty a directory it cannot write.
+[ ! -d "$W/rt" ] || chmod -R u+w "$W/rt"
 rm -rf "$W/rt" "$W/obj" "$W/stage"
 mkdir -p "$W/rt/lib" "$W/obj"
 for d in sanitizer_common asan ubsan ubsan_minimal lsan interception; do cp -r "$EMSDK_LIB/compiler-rt/lib/$d" "$W/rt/lib/"; done
