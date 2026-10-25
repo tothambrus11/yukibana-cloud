@@ -1,0 +1,4 @@
+{
+  "Main.hs": "module Main (main) where\n\nimport Geometry\n\nsquare :: Int -> Int\nsquare x = x * x\n\nmain :: IO ()\nmain = do\n  let total = sum (map square [1 .. 10])\n  print total\n  print (square total)\n  print (norm (Point 3 4))\n",
+  "Geometry.hs": "-- | Points.\nmodule Geometry (Point (..), norm) where\n\ndata Point = Point {px :: Double, py :: Double}\n\nnorm :: Point -> Double\nnorm (Point x y) = sqrt (x * x + y * y)\n"
+}

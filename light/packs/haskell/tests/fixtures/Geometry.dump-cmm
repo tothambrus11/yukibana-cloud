@@ -1,0 +1,528 @@
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $tc'Point1_rIq_bytes" {
+     $tc'Point1_rIq_bytes:
+         I8[] "'Point"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $tcPoint1_rIl_bytes" {
+     $tcPoint1_rIl_bytes:
+         I8[] "Point"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule3_rIi_bytes" {
+     $trModule3_rIi_bytes:
+         I8[] "Geometry"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule1_rIg_bytes" {
+     $trModule1_rIg_bytes:
+         I8[] "main"
+ }]
+
+
+==================== Output Cmm ====================
+
+[Point_entry() { //  [R2, R3]
+         { info_tbls: [(cIO,
+                        label: Point_info
+                        rep: HeapRep static { Fun {arity: 2 fun_type: ArgSpec 15} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cIO: // cIK
+           unwind Sp = Just Sp + 0;
+           _B1::P32 = R3;
+           _B0::P32 = R2;
+           goto cIQ;
+       cIQ: // cIK
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 12;
+           if (Hp > HpLim) (likely: False) goto cIS; else goto cIR;
+       cIS: // cIK
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 12;
+           goto cIP;
+       cIP: // cIK
+           unwind Sp = Just Sp + 0;
+           R3 = _B1::P32;
+           R2 = _B0::P32;
+           R1 = Point_closure;
+           call (stg_gc_fun)(R3, R2, R1) args: 4, res: 0, upd: 4;
+       cIR: // cIK
+           unwind Sp = Just Sp + 0;
+           //tick src</workspace/Geometry.hs:4:14-47>
+           I32[Hp - 8] = Point_con_info;
+           P32[Hp - 4] = _B0::P32;
+           P32[Hp] = _B1::P32;
+           _cIN::P32 = Hp - 7;
+           R1 = _cIN::P32;
+           call (I32[P32[Sp]])(R1) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . Point_closure" {
+     Point_closure:
+         const Point_info;
+ }]
+
+
+==================== Output Cmm ====================
+
+[py_entry() { //  [R2]
+         { info_tbls: [(cJ2,
+                        label: py_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJ2: // cIU
+           unwind Sp = Just Sp + 0;
+           _sIs::P32 = R2;
+           if ((Sp + 4) - 8 < SpLim) (likely: False) goto cJ3; else goto cJ4;
+       cJ3: // cIU
+           unwind Sp = Just Sp + 0;
+           R2 = _sIs::P32;
+           R1 = py_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       cJ4: // cIU
+           unwind Sp = Just Sp + 0;
+           //tick src</workspace/Geometry.hs:4:35-36>
+           I32[Sp - 4] = block_cIX_info;
+           R1 = _sIs::P32;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 4;
+           if (R1 & 3 != 0) goto n0; else goto cIY;
+       n0: // global
+           call _blk_cIX(R1) args: 0, res: 0, upd: 0;
+       cIY: // cIU
+           unwind Sp = Just Sp + 4;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . py_closure" {
+     py_closure:
+         const py_info;
+ },
+ _blk_cIX() { //  [R1]
+         { info_tbls: [(cIX,
+                        label: block_cIX_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cIX: // cIU
+           unwind Sp = Just Sp + 4;
+           _sIt::P32 = R1;
+           _sIv::P32 = P32[_sIt::P32 + 7];
+           R1 = _sIv::P32 & (-4);
+           Sp = Sp + 4;
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![R1]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[px_entry() { //  [R2]
+         { info_tbls: [(cJf,
+                        label: px_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJf: // cJ7
+           unwind Sp = Just Sp + 0;
+           _sIw::P32 = R2;
+           if ((Sp + 4) - 8 < SpLim) (likely: False) goto cJg; else goto cJh;
+       cJg: // cJ7
+           unwind Sp = Just Sp + 0;
+           R2 = _sIw::P32;
+           R1 = px_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       cJh: // cJ7
+           unwind Sp = Just Sp + 0;
+           //tick src</workspace/Geometry.hs:4:21-22>
+           I32[Sp - 4] = block_cJa_info;
+           R1 = _sIw::P32;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 4;
+           if (R1 & 3 != 0) goto n1; else goto cJb;
+       n1: // global
+           call _blk_cJa(R1) args: 0, res: 0, upd: 0;
+       cJb: // cJ7
+           unwind Sp = Just Sp + 4;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . px_closure" {
+     px_closure:
+         const px_info;
+ },
+ _blk_cJa() { //  [R1]
+         { info_tbls: [(cJa,
+                        label: block_cJa_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJa: // cJ7
+           unwind Sp = Just Sp + 4;
+           _sIx::P32 = R1;
+           _sIy::P32 = P32[_sIx::P32 + 3];
+           R1 = _sIy::P32 & (-4);
+           Sp = Sp + 4;
+           unwind Sp = Just Sp + 0;
+           call (I32[I32![R1]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule2_rIh_closure" {
+     $trModule2_rIh_closure:
+         const TrNameS_con_info;
+         const $trModule1_rIg_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule4_rIj_closure" {
+     $trModule4_rIj_closure:
+         const TrNameS_con_info;
+         const $trModule3_rIi_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule_closure" {
+     $trModule_closure:
+         const Module_con_info;
+         const $trModule2_rIh_closure+1;
+         const $trModule4_rIj_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep_rIk_closure" {
+     $krep_rIk_closure:
+         const KindRepTyConApp_con_info;
+         const $tcDouble_closure;
+         const []_closure+1;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tcPoint2_rIm_closure" {
+     $tcPoint2_rIm_closure:
+         const TrNameS_con_info;
+         const $tcPoint1_rIl_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tcPoint_closure" {
+     $tcPoint_closure:
+         const TyCon_con_info;
+         const $trModule_closure+1;
+         const $tcPoint2_rIm_closure+1;
+         const krep$*_closure;
+         const 14465664668707857508 :: W64;
+         const 10791344104965576672 :: W64;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep1_rIn_closure" {
+     $krep1_rIn_closure:
+         const KindRepTyConApp_con_info;
+         const $tcPoint_closure+1;
+         const []_closure+1;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep2_rIo_closure" {
+     $krep2_rIo_closure:
+         const KindRepFun_con_info;
+         const $krep_rIk_closure+1;
+         const $krep1_rIn_closure+1;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep3_rIp_closure" {
+     $krep3_rIp_closure:
+         const KindRepFun_con_info;
+         const $krep_rIk_closure+1;
+         const $krep2_rIo_closure+3;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tc'Point2_rIr_closure" {
+     $tc'Point2_rIr_closure:
+         const TrNameS_con_info;
+         const $tc'Point1_rIq_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tc'Point_closure" {
+     $tc'Point_closure:
+         const TyCon_con_info;
+         const $trModule_closure+1;
+         const $tc'Point2_rIr_closure+1;
+         const $krep3_rIp_closure+3;
+         const 8859752923274051943 :: W64;
+         const 14799879522436965057 :: W64;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u3_srt" {
+     _u3_srt:
+         const stg_SRT_2_info;
+         const $fFloatingDouble_closure;
+         const $fNumDouble_closure;
+         const 0;
+ },
+ norm_sat_sIF_entry() { //  [R1]
+         { info_tbls: [(cJD,
+                        label: norm_sat_sIF_info
+                        rep: HeapRep 1 ptrs { Thunk }
+                        srt: Just $fNumDouble_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJD: // cJk/cJr/cJu/cJy
+           unwind Sp = Just Sp + 0;
+           _sIF::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto cJE; else goto cJF;
+       cJE: // cJk/cJr/cJu/cJy
+           unwind Sp = Just Sp + 0;
+           R1 = _sIF::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       cJF: // cJk/cJr/cJu/cJy
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _sIF::P32;
+           _sID::P32 = P32[_sIF::P32 + 8];
+           //tick src</workspace/Geometry.hs:7:34-38>
+           //tick src</workspace/Geometry.hs:7:34>
+           //tick src</workspace/Geometry.hs:7:38>
+           R2 = $fNumDouble_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = _sID::P32;
+           P32[Sp - 12] = _sID::P32;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call *_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ norm_sat_sIE_entry() { //  [R1]
+         { info_tbls: [(cJH,
+                        label: norm_sat_sIE_info
+                        rep: HeapRep 1 ptrs { Thunk }
+                        srt: Just $fNumDouble_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJH: // cJk/cJr/cJu/cJB
+           unwind Sp = Just Sp + 0;
+           _sIE::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto cJI; else goto cJJ;
+       cJI: // cJk/cJr/cJu/cJB
+           unwind Sp = Just Sp + 0;
+           R1 = _sIE::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       cJJ: // cJk/cJr/cJu/cJB
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _sIE::P32;
+           _sIC::P32 = P32[_sIE::P32 + 8];
+           //tick src</workspace/Geometry.hs:7:26-30>
+           //tick src</workspace/Geometry.hs:7:26>
+           //tick src</workspace/Geometry.hs:7:30>
+           R2 = $fNumDouble_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = _sIC::P32;
+           P32[Sp - 12] = _sIC::P32;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call *_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ norm_sat_sIG_entry() { //  [R1]
+         { info_tbls: [(cJK,
+                        label: norm_sat_sIG_info
+                        rep: HeapRep 2 ptrs { Thunk }
+                        srt: Just $fNumDouble_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJK: // cJk/cJr/cJu
+           unwind Sp = Just Sp + 0;
+           _sIG::P32 = R1;
+           if ((Sp + 4) - 24 < SpLim) (likely: False) goto cJL; else goto cJM;
+       cJM: // cJk/cJr/cJu
+           unwind Sp = Just Sp + 0;
+           Hp = Hp + 24;
+           if (Hp > HpLim) (likely: False) goto cJO; else goto cJN;
+       cJO: // cJk/cJr/cJu
+           unwind Sp = Just Sp + 0;
+           HpAlloc = 24;
+           goto cJL;
+       cJL: // cJk/cJr/cJu
+           unwind Sp = Just Sp + 0;
+           R1 = _sIG::P32;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       cJN: // cJk/cJr/cJu
+           unwind Sp = Just Sp + 0;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = _sIG::P32;
+           _sIC::P32 = P32[_sIG::P32 + 8];
+           _sID::P32 = P32[_sIG::P32 + 12];
+           //tick src</workspace/Geometry.hs:7:25-39>
+           I32[Hp - 20] = norm_sat_sIF_info;
+           P32[Hp - 12] = _sID::P32;
+           _cJw::P32 = Hp - 20;
+           I32[Hp - 8] = norm_sat_sIE_info;
+           P32[Hp] = _sIC::P32;
+           _cJz::P32 = Hp - 8;
+           R2 = $fNumDouble_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = _cJz::P32;
+           P32[Sp - 12] = _cJw::P32;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call +_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ norm_entry() { //  [R2]
+         { info_tbls: [(cJP,
+                        label: norm_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Just _u3_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJP: // cJk
+           unwind Sp = Just Sp + 0;
+           _sIA::P32 = R2;
+           if ((Sp + 4) - 12 < SpLim) (likely: False) goto cJQ; else goto cJR;
+       cJQ: // cJk
+           unwind Sp = Just Sp + 0;
+           R2 = _sIA::P32;
+           R1 = norm_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       cJR: // cJk
+           unwind Sp = Just Sp + 0;
+           //tick src</workspace/Geometry.hs:7:1-39>
+           I32[Sp - 4] = block_cJn_info;
+           R1 = _sIA::P32;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 4;
+           if (R1 & 3 != 0) goto n2; else goto cJo;
+       n2: // global
+           call _blk_cJn(R1) args: 0, res: 0, upd: 0;
+       cJo: // cJk
+           unwind Sp = Just Sp + 4;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . norm_closure" {
+     norm_closure:
+         const norm_info;
+         const 0;
+ },
+ _blk_cJn() { //  [R1]
+         { info_tbls: [(cJn,
+                        label: block_cJn_info
+                        rep: StackRep []
+                        srt: Just _u3_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJn: // cJk
+           unwind Sp = Just Sp + 4;
+           _sIB::P32 = R1;
+           Hp = Hp + 16;
+           if (Hp > HpLim) (likely: False) goto cJU; else goto cJT;
+       cJU: // cJk/cJr
+           unwind Sp = Just Sp + 4;
+           HpAlloc = 16;
+           R1 = _sIB::P32;
+           call stg_gc_unpt_r1(R1) args: 4, res: 4, upd: 4;
+       cJT: // cJk/cJr
+           unwind Sp = Just Sp + 4;
+           _sIC::P32 = P32[_sIB::P32 + 3];
+           _sID::P32 = P32[_sIB::P32 + 7];
+           //tick src</workspace/Geometry.hs:7:20-39>
+           I32[Hp - 12] = norm_sat_sIG_info;
+           P32[Hp - 4] = _sIC::P32;
+           P32[Hp] = _sID::P32;
+           _cJs::P32 = Hp - 12;
+           R2 = $fFloatingDouble_closure;
+           I32[Sp - 4] = stg_ap_p_info;
+           P32[Sp] = _cJs::P32;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 8;
+           call sqrt_entry(R2) args: 12, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[Point_con_entry() { //  [R1]
+         { info_tbls: [(cJV,
+                        label: Point_con_info
+                        rep: HeapRep 2 ptrs { Con {tag: 0 descr:"main:Geometry.Point"} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cJV: // cJV
+           unwind Sp = Just Sp + 0;
+           R1 = R1 + 1;
+           call (I32[P32[Sp]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+

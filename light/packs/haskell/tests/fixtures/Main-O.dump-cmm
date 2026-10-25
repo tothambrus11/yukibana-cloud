@@ -1,0 +1,1062 @@
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule2_bytes" {
+     $trModule2_bytes:
+         I8[] "Main"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule4_bytes" {
+     $trModule4_bytes:
+         I8[] "main"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule3_closure" {
+     $trModule3_closure:
+         const TrNameS_con_info;
+         const $trModule4_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule1_closure" {
+     $trModule1_closure:
+         const TrNameS_con_info;
+         const $trModule2_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule_closure" {
+     $trModule_closure:
+         const Module_con_info;
+         const $trModule3_closure+1;
+         const $trModule1_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main_k_entry() { //  [R1]
+         { info_tbls: [(c1S6,
+                        label: main_k_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just $fNumInt_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1S6: // c1S1
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1S7; else goto c1S8;
+       c1S7: // c1S1
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1S8: // c1S1
+           unwind Sp = Just Sp;
+           (_c1S3::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1S3::I32 == 0) goto c1S5; else goto c1S4;
+       c1S5: // c1S1
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1S4: // c1S1
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1S3::I32;
+           R2 = $fNumInt_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call +_entry(R2) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_k_closure" {
+     main_k_closure:
+         const main_k_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main16_sat_s1RH_entry() { //  [R1]
+         { info_tbls: [(c1Sm,
+                        label: main16_sat_s1RH_info
+                        rep: HeapRep 2 ptrs { Thunk }
+                        srt: Just main_k_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Sm: // c1Sa/c1Sh/c1Sk
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1Sn; else goto c1So;
+       c1Sn: // c1Sa/c1Sh/c1Sk
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1So: // c1Sa/c1Sh/c1Sk
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = R1;
+           R3 = P32[R1 + 12];
+           R2 = P32[R1 + 8];
+           R1 = main_k_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pp_fast(R3, R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ main16_entry() { //  [R2, R3, R4]
+         { info_tbls: [(c1Sp,
+                        label: main16_info
+                        rep: HeapRep static { Fun {arity: 3 fun_type: ArgSpec 23} }
+                        srt: Just main_k_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Sp: // c1Sa
+           unwind Sp = Just Sp;
+           if ((Sp + -12) < SpLim) (likely: False) goto c1Sq; else goto c1Sr;
+       c1Sq: // c1Sa
+           unwind Sp = Just Sp;
+           R1 = main16_closure;
+           call (stg_gc_fun)(R4, R3, R2, R1) args: 4, res: 0, upd: 4;
+       c1Sr: // c1Sa
+           unwind Sp = Just Sp;
+           I32[Sp - 12] = block_c1Sd_info;
+           R1 = R4;
+           P32[Sp - 8] = R2;
+           P32[Sp - 4] = R3;
+           Sp = Sp - 12;
+           unwind Sp = Just Sp + 12;
+           if (R1 & 3 != 0) goto n0; else goto c1Se;
+       n0: // global
+           call _blk_c1Sd(R1) args: 0, res: 0, upd: 0;
+       c1Se: // c1Sa
+           unwind Sp = Just Sp + 12;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . main16_closure" {
+     main16_closure:
+         const main16_info;
+         const 0;
+ },
+ _blk_c1Sd() { //  [R1]
+         { info_tbls: [(c1Sd,
+                        label: block_c1Sd_info
+                        rep: StackRep [False, False]
+                        srt: Just main_k_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Sd: // c1Sa
+           unwind Sp = Just Sp + 12;
+           Hp = Hp + 16;
+           if (Hp > HpLim) (likely: False) goto c1Su; else goto c1St;
+       c1Su: // c1Sa/c1Sh
+           unwind Sp = Just Sp + 12;
+           HpAlloc = 16;
+           call stg_gc_unpt_r1(R1) args: 4, res: 4, upd: 4;
+       c1St: // c1Sa/c1Sh
+           unwind Sp = Just Sp + 12;
+           I32[Hp - 12] = main16_sat_s1RH_info;
+           P32[Hp - 4] = R1;
+           P32[Hp] = P32[Sp + 4];
+           R2 = Hp - 12;
+           R1 = P32[Sp + 8];
+           Sp = Sp + 12;
+           unwind Sp = Just Sp;
+           call stg_ap_p_fast(R2, R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[main15_entry() { //  [R2]
+         { info_tbls: [(c1Sz,
+                        label: main15_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Just $fNumInt_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Sz: // c1Sw
+           unwind Sp = Just Sp;
+           if ((Sp + -12) < SpLim) (likely: False) goto c1SA; else goto c1SB;
+       c1SA: // c1Sw
+           unwind Sp = Just Sp;
+           R1 = main15_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       c1SB: // c1Sw
+           unwind Sp = Just Sp;
+           //tick src</workspace/Main.hs:10:24-29>
+           //tick src</workspace/Main.hs:6:1-16>
+           //tick src</workspace/Main.hs:6:12>
+           //tick src</workspace/Main.hs:6:16>
+           _s1RI::P32 = R2;
+           R2 = $fNumInt_closure;
+           I32[Sp - 12] = stg_ap_pp_info;
+           P32[Sp - 8] = _s1RI::P32;
+           P32[Sp - 4] = _s1RI::P32;
+           Sp = Sp - 12;
+           unwind Sp = Just Sp + 12;
+           call *_entry(R2) args: 16, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main15_closure" {
+     main15_closure:
+         const main15_info;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[go_main14_sat_s1RQ_entry() { //  [R1]
+         { info_tbls: [(c1T0,
+                        label: go_main14_sat_s1RQ_info
+                        rep: HeapRep 2 ptrs 1 nonptrs { Thunk }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1T0: // c1SD/c1SI/c1SN
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1T1; else goto c1T2;
+       c1T1: // c1SD/c1SI/c1SN
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1T2: // c1SD/c1SI/c1SN
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_upd_frame_info;
+           P32[Sp - 4] = R1;
+           _s1RO::I32 = I32[R1 + 16];
+           if (_s1RO::I32 != 10) goto c1SY; else goto c1SZ;
+       c1SY: // c1SD/c1SI/c1SN/c1SR
+           unwind Sp = Just Sp;
+           R2 = _s1RO::I32 + 1;
+           R1 = P32[R1 + 8];
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call go_s1RL_entry(R2, R1) args: 12, res: 0, upd: 12;
+       c1SZ: // c1SD/c1SI/c1SN/c1SW
+           unwind Sp = Just Sp;
+           R1 = P32[R1 + 12];
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_0_fast(R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ go_s1RL_entry() { //  [R1, R2]
+         { info_tbls: [(c1T4,
+                        label: go_s1RL_info
+                        rep: HeapRep 2 ptrs { Fun {arity: 1 fun_type: ArgSpec 4} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1T4: // c1SD/c1SI
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           Hp = Hp + 28;
+           if (Hp > HpLim) (likely: False) goto c1T8; else goto c1T7;
+       c1T8: // c1SD/c1SI
+           unwind Sp = Just Sp;
+           HpAlloc = 28;
+           unwind Sp = Just Sp;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       c1T7: // c1SD/c1SI
+           unwind Sp = Just Sp;
+           _s1RK::P32 = P32[R1 + 3];
+           _s1RJ::P32 = P32[R1 + 7];
+           I32[Hp - 24] = go_main14_sat_s1RQ_info;
+           P32[Hp - 16] = R1;
+           P32[Hp - 12] = _s1RK::P32;
+           I32[Hp - 8] = R2;
+           I32[Hp - 4] = I#_con_info;
+           I32[Hp] = R2;
+           R3 = Hp - 24;
+           R2 = Hp - 3;
+           R1 = _s1RJ::P32;
+           call stg_ap_pp_fast(R3, R2, R1) args: 4, res: 0, upd: 4;
+     }
+ },
+ main14_entry() { //  [R2, R3]
+         { info_tbls: [(c1T9,
+                        label: main14_info
+                        rep: HeapRep static { Fun {arity: 2 fun_type: ArgSpec 15} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1T9: // c1SD
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           Hp = Hp + 12;
+           if (Hp > HpLim) (likely: False) goto c1Td; else goto c1Tc;
+       c1Td: // c1SD
+           unwind Sp = Just Sp;
+           HpAlloc = 12;
+           unwind Sp = Just Sp;
+           R1 = main14_closure;
+           call (stg_gc_fun)(R3, R2, R1) args: 4, res: 0, upd: 4;
+       c1Tc: // c1SD
+           unwind Sp = Just Sp;
+           I32[Hp - 8] = go_s1RL_info;
+           P32[Hp - 4] = R3;
+           P32[Hp] = R2;
+           R2 = 1;
+           R1 = Hp - 7;
+           call go_s1RL_entry(R2, R1) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main14_closure" {
+     main14_closure:
+         const main14_info;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main13_entry() { //  [R1]
+         { info_tbls: [(c1Tk,
+                        label: main13_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just build_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Tk: // c1Tf
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1Tl; else goto c1Tm;
+       c1Tl: // c1Tf
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1Tm: // c1Tf
+           unwind Sp = Just Sp;
+           (_c1Th::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1Th::I32 == 0) goto c1Tj; else goto c1Ti;
+       c1Tj: // c1Tf
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1Ti: // c1Tf
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1Th::I32;
+           R2 = main14_closure+2;
+           R1 = build_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_p_fast(R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main13_closure" {
+     main13_closure:
+         const main13_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u1_srt" {
+     _u1_srt:
+         const stg_SRT_3_info;
+         const map_closure;
+         const main13_closure;
+         const main15_closure;
+         const 0;
+ },
+ main12_entry() { //  [R1]
+         { info_tbls: [(c1Tt,
+                        label: main12_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u1_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Tt: // c1To
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1Tu; else goto c1Tv;
+       c1Tu: // c1To
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1Tv: // c1To
+           unwind Sp = Just Sp;
+           (_c1Tq::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1Tq::I32 == 0) goto c1Ts; else goto c1Tr;
+       c1Ts: // c1To
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1Tr: // c1To
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1Tq::I32;
+           //tick src</workspace/Main.hs:10:31-39>
+           R3 = main13_closure;
+           R2 = main15_closure+1;
+           R1 = map_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pp_fast(R3, R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main12_closure" {
+     main12_closure:
+         const main12_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . main11_closure" {
+     main11_closure:
+         const IS_con_info;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main10_entry() { //  [R1]
+         { info_tbls: [(c1TC,
+                        label: main10_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just $fNumInt_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1TC: // c1Tx
+           unwind Sp = Just Sp;
+           if ((Sp + -16) < SpLim) (likely: False) goto c1TD; else goto c1TE;
+       c1TD: // c1Tx
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1TE: // c1Tx
+           unwind Sp = Just Sp;
+           (_c1Tz::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1Tz::I32 == 0) goto c1TB; else goto c1TA;
+       c1TB: // c1Tx
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1TA: // c1Tx
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1Tz::I32;
+           R2 = $fNumInt_closure;
+           I32[Sp - 16] = stg_ap_p_info;
+           P32[Sp - 12] = main11_closure+1;
+           Sp = Sp - 16;
+           unwind Sp = Just Sp + 16;
+           call fromInteger_entry(R2) args: 20, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main10_closure" {
+     main10_closure:
+         const main10_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u2_srt" {
+     _u2_srt:
+         const stg_SRT_5_info;
+         const breakpoint_closure;
+         const foldr_closure;
+         const main10_closure;
+         const main12_closure;
+         const main16_closure;
+         const 0;
+ },
+ main_total_entry() { //  [R1]
+         { info_tbls: [(c1TL,
+                        label: main_total_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u2_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1TL: // c1TG
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1TM; else goto c1TN;
+       c1TM: // c1TG
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1TN: // c1TG
+           unwind Sp = Just Sp;
+           (_c1TI::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1TI::I32 == 0) goto c1TK; else goto c1TJ;
+       c1TK: // c1TG
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1TJ: // c1TG
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1TI::I32;
+           //tick src</workspace/Main.hs:10:7-40>
+           //tick src</workspace/Main.hs:10:15-40>
+           //tick src</workspace/Main.hs:10:19-40>
+           R5 = main10_closure;
+           R4 = main12_closure;
+           R3 = breakpoint_closure;
+           R2 = main16_closure+3;
+           R1 = foldr_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_pppp_fast(R5,
+                                 R4,
+                                 R3,
+                                 R2,
+                                 R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_total_closure" {
+     main_total_closure:
+         const main_total_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main18_entry() { //  [R1]
+         { info_tbls: [(c1TZ,
+                        label: main18_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just main_total_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1TZ: // c1TP
+           unwind Sp = Just Sp;
+           if ((Sp + -12) < SpLim) (likely: False) goto c1U0; else goto c1U1;
+       c1U0: // c1TP
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1U1: // c1TP
+           unwind Sp = Just Sp;
+           (_c1TR::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1TR::I32 == 0) goto c1TT; else goto c1TS;
+       c1TT: // c1TP
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1TS: // c1TP
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1TR::I32;
+           I32[Sp - 12] = block_c1TU_info;
+           R1 = main_total_closure;
+           Sp = Sp - 12;
+           unwind Sp = Just Sp + 12;
+           if (R1 & 3 != 0) goto n3; else goto c1TV;
+       n3: // global
+           call _blk_c1TU(R1) args: 0, res: 0, upd: 0;
+       c1TV: // c1TP
+           unwind Sp = Just Sp + 12;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 12;
+     }
+ },
+ section ""data" . main18_closure" {
+     main18_closure:
+         const main18_info;
+         const 0;
+         const 0;
+         const 0;
+ },
+ _blk_c1TU() { //  [R1]
+         { info_tbls: [(c1TU,
+                        label: block_c1TU_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1TU: // c1TP
+           unwind Sp = Just Sp + 12;
+           R3 = []_closure+1;
+           R2 = I32[R1 + 3];
+           Sp = Sp + 4;
+           unwind Sp = Just Sp + 8;
+           call itos_entry(R3, R2) args: 12, res: 0, upd: 12;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[main17_entry() { //  []
+         { info_tbls: [(c1U7,
+                        label: main17_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 3} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1U7: // c1U4
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           //tick src</workspace/Main.hs:11:9-13>
+           R4 = True_closure+2;
+           R3 = main18_closure;
+           R2 = stdout_closure;
+           call hPutStr2_entry(R4, R3, R2) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main17_closure" {
+     main17_closure:
+         const main17_info;
+         const stdout_closure;
+         const hPutStr2_closure;
+         const main18_closure;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u4_srt" {
+     _u4_srt:
+         const stg_SRT_2_info;
+         const $fNumInt_closure;
+         const main_total_closure;
+         const 0;
+ },
+ main9_entry() { //  [R1]
+         { info_tbls: [(c1Uk,
+                        label: main9_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u4_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Uk: // c1Ub
+           unwind Sp = Just Sp;
+           if ((Sp + -24) < SpLim) (likely: False) goto c1Ul; else goto c1Um;
+       c1Ul: // c1Ub
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1Um: // c1Ub
+           unwind Sp = Just Sp;
+           (_c1Ud::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1Ud::I32 == 0) goto c1Uf; else goto c1Ue;
+       c1Uf: // c1Ub
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1Ue: // c1Ub
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1Ud::I32;
+           //tick src</workspace/Main.hs:6:12>
+           //tick src</workspace/Main.hs:12:17-21>
+           //tick src</workspace/Main.hs:6:16>
+           //tick src</workspace/Main.hs:12:17-21>
+           I32[Sp - 12] = block_c1Ug_info;
+           R2 = $fNumInt_closure;
+           I32[Sp - 24] = stg_ap_pp_info;
+           P32[Sp - 20] = main_total_closure;
+           P32[Sp - 16] = main_total_closure;
+           Sp = Sp - 24;
+           unwind Sp = Just Sp + 24;
+           call *_entry(R2) args: 16, res: 4, upd: 12;
+     }
+ },
+ section ""data" . main9_closure" {
+     main9_closure:
+         const main9_info;
+         const 0;
+         const 0;
+         const 0;
+ },
+ _blk_c1Ug() { //  [R1]
+         { info_tbls: [(c1Ug,
+                        label: block_c1Ug_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Ug: // c1Ub
+           unwind Sp = Just Sp + 12;
+           R3 = []_closure+1;
+           R2 = I32[R1 + 3];
+           Sp = Sp + 4;
+           unwind Sp = Just Sp + 8;
+           call itos_entry(R3, R2) args: 12, res: 0, upd: 12;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[main8_entry() { //  []
+         { info_tbls: [(c1Us,
+                        label: main8_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 3} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Us: // c1Up
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           //tick src</workspace/Main.hs:12:9-22>
+           //tick src</workspace/Main.hs:6:1-16>
+           R4 = True_closure+2;
+           R3 = main9_closure;
+           R2 = stdout_closure;
+           call hPutStr2_entry(R4, R3, R2) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main8_closure" {
+     main8_closure:
+         const main8_info;
+         const stdout_closure;
+         const hPutStr2_closure;
+         const main9_closure;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . main7_closure" {
+     main7_closure:
+         const D#_con_info;
+         const 3.0 :: W64;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . main6_closure" {
+     main6_closure:
+         const D#_con_info;
+         const 4.0 :: W64;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . main5_closure" {
+     main5_closure:
+         const Point_con_info;
+         const main7_closure+1;
+         const main6_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main4_entry() { //  [R1]
+         { info_tbls: [(c1UB,
+                        label: main4_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just norm_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1UB: // c1Uw
+           unwind Sp = Just Sp;
+           if ((Sp + -8) < SpLim) (likely: False) goto c1UC; else goto c1UD;
+       c1UC: // c1Uw
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1UD: // c1Uw
+           unwind Sp = Just Sp;
+           (_c1Uy::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1Uy::I32 == 0) goto c1UA; else goto c1Uz;
+       c1UA: // c1Uw
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1Uz: // c1Uw
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1Uy::I32;
+           //tick src</workspace/Main.hs:13:15-25>
+           R2 = main5_closure+1;
+           R1 = norm_closure;
+           Sp = Sp - 8;
+           unwind Sp = Just Sp + 8;
+           call stg_ap_p_fast(R2, R1) args: 12, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main4_closure" {
+     main4_closure:
+         const main4_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u5_srt" {
+     _u5_srt:
+         const stg_SRT_2_info;
+         const $fShowDouble_closure;
+         const main4_closure;
+         const 0;
+ },
+ main3_entry() { //  [R1]
+         { info_tbls: [(c1UK,
+                        label: main3_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u5_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1UK: // c1UF
+           unwind Sp = Just Sp;
+           if ((Sp + -16) < SpLim) (likely: False) goto c1UL; else goto c1UM;
+       c1UL: // c1UF
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1UM: // c1UF
+           unwind Sp = Just Sp;
+           (_c1UH::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1UH::I32 == 0) goto c1UJ; else goto c1UI;
+       c1UJ: // c1UF
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1UI: // c1UF
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1UH::I32;
+           //tick src</workspace/Main.hs:13:9-26>
+           R2 = $fShowDouble_closure;
+           I32[Sp - 16] = stg_ap_p_info;
+           P32[Sp - 12] = main4_closure;
+           Sp = Sp - 16;
+           unwind Sp = Just Sp + 16;
+           call show_entry(R2) args: 20, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main3_closure" {
+     main3_closure:
+         const main3_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main2_entry() { //  []
+         { info_tbls: [(c1UR,
+                        label: main2_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 3} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1UR: // c1UO
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           //tick src</workspace/Main.hs:13:3-26>
+           R4 = True_closure+2;
+           R3 = main3_closure;
+           R2 = stdout_closure;
+           call hPutStr2_entry(R4, R3, R2) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main2_closure" {
+     main2_closure:
+         const main2_info;
+         const stdout_closure;
+         const hPutStr2_closure;
+         const main3_closure;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u6_srt" {
+     _u6_srt:
+         const stg_SRT_3_info;
+         const $fMonadIO_closure;
+         const main2_closure;
+         const main8_closure;
+         const 0;
+ },
+ main1_entry() { //  [R1]
+         { info_tbls: [(c1V0,
+                        label: main1_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u6_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1V0: // c1UV
+           unwind Sp = Just Sp;
+           if ((Sp + -20) < SpLim) (likely: False) goto c1V1; else goto c1V2;
+       c1V1: // c1UV
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1V2: // c1UV
+           unwind Sp = Just Sp;
+           (_c1UX::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1UX::I32 == 0) goto c1UZ; else goto c1UY;
+       c1UZ: // c1UV
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1UY: // c1UV
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1UX::I32;
+           R2 = $fMonadIO_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = main8_closure+1;
+           P32[Sp - 12] = main2_closure+1;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call >>_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main1_closure" {
+     main1_closure:
+         const main1_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . _u7_srt" {
+     _u7_srt:
+         const stg_SRT_3_info;
+         const $fMonadIO_closure;
+         const main1_closure;
+         const main17_closure;
+         const 0;
+ },
+ main_entry() { //  [R1]
+         { info_tbls: [(c1V9,
+                        label: main_info
+                        rep: HeapRep static { Thunk }
+                        srt: Just _u7_srt)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1V9: // c1V4
+           unwind Sp = Just Sp;
+           if ((Sp + -20) < SpLim) (likely: False) goto c1Va; else goto c1Vb;
+       c1Va: // c1V4
+           unwind Sp = Just Sp;
+           call (stg_gc_enter_1)(R1) args: 4, res: 0, upd: 4;
+       c1Vb: // c1V4
+           unwind Sp = Just Sp;
+           (_c1V6::I32) = call "ccall" arg hints:  [PtrHint,
+                                                    PtrHint]  result hints:  [PtrHint] newCAF(BaseReg, R1);
+           if (_c1V6::I32 == 0) goto c1V8; else goto c1V7;
+       c1V8: // c1V4
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])() args: 4, res: 0, upd: 4;
+       c1V7: // c1V4
+           unwind Sp = Just Sp;
+           I32[Sp - 8] = stg_bh_upd_frame_info;
+           I32[Sp - 4] = _c1V6::I32;
+           //tick src</workspace/Main.hs:(9,1)-(13,26)>
+           //tick src</workspace/Main.hs:12:3-22>
+           R2 = $fMonadIO_closure;
+           I32[Sp - 20] = stg_ap_pp_info;
+           P32[Sp - 16] = main17_closure+1;
+           P32[Sp - 12] = main1_closure;
+           Sp = Sp - 20;
+           unwind Sp = Just Sp + 20;
+           call >>_entry(R2) args: 24, res: 0, upd: 12;
+     }
+ },
+ section ""data" . main_closure" {
+     main_closure:
+         const main_info;
+         const 0;
+         const 0;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main19_entry() { //  []
+         { info_tbls: [(c1Vg,
+                        label: main19_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 3} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Vg: // c1Vd
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           R2 = main_closure;
+           call runMainIO1_entry(R2) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main19_closure" {
+     main19_closure:
+         const main19_info;
+         const runMainIO1_closure;
+         const main_closure;
+         const 0;
+ }]
+
+
+==================== Output Cmm ====================
+
+[main_entry() { //  []
+         { info_tbls: [(c1Vn,
+                        label: main_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 3} }
+                        srt: Just main19_closure)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       c1Vn: // c1Vk
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           call main19_entry() args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . main_closure" {
+     main_closure:
+         const main_info;
+         const 0;
+ }]
+
