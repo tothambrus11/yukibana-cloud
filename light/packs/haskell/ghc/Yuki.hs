@@ -939,7 +939,8 @@ yukiOutline hf =
 -- alternative's argument). A variable a do block binds with @<-@ is an
 -- "arg" too: GHC (since 9.10) type checks a do block as the @>>=@ chain
 -- it expands to, @e >>= \x -> ...@, and the .hie file records that
--- lambda, at the statement's places; the server tells it apart by the
+-- lambda as generated code at the statement's places; the server tells it
+-- apart by the
 -- text (an @<-@ after it). Each is {name, kind, sel (the name where it is
 -- bound, on one line), type}. A binding with a signature, a top-level one
 -- (its type is the type lens's), and a name GHC made up are not listed.
@@ -949,11 +950,13 @@ yukiLocalBinds st f =
     Nothing -> pure (J.JSArray [])
     Just hf -> do
       df <- inGhc st getSessionDynFlags
+      -- What GHC generated too: the lambda a do block expands to is
+      -- recorded as generated code (GeneratedInfo), at the source's places.
       let idents =
             [ (nodeSpan node, n, d)
               | ast <- M.elems (getAsts (hie_asts hf)),
                 node <- flattenAst ast,
-                Just ni <- [M.lookup SourceInfo (getSourcedNodeInfo (sourcedNodeInfo node))],
+                ni <- M.elems (getSourcedNodeInfo (sourcedNodeInfo node)),
                 (Right n, d) <- M.toList (nodeIdentifiers ni)
             ]
           signed = S.fromList [n | (_, n, d) <- idents, TyDecl `S.member` identInfo d]
