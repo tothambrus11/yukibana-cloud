@@ -60,6 +60,16 @@ import { pathToFileURL } from 'node:url';
 
 const MANIFEST = 'toolchain.json';
 
+/**
+ * The top-level directory of a toolchain that holds what only the units
+ * that need it build with (pack-toolchain.sh's glossary, build-only): in
+ * the manifest like every other file, never linked into a pack.
+ */
+export const BUILD_ONLY = 'build-only';
+
+/** Whether toolchain path `p` is served, that is, linked into the pack: anything outside build-only/. */
+export const served = (/** @type {string} */ p) => p !== BUILD_ONLY && !p.startsWith(`${BUILD_ONLY}/`);
+
 class Refusal extends Error {}
 
 /** Throws the refusal `why`, which main prints as the one line it says. */
@@ -238,9 +248,10 @@ const commands = {
     /**
      * Refuses units whose toolchains `dirs` would write one path of the
      * assembled pack twice: the same file or link in two, or a file in one
-     * where another has a directory. Assembly links every unit into one
-     * tree, so either would leave one unit's file silently in place of
-     * another's.
+     * where another has a directory. Assembly links every unit's served
+     * files into one tree, so either would leave one unit's file silently
+     * in place of another's. Build-only files are never linked, so two
+     * units may each have build-only/pins.sh.
      */
     overlap(/** @type {string[]} */ dirs) {
         /** @type {Map<string, string>} */
@@ -249,7 +260,7 @@ const commands = {
         const dirOwner = new Map();
         for (const dir of dirs) {
             const m = readManifest(dir, readUnit(dir), '-');
-            for (const p of [...m.files, ...m.links].map((f) => f.path)) {
+            for (const p of [...m.files, ...m.links].map((f) => f.path).filter(served)) {
                 const other = owner.get(p);
                 if (other) refuse(`${p} is written by both ${other} and ${m.unit}; units of one pack may not write the same path`);
                 owner.set(p, m.unit);
@@ -287,14 +298,19 @@ const commands = {
             }
         }
     },
-    /** Checks that assembly left every file of the units `dirs` in `out` as it is in its toolchain, and writes the sidecar. */
+    /**
+     * Checks that assembly left every served file of the units `dirs` in
+     * `out` as it is in its toolchain, and that no build-only file reached
+     * the pack, and writes the sidecar, which lists the served files only.
+     */
     linked(/** @type {string[]} */ [pack, out, sidecar, other, ...dirs]) {
         if (fs.existsSync(path.join(out, MANIFEST))) refuse(`the assembled pack holds a ${MANIFEST}; it is a toolchain's, not the pack's`);
+        if (fs.existsSync(path.join(out, BUILD_ONLY))) refuse(`the assembled pack holds ${BUILD_ONLY}/; a toolchain's build-only files are for the units that need it, never served`);
         const units = dirs.map((dir) => {
             const m = readManifest(dir, readUnit(dir), '-');
             /** @type {ToolchainFile[]} */
             const files = [];
-            for (const f of m.files) {
+            for (const f of m.files.filter((f) => served(f.path))) {
                 let s;
                 try {
                     s = fs.lstatSync(path.join(out, f.path), { bigint: true });

@@ -1,2 +1,3 @@
 bin/cc
 versions-compilers.json
+build-only/flags

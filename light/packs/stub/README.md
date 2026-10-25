@@ -12,11 +12,14 @@ language: it has no `build.sh`, so `setup.sh`, the app and a release
 It has the shape cpp's toolchain will have, in three units:
 
 * `toolchains/compilers/`: "compiles" with `compiler/cc.sh`, the pack file
-  its `paths` names, and the shared `lib.sh`.
+  its `paths` names, and the shared `lib.sh`. It also writes
+  `build-only/flags`, which only the units built with it read: assembly
+  never links a toolchain's `build-only/` into the pack.
 * `toolchains/vm/`: needs nothing, and also reads `lib.sh`, so one pack
   file is an input of two units.
 * `toolchains/libs/`: `needs` `stub/compilers` and builds its "framework"
-  with the compilers unit's `bin/cc`, found at `$DEP_COMPILERS`. A change
+  with the compilers unit's `bin/cc` and `build-only/flags`, found at
+  `$DEP_COMPILERS`. A change
   to the compilers re-keys it; its own pin (`FRAMEWORK_VERSION` in its
   `pins.sh`) re-keys nothing else.
 

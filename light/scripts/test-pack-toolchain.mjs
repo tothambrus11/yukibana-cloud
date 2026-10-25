@@ -764,9 +764,14 @@ test('a unit is built after the units it needs, with them read-only at DEP_<UNIT
     for (const f of ['bin/cc', 'vm/kernel', 'lib/libframework.a', 'versions-compilers.json', 'versions-vm.json', 'versions-libs.json', 'server.js']) {
         assert.ok(fs.existsSync(path.join(out, f)), f);
     }
+    // The compilers' build-only flags reached libs' build, and not the pack.
+    assert.match(fs.readFileSync(path.join(libs, 'lib/libframework.a'), 'utf8'), /^flags -std=stub1\.0$/m);
+    assert.ok(manifestOf(compilers).files.some((f) => f.path === 'build-only/flags'), 'a build-only file is in its toolchain like any other');
+    assert.equal(fs.existsSync(path.join(out, 'build-only')), false, 'a build-only file is never served');
     assert.equal(fs.statSync(path.join(out, 'vm/kernel')).ino, fs.statSync(path.join(vm, 'vm/kernel')).ino);
     const s = JSON.parse(fs.readFileSync(path.join(light, 'app/node_modules/.cache/yukibana/toolchain-stub.json'), 'utf8'));
     assert.deepEqual(s.units.map((u) => u.unit), ['stub/compilers', 'stub/libs', 'stub/vm']);
+    assert.deepEqual(s.units[0].files.filter((f) => f.path.startsWith('build-only/')), [], 'the sidecar lists only what is served');
     const state = await toolchain({}, 'record-state', 'stub');
     assert.equal(state.code, 0, state.err);
     assert.deepEqual(state.out.trim().split(' ').slice(3), [
@@ -945,7 +950,7 @@ test('a cycle of needs fails ensure by name before anything is built', async () 
 
 test('two units that write one path, or an incomplete or foreign set of units, are refused at assembly', async () => {
     const { dirs } = await ensureStub();
-    const [compilers, libs, vm] = dirs;
+    const [compilers, libs] = dirs;
     const out = path.join(root, 'out-overlap');
     put('light/packs/stub/toolchains/vm/toolchain.sh', `${fs.readFileSync(path.join(root, 'light/packs/stub/toolchains/vm/toolchain.sh'), 'utf8')}mkdir -p "$OUT/bin" && echo vm > "$OUT/bin/cc"\n`, 0o755);
     const clash = (await ensureUnit('stub/vm', {}, '--build-dirty')).dir;
@@ -955,11 +960,22 @@ test('two units that write one path, or an incomplete or foreign set of units, a
     assert.equal(fs.existsSync(out), false);
     clean();
 
+    // Two units' build-only files may share a path: neither is linked.
+    put('light/packs/stub/toolchains/vm/toolchain.sh', `${fs.readFileSync(path.join(root, 'light/packs/stub/toolchains/vm/toolchain.sh'), 'utf8')}mkdir -p "$OUT/build-only" && echo vm > "$OUT/build-only/flags"\n`, 0o755);
+    const both = (await ensureUnit('stub/vm', {}, '--build-dirty')).dir;
+    const ok = await assemble({}, 'stub', out, compilers, libs, both);
+    assert.equal(ok.code, 0, ok.err);
+    assert.equal(fs.existsSync(path.join(out, 'build-only')), false);
+    removeTree(out);
+    clean();
+    // The vm toolchain these replaced was pruned from the local cache.
+    const [, , vm2] = (await ensureStub()).dirs;
+
     const missing = await assemble({}, 'stub', out, compilers, libs);
     assert.match(missing.err, /no toolchain of stub\/vm given; assemble takes every unit of the pack/);
-    const twice = await assemble({}, 'stub', out, compilers, libs, vm, compilers);
+    const twice = await assemble({}, 'stub', out, compilers, libs, vm2, compilers);
     assert.match(twice.err, /two toolchains of stub\/compilers given/);
-    const foreign = await assemble({}, 'stub', out, compilers, libs, vm, (await ensure()).dir);
+    const foreign = await assemble({}, 'stub', out, compilers, libs, vm2, (await ensure()).dir);
     assert.match(foreign.err, /is a toolchain of tool\/cc, not of a unit of stub/);
     assert.equal(fs.existsSync(out), false);
 });

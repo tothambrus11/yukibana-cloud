@@ -65,9 +65,9 @@
 #   pack-toolchain.sh assemble <pack> [--out <dir>] <toolchain dir>...
 #       Assembles the pack from the toolchain directories of all its units,
 #       each given once (ensure <pack>'s output), into --out (default
-#       app/static/packs/<pack>): links every unit's files into one tree
-#       (copies them where links are impossible), refusing two units that
-#       write one path; runs the pack's glue.sh over them; checks the glue
+#       app/static/packs/<pack>): links every unit's files but its build-only
+#       ones into one tree (copies them where links are impossible), refusing
+#       two units that write one path; runs the pack's glue.sh over them; checks the glue
 #       left every toolchain file as it was; writes the sidecar; and swaps
 #       the result in. Refuses a unit's toolchain that lacks an output its
 #       `outputs` declares, every time: the file is no input of the key, so
@@ -138,6 +138,15 @@
 #                  toolchain's files, read-only, and toolchain.json, its
 #                  manifest (toolchain-manifest.mjs: unit, key, commit,
 #                  knobs, needs, and every file's size, sha256 and mtime).
+#   build-only     a toolchain's top-level build-only/ directory: what only
+#                  the units that need it build with (an SDK, a source
+#                  tarball, the pins they must agree with), never part of
+#                  the pack. It is in the manifest, the archive and the
+#                  store like every other file, and at $DEP_<UNIT> for a
+#                  dependent's build, but assemble never links it, so a
+#                  download-only unit (cpp's Emscripten) serves nothing, and
+#                  two units' build-only files never clash. A unit's
+#                  served files are everything else.
 #   glue           packs/<pack>/glue.sh and what it reads, the files the
 #                  pack's glue.paths names: the pack's own JavaScript and
 #                  assets. Run at assembly with OUT (the pack being
@@ -621,20 +630,19 @@ assemble() {
   [ -z "$dirty" ] || say "warning: $pack: built dirty:$dirty; this pack is for this machine only"
 }
 
-# Runs `$1 $2 <dir> <into>` (cp -al or cp -a) for each toolchain directory
-# after $3, the tree $3 being made by the first and added to by the rest,
-# and removes each toolchain.json it brings: the manifests are the
-# toolchains', not the pack's.
+# Runs `$1 $2 <entry> <into>/` (cp -al or cp -a) for each top-level entry
+# of each toolchain directory after $3, making the tree $3 and adding to it,
+# but for toolchain.json (the manifests are the toolchains', not the
+# pack's) and build-only/ (what only the units that need it read, never
+# served; see the glossary).
 link_units() {
   local cp1="$1" cp2="$2" into="$3" dir
+  local -a entries=()
   shift 3
+  mkdir -p "$into" || return 1
   for dir in "$@"; do
-    if [ -e "$into" ]; then
-      "$cp1" "$cp2" "$dir/." "$into/" || return 1
-    else
-      "$cp1" "$cp2" "$dir" "$into" || return 1
-    fi
-    rm -f "$into/toolchain.json"
+    mapfile -d '' -t entries < <(find "$dir" -mindepth 1 -maxdepth 1 ! -name toolchain.json ! -name build-only -print0)
+    [ "${#entries[@]}" -eq 0 ] || "$cp1" "$cp2" "${entries[@]}" "$into/" || return 1
   done
 }
 

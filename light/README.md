@@ -96,8 +96,10 @@ does so for every unit. Uncommitted inputs or a set output-changing setting
 are built only with `--build-dirty` and never published. `assemble <pack>
 <dir>...` links every unit's read-only toolchain into one tree at
 `app/static/packs/<pack>` (two units writing one path is refused) and runs
-the pack's `glue.sh` over it, in seconds. Its header has the glossary and
-the pin rule.
+the pack's `glue.sh` over it, in seconds. A toolchain's top-level
+`build-only/` directory (an SDK, a source tarball, the pins its dependents
+must agree with) reaches the units that need it at `$DEP_<UNIT>` and is
+never linked into the pack. Its header has the glossary and the pin rule.
 
 * `.github/workflows/light-packs.yml` runs on every push that touches a pack.
   An unsplit pack whose tree has a build already is only looked up; one
