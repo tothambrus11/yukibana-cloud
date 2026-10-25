@@ -14,6 +14,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { buildSetting, closePopovers, menuItem, openBuildSettings, resetProject, toggleView } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // BUILD_DIR: another build of the app, such as one in a scratch folder.
@@ -295,10 +296,11 @@ print("\\(source) = \\(value)")
  * Test passes with each; back to GoogleTest at the end.
  */
 async function testFrameworks(page, check) {
-	const choice = page.locator('header .framework select');
+	const choice = await buildSetting(page, 'framework');
+	await closePopovers(page);
 	check((await choice.inputValue()) === 'gtest', `the test framework choice shows GoogleTest for the sample (${await choice.inputValue()})`);
 	for (const [framework, passed] of [['doctest', 'Status: SUCCESS!'], ['catch2', 'All tests passed (4 assertions in 3 test cases)'], ['gtest', '[  PASSED  ] 3 tests.']]) {
-		await choice.selectOption(framework);
+		await chooseSetting(page, choice, framework);
 		const converted = await page.locator('.dv-groupview .view-lines').first().filter({ hasText: framework === 'gtest' ? 'gtest/gtest.h' : `${framework}/` }).waitFor({ timeout: 10_000 }).then(() => true, () => false);
 		check(converted && (await choice.inputValue()) === framework, `choosing ${framework} rewrites and shows tests/geometry_test.cpp, and the choice says ${await choice.inputValue()}`);
 		await page.locator('header button', { hasText: /^Test$/ }).click();
@@ -317,6 +319,17 @@ async function testFrameworks(page, check) {
 /** The pack files of the C++ pack among `urls`, as paths under packs/cpp/. */
 function cppPackFiles(urls) {
 	return [...new Set(urls.map((u) => /\/packs\/cpp\/([^?#]*)/.exec(u)?.[1]).filter(Boolean))].sort();
+}
+
+/**
+ * Chooses `value` in a select of the Build settings popover (`select`, a
+ * locator of it), opening the popover first and closing it after, as a
+ * person would.
+ */
+async function chooseSetting(page, select, value) {
+	await openBuildSettings(page);
+	await select.selectOption(value);
+	await closePopovers(page);
 }
 
 /** Waits for the terminal's run to end; returns its status line and text. */
@@ -361,13 +374,13 @@ async function cppOptimization(page, check) {
 	const flags = await modelText(page, 'compile_flags.txt');
 	check((await picker.inputValue()) === '-O2' && !/^-O/m.test(flags ?? ''), `the sample is at -O2, the default, with no -O line (${await picker.inputValue()})`);
 	await openFile(page, 'geometry.cpp');
-	await page.locator('header button.view', { hasText: /^Asm$/ }).click();
+	await toggleView(page, 'asm');
 	const o2 = await viewShows(page, 'asm', (t) => t.includes('distance'), 240_000);
 	const shownFlags = () => page.locator('[data-view="asm"] .yk-view-flags').getAttribute('title').catch(() => '');
 	check(o2.ok && / -O2( |$)/.test((await shownFlags()) ?? ''), `the assembly view compiles at -O2 (${await shownFlags()})`);
 	const instructions = (t) => t.split('\n').filter((l) => /^\s+\S/.test(l)).length;
 
-	await picker.selectOption('-O0');
+	await chooseSetting(page, picker, '-O0');
 	const text = (await modelText(page, 'compile_flags.txt')) ?? '';
 	check(text === `${flags}-O0\n` && (await picker.inputValue()) === '-O0', `choosing -O0 appends -O0 to compile_flags.txt (${JSON.stringify(text)})`);
 	const o0 = await viewShows(page, 'asm', (t) => t !== o2.text && t.includes('distance'), 60_000);
@@ -376,13 +389,12 @@ async function cppOptimization(page, check) {
 	const ran = await ended(page);
 	check(ran.done && ran.shown.includes('5.000000') && /Exited with code 0 /.test(ran.status), `Run at -O0 prints the sample's output (${ran.status})`);
 
-	await picker.selectOption('-O2');
+	await chooseSetting(page, picker, '-O2');
 	check((await modelText(page, 'compile_flags.txt')) === flags, 'choosing -O2, the default, removes the -O line again');
 	await setText(page, 'compile_flags.txt', `${flags}-Og\n`);
 	await page.waitForTimeout(300);
 	check((await picker.inputValue()) === 'other' && (await picker.locator('option[value="other"]').textContent()) === '-Og', `a hand-written -Og is shown as it is (${await picker.inputValue()})`);
-	page.once('dialog', (d) => void d.accept());
-	await page.locator('header button', { hasText: 'Reset project' }).click();
+	await resetProject(page);
 	const reset = await page.waitForFunction(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue().startsWith('-std='), null, { timeout: 15_000 }).then(() => true, () => false);
 	check(reset && (await picker.inputValue()) === '-O2', `Reset project puts the sample back at -O2 (${await picker.inputValue()})`);
 }
@@ -400,12 +412,13 @@ async function cppSanitizers(page, check, requests) {
 	const fetched = (name) => requests.some((u) => u.endsWith(`/packs/cpp/${name}`));
 	check(!fetched('asan.tar') && !fetched('ubsan.tar') && !fetched('sanitizer.js'), 'nothing of the sanitizers is fetched before one is on');
 	const flags = (await modelText(page, 'compile_flags.txt')) ?? '';
-	const menu = page.locator('header .sanitizers-menu');
-	await menu.locator('button.toggle').click();
+	const menu = await buildSetting(page, 'sanitizers');
 	await menu.locator('label', { hasText: 'AddressSanitizer' }).locator('input').check();
-	await page.keyboard.press('Escape');
+	await closePopovers(page);
+	// The Build chip in the bar sums the settings up, the sanitizers among them.
+	const summary = page.locator('header .build-chip .build-summary');
 	const text = (await modelText(page, 'compile_flags.txt')) ?? '';
-	check(text === `${flags}-fsanitize=address\n` && (await menu.locator('button.toggle').textContent())?.trim() === 'ASan', `ticking AddressSanitizer appends -fsanitize=address to compile_flags.txt (${JSON.stringify(text)})`);
+	check(text === `${flags}-fsanitize=address\n` && /(^| · )ASan( · |$)/.test((await summary.textContent()) ?? ''), `ticking AddressSanitizer appends -fsanitize=address to compile_flags.txt (${JSON.stringify(text)})`);
 
 	const program = ['#include <cstdio>', '', 'int sum(const int *a, int n) {', '    int s = 0;', '    for (int i = 0; i <= n; i++) s += a[i];', '    return s;', '}', '', 'int main() {', '    int *a = new int[4]{1, 2, 3, 4};', '    std::printf("%d\\n", sum(a, 4));', '    delete[] a;', '}', ''].join('\n');
 	await openFile(page, 'main.cpp');
@@ -422,10 +435,9 @@ async function cppSanitizers(page, check, requests) {
 	const at = await page.waitForFunction(() => globalThis.monaco.editor.getEditors().some((e) => e.getModel()?.uri.path === '/workspace/main.cpp' && e.getPosition()?.lineNumber === 10), null, { timeout: 5_000 }).then(() => true, () => false);
 	check(linked && at, 'the allocation frame main.cpp:10:14 is a link that opens main.cpp at line 10');
 
-	page.once('dialog', (d) => void d.accept());
-	await page.locator('header button', { hasText: 'Reset project' }).click();
+	await resetProject(page);
 	const reset = await page.waitForFunction(() => !/-fsanitize/.test(globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue() ?? '-fsanitize'), null, { timeout: 15_000 }).then(() => true, () => false);
-	check(reset && (await menu.locator('button.toggle').textContent())?.trim() === 'Sanitizers', 'Reset project turns the sanitizers off again');
+	check(reset && !/San/.test((await summary.textContent()) ?? ''), 'Reset project turns the sanitizers off again');
 }
 
 /**
@@ -437,8 +449,7 @@ async function cppSanitizers(page, check, requests) {
 async function savedOptimization(page, check, language) {
 	const picker = page.locator('header .optimization select');
 	// From the sample (an earlier step may have left another project).
-	page.once('dialog', (d) => void d.accept());
-	await page.locator('header button', { hasText: 'Reset project' }).click();
+	await resetProject(page);
 	await page.locator('.explorer .row .name', { hasText: CASES[language].file }).first().waitFor({ timeout: 30_000 });
 	const { start, choose, disabled, said: saying } = language === 'swift'
 		? { start: '-Onone', choose: '-O', disabled: [], said: 'Optimization: -O, for Run and Test.' }
@@ -446,19 +457,18 @@ async function savedOptimization(page, check, language) {
 	check((await picker.inputValue()) === start, `the Optimization select starts at ${start} (${await picker.inputValue()})`);
 	const off = await picker.locator('option:disabled').evaluateAll((options) => options.map((o) => o.value));
 	check(off.join() === disabled.join(), `levels not available yet are disabled (${off.join(', ') || 'none'})`);
-	await picker.selectOption(choose);
+	await chooseSetting(page, picker, choose);
 	await page.locator('.dv-tab .dock-tab', { hasText: /^Output$/ }).first().click();
 	const said = await page.waitForFunction((t) => [...document.querySelectorAll('.output')].some((o) => o.textContent?.includes(t)), saying, { timeout: 5_000 }).then(() => true, () => false);
 	check(said, 'choosing a level says so in the output panel');
 	await page.waitForTimeout(1500);
 	await page.reload();
-	const kept = await page.locator('header .optimization select').waitFor({ timeout: 60_000 }).then(async () => (await picker.inputValue()) === choose, () => false);
+	const kept = await page.locator('header .optimization select').waitFor({ state: 'attached', timeout: 60_000 }).then(async () => (await picker.inputValue()) === choose, () => false);
 	check(kept, `${choose} is saved with the project and still chosen after a reload (${await picker.inputValue().catch(() => '?')})`);
 	await page.locator('header button.run').click();
 	const ran = await ended(page);
 	check(ran.done && ran.shown.includes(CASES[language].output) && /Exited with code 0 /.test(ran.status), `Run at ${choose} prints the sample's output (${ran.status}: ${JSON.stringify(ran.shown.slice(-200))})`);
-	page.once('dialog', (d) => void d.accept());
-	await page.locator('header button', { hasText: 'Reset project' }).click();
+	await resetProject(page);
 	const reset = await page.waitForFunction((v) => document.querySelector('header .optimization select')?.value === v, start, { timeout: 15_000 }).then(() => true, () => false);
 	check(reset, `Reset project puts the sample back at ${start}`);
 }
@@ -507,7 +517,7 @@ int main() {
 
 	for (const [arch, [id, triple, macro]] of Object.entries(archs)) {
 		const from = requests.length;
-		await picker.selectOption(id);
+		await chooseSetting(page, picker, id);
 		const text = (await modelText(page, 'compile_flags.txt')) ?? '';
 		check(text === `--target=${triple}\n${flags}`, `choosing ${arch} puts --target=${triple} first in compile_flags.txt (${JSON.stringify(text)})`);
 		check(!(await testButton.isDisabled()), `on ${arch}, Test is enabled`);
@@ -539,9 +549,8 @@ int main() {
 		}
 
 		const threads = arch === 'x86_64' ? 4 : 1;
-		await page.locator('header .run-options button.toggle').click();
-		await page.locator('header .run-options select').selectOption(String(threads));
-		await page.keyboard.press('Escape');
+		await (await buildSetting(page, 'run-options')).locator('select').selectOption(String(threads));
+		await closePopovers(page);
 		await setText(page, 'main.cpp', THREADS);
 		await page.locator('header button.run').click();
 		const t = await ended(page, 600_000);
@@ -554,9 +563,8 @@ int main() {
 			check(segv.done && /code 139/.test(segv.status) && segv.shown.includes('signal 11'), `a null dereference on aarch64 exits 139 with signal 11 (${segv.status}: ${JSON.stringify(segv.shown.slice(-200))})`);
 		}
 		await setText(page, 'main.cpp', sample);
-		await page.locator('header .run-options button.toggle').click();
-		await page.locator('header .run-options select').selectOption('1');
-		await page.keyboard.press('Escape');
+		await (await buildSetting(page, 'run-options')).locator('select').selectOption('1');
+		await closePopovers(page);
 
 		const files = cppPackFiles(requests.slice(from));
 		const others = Object.keys(archs).filter((a) => a !== arch);
@@ -565,12 +573,12 @@ int main() {
 	}
 
 	// The views, on x86_64.
-	await picker.selectOption('x86_64-linux');
+	await chooseSetting(page, picker, 'x86_64-linux');
 	await openFile(page, 'main.cpp');
-	await page.locator('header button.view', { hasText: /^IR$/ }).click();
+	await toggleView(page, 'ir');
 	const ir = await viewShows(page, 'llvm-ir', (t) => t.includes('target triple = "x86_64-unknown-linux-musl"') && t.includes('define'), 240_000);
 	check(ir.ok && !ir.text.includes('!dbg'), `the LLVM IR view shows main.cpp's IR for x86_64, without !dbg (${ir.seconds.toFixed(1)} s; ${JSON.stringify(ir.text.slice(0, 160))})`);
-	await page.locator('header button.view', { hasText: /^Asm$/ }).click();
+	await toggleView(page, 'asm');
 	const asm = await viewShows(page, 'asm', (t) => /^main:/m.test(t) && t.includes('distance(Point const&, Point const&)'), 120_000);
 	check(asm.ok, `the assembly view shows main: and calls distance(Point const&, Point const&), demangled (${asm.seconds.toFixed(1)} s; ${JSON.stringify(asm.text.slice(0, 200))})`);
 	const tabs = await page.locator('.dv-tab .dock-tab').allTextContents();
@@ -585,29 +593,27 @@ int main() {
 	const updated = await viewShows(page, 'asm', (t) => t.includes('extra_function_xyz'), 10_000);
 	check(updated.ok, `an edit of main.cpp updates the assembly within 10 s (${updated.seconds.toFixed(1)} s)`);
 
-	await picker.selectOption('aarch64-linux');
+	await chooseSetting(page, picker, 'aarch64-linux');
 	const a64 = await viewShows(page, 'asm', (t) => /^\s+ret\b/m.test(t) && !t.includes('%rbp'), 120_000);
 	const triple = (await page.locator('[data-view="asm"] .yk-view-triple').textContent().catch(() => '')) ?? '';
 	check(a64.ok && triple === 'aarch64-linux-musl', `switching to aarch64 shows aarch64 assembly (ret) and its triple in the toolbar (${triple})`);
 	const swatches = await page.locator('[data-view="asm"] .colorpicker-color-decoration').count();
 	check(swatches === 0, `aarch64 immediates such as #16 are not shown as colours (${swatches} colour swatches)`);
-	await picker.selectOption('wasm32-wasi');
+	await chooseSetting(page, picker, 'wasm32-wasi');
 	const wasm = await viewShows(page, 'asm', (t) => t.includes('end_function'), 120_000);
 	check(wasm.ok, `switching to WebAssembly shows wasm32 assembly with end_function (${wasm.seconds.toFixed(1)} s)`);
 	check(!(await testButton.isDisabled()), 'on WebAssembly, Test is enabled again');
 	await setText(page, 'main.cpp', sample);
 
 	// User mode, experimental.
-	await picker.selectOption('x86_64-linux');
-	await page.locator('header .run-options button.toggle').click();
-	await page.locator('header .run-options input[value="user"]').check();
-	await page.keyboard.press('Escape');
+	await chooseSetting(page, picker, 'x86_64-linux');
+	await (await buildSetting(page, 'run-options')).locator('input[value="user"]').check();
+	await closePopovers(page);
 	await page.locator('header button.run').click();
 	const user = await ended(page);
 	check(user.done && /code 0/.test(user.status) && user.shown.includes('5.000000'), `Run on x86_64 in QEMU's user mode prints 5.000000 (${user.status})`);
-	await page.locator('header .run-options button.toggle').click();
-	await page.locator('header .run-options input[value="system"]').check();
-	await page.keyboard.press('Escape');
+	await (await buildSetting(page, 'run-options')).locator('input[value="system"]').check();
+	await closePopovers(page);
 
 	// Stop ends an endless program in the VM, and the page stays responsive.
 	await setText(page, 'main.cpp', 'int main() {\n    volatile unsigned long n = 0;\n    for (;;) ++n;\n}\n');
@@ -622,8 +628,7 @@ int main() {
 	await setText(page, 'main.cpp', sample);
 
 	// Back to the sample, on WebAssembly.
-	page.once('dialog', (d) => void d.accept());
-	await page.locator('header button', { hasText: 'Reset project' }).click();
+	await resetProject(page);
 	const reset = await page.waitForFunction(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue().startsWith('-std='), null, { timeout: 15_000 }).then(() => true, () => false);
 	check(reset && (await picker.inputValue()) === 'wasm32-wasi', `Reset project restores the sample on WebAssembly (${await picker.inputValue()})`);
 }
@@ -1008,8 +1013,7 @@ async function undoRename(page, check, { file, needle, from, name, declarationFi
 	// From the sample again: the rename, then the file it declared renamed
 	// in the explorer. Its undo history went with its old name, so Ctrl+Z
 	// in the file renamed from undoes that file only and says why.
-	page.once('dialog', (d) => void d.accept());
-	await page.locator('header button', { hasText: 'Reset project' }).click();
+	await resetProject(page);
 	const reset = await textsBecome(page, { [file]: before[file], [declarationFile]: before[declarationFile] }, 15_000);
 	if (!reset) return check(false, 'Reset project restores the sample');
 	// Reset restarts the server: rename once it answers again.
@@ -1324,7 +1328,7 @@ async function downloading() {
 	await page.reload();
 	await page.selectOption('header select', 'cpp');
 	await page.locator('.explorer .row .name', { hasText: 'compile_flags.txt' }).waitFor({ timeout: 30_000 });
-	const [download] = await Promise.all([page.waitForEvent('download'), page.click('header button:has-text("Download")')]);
+	const [download] = await Promise.all([page.waitForEvent('download'), menuItem(page, 'Download project').then((item) => item.click())]);
 	const dir = mkdtempSync(join(tmpdir(), 'yukibana-download-'));
 	const path = join(dir, download.suggestedFilename());
 	await download.saveAs(path);
@@ -1564,7 +1568,7 @@ async function offlineUse() {
 		const total = await dialog.locator('footer').textContent({ timeout: 10_000 });
 		check(/Download everything[\s\S]*\d+\.\d MB to download, \d+\.\d MB stored/.test(total ?? ''), `the dialog offers Download everything with its size (${total?.trim().replace(/\s+/g, ' ')})`);
 		const row = dialog.locator('tr[data-language="python"]');
-		await row.locator('button', { hasText: 'Make available offline' }).click({ timeout: 10_000 }).catch(() => undefined); // already cached by use: no button
+		await row.locator('button', { hasText: 'Save offline' }).click({ timeout: 10_000 }).catch(() => undefined); // already cached by use: no button
 		const cached = await row.locator('.ok').waitFor({ timeout: 120_000 }).then(() => true, () => false);
 		check(cached, `Python is available offline (${(await row.textContent())?.trim().replace(/\s+/g, ' ')})`);
 		await page.keyboard.press('Escape');

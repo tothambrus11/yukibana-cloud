@@ -20,6 +20,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { buildSetting, closePopovers, toggleView } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = join(here, '..', 'build');
@@ -278,7 +279,8 @@ async function viewShows(page, kind, predicate, timeout) {
 
 /** Chooses `id` in the Target picker and waits until compile_flags.txt says so. */
 async function chooseTarget(page, id) {
-	await page.locator('header .target select').selectOption(id);
+	await (await buildSetting(page, 'target')).selectOption(id);
+	await closePopovers(page);
 	const triple = id === 'wasm32-wasi' ? null : `--target=${id.replace('-linux', '-linux-musl')}`;
 	await page.waitForFunction(
 		(triple) => {
@@ -292,13 +294,12 @@ async function chooseTarget(page, id) {
 
 /** Sets the Run options through the popover (Linux targets only). */
 async function runOptions(page, { emulation, cpus, strace }) {
-	await page.locator('header .run-options button.toggle').click();
-	const pop = page.locator('header .run-options .popover');
+	const pop = await buildSetting(page, 'run-options');
 	await pop.locator(`input[value="${emulation}"]`).check();
 	if (emulation === 'system') await pop.locator('select').selectOption(String(cpus));
 	const box = pop.locator('input[type=checkbox]');
 	if ((await box.isChecked()) !== strace) await box.click();
-	await page.keyboard.press('Escape');
+	await closePopovers(page);
 }
 
 /**
@@ -479,7 +480,7 @@ async function views({ page, responses, settled }, id, where) {
 	const from = responses.length;
 	const out = {};
 	await page.locator('.explorer .row .name', { hasText: /^main\.cpp$/ }).click();
-	await page.locator('header button.view', { hasText: /^IR$/ }).click();
+	await toggleView(page, 'ir');
 	const ir = await viewShows(page, 'llvm-ir', (x) => x.includes(`target triple = "${t.triple}"`) && /^define .*@main\(/m.test(x), 240_000);
 	out.irSeconds = ir.seconds;
 	out.irHasDbg = ir.text.includes('!dbg');
@@ -487,7 +488,7 @@ async function views({ page, responses, settled }, id, where) {
 	if (process.env.DUMP_VIEWS) writeFileSync(join(process.env.DUMP_VIEWS, `${id}-${where.replace(/ /g, '-')}.ll`), ir.text);
 	check(id, ir.ok && !ir.text.includes('!dbg') && ir.text.includes('answer'),
 		`${where}: the LLVM IR view shows target triple "${t.triple}", define @main and the static answer(), without !dbg (${ir.seconds.toFixed(1)} s; ${JSON.stringify(ir.text.slice(0, 120))})`);
-	await page.locator('header button.view', { hasText: /^Asm$/ }).click();
+	await toggleView(page, 'asm');
 	const asm = await viewShows(page, 'asm', (x) => new RegExp(`^${t.main ?? 'main'}:`, 'm').test(x) && t.asm(x), 240_000);
 	out.asmSeconds = asm.seconds;
 	const triple = ((await page.locator('[data-view="asm"] .yk-view-triple').textContent().catch(() => '')) ?? '').trim();
@@ -525,7 +526,7 @@ async function views({ page, responses, settled }, id, where) {
 	}
 	const closed = await page.locator('.dv-tab .dock-tab', { hasText: /LLVM IR|Assembly/ }).count();
 	check(id, closed === 0, `${where}: both views close from their tabs (${closed} left)`);
-	await page.locator('header button.view', { hasText: /^Asm$/ }).click();
+	await toggleView(page, 'asm');
 	const again = await viewShows(page, 'asm', (x) => x.includes('edited_function_xyz') && new RegExp(`^${t.main ?? 'main'}:`, 'm').test(x), 60_000);
 	check(id, again.ok, `${where}: the assembly view opens again with the current code (${again.seconds.toFixed(1)} s)`);
 	await settled();
