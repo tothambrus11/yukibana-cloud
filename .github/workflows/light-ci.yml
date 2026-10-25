@@ -127,6 +127,14 @@ jobs:
             light/packs/cpp/vm
             light/packs/haskell/src
             light/packs/haskell/test-symbols.mjs
+            light/packs/haskell/tests
+            light/packs/haskell/test-dumps.mjs
+            light/packs/swift/src
+            light/packs/swift/tests
+            light/packs/swift/test-emit.mjs
+            light/packs/rust/src
+            light/packs/rust/tests
+            light/packs/rust/test-mir.mjs
             light/packs/*/build.sh
             light/packs/*/glue.sh
             light/packs/*/requires.json
@@ -281,9 +289,17 @@ jobs:
         working-directory: light/packs/cpp
         run: node --test test-emit.mjs test-cpio.mjs test-build-lib.mjs test-units.mjs
 
-      - name: Haskell pack (outline, symbol search, inlay hints)
+      - name: Haskell pack (outline, symbol search, inlay hints, compiler output views)
         working-directory: light/packs/haskell
-        run: node --test test-symbols.mjs
+        run: node --test test-symbols.mjs test-dumps.mjs
+
+      - name: Swift pack (compiler output views)
+        working-directory: light/packs/swift
+        run: node --test test-emit.mjs
+
+      - name: Rust pack (the MIR view)
+        working-directory: light/packs/rust
+        run: node --test test-mir.mjs
 
       - name: The split packs' contract
         working-directory: light
