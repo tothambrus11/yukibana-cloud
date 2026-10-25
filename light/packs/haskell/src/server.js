@@ -15,9 +15,12 @@
 // HLS's import and export actions (add an import, make an import list
 // explicit, remove what an import list has too much, export a binding);
 // the call hierarchy is HLS's call-hierarchy plugin's, from the same .hie
-// files.
+// files, and so are the nested outline, the workspace symbols and HLS's
+// inlay hints for local bindings (symbols.js).
 
 import { checkGroups, manifestOf, ROOT, sourceRoots, startGhc } from './ghc.js';
+import { bindingHints, outlineSymbols, searchSymbols, SymbolKind } from './symbols.js';
+import { characterOf, columnOf, lineMap } from './text.js';
 import { hlint, ormolu } from './tools.js';
 
 const send = (msg) => postMessage(msg);
@@ -44,6 +47,8 @@ let ghc = null;
 let clientRefreshesTokens = false;
 /** Whether the client re-asks for code lenses when told to (workspace/codeLens/refresh). */
 let clientRefreshesLenses = false;
+/** Whether the client re-asks for inlay hints when told to (workspace/inlayHint/refresh). */
+let clientRefreshesHints = false;
 const ready = (async () => {
     const t0 = performance.now();
     const report = (p) => send({ jsonrpc: '2.0', method: 'yukibana/loading', params: p });
@@ -77,32 +82,6 @@ function lineText(doc, line) {
     return doc.text.slice(start, end).replace(/\r$/, '');
 }
 
-/**
- * The UTF-16 character of GHC's 1-based column on a line: GHC counts code
- * points, and a tab moves to the next multiple of 8 (GHC's lexer,
- * advance_tabstop).
- */
-function characterOf(text, col) {
-    let c = 1;
-    let i = 0;
-    while (c < col && i < text.length) {
-        const cp = text.codePointAt(i);
-        c = cp === 9 ? Math.floor((c - 1) / 8) * 8 + 9 : c + 1;
-        i += cp > 0xffff ? 2 : 1;
-    }
-    return i;
-}
-/** The 1-based GHC column of a UTF-16 character (characterOf's inverse). */
-function columnOf(text, character) {
-    let c = 1;
-    for (let i = 0; i < character && i < text.length; ) {
-        const cp = text.codePointAt(i);
-        c = cp === 9 ? Math.floor((c - 1) / 8) * 8 + 9 : c + 1;
-        i += cp > 0xffff ? 2 : 1;
-    }
-    return c;
-}
-
 /** An LSP range for a GHC span ({file, sl, sc, el, ec}, end exclusive) in a document. */
 function rangeOf(doc, s) {
     const sl = Math.max(0, s.sl - 1);
@@ -117,8 +96,11 @@ function rangeOf(doc, s) {
 
 /**
  * Per project path, what the last check that type checked the file said:
- * { module, tops } (its top-level declarations), and whether GHC has a
- * .hie file for it (`hie`). A file that did not parse keeps the last one.
+ * { module, tops, outline } (its top-level declarations, and its
+ * declarations as the outline nests them: null from a root file system
+ * whose Yuki.hs has none), the text the check saw when GHC wrote a .hie
+ * file for it (`text`, else null), and what was asked of that check since
+ * (`tokens`, `binds`, ...). A file that did not parse keeps the last one.
  */
 const analyses = new Map();
 let generation = 0;
@@ -204,7 +186,7 @@ async function check() {
         if (path === null) continue;
         // `text` is what GHC's .hie file is of (null without one): the
         // positions the queries answer are in it.
-        if (m.hie || !analyses.has(path)) analyses.set(path, { module: m.module, tops: m.tops, generation, text: m.hie ? (files[path] ?? null) : null, tokens: null, sigs: new Map(), imports: null, calls: new Map() });
+        if (m.hie || !analyses.has(path)) analyses.set(path, { module: m.module, tops: m.tops, outline: Array.isArray(m.outline) ? m.outline : null, generation, text: m.hie ? (files[path] ?? null) : null, tokens: null, binds: null, sigs: new Map(), imports: null, calls: new Map() });
     }
     for (const [path, list] of byPath) {
         ghcDiagnostics.set(path, list);
@@ -215,6 +197,8 @@ async function check() {
     if (clientRefreshesTokens) send({ jsonrpc: '2.0', id: `refresh-${generation}`, method: 'workspace/semanticTokens/refresh' });
     // The type lenses are of the last check's warnings.
     if (clientRefreshesLenses) send({ jsonrpc: '2.0', id: `lenses-${generation}`, method: 'workspace/codeLens/refresh' });
+    // And the local bindings' types.
+    if (clientRefreshesHints) send({ jsonrpc: '2.0', id: `hints-${generation}`, method: 'workspace/inlayHint/refresh' });
     void lint();
 }
 
@@ -460,32 +444,6 @@ async function completions(doc, path, line, character) {
     return items;
 }
 
-// ---- Positions of the last check in the text as it is now
-
-/**
- * How the lines of `before` (the text a check saw) moved in `after` (the
- * text now), as far as an edit's unchanged head and tail say: lines
- * before the first changed one keep their number, lines after the last
- * shift by the lines added; a line in between has no counterpart (-1).
- * `back` maps the other way, a changed line to the nearest line of the
- * changed region in `before`, which is as close as an unparsed edit lets
- * a position in it be located.
- */
-function lineMap(before, after) {
-    const a = before.split('\n');
-    const b = after.split('\n');
-    let head = 0;
-    while (head < a.length && head < b.length && a[head] === b[head]) head++;
-    let tail = 0;
-    while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
-    const shift = b.length - a.length;
-    return {
-        lines: b.map((l) => l.replace(/\r$/, '')),
-        forward: (l) => (l < head ? l : l >= a.length - tail ? l + shift : -1),
-        back: (l) => (l < head ? l : l >= b.length - tail ? l - shift : Math.max(0, Math.min(l, a.length - tail - 1, a.length - 1))),
-    };
-}
-
 // ---- Semantic tokens (HLS's semantic tokens plugin, from the same .hie files)
 
 const TOKEN_TYPES = ['namespace', 'type', 'class', 'interface', 'typeParameter', 'enumMember', 'function', 'method', 'property', 'variable', 'operator', 'macro'];
@@ -711,9 +669,13 @@ async function signatureHelp(doc, path, position) {
 
 // ---- Symbols
 
-const SymbolKind = { Class: 5, Constructor: 9, Interface: 11, Function: 12, Variable: 13, Constant: 14, Struct: 23, TypeParameter: 26, Field: 8 };
-
+/**
+ * A file's document symbols: the nested outline (symbols.js) of its last
+ * check, or, from a root file system whose Yuki.hs answers no outline, the
+ * flat list of its top-level names.
+ */
 function documentSymbols(doc, analysis) {
+    if (analysis?.outline && analysis.text !== null) return outlineSymbols(analysis.outline, analysis.tops ?? [], analysis.text, (s) => rangeOf(doc, s));
     const symbols = [];
     for (const t of analysis?.tops ?? []) {
         const range = rangeOf(doc, t.span);
@@ -727,6 +689,18 @@ function documentSymbols(doc, analysis) {
         symbols.push({ name: t.name, detail: detailOf(t) ?? t.type, kind, range, selectionRange: range });
     }
     return symbols.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
+}
+
+/** The local bindings of a file's last check ('binds' in Yuki.hs), asked once per check; none from a Yuki.hs without them. */
+function bindsOf(path, analysis) {
+    analysis.binds ??= ghc.request(['binds', `${ROOT}/${path}`]).then(
+        (answer) => (Array.isArray(answer) ? answer : []),
+        (e) => {
+            log(`binds of ${path}: ${e?.message ?? e}`, 2);
+            return [];
+        },
+    );
+    return analysis.binds;
 }
 
 // ---- Call hierarchy (HLS's call-hierarchy plugin, from the same .hie files)
@@ -1185,6 +1159,7 @@ const requests = {
     initialize: async (p) => {
         clientRefreshesTokens = p?.capabilities?.workspace?.semanticTokens?.refreshSupport === true;
         clientRefreshesLenses = p?.capabilities?.workspace?.codeLens?.refreshSupport === true;
+        clientRefreshesHints = p?.capabilities?.workspace?.inlayHint?.refreshSupport === true;
         return {
             capabilities: {
                 documentFormattingProvider: (await toolsReady).ormolu,
@@ -1195,6 +1170,8 @@ const requests = {
                 referencesProvider: true,
                 documentHighlightProvider: true,
                 documentSymbolProvider: true,
+                workspaceSymbolProvider: true,
+                inlayHintProvider: true,
                 renameProvider: { prepareProvider: true },
                 completionProvider: { triggerCharacters: ['.'] },
                 codeActionProvider: { codeActionKinds: ['quickfix', 'refactor.rewrite'] },
@@ -1284,6 +1261,24 @@ const requests = {
         const path = pathOf(p?.textDocument?.uri ?? '');
         const doc = path !== null ? docs.get(path) : null;
         return doc ? documentSymbols(doc, analyses.get(path)) : [];
+    },
+    // Every symbol of every Haskell file's outline whose name matches (Ctrl+T).
+    'workspace/symbol': (p) => {
+        const files = [];
+        for (const [path, doc] of docs) {
+            const analysis = analyses.get(path);
+            if (isHaskell(doc.uri) && analysis) files.push({ uri: doc.uri, symbols: documentSymbols(doc, analysis) });
+        }
+        return searchSymbols(files, typeof p?.query === 'string' ? p.query : '');
+    },
+    // HLS's: the types of local bindings without a signature.
+    'textDocument/inlayHint': async (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        const analysis = path !== null ? analyses.get(path) : null;
+        if (!doc || !analysis?.text) return [];
+        const binds = await bindsOf(path, analysis);
+        return bindingHints(binds, analysis.text, doc.text, p.range?.start?.line ?? 0, p.range?.end?.line ?? Infinity);
     },
     'textDocument/completion': async (p) => {
         const path = pathOf(p?.textDocument?.uri ?? '');

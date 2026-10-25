@@ -536,6 +536,44 @@ async function serverTests(page) {
     const symbols = (await lsp.request('textDocument/documentSymbol', { textDocument: { uri: uri('Geometry.hs') } })).result ?? [];
     const names = symbols.map((s) => s.name);
     check('document symbols list the types and the functions of Geometry.hs', ['Point', 'norm', 'distance', 'Shape', 'area'].every((n) => names.includes(n)), JSON.stringify(names));
+    const tree = (list) => list.map((s) => (s.children ? `${s.name} [${tree(s.children).join(', ')}]` : s.name));
+    check("the outline is nested as HLS's: Point's constructor with its fields, the instance with its method, Shape's constructors",
+        JSON.stringify(tree(symbols)) === JSON.stringify(['Point [Point [px, py]]', 'instance Show Point [show]', 'norm', 'distance', 'Shape [Circle, Square]', 'area']), JSON.stringify(tree(symbols)));
+    const px = symbols[0]?.children?.[0]?.children?.[0];
+    check('a field has its type as its detail, a constructor its type as a function', px?.detail === 'Double' && px.kind === 8 && symbols[0].children[0].detail === 'Double -> Double -> Point', JSON.stringify(symbols[0]));
+
+    // Workspace symbols (Ctrl+T): every file's outline, searched.
+    const wsearch = async (query) => (await lsp.request('workspace/symbol', { query })).result ?? [];
+    let ws = await wsearch('dist');
+    check('workspace symbols: `dist` finds distance, in Geometry.hs, from its equation', ws[0]?.name === 'distance' && ws[0].location.uri === uri('Geometry.hs') && ws[0].location.range.start.line === find(GEOMETRY, 'distance a b')[0], JSON.stringify(ws));
+    ws = await wsearch('py');
+    check('a field is found with its constructor as its container', ws[0]?.name === 'py' && ws[0].containerName === 'Point', JSON.stringify(ws));
+    ws = await wsearch('main');
+    check("both mains are found, Main.hs's and the test suite's", JSON.stringify(ws.map((x) => x.location.uri).sort()) === JSON.stringify([uri('Main.hs'), uri('tests/Spec.hs')]), JSON.stringify(ws));
+    check('a name nobody declared finds nothing', (await wsearch('qqqq')).length === 0);
+
+    // HLS's inlay hints: local bindings' types; a do block's `<-` too.
+    {
+        const text = MAIN.replace('  print (norm b)\n', '  print (norm b)\n  n <- pure (length "ab")\n  print n\n');
+        mark = (await lsp.log()).length;
+        await change('Main.hs', text);
+        await checked(mark);
+        const hints = (await lsp.request('textDocument/inlayHint', { textDocument: { uri: uri('Main.hs') }, range: { start: { line: 0, character: 0 }, end: { line: 99, character: 0 } } })).result ?? [];
+        const shown = hints.map((h) => `${h.position.line}:${h.position.character} ${h.label}`);
+        const [la, ca] = find(text, 'a = Point');
+        const [lb, cb] = find(text, 'b = Point');
+        const [ln, cn] = find(text, 'n <- pure');
+        check('inlay hints show the types of the let bindings and the do block\'s <- binding, nothing else', JSON.stringify(shown) === JSON.stringify([`${la}:${ca + 1} :: Point`, `${lb}:${cb + 1} :: Point`, `${ln}:${cn + 1} :: Int`]), JSON.stringify(shown));
+        const edited = applyEdits(text, hints[0]?.textEdits ?? []);
+        check("a let binding's hint writes its signature in the let block", edited.includes('  let a :: Point\n      a = Point 0 0\n      b = Point 3 4\n') && !hints[2]?.textEdits, JSON.stringify(edited.split('\n').slice(5, 9)));
+        mark = (await lsp.log()).length;
+        await change('Main.hs', edited);
+        const after = await diagnostics('Main.hs', () => true, mark);
+        check('and the module still checks without errors or warnings', after?.length === 0, show(after));
+        mark = (await lsp.log()).length;
+        await change('Main.hs', MAIN);
+        await checked(mark);
+    }
 
     // Folding (HLS's: declarations with their signatures, imports, what is indented under a line).
     const foldsOf = async (name) => (await lsp.request('textDocument/foldingRange', { textDocument: { uri: uri(name) } })).result ?? [];

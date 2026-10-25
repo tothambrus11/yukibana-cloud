@@ -13,8 +13,9 @@ dynamic linker (`dyld.mjs`). A small GHC API program of ours,
   `.hie` files (the files HLS reads). Diagnostics, hover, definition,
   references, highlights, rename, completion, symbols, quick fixes,
   HLS's import and export actions, call hierarchy, signature help,
-  semantic tokens and type lenses come from that; folding ranges from the
-  text. Template Haskell splices run while
+  semantic tokens, type lenses, the nested outline, workspace symbols and
+  HLS's inlay hints for local bindings come from that; folding ranges
+  from the text. Template Haskell splices run while
   checking, in GHC's interpreter, as in a build. **hlint** 3.10 adds its
   hints, and **ormolu** 0.9.0.0 formats, both parsing as GHC 9.14 does
   (ghc-lib-parser 9.14): each is its own WASI command
@@ -73,9 +74,11 @@ formatter. Options compared (measured where marked):
 | Definition, references, highlights | across the project | across the project; library names have no source in the pack | 4 checks |
 | Rename | project-wide, refuses library names | the same, and refuses a name of the wrong kind | 3 checks |
 | Completion | in-scope names with types, qualified, modules after `import` | the same, from GHC's renamer (270 items in the sample, 562 modules); while a line does not parse yet, the names of the last module that did | 4 checks |
-| Document symbols | yes, nested (constructors under their type, methods under their class) | flat: every top-level declaration, constructor and type, each with its type | 1 check |
+| Document symbols | yes, nested (constructors under their type, methods under their class) | nested the same way, from the declarations' spans in the `.hie` file (`outline` in Yuki.hs, nested by `src/symbols.js`): constructors under their type and record fields under their constructor (the field's type as detail), method signatures under their class, each instance (`instance Show Point`) with its bindings; a deriving clause's generated bindings left out | 3 checks; in the app, Go to Symbol (Ctrl+Shift+O) shows a field under its constructor (app e2e) |
+| Workspace symbols | Ctrl+T across the project | `workspace/symbol` over every file's outline: the name itself first, then a prefix, a part, the letters in order (`dst` finds `distance`), nested symbols with their container | 4 checks; in the app, Go to Symbol in Workspace (Ctrl+T, or F1) for any server that has them (app e2e: 2 checks) |
+| Inlay hints | HLS 2.x: the types of local bindings without a signature | the same: after each `let` and `where` binding and each `x <- e` of a do block (`binds` in Yuki.hs: GHC 9.10+ type checks a do block as the `>>=` chain it expands to, so the `.hie` file has `x` as a lambda's argument, told apart by the text) its inferred type, `:: Point`; a double click writes a let or where binding's signature in its layout block (not for a type with type variables); refreshed after each check | 3 checks, and 2 in the app's e2e |
 | Folding | HLS's: declarations, imports, comments, nested blocks | declarations with their signature and every equation, the export list, the import block (as imports), `{- -}` comments and runs of `--` lines, everything indented under a line; from the text, so before a check too | 2 checks |
-| Type lenses | HLS's: the inferred signature above a binding without one, written when clicked | the same, from `-Wmissing-signatures`; clicking runs `haskell.addSignature`, which has the client apply the edit (inlay hints for local bindings: not offered) | 2 checks, and 2 in the app's e2e |
+| Type lenses | HLS's: the inferred signature above a binding without one, written when clicked | the same, from `-Wmissing-signatures`; clicking runs `haskell.addSignature`, which has the client apply the edit (for local bindings: the inlay hints below) | 2 checks, and 2 in the app's e2e |
 | Quick fixes | HLS: suggestions, signatures, unused, imports, holes, extensions | from GHC's hints: replace a misspelt name, add the inferred signature, prefix unused with `_`, remove a redundant import, hole fits, add a LANGUAGE pragma | 5 checks |
 | Imports and exports | HLS: add an import for a name not in scope, make an import list explicit (lens and action), remove a redundant import or the names an import list has too much, export an unused binding | the same, as code actions: "Add import Data.List (sort)", "Add sort to the import list of Data.List", `import qualified Data.Map as Map` for `Map.insert`, a constructor with its type (`Data.Ord (Down (Down))`), from the project's modules and every module of the packages (an index of their exports, made on the first request); "Make this import explicit" / "Make all imports explicit" (the list from GHC's renamer and the .hie file); "Remove ‘nub’ from the import of Data.List"; "Export ‘helper’" in the export list's own style | 9 checks |
 | Call hierarchy | HLS's plugin: prepare, incoming and outgoing calls from `.hie` files | the same (`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `…/outgoingCalls`): every value binding of the project, top-level and local, its callers grouped with where they call it, across modules; a library function has none | 5 checks; in the app, Show Call Hierarchy (Shift+Alt+H, or the context menu) opens a Call Hierarchy panel of callers and callees (app e2e: 6 checks) |
@@ -111,7 +114,7 @@ included; a script drives both workers, as test.mjs does):
 | `rootfs.tar` | 268.9 MB | 53.9 MB | 36.2 MB | GHC's libdir, the packages and libyuki.so, unpacked by each worker into memory |
 | `dyld.mjs`, `prelude.mjs`, `post-link.mjs` | 57 KB | 19 KB | 17 KB | GHC's wasm dynamic linker (patched, `scripts/patch-dyld.mjs`) |
 | `wasi.js` | 32 KB | 9 KB | 8 KB | browser_wasi_shim (the haskell-wasm fork), bundled |
-| `ghc.js`, `server.js`, `runner.js`, `tools.js` | 84 KB | 28 KB | 24 KB | ours |
+| `ghc.js`, `server.js`, `symbols.js`, `text.js`, `runner.js`, `tools.js` | 97 KB | 33 KB | 28 KB | ours |
 | `ormolu.wasm` | 16.5 MB | 4.9 MB | 3.4 MB | ormolu 0.9.0.0, a WASI command |
 | `hlint.wasm`, `hlint-data.json` | 15.7 MB | 4.8 MB | 3.4 MB | hlint 3.10 (on ghc-lib-parser 9.14) and its hint files |
 | `LICENSE-*.txt`, `manifest.json` | | | | licences; versions and sizes |
@@ -134,6 +137,7 @@ In memory each worker holds the unpacked file system and GHC: about
 ```sh
 ./build.sh          # writes app/static/packs/haskell/
 npm install && node test.mjs
+npm run test:unit   # the server's pure parts (outline, workspace symbols, inlay hints, positions), no GHC
 ```
 
 GHC's wasm toolchain takes some 3 GB installed, so the two heavy parts are

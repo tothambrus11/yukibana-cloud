@@ -16,6 +16,8 @@
 #                     tests use), bundled by esbuild
 #   ghc.js            ours: starting GHC in a worker, the project's layout
 #   server.js         ours: the language server worker
+#   symbols.js, text.js   ours: the server's outline, workspace symbols and
+#                     inlay hints, and its positions (pure; test-symbols.mjs)
 #   runner.js         ours: the Run and Test worker
 #   tools.js          ours: running ormolu and hlint for the server
 #   ormolu.wasm, hlint.wasm, hlint-data.json   ormolu 0.9.0.0 and hlint 3.10
@@ -43,8 +45,8 @@ set -euo pipefail
 GHC_VERSION=9.14.1.20260731
 # The CI build the pack is made of: its run, and the sha256 of its
 # SHA256SUMS, which holds every other file's.
-ROOTFS_RUN=40139769351
-SUMS_SHA256=c7da383439018fa96492a6c9b90c739c14fbc207e8962b5cbe9e3962d8f534e9
+ROOTFS_RUN=40147445933
+SUMS_SHA256=3f40a67b47e2f2448fe9973c4f71bcd05cd1416ce23a96bfd2134c30bbe33484
 # ormolu and hlint (ghc/build-tools.sh, .github/workflows/light-haskell-ghc-tools.yml):
 # the CI build, and the sha256 of its SHA256SUMS.
 TOOLS_RUN=40139769338
@@ -113,6 +115,8 @@ if [ "${HASKELL_GHC_ROOTFS:-}" != build ]; then
     echo "$SUMS_SHA256  $ART/SHA256SUMS" | sha256sum -c --quiet - || { echo "$ART: not the pinned build (run $ROOTFS_RUN)" >&2; exit 1; }
     (cd "$ART" && sha256sum -c --quiet SHA256SUMS) || { echo "$ART: a file differs from its SHA256SUMS" >&2; exit 1; }
 fi
+# The pack's server and runner are written for this GHC (its API, its flags).
+grep -q "\"ghc\": \"$GHC_VERSION\"" "$ART/versions.json" || { echo "$ART: not GHC $GHC_VERSION ($(grep '"ghc"' "$ART/versions.json"))" >&2; exit 1; }
 
 step "ormolu and hlint"
 TOOLS="$CACHE/ghc-tools-$TOOLS_RUN"
@@ -160,7 +164,7 @@ for s in br gz; do
 done
 cp "$ART/prelude.mjs" "$ART/post-link.mjs" "$OUT/"
 node "$HERE/scripts/patch-dyld.mjs" "$ART/dyld.mjs" "$OUT/dyld.mjs"
-cp "$HERE"/src/ghc.js "$HERE"/src/server.js "$HERE"/src/runner.js "$OUT/"
+cp "$HERE"/src/ghc.js "$HERE"/src/server.js "$HERE"/src/symbols.js "$HERE"/src/text.js "$HERE"/src/runner.js "$OUT/"
 for l in "$ART"/LICENSE-*.txt; do [ -f "$l" ] && cp "$l" "$OUT/"; done
 cp "$SHIM/LICENSE-MIT" "$OUT/LICENSE-browser_wasi_shim.txt"
 cp "$HERE/src/tools.js" "$OUT/"
