@@ -9,6 +9,9 @@
 #   app built with that pack alone and driven in Chromium for the four
 #   languages it serves.
 #
+# Each job runs only when what it reads changed since it last passed
+# (.github/actions/once): its inputs are listed in the plan job.
+#
 # The other packs build compilers to Wasm and take from twenty minutes to
 # hours cold; light-release.yml builds all of them, by hand or on a light-v*
 # tag, and its packs' own tests are run there by their build scripts.
@@ -21,10 +24,12 @@ on:
     paths:
       - light/**
       - .github/workflows/light-ci.yml
+      - .github/actions/once/**
   pull_request:
     paths:
       - light/**
       - .github/workflows/light-ci.yml
+      - .github/actions/once/**
   workflow_dispatch:
 
 concurrency:
@@ -38,8 +43,41 @@ env:
   PACK_CACHE: /home/runner/.cache/yukibana-packs
 
 jobs:
+  # Which jobs already passed on exactly these inputs. The app's tests also
+  # read the C++ pack's sources (its toolchain flags, target table and test
+  # fixtures), which are listed with it.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      app-done: ${{ steps.app.outputs.done }}
+      app-key: ${{ steps.app.outputs.key }}
+      javascript-done: ${{ steps.javascript.outputs.done }}
+      javascript-key: ${{ steps.javascript.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: app
+        uses: ./.github/actions/once
+        with:
+          name: light-app
+          paths: |
+            light/app
+            light/packs/cpp/src
+            light/packs/cpp/tests/fixtures
+            .github/workflows/light-ci.yml
+      - id: javascript
+        uses: ./.github/actions/once
+        with:
+          name: light-javascript
+          paths: |
+            light/app
+            light/packs/javascript
+            .github/workflows/light-ci.yml
+
   app:
     name: App
+    needs: plan
+    if: needs.plan.outputs.app-done != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -66,8 +104,14 @@ jobs:
       - name: Download test (Node languages)
         run: node tests/export.mjs javascript typescript web p5
 
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.app-key }}
+
   javascript:
     name: JavaScript pack and e2e
+    needs: plan
+    if: needs.plan.outputs.javascript-done != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
@@ -120,3 +164,7 @@ jobs:
       - name: End-to-end (JavaScript, TypeScript, web, p5.js)
         working-directory: light/app
         run: node tests/e2e.mjs javascript typescript web p5
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.javascript-key }}

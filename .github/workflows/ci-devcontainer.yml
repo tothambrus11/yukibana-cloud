@@ -21,6 +21,7 @@ on:
       - supabase/config.toml
       - dev/**
       - .github/workflows/ci-devcontainer.yml
+      - .github/actions/once/**
   pull_request:
     paths:
       - .devcontainer/**
@@ -36,6 +37,7 @@ on:
       - supabase/config.toml
       - dev/**
       - .github/workflows/ci-devcontainer.yml
+      - .github/actions/once/**
   workflow_dispatch:
 
 concurrency:
@@ -46,7 +48,39 @@ permissions:
   contents: read
 
 jobs:
+  # Whether the container already passed on exactly these inputs (the same
+  # list as the paths above; .github/actions/once): a push that changes
+  # one back, or a pull request that main already has, does not build again.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      done: ${{ steps.once.outputs.done }}
+      key: ${{ steps.once.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: once
+        uses: ./.github/actions/once
+        with:
+          name: devcontainer
+          paths: |
+            .devcontainer
+            package.json
+            package-lock.json
+            app/package.json
+            app/package-lock.json
+            cli/package.json
+            cli/package-lock.json
+            demo/electron/package.json
+            demo/electron/package-lock.json
+            scripts
+            supabase/config.toml
+            dev
+            .github/workflows/ci-devcontainer.yml
+
   devcontainer:
+    needs: plan
+    if: needs.plan.outputs.done != 'true'
     runs-on: ubuntu-latest
     steps:
       # The stack publishes fixed host ports, 54320-54329 (supabase/config.toml),
@@ -62,3 +96,6 @@ jobs:
           runCmd: |
             ./scripts/preflight.sh
             npm run smoke
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.key }}

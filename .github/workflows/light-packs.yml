@@ -27,6 +27,8 @@
 # called by light-release.yml with `upload: true`, which also uploads each
 # pack's output as the artifact pack-<pack> for the release to assemble. A
 # pull request's run writes to the store too, unless it comes from a fork.
+# Without `upload`, a pack the store has is not even downloaded: its job
+# checks that the asset exists and is done.
 name: Yukibana Light packs
 
 on:
@@ -38,12 +40,14 @@ on:
       - light/scripts/pack-store.sh
       - light/setup.sh
       - .github/workflows/light-packs.yml
+      - .github/actions/once/**
   pull_request:
     paths:
       - light/packs/**
       - light/scripts/pack-store.sh
       - light/setup.sh
       - .github/workflows/light-packs.yml
+      - .github/actions/once/**
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -70,10 +74,33 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
+  # Whether the store job already passed on exactly its inputs
+  # (.github/actions/once). The pack jobs need no such plan: the store is
+  # theirs.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      store-done: ${{ steps.store.outputs.done }}
+      store-key: ${{ steps.store.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: store
+        uses: ./.github/actions/once
+        with:
+          name: light-pack-store
+          paths: |
+            light/scripts/pack-store.sh
+            light/scripts/test-pack-store.mjs
+            light/setup.sh
+            .github/workflows/light-packs.yml
+
   # The store's reading side, which every pack job below and setup.sh rely
   # on, tested against a stand-in for GitHub's API, before anything uses it.
   store:
     name: Pack store
+    needs: plan
+    if: needs.plan.outputs.store-done != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
@@ -85,9 +112,14 @@ jobs:
         run: shellcheck -S style scripts/pack-store.sh setup.sh
       - name: Test the store
         run: node --test scripts/test-pack-store.mjs
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.store-key }}
 
+  # After the store's tests, or once they are known to pass (skipped).
   pack:
-    needs: store
+    needs: [plan, store]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.store.result == 'success' || needs.store.result == 'skipped') }}
     name: Pack ${{ matrix.pack }}
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ matrix.timeout }}
@@ -126,16 +158,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # HEAD's build of these sources, when the store has one (exit 3: none).
-      - name: Fetch the pack built from these sources
+      # HEAD's build of these sources, when the store has one (exit 3: none):
+      # downloaded for a release, which assembles it; otherwise only looked
+      # up, as nothing here reads it.
+      - name: Look for the pack built from these sources
         id: output
+        env:
+          COMMAND: ${{ inputs.upload && 'fetch' || 'has' }}
         run: |
-          if ../../scripts/pack-store.sh fetch ${{ matrix.pack }}; then
-            echo "cache-hit=true" >> "$GITHUB_OUTPUT"
-          else
-            status=$?
-            [ "$status" = 3 ] || exit "$status"
-          fi
+          status=0
+          ../../scripts/pack-store.sh "$COMMAND" ${{ matrix.pack }} || status=$?
+          case "$status" in
+            0) echo "cache-hit=true" >> "$GITHUB_OUTPUT" ;;
+            3) ;;
+            *) exit "$status" ;;
+          esac
 
       # Everything from here to "Put the output in the store" runs only for a
       # pack whose sources have no output in the store yet.
@@ -261,7 +298,13 @@ jobs:
         run: ../../scripts/pack-store.sh publish ${{ matrix.pack }}
 
       - name: Check the output
+        env:
+          STORED_ONLY: ${{ steps.output.outputs.cache-hit == 'true' && !inputs.upload }}
         run: |
+          if [ "$STORED_ONLY" = true ]; then
+            echo "${{ matrix.pack }}: in the store already" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           test -f "../../app/static/packs/${{ matrix.pack }}/server.js" ||
             { echo "::error::pack ${{ matrix.pack }} has no server.js" >&2; exit 1; }
           echo "${{ matrix.pack }}: $(du -sh "../../app/static/packs/${{ matrix.pack }}" | cut -f1)," \

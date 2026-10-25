@@ -1,0 +1,87 @@
+# Runs a job once per content of its inputs: a job that passed on exactly
+# these files does not run again, on any branch or pull request that has
+# them, until one of them changes.
+#
+# A job's inputs are git pathspecs, listed by the workflow that calls this:
+# the directories its checks read, the files its tools are pinned by, and
+# its own workflow file. The key is the sha256 of every blob id (and mode)
+# under them, so it is the same for the same files whatever the commit, the
+# branch or the history. A job that passed records the key as an empty
+# Actions cache entry; a later run looks it up (without downloading
+# anything) and skips the job, which then counts as passed for a required
+# check. An entry recorded on main is seen by every pull request; one
+# recorded on a pull request only by that pull request.
+#
+# The inputs listed are a promise: a job that reads a file outside them can
+# pass on a change that breaks it. When a check starts reading something new,
+# its list in the workflow grows with it.
+#
+# workflow_dispatch looks nothing up, so running a workflow by hand runs
+# every job in it (and records them again).
+#
+#   - id: app                                 # in the plan job
+#     uses: ./.github/actions/once
+#     with:
+#       name: light-app
+#       paths: |
+#         light/app
+#         .github/workflows/light-ci.yml
+#   ...
+#   - uses: ./.github/actions/once            # the last step of the job
+#     with:
+#       record: ${{ needs.plan.outputs.app-key }}
+name: Once
+description: Skips a job that already passed on exactly these inputs
+inputs:
+  name:
+    description: The job's name in the key (once-<name>-<sha256>)
+    default: ''
+  paths:
+    description: The job's inputs, one git pathspec per line (magic such as :(exclude) works)
+    default: ''
+  record:
+    description: A key a plan step returned, to record as passed (instead of looking one up)
+    default: ''
+outputs:
+  key:
+    description: The key of these inputs, to pass to `record` when the job passes
+    value: ${{ steps.key.outputs.key }}
+  done:
+    description: "'true' when a job already passed on these inputs"
+    value: ${{ steps.lookup.outputs.cache-hit == 'true' }}
+runs:
+  using: composite
+  steps:
+    - id: key
+      if: inputs.record == ''
+      shell: bash
+      env:
+        NAME: ${{ inputs.name }}
+        SPECS: ${{ inputs.paths }}
+      run: |
+        [ -n "$NAME" ] && [ -n "$SPECS" ] || { echo "::error::once: name and paths are needed to look a job up" >&2; exit 1; }
+        mapfile -t specs < <(printf '%s\n' "$SPECS" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^$/d')
+        # The pathspecs themselves too, so that a job's list growing is a
+        # new key; and this action, which decides what a key means (listed
+        # apart, so that an :(exclude) in the job's list cannot drop it).
+        sum="$({ printf '%s\n' "${specs[@]}"; git ls-files -s -- "${specs[@]}"; git ls-files -s -- .github/actions/once; } | sha256sum | cut -c1-40)"
+        echo "key=once-$NAME-$sum" >> "$GITHUB_OUTPUT"
+        echo "once: $NAME has key once-$NAME-$sum ($(git ls-files -- "${specs[@]}" | wc -l) files)"
+
+    - id: lookup
+      if: inputs.record == '' && github.event_name != 'workflow_dispatch'
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ runner.temp }}/once
+        key: ${{ steps.key.outputs.key }}
+        lookup-only: true
+
+    - if: inputs.record != ''
+      shell: bash
+      run: mkdir -p "$RUNNER_TEMP/once" && touch "$RUNNER_TEMP/once/passed"
+
+    - if: inputs.record != ''
+      uses: actions/cache/save@v5
+      with:
+        path: ${{ runner.temp }}/once
+        key: ${{ inputs.record }}

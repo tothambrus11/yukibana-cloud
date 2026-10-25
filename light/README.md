@@ -57,11 +57,15 @@ tests is kept as `<pack>-<tree>.tar.zst` on the repository's rolling
 `packs/<pack>` (`scripts/pack-store.sh tree <pack>`).
 
 * `.github/workflows/light-packs.yml` runs on every push that touches a pack.
-  A pack whose tree has a build already is downloaded in seconds; a pack
-  that changed is built and tested by its `build.sh` and stored. So a pack is
-  tested on the push that changed it.
+  A pack whose tree has a build already is only looked up; a pack that
+  changed is built and tested by its `build.sh` and stored. So a pack is
+  tested on the push that changed it, and on no other.
 * `.github/workflows/light-ci.yml` checks the app (types, unit tests, the
-  JavaScript pack end to end) on every push.
+  JavaScript pack end to end) when the app, or a pack file its tests read,
+  changed. Every job in the repository's CI runs only when the inputs its
+  workflow lists for it changed since it last passed
+  (`.github/actions/once`), so a check that starts reading a new file adds
+  that file to its list.
 * Pushing a `light-v*` tag runs `.github/workflows/light-release.yml`: the
   packs as above (normally all downloaded), the app built with all of them
   and smoke-tested in Chromium, and the GitHub release of the tag with

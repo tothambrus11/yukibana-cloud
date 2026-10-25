@@ -10,6 +10,8 @@
 # Writes go through CI (light-packs.yml); reads need no account.
 #
 #   pack-store.sh tree <pack>             the tree id of HEAD's packs/<pack>
+#   pack-store.sh has <pack>              exit 0 when the store has HEAD's
+#       asset of the pack, 3 when it has none; downloads nothing.
 #   pack-store.sh fetch <pack> [--any]    downloads HEAD's asset of the pack
 #       and puts it in place of app/static/packs/<pack>; exit 3 when there is
 #       none. --any takes the pack's newest asset when HEAD's is missing (a
@@ -74,6 +76,17 @@ assets() {
       });'
 }
 
+has() {
+  local want
+  want="$1-$(tree "$1").tar.zst"
+  if assets | awk -v w="$want" '$1 == w { found = 1 } END { exit !found }'; then
+    echo "pack-store.sh: $1: $want is in $(repo)'s $TAG release" >&2
+  else
+    echo "pack-store.sh: $1: no $want in $(repo)'s $TAG release" >&2
+    exit 3
+  fi
+}
+
 fetch() {
   local pack="$1" any="${2:-}" want name sha url
   want="$pack-$(tree "$pack").tar.zst"
@@ -135,6 +148,7 @@ publish() {
 
 case "${1:-}" in
   tree) tree "${2:?pack}" ;;
+  has) has "${2:?pack}" ;;
   fetch) fetch "${2:?pack}" "${3:-}" ;;
   publish) publish "${2:?pack}" ;;
   *) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;

@@ -37,8 +37,55 @@ concurrency:
 permissions:
   contents: read
 
+# What both jobs read: every directory and file their checks, builds and
+# stack are made from, and this file. A push that changes none of them (a
+# doc page, the devcontainer, Yukibana Light) runs neither job again; see
+# .github/actions/once. A check that starts reading something new adds it here.
+env:
+  INPUTS: |
+    app
+    cli
+    demo
+    docs
+    ops
+    scripts
+    supabase
+    dev
+    package.json
+    package-lock.json
+    .npmrc
+    .squawk.toml
+    .env.example
+    .dev.vars.example
+    wrangler.jsonc
+    .github/workflows/ci.yml
+
 jobs:
+  # Which jobs already passed on exactly these inputs.
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app-done: ${{ steps.app.outputs.done }}
+      app-key: ${{ steps.app.outputs.key }}
+      stack-done: ${{ steps.stack.outputs.done }}
+      stack-key: ${{ steps.stack.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: app
+        uses: ./.github/actions/once
+        with:
+          name: ci-app
+          paths: ${{ env.INPUTS }}
+      - id: stack
+        uses: ./.github/actions/once
+        with:
+          name: ci-stack
+          paths: ${{ env.INPUTS }}
+
   app:
+    needs: plan
+    if: needs.plan.outputs.app-done != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -62,8 +109,13 @@ jobs:
           npm run build --prefix cli
           mkdir -p /tmp/fixture && tar -xzf cli/tests/fixtures/repo.tar.gz -C /tmp/fixture --strip-components=1
           node cli/dist/index.js check /tmp/fixture --folder calc
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.app-key }}
 
   stack:
+    needs: plan
+    if: needs.plan.outputs.stack-done != 'true'
     # Must be a VM runner: a `container:` job breaks Supabase's bind mounts.
     runs-on: ubuntu-latest
     env:
@@ -136,6 +188,10 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.stack-key }}
 
       - name: Stop
         if: always()

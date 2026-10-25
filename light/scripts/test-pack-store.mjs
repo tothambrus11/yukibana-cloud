@@ -1,4 +1,4 @@
-// Tests of pack-store.sh's reading side (`tree`, `fetch`), which
+// Tests of pack-store.sh's reading side (`tree`, `has`, `fetch`), which
 // light/setup.sh and every light-packs.yml job rely on, against a server of
 // its own that answers like GitHub's releases API: a throwaway git
 // repository laid out like this one (light/scripts, light/packs/demo) gets a
@@ -104,6 +104,17 @@ test('a pack is fetched from the build of exactly the sources checked out, and i
     assert.equal(r.code, 0, r.err);
     assert.equal(served(), '// current\n');
     assert.equal(stamp(), tree);
+});
+
+test('has says whether the store holds a build of the sources checked out, without downloading it', async () => {
+    const tree = commitDemo('# has\n');
+    assets.delete(`demo-${tree}.tar.zst`);
+    assert.equal((await store('has', 'demo')).code, 3);
+    assets.set(`demo-${tree}.tar.zst`, { bytes: archive('has'), created: '2026-08-01T00:00:00Z' });
+    const before = served();
+    const r = await store('has', 'demo');
+    assert.equal(r.code, 0, r.err);
+    assert.equal(served(), before);
 });
 
 test('sources with no build yet exit 3 and leave the pack in place, unless --any takes the newest build', async () => {
