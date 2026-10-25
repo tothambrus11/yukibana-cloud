@@ -221,6 +221,7 @@ downloads the npm tarball, checks it against the registry's sha512 integrity
 | `pytest-9.0.2.zip` | 2.18 MB | 541 KB | 413 KB | pytest and its dependencies, fetched by Test only (see Testing) |
 | **total** (one Test) | **22.7 MB** | **6.62 MB** | **4.96 MB** | |
 | `hypothesis-6.170.9.zip` | 2.17 MB | 580 KB | 442 KB | Hypothesis and sortedcontainers, fetched only for a project that imports hypothesis (see Property-based testing) |
+| `explorer.js`, `bytecode.py` | 3.9 KB, 4.0 KB | 1.7 KB, 1.8 KB | 1.4 KB, 1.6 KB | the bytecode view's worker and the Python it runs, fetched only when the view opens (see The bytecode view) |
 
 The language server and the runner share no files: basedpyright is
 TypeScript and never needs an interpreter, so pressing Run downloads ~4.5 MB
@@ -406,6 +407,29 @@ CPython's `-O` (and `-OO`) does not make code faster: it removes `assert`
 statements and `if __debug__:` blocks (and `-OO` docstrings), which would
 silently turn off the assertions students' tests and programs rely on.
 Pyodide has no JIT. The app's Optimization select is not shown for Python.
+
+## The bytecode view (runner/explorer.js, runner/bytecode.py)
+
+The app's **Bytecode** button shows what CPython compiles the active file
+to (../CONTRACT.md, "Showing compiler output"): the interpreter Run runs,
+Pyodide's CPython 3.14, compiles the file (never runs it) and `dis` lists
+each code object (the module, each class, function, lambda and
+comprehension) under its qualified name, then its instructions with jump
+targets as labels (`L1:`). Each instruction maps to the line and column
+CPython records for it (`co_positions`, PEP 657), so the caret on
+`self.r ** 2` lights the `LOAD_ATTR` and the `BINARY_OP` it made.
+
+* **Offsets** puts each instruction's byte offset first, as `dis` does.
+* The inline caches (`CACHE`) are never listed, and a code object is
+  named without its address (`<code object area, line 7>`).
+* A file that does not compile shows CPython's `SyntaxError` with its line
+  and column.
+* The worker is Pyodide and one small Python file: no download beyond what
+  Run already cached.
+
+`test-bytecode.py` checks it in the CPython that runs it (`python3 -I
+test-bytecode.py`; CI's is 3.12, which has no labels, so the tests check
+what every version shows).
 
 ## Limits
 
