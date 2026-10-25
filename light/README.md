@@ -142,8 +142,21 @@ the pin rule.
   On a tag it also deploys the build to https://light.yukibana.dev
   (`deploy/deploy.sh`: a Worker with the build as its static assets, COOP
   and COEP on every response, the `.br` copy of each file, and the few pack
-  files too big for an asset from an R2 bucket), with the `light`
-  environment's `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+  files too big for an asset from an R2 bucket).
+* Every push to the branch `yukibana-light` that changes `light/` or the
+  Light workflows runs the same workflow and deploys too, without a GitHub
+  release. Such a run builds no pack: each pack comes from the pack store,
+  and one whose sources the store has no build of yet (the stores are
+  written on main only) ships as the store's newest build of that pack,
+  which the run's summary names; a pack never built on main fails the run
+  by name. One deploy runs at a time (group `light-deploy`), a running one
+  is never cancelled, and of the pushes waiting only the newest deploys.
+  A deploy needs, in the repository's `light` environment (Settings,
+  Environments), the secrets `CLOUDFLARE_API_TOKEN` (a token that may edit
+  Workers scripts and R2 storage of the account) and `CLOUDFLARE_ACCOUNT_ID`,
+  and the environment's deployment branches must allow `yukibana-light` as
+  well as `light-v*` tags. Without the secrets the deploy job warns and
+  deploys nothing.
 
 `serve.py` sends `Cross-Origin-Opener-Policy` and
 `Cross-Origin-Embedder-Policy`, and the `.br` or `.gz` sibling of a file

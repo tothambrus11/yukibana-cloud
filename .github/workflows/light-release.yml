@@ -11,6 +11,18 @@
 # Run by hand (Actions, "Run workflow"), it only uploads the archive as the
 # run's artifact yukibana-light-preview-<run number>.
 #
+# Both a light-v* tag and a push to the branch yukibana-light deploy the
+# archive to https://light.yukibana.dev (the deploy job). The branch is the
+# integration branch of Light until it merges into main, and what is on it
+# is what people should try; the GitHub release stays the tags' alone. A
+# branch push only deploys, so it never builds a pack: its packs run passes
+# `stored`, and a pack whose sources the store lacks ships as the store's
+# newest build of that pack, said in the run's summary (the deploy rule in
+# light-packs.yml). The stores are written on main only, so a branch that
+# changes a pack would otherwise rebuild it, compilers and all, on every
+# push. The `paths` filter keeps pushes that change nothing of Light's from
+# deploying; GitHub never applies it to a tag.
+#
 # A light-v* release is immutable once published (assets and tag), under a
 # tag ruleset that keeps light-v* tags from moving or being deleted; a
 # repository admin turns both on once with light/scripts/protect-releases.sh.
@@ -32,9 +44,19 @@ on:
   push:
     tags:
       - light-v*
+    branches:
+      - yukibana-light
+    paths:
+      - light/**
+      - .github/workflows/light-release.yml
+      - .github/workflows/light-packs.yml
+      - .github/workflows/light-toolchain-unit.yml
+      - .github/actions/once/**
 
 # A second run of the same ref waits for the first rather than cancelling
-# it: a run that finishes leaves its packs for the next.
+# it: a run that finishes leaves its packs for the next. GitHub keeps one
+# waiting run per group, so of several pushes in a row only the newest
+# waits, and the ones it replaces are never deployed.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -48,6 +70,9 @@ jobs:
     uses: ./.github/workflows/light-packs.yml
     with:
       upload: true
+      # A branch push deploys what the store has and builds no pack; a tag
+      # and a run by hand ship this commit's packs, built if need be.
+      stored: ${{ github.event_name == 'push' && github.ref == 'refs/heads/yukibana-light' }}
     # A called workflow's jobs may ask for no more than its caller grants,
     # whether or not they run, so this is the most any job of light-packs.yml
     # asks for. The jobs that write (store-units, store-packs, caches) run
@@ -103,7 +128,10 @@ jobs:
 
       # Every pack in the tree (a directory with a build.sh, as the pack
       # workflow's matrix has it), so a new pack needs no edit here. Each
-      # problem is named before the step fails, not only the first.
+      # problem is named before the step fails, not only the first. A pack
+      # whose tree is not this commit's (a deploy's newest stored build) is
+      # listed in the run's summary, so what went live is said where it is
+      # seen.
       - name: Packs
         run: |
           missing=()
@@ -118,8 +146,19 @@ jobs:
               missing+=("$p's key file is neither 'tree <id>' nor lines 'toolchain $p/<unit> <key>': $(head -c 200 "$key")")
             else
               echo "$p: $(du -sh "static/packs/$p" | cut -f1), $(cat "$key")"
+              read -r kind tree _ < "$key"
+              head="$(git rev-parse "HEAD:light/packs/$p")"
+              if [ "$kind" = tree ] && [ "$tree" != "$head" ]; then
+                echo "- $p: the stored build of tree $tree, not this commit's ($head)" >> "$RUNNER_TEMP/older"
+              fi
             fi
           done
+          if [ -s "$RUNNER_TEMP/older" ]; then
+            {
+              echo "### Packs not built from this commit"
+              cat "$RUNNER_TEMP/older"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ "${#missing[@]}" -gt 0 ]; then
             printf '::error::pack %s\n' "${missing[@]}" >&2
             exit 1
@@ -224,13 +263,20 @@ jobs:
             "yukibana-light-$GITHUB_REF_NAME.zip" packs.json toolchains.json
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
 
-  # The release goes live at https://light.yukibana.dev (light/deploy): the
-  # archive's build/ is the Worker's assets, and the pack files too big for
-  # an asset go to its R2 bucket first. The token is the "light" environment's
-  # secret, so only this job sees it; without one, the job says so and stops.
+  # A light-v* tag or a push to yukibana-light goes live at
+  # https://light.yukibana.dev (light/deploy): the archive's build/ is the
+  # Worker's assets, and the pack files too big for an asset go to its R2
+  # bucket first. The token is the "light" environment's secret, so only
+  # this job sees it; without one, the job says so and stops. The group spans
+  # every ref, so a tag's deploy and a branch's never run at once; a running
+  # deploy is never cancelled, as one stopped between the bucket and
+  # `wrangler deploy` would leave blobs nothing names yet, harmless but
+  # wasted, and one waiting is replaced by a newer one.
   deploy:
     name: Deploy to light.yukibana.dev
-    if: startsWith(github.ref, 'refs/tags/light-v')
+    if: >-
+      ${{ github.event_name == 'push' &&
+      (startsWith(github.ref, 'refs/tags/light-v') || github.ref == 'refs/heads/yukibana-light') }}
     needs: assemble
     runs-on: ubuntu-24.04
     timeout-minutes: 30

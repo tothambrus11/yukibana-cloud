@@ -535,6 +535,43 @@ test('a light-v release is published only once every asset is attached', () => {
     assert.match(run, /gh release create [^\n]*--draft/);
     assert.ok(run.indexOf('--draft=false') > run.indexOf('gh release create'), 'published after the draft is made');
     assert.match(String(publish.if), ON_TAG);
+    assert.doesNotMatch(String(publish.if), /yukibana-light/, 'a branch push publishes no release');
+});
+
+test('a push to yukibana-light deploys, one deploy at a time, and builds no pack to do it', () => {
+    // The integration branch goes live at light.yukibana.dev on every push
+    // that changes Light, as a tag does; the stores are main's only, so a
+    // deploy that built what they lack would build compilers for hours.
+    const push = /** @type {{ tags?: string[], branches?: string[], paths?: string[] }} */ (releaseWorkflow.on.push);
+    assert.deepEqual(push.tags, ['light-v*']);
+    assert.deepEqual(push.branches, ['yukibana-light']);
+    for (const p of ['light/**', '.github/workflows/light-release.yml', '.github/workflows/light-packs.yml']) assert.ok(push.paths?.includes(p), `${p} is not in on.push.paths`);
+    const deploy = /** @type {Job & { concurrency?: Record<string, unknown>, environment?: Record<string, string> }} */ (releaseWorkflow.jobs.deploy);
+    assert.match(String(deploy.if), ON_TAG);
+    assert.match(String(deploy.if), /github\.ref == 'refs\/heads\/yukibana-light'/);
+    assert.match(String(deploy.if), /github\.event_name == 'push'/, 'a run by hand deploys nothing');
+    assert.deepEqual(deploy.concurrency, { group: 'light-deploy', 'cancel-in-progress': false });
+    assert.equal(deploy.environment?.name, 'light');
+    // The branch's packs run takes stored builds; a tag's does not.
+    const packs = /** @type {Job} */ (releaseWorkflow.jobs.packs);
+    assert.equal(packs.with?.upload, true);
+    assert.equal(packs.with?.stored, "${{ github.event_name == 'push' && github.ref == 'refs/heads/yukibana-light' }}");
+    // With `stored`, a pack the store lacks is its newest stored build, and
+    // nothing in the pack job builds.
+    const pack = stepsOf(/** @type {Job} */ (jobs.pack));
+    const lookup = stepById(pack, 'output');
+    assert.equal(lookup.env?.STORED, '${{ inputs.upload && inputs.stored }}');
+    assert.match(String(lookup.run), /any=\(--any\)/);
+    assert.match(String(lookup.run), /pack-store\.sh "\$COMMAND" "\$PACK" "\$\{any\[@\]\}"/);
+    assert.match(String(lookup.run), /::error title=\$PACK::[^\n]*a deploy never builds a pack/);
+    assert.match(String(lookup.run), /::warning title=\$PACK::/);
+    assert.match(String(stepById(pack, 'need').env?.BUILD), /!inputs\.stored/);
+    const build = pack.filter((s) => /\.\/build\.sh/.test(String(s.run ?? '')));
+    assert.equal(build.length, 1, 'one step runs build.sh');
+    assert.match(String(build[0]?.if), /!inputs\.stored/);
+    // What the release records is the tree it shipped, not HEAD's.
+    const record = pack.find((s) => s.name === 'Record what the pack was made from');
+    assert.match(String(record?.run), /\.pack-trees\/\$PACK/);
 });
 
 test("the modules' tarballs are released only from a light-modules-v tag, tested first, whole, and never as the latest release", () => {

@@ -53,6 +53,19 @@
 # (light/packs/stub), which proves the unit machinery on every run, is
 # never in one.
 #
+# The deploy rule. light-release.yml's run for a push to a branch (the
+# integration branch yukibana-light, deployed to light.yukibana.dev) also
+# passes `stored: true`, and such a run never builds a pack either: an
+# unsplit pack whose sources the store lacks is the store's newest build of
+# that pack (`pack-store.sh fetch <pack> --any`), said as a warning and in
+# the job's summary, and its toolchain-key file names the tree that build
+# came from, not HEAD's. The stores are written on main only, so a branch
+# that changes a pack would otherwise build it, for hours, on every push. A
+# pack the store has no build of at all fails by name. A split pack is as in
+# a release: its units come from the store, attested as built on main,
+# whatever branch deploys; none ships today but the stub, which has no
+# build.sh (test-workflows.mjs checks the deploy rule too).
+#
 # Which packs are split is data: every job below asks whether a pack has
 # toolchains/, and none names a split pack.
 #
@@ -161,6 +174,10 @@ on:
     inputs:
       upload:
         description: Upload each pack's output as the artifact pack-<pack>, and what it was made from as toolchain-key-<pack>
+        type: boolean
+        default: false
+      stored:
+        description: With upload, take an unsplit pack the store lacks for these sources as its newest stored build, and never build one (the deploy rule, above)
         type: boolean
         default: false
 
@@ -707,27 +724,43 @@ jobs:
 
       # HEAD's build of these sources, when the store has one (exit 3:
       # none), downloaded for a release, which uploads it; otherwise only
-      # looked up, as nothing here reads it.
+      # looked up, as nothing here reads it. With `stored` (a deploy), the
+      # newest build of the pack when HEAD's is missing, and none at all
+      # fails here: a deploy never builds a pack (the deploy rule, above).
       - name: Look for the pack built from these sources
         id: output
         env:
           COMMAND: ${{ inputs.upload && 'fetch' || 'has' }}
+          STORED: ${{ inputs.upload && inputs.stored }}
         run: |
           trap 'echo "Fetch the pack|$SECONDS" >> "$TIMINGS"' EXIT
+          any=()
+          [ "$STORED" != true ] || any=(--any)
           status=0
-          ../../scripts/pack-store.sh "$COMMAND" "$PACK" || status=$?
+          ../../scripts/pack-store.sh "$COMMAND" "$PACK" "${any[@]}" || status=$?
           case "$status" in
             0) echo "cache-hit=true" >> "$GITHUB_OUTPUT" ;;
-            3) ;;
+            3)
+              if [ "$STORED" = true ]; then
+                echo "::error title=$PACK::the pack store has no build of $PACK at all, and a deploy never builds a pack. Run light-packs on main with this pack first."
+                exit 1
+              fi ;;
             *) exit "$status" ;;
           esac
+          [ "$STORED" = true ] || exit 0
+          head="$(../../scripts/pack-store.sh tree "$PACK")"
+          got="$(cat "../../.pack-trees/$PACK")"
+          if [ "$got" != "$head" ]; then
+            echo "::warning title=$PACK::the store has no build of this commit's $PACK (tree $head); deploying its newest build, of tree $got"
+            echo "$PACK: **not this commit's sources**: deployed the newest stored build, of tree $got (this commit's is $head)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-      # Whether this job builds (the store lacks the pack), and the Actions
-      # cache's key: the pack's sources.
+      # Whether this job builds (the store lacks the pack, and this is no
+      # deploy), and the Actions cache's key: the pack's sources.
       - name: Whether this job builds
         id: need
         env:
-          BUILD: ${{ steps.output.outputs.cache-hit != 'true' }}
+          BUILD: ${{ steps.output.outputs.cache-hit != 'true' && !inputs.stored }}
           CACHE_ID: ${{ hashFiles(format('light/packs/{0}/**', matrix.pack)) }}
         run: |
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
@@ -807,10 +840,11 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/haskell-ghc-tools
 
-      # A pack the store lacks: its build.sh, which runs its tests.
+      # A pack the store lacks: its build.sh, which runs its tests. Never in
+      # a deploy, whose lookup has failed by then instead.
       - name: Build and test
         id: build
-        if: steps.output.outputs.cache-hit != 'true'
+        if: steps.output.outputs.cache-hit != 'true' && !inputs.stored
         env:
           HASKELL_GHC_ROOTFS: ${{ steps.rootfs-artifact.outcome == 'success' && format('{0}/haskell-ghc-rootfs', runner.temp) || '' }}
           HASKELL_GHC_TOOLS: ${{ steps.tools-artifact.outcome == 'success' && format('{0}/haskell-ghc-tools', runner.temp) || '' }}
@@ -863,12 +897,21 @@ jobs:
       # What the uploaded pack was made from, for the release: `tree <id>`
       # in one file named after the pack, written outside the checkout so it
       # is never part of the pack, in an artifact of its own whose name no
-      # pack-* pattern matches.
+      # pack-* pattern matches. A fetched pack's tree is the one fetch wrote
+      # (light/.pack-trees/<pack>), which in a deploy may be older than
+      # HEAD's; a built one's is HEAD's.
       - name: Record what the pack was made from
         if: inputs.upload
+        env:
+          FETCHED: ${{ steps.output.outputs.cache-hit == 'true' }}
         run: |
           mkdir -p "$RUNNER_TEMP/toolchain-key"
-          echo "tree $(../../scripts/pack-store.sh tree "$PACK")" > "$RUNNER_TEMP/toolchain-key/$PACK"
+          if [ "$FETCHED" = true ]; then
+            tree="$(cat "../../.pack-trees/$PACK")"
+          else
+            tree="$(../../scripts/pack-store.sh tree "$PACK")"
+          fi
+          echo "tree $tree" > "$RUNNER_TEMP/toolchain-key/$PACK"
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: inputs.upload
