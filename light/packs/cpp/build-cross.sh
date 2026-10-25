@@ -23,7 +23,9 @@
 # SHA-256 of the LLVM version and tarball pin, Emscripten's version, the
 # cmake arguments and the patch), as build-runner.sh keeps cc's; the LLVM
 # step is skipped while it matches, and PRINT_STAMP=1 prints it without
-# building. pack-runner.sh copies it to cc-cross.{js,wasm}.
+# building. The compilers unit (toolchains/compilers/toolchain.sh) copies
+# it to cc-cross.{js,wasm}. Run by that unit after build-clangd.sh, whose
+# LLVM source tree and native table generators it builds on.
 #
 # CROSS_BUILD_DIR picks the build tree (default $CACHE/build-wasm-cross, a
 # fresh tree: about 2500 steps, as long as build-runner.sh's first build).
@@ -35,10 +37,12 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=toolchains/compilers/pins.sh
+source "$HERE/toolchains/compilers/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
+# shellcheck source-path=SCRIPTDIR source=llvm-lib.sh
+source "$HERE/llvm-lib.sh"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
@@ -50,9 +54,9 @@ cd "$CACHE"
 
 step "lld sources (ELF only)"
 # LLVM's CMake refuses LLVM_ENABLE_PROJECTS=lld unless llvm/../lld exists,
-# even with LLVM_EXTERNAL_LLD_SOURCE_DIR pointing elsewhere. build.sh runs
-# this script before build-runner.sh, so on a clean machine it is not there
-# yet: made here as build-runner.sh makes it (build-lib.sh).
+# even with LLVM_EXTERNAL_LLD_SOURCE_DIR pointing elsewhere. The compilers
+# unit runs this script before build-runner.sh, so on a clean machine it is
+# not there yet: made here as build-runner.sh makes it (llvm-lib.sh).
 llvm_lld_sources
 # A copy of lld/ of its own: build-runner.sh's $SRC/lld is patched to wasm
 # only and is never touched here. .patched holds a SHA-256 of the tarball's
@@ -66,9 +70,8 @@ if [ "$(cat "$LLD/.patched" 2>/dev/null)" != "$patch_sha" ]; then
 fi
 
 step "clang + ld.lld for x86-64, AArch64 and RISC-V 64 Linux"
-# shellcheck disable=SC1091
-source emsdk/emsdk_env.sh >/dev/null 2>&1
-# As build-runner.sh's (build-lib.sh's llvm_wasm_common_args), with node in
+emsdk_use
+# As build-runner.sh's (llvm-lib.sh's llvm_wasm_common_args), with node in
 # ENVIRONMENT: test-targets.mjs drives the compiler in Node. The glue grows by
 # its Node branch (README, sizes).
 cmake_args=()
@@ -82,8 +85,9 @@ if [ "$(cat "$ART/STAMP" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/llvm.wasm" ] &
   echo "cc-cross.wasm is up to date (artifacts/cc-cross/STAMP $stamp)"
   exit 0
 fi
-# The tree records what made it (build-lib.sh, llvm_made_by), which is
-# cc's too, and follows the patches of the sources it compiles.
+# The tree records what made it (llvm-lib.sh, llvm_made_by), which is
+# cc's too (llvm-lib.sh), and follows the patches of the sources it
+# compiles.
 keep_tree "$B" "$(llvm_made_by)"
 follow_patch "$B" "$HERE/patches/clangd-browser.patch" "$SRC"
 follow_patch "$B" "$HERE/patches/elf-ld-only.patch" "$LLD"

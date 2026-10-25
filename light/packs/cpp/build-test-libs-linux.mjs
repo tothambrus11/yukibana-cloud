@@ -11,8 +11,11 @@
 //
 // <out dir>/<arch>/{gtest,gtest_main,rapidcheck}/*.o, one object per
 // source. Exits non-zero, with clang's messages, when a source does not
-// compile. Needs app/static/packs/cpp/ built (cc-cross.wasm,
-// sysroot.tar.gz, targets/<arch>/include.tar).
+// compile. Reads the pack's files (cc-cross.wasm and cc-cross.js,
+// sysroot.tar.gz, targets/<arch>/include.tar) from $OUT, which
+// build-test-frameworks-linux.sh points at a directory of links to the
+// compilers unit's compiler and the libs unit's headers; without it, from
+// app/static/packs/cpp, an assembled pack.
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,7 +23,7 @@ import { createToolchain } from './src/toolchain.js';
 import { TARGETS } from './src/targets.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const OUT = resolve(HERE, '../../app/static/packs/cpp');
+const OUT = process.env.OUT ?? resolve(HERE, '../../app/static/packs/cpp');
 const [gtestDir, rcDir, outDir, ...asked] = process.argv.slice(2);
 if (!outDir) {
     console.error('usage: node build-test-libs-linux.mjs <googletest dir> <rapidcheck dir> <out dir> [arch ...]');

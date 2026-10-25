@@ -1,0 +1,24 @@
+# Debian/Ubuntu packages the vm unit builds with, beyond git, curl, python3,
+# make and Node (CI installs them for this unit's job; light/setup.sh for a
+# local build). clang-18, lld, llvm-strip and clang-tidy-18 build the
+# kernels, init and strace; flex, bison, bc and libelf (objtool) the x86-64
+# kernel; cpio the initramfs; autoconf, automake, libtool, libltdl-dev
+# (LT_SYS_SYMBOL_USCORE, which is in ltdl.m4), pkg-config and python3-venv
+# (meson) QEMU's dependencies; jq the build's manifests.
+clang
+clang-18
+clang-tidy-18
+lld
+llvm
+flex
+bison
+bc
+cpio
+autoconf
+automake
+libtool
+libltdl-dev
+pkg-config
+jq
+libelf-dev
+python3-venv

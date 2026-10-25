@@ -1,0 +1,18 @@
+# The C/C++ pack's glue and what no unit builds with: glue.sh and what it
+# bundles (the workers' sources under src/, which a unit may also name in
+# its paths), the pack's tests and their fixtures, and its documents. An
+# edit to any of these rebuilds no toolchain; it is assembled in seconds.
+glue.paths
+glue.sh
+glue-lib.sh
+build.sh
+compress.mjs
+package.json
+package-lock.json
+README.md
+src/
+test*.mjs
+tests/
+vm/README.md
+vm/fixtures/
+vm/.shellcheckrc

@@ -1,0 +1,8 @@
+# Debian/Ubuntu packages the libs unit builds with, beyond git, curl,
+# python3, make and Node (CI installs them for this unit's job;
+# light/setup.sh for a local build). The host's clang and cmake configure
+# libc++'s headers; wasi-sdk's own clang compiles the rest.
+clang
+cmake
+ninja-build
+xz-utils

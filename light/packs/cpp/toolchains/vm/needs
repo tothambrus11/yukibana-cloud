@@ -1,0 +1,5 @@
+# The pack's one Emscripten compiles QEMU (plan D52), and the guest's tools
+# and user mode's headers are the musl unit's musl. Not the compilers or the
+# libraries: a change to either never rebuilds the VM.
+cpp/emsdk
+cpp/musl

@@ -16,8 +16,15 @@
 #   ./setup.sh --no-install         never runs apt-get (sudo); says what to
 #                                   install instead
 #
+# A split pack (packs/<pack>/toolchains/: cpp) is never in the pack store:
+# its toolchain units are fetched from the toolchain store, or built, and
+# assembled here in seconds (its build.sh, through
+# scripts/pack-toolchain.sh). Until T8 it is assembled again on every run
+# and never recorded as current.
+#
 # A pack that is built here gets the Debian/Ubuntu packages its deps.apt
-# lists first (apt-get, with sudo); its build caches what it downloads and
+# (a split pack: each unit's toolchains/<unit>/deps.apt) lists first
+# (apt-get, with sudo); its build caches what it downloads and
 # compiles in ~/.cache/yukibana-packs ($PACK_CACHE). The C++ and Swift packs
 # take hours from nothing; the others minutes. Needs git, curl, tar with zstd,
 # and Node 22 or later. With gh signed in (gh auth login), every toolchain
@@ -31,6 +38,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STORE="$HERE/scripts/pack-store.sh"
+TOOLCHAIN="$HERE/scripts/pack-toolchain.sh"
 ALL=()
 for d in "$HERE"/packs/*/; do [ -f "$d/build.sh" ] && ALL+=("$(basename "$d")"); done
 
@@ -70,7 +78,15 @@ say "Installing the app's dependencies (app/)"
 (cd "$HERE/app" && npm ci --no-audit --no-fund)
 
 # Packages for the packs that will be built, from their deps.apt.
-apt_packages() { local p; for p in "$@"; do [ -f "$HERE/packs/$p/deps.apt" ] && grep -v '^#' "$HERE/packs/$p/deps.apt"; done | sort -u; }
+is_split() { [ -d "$HERE/packs/$1/toolchains" ]; }
+apt_packages() {
+  local p f
+  for p in "$@"; do
+    for f in "$HERE/packs/$p/deps.apt" "$HERE/packs/$p"/toolchains/*/deps.apt; do
+      [ -f "$f" ] && grep -v '^#' "$f"
+    done
+  done | sort -u
+}
 install_deps() {
   local pkgs
   mapfile -t pkgs < <(apt_packages "$@")
@@ -97,9 +113,19 @@ check_tools() {
 
 # A pack built from committed sources is as current as a fetched one, and is
 # recorded so; one built from local changes is not, and is checked again.
+# A split pack's build.sh fetches each unit the store has and builds the
+# rest; --build asks for every unit built here (--no-fetch), and --latest
+# for each unit's newest stored toolchain whatever its sources (--any).
 build_pack() {
   check_tools "$1"
   say "Building the $1 pack (packs/$1/build.sh)"
+  if is_split "$1"; then
+    local -a args=()
+    if in_list "$1" "${build[@]}"; then args=(--no-fetch); elif [ -n "$latest" ]; then args=(--any); fi
+    (cd "$HERE/packs/$1" && ALLOW_OTHER_TOOLCHAIN="${latest:+1}" ./build.sh "${args[@]}")
+    rm -f "$HERE/.pack-trees/$1"
+    return
+  fi
   (cd "$HERE/packs/$1" && ./build.sh)
   mkdir -p "$HERE/.pack-trees"
   if [ -z "$(git -C "$HERE" status --porcelain -- "packs/$1")" ]; then
@@ -112,6 +138,18 @@ build_pack() {
 to_build=() fetched=() kept=()
 for p in "${packs[@]}"; do
   if in_list "$p" "${build[@]}"; then to_build+=("$p"); continue; fi
+  if is_split "$p"; then
+    say "Fetching the $p pack's toolchain units"
+    status=0
+    "$TOOLCHAIN" ensure "$p" --fetch-only $latest >/dev/null || status=$?
+    case "$status" in
+      0) (cd "$HERE/packs/$p" && ALLOW_OTHER_TOOLCHAIN="${latest:+1}" ./build.sh ${latest:+--any}) && fetched+=("$p") ;;
+      3|4) echo "setup.sh: the toolchain store lacks a unit of packs/$p as checked out; building it" >&2
+           to_build+=("$p") ;;
+      *) exit "$status" ;;
+    esac
+    continue
+  fi
   tree="$("$STORE" tree "$p")"
   if [ -f "$HERE/app/static/packs/$p/server.js" ] && [ "$(cat "$HERE/.pack-trees/$p" 2>/dev/null)" = "$tree" ]; then
     kept+=("$p"); continue

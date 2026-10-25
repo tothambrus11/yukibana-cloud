@@ -14,8 +14,8 @@
 # usage: build-kernel.sh x86_64|aarch64|riscv64   (env: QC, ART, JOBS as build-vm.sh sets them)
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source=../toolchains/vm/pins.sh
+source "$HERE/../toolchains/vm/pins.sh"
 # shellcheck source=../build-lib.sh
 source "$HERE/../build-lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
@@ -33,7 +33,7 @@ K=$QC/linux-$LINUX_VERSION
 O=$QC/kbuild/$tree
 mkdir -p "$ART"
 
-stamp=$(cat "$HERE/pins.sh" "${files[@]}" "${BASH_SOURCE[0]}" <(clang --version | head -1) | sha256sum | cut -d' ' -f1)
+stamp=$(cat "$HERE/../toolchains/vm/pins.sh" "${files[@]}" "${BASH_SOURCE[0]}" <(clang --version | head -1) | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$ART/kernel-$arch.stamp" 2>/dev/null)" = "$stamp" ] && [ -f "$QC/hdr/$ka/include/linux/types.h" ]; then
   echo "kernel-$arch: up to date"; exit 0
 fi

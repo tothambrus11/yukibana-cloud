@@ -1,0 +1,20 @@
+# The pack files the vm unit builds with, besides this directory: its
+# scripts, what they compile (the guest's init, the kernel configs, QEMU's
+# board definitions) and patch, and the helpers they share. Nothing of the
+# compilers, the libraries or the glue (vm.js is the glue's).
+build-vm.sh
+build-lib.sh
+compress.mjs
+src/vm/cpio.js
+vm/build-sysroot.sh
+vm/build-qemu.sh
+vm/build-kernel.sh
+vm/build-init.sh
+vm/build-strace.sh
+vm/build-qemu-user.sh
+vm/stage.sh
+vm/cc.sh
+vm/devices/
+vm/guest/
+vm/kconfig/
+vm/patches/

@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
-# Lays out what the build made ($ART) where the app serves it (OUT, app/static/packs/cpp):
-#   vm.js                         src/vm/run-linux.js bundled (esbuild, ESM, minified),
-#                                 with every file's raw size injected as VM_SIZES
+# Lays out what the build made ($ART) into $OUT, the vm unit's toolchain:
 #   vm/<arch>/qemu-system-<arch>.{mjs,wasm}, kernel, initrd (the base initramfs: init
 #                                 only), strace.cpio, qboot.rom (x86_64) or
 #                                 opensbi-riscv64-generic-fw_dynamic.bin (riscv64)
 #   user/<arch>/qemu-<arch>.{mjs,wasm}   only when $ART/user/<arch> exists (build-qemu-user.sh)
 #   LICENSE-{qemu,linux,strace,opensbi,qboot}.txt
-# and a .gz and .br sibling for every file (../compress.mjs). Cheap: rerun it after a
-# change to src/vm/*.js alone.
+# and a .gz and .br sibling for every file (../compress.mjs). vm.js, the runtime
+# bundled with every file's raw size (VM_SIZES), is the pack's glue (glue.sh), so a
+# change to src/vm/*.js rebuilds nothing here.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 P="$(cd "$HERE/.." && pwd)"
-OUT=${OUT:-"$(cd "$P/../.." && pwd)/app/static/packs/cpp"}
+: "${OUT:?OUT is the toolchain directory of the vm unit (pack-toolchain.sh sets it)}"
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 
@@ -41,16 +40,6 @@ done
 # the syscall note, strace LGPL-2.1+. Not compressed: nothing fetches them.
 for l in qemu linux strace opensbi qboot; do cp "$ART/LICENSE-$l.txt" "$OUT/LICENSE-$l.txt"; done
 
-# vm.js, with the raw size of every file it may fetch (the host may send them
-# compressed, and progress needs the decoded total).
 dirs=(vm); [ -d "$OUT/user" ] && dirs+=(user)
-sizes=$(cd "$OUT" && find "${dirs[@]}" -type f ! -name '*.br' ! -name '*.gz' 2>/dev/null | sort |
-  while read -r f; do printf '"%s":%s,' "$f" "$(stat -c %s "$f")"; done)
-# shellcheck source=../build-lib.sh
-source "$P/build-lib.sh"
-npm_deps "$P"
-"$P/node_modules/.bin/esbuild" "$P/src/vm/run-linux.js" --bundle --format=esm --minify --target=es2022 \
-  --define:VM_SIZES="{${sizes%,}}" --outfile="$OUT/vm.js" --log-level=warning
-
 mapfile -t files < <(cd "$OUT" && find "${dirs[@]}" -type f ! -name '*.br' ! -name '*.gz' | sort | sed "s|^|$OUT/|")
-node "$P/compress.mjs" "$OUT/vm.js" "${files[@]}"
+node "$P/compress.mjs" "${files[@]}"

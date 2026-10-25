@@ -6,8 +6,8 @@
 # UAPI headers rather than the newer 6.12.114 ones, whose reserved fields differ in size.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source=../toolchains/vm/pins.sh
+source "$HERE/../toolchains/vm/pins.sh"
 # shellcheck source=../build-lib.sh
 source "$HERE/../build-lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
@@ -28,8 +28,8 @@ for a in ${ARCHES:-x86_64 aarch64 riscv64}; do
   # and so is the compiler it runs (CLANG, default clang-18: the stamp used to name
   # clang-18's version whichever CLANG compiled).
   sr=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/targets/sysroot}/$a
-  [ -f "$sr/lib/libc.a" ] || { echo "build-strace.sh: no musl sysroot in $sr (run ../build-targets.sh)" >&2; exit 1; }
-  stamp=$(cat "$HERE/pins.sh" "$HERE/cc.sh" "$HERE/$(basename "${BASH_SOURCE[0]}")" <(cd "$sr" && find . -type f | LC_ALL=C sort | xargs sha256sum) <("${CLANG:-clang-18}" --version | head -1) | sha256sum | cut -d' ' -f1)
+  [ -f "$sr/lib/libc.a" ] || { echo "build-strace.sh: no musl sysroot in $sr (run build-sysroot.sh: the vm unit builds it from the musl unit)" >&2; exit 1; }
+  stamp=$(cat "$HERE/../toolchains/vm/pins.sh" "$HERE/cc.sh" "$HERE/$(basename "${BASH_SOURCE[0]}")" <(cd "$sr" && find . -type f | LC_ALL=C sort | xargs sha256sum) <("${CLANG:-clang-18}" --version | head -1) | sha256sum | cut -d' ' -f1)
   if [ "$(cat "$ART/strace-$a.stamp" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/strace-$a.cpio" ]; then echo "strace-$a: up to date"; continue; fi
   B=$QC/strace-build-$a; rm -rf "$B"; mkdir -p "$B"; cd "$B"
   "$SRC/configure" -q --host=$a-linux-musl CC="$HERE/cc.sh $a" CFLAGS="-Os" LDFLAGS="-static -Wl,--gc-sections -s" \

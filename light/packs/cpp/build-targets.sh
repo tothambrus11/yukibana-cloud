@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the per-target files of the Linux targets (README, "Targets") into
-# ../../app/static/packs/cpp/targets/<arch>/, for arch in x86_64, aarch64 and
-# riscv64:
+# $OUT/targets/<arch>/, the libs unit's toolchain, for arch in x86_64,
+# aarch64 and riscv64:
 #
 #   include.tar  usr/include/<multiarch>/bits/*: the arch's complete set of
 #                musl's bits/ headers. clang's Linux driver puts
@@ -15,7 +15,8 @@
 #                usr/lib/clang/21/lib/linux/: compiler-rt's builtins and
 #                crtbegin/crtend. Fetched by the runner only, to link.
 #
-# The libraries are Alpine v3.23's packages, pinned by SHA-256 in pins.sh: musl 1.2.5,
+# The libraries are Alpine v3.23's packages, pinned by SHA-256 in the musl
+# unit's pins (toolchains/musl/pins.sh) and fetched by it: musl 1.2.5,
 # and libc++, libc++abi, libunwind and compiler-rt 21.1.2 (the headers they
 # are compiled against are LLVM 21.1.8's, in sysroot.tar.gz: same major
 # version, same __config_site and ABI version, checked below). Phase 2 is to
@@ -23,34 +24,30 @@
 #
 # Each file also gets .gz and .br siblings. sysroot.tar.gz is not touched.
 #
-# The same verified packages also make $PACK_CACHE/cpp/targets/sysroot/<arch>/
-# ({include,lib}: musl's complete headers for the arch, its crt files, libc.a
-# and libm.a, and compiler-rt's builtins as libclang_rt.builtins.a), the
-# sysroot vm/cc.sh compiles the guest's strace and test-vm.mjs's fixtures
-# with: one musl for the programs users run and the tools the VM ships.
-#
-# Idempotent; downloads are cached in $PACK_CACHE/cpp/targets/dl. Where they
-# come from: $ALPINE_MIRROR/<arch>/<package>.apk first when it is set (a
-# directory or URL holding copies; Alpine replaces a package in place when it
-# publishes a new revision, so the pinned revision can vanish from its
-# mirrors), then Alpine's CDN (build-lib.sh's fetch_apk). Either way the
-# SHA-256 pin decides.
+# The same packages make the guest tools' sysroot too, in the vm unit
+# (vm/build-sysroot.sh): one musl for the programs users run and the tools
+# the VM ships, because both take the musl unit's copies (apk_of). Run by
+# the libs unit after build-sysroot.sh (whose sysroot.tar.gz and
+# cxx-headers it checks against); the emsdk unit's llvm-strip and llvm-ar
+# handle every ELF arch.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
-OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
+# shellcheck source-path=SCRIPTDIR source=libs-lib.sh
+source "$HERE/libs-lib.sh"
+: "${OUT:?OUT is the toolchain directory of the libs unit (pack-toolchain.sh sets it)}"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
-WORK="$CACHE/targets"
-BIN="$CACHE/emsdk/upstream/bin"   # llvm-strip and llvm-ar handle every ELF arch
+need_unit musl    # MUSL_VERSION, and the packages (apk_of)
+need_unit emsdk
+WORK="$CACHE/targets-libs"
+BIN="$DEP_EMSDK/build-only/emsdk/upstream/bin"   # llvm-strip and llvm-ar handle every ELF arch
 LLVM_LIB=usr/lib/llvm21/lib/clang/21/lib
-mkdir -p "$WORK/dl" "$OUT/targets"
+mkdir -p "$WORK" "$OUT/targets"
 
-# The packages of each arch (pins.sh). libc++-dev is fetched only for the
-# check of its __config_site; nothing of it is shipped.
+# The packages of each arch (the musl unit's). libc++-dev is fetched only
+# for the check of its __config_site; nothing of it is shipped.
 PACKAGES=(musl-dev libc++-static llvm-libunwind-static compiler-rt libc++-dev)
 
 # names <dir>: the names of the files directly in <dir>, sorted for comm.
@@ -77,10 +74,7 @@ for arch in x86_64 aarch64 riscv64; do
   x="$WORK/x/$arch"
   rm -rf "$x" && mkdir -p "$x"
   for name in "${PACKAGES[@]}"; do
-    pin=$(apk_pin "$name" "$arch")
-    read -r pkg sha <<< "$pin"
-    apk=$(fetch_apk "$arch" "$pkg" "$sha")
-    unpack "$apk" "$x/$name"
+    unpack "$(apk_of "$arch" "$name")" "$x/$name"
   done
 
   # Checks: musl is 1.2.5; Alpine's libc++ was configured as ours (same
@@ -121,13 +115,6 @@ for arch in x86_64 aarch64 riscv64; do
     "$BIN/llvm-strip" --strip-unneeded -o "$stage/usr/lib/clang/21/lib/linux/$f" "$rt/$f"
   done
   "$BIN/llvm-ar" t "$lib/libc++.a" | grep -qx 'cxa_exception.cpp.o' || die "$arch: libc++abi is not in libc++.a"
-
-  # The guest tools' sysroot (vm/cc.sh), from the same packages, unstripped.
-  sr="$WORK/sysroot/$arch"
-  rm -rf "$sr" && mkdir -p "$sr/lib"
-  cp -r "$x/musl-dev/usr/include" "$sr/include"
-  cp "$x/musl-dev/usr/lib/"{crt1.o,crti.o,crtn.o,libc.a,libm.a} "$sr/lib/"
-  cp "$rt/libclang_rt.builtins-$arch.a" "$sr/lib/libclang_rt.builtins.a"
 
   mkdir -p "$OUT/targets/$arch"
   tarball "$inc" "$OUT/targets/$arch/include.tar"

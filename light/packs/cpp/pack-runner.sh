@@ -1,23 +1,34 @@
 #!/usr/bin/env bash
-# The second half of the runner build (build-runner.sh calls it after the
-# LLVM step; it can also run on its own once cc.wasm exists in the cache):
-# the WASI sysroot, the test frameworks' libraries (gtest.tar, catch2.tar,
-# doctest.tar) and RapidCheck's (rapidcheck.tar), runner.js, and the
-# files' .gz/.br siblings, all into ../../app/static/packs/cpp/.
+# The runner's libraries, the libs unit's last step
+# (toolchains/libs/toolchain.sh runs it after build-sysroot.sh and
+# build-targets.sh), into $OUT, that unit's toolchain: the WASI sysroot
+# (wasi-sysroot.tar.gz), the test frameworks' libraries (gtest.tar,
+# catch2.tar, doctest.tar) and RapidCheck's (rapidcheck.tar), the Linux
+# targets' GoogleTest and RapidCheck (build-test-frameworks-linux.sh), the
+# sanitizer runtimes (build-sanitizers.sh), their licences, and the
+# archives' .gz/.br siblings. runner.js and the other workers that are
+# bundled with these files' sizes are the pack's glue (glue.sh), and the
+# compilers they load are the compilers unit's: nothing here depends on a
+# worker's source, so an edit to runner.js rebuilds no library.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=toolchains/libs/pins.sh
+source "$HERE/toolchains/libs/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
-OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
+# shellcheck source-path=SCRIPTDIR source=libs-lib.sh
+source "$HERE/libs-lib.sh"
+: "${OUT:?OUT is the toolchain directory of the libs unit (pack-toolchain.sh sets it)}"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
+need_unit compilers   # LLVM_VERSION, the headers' version checked below
+need_unit emsdk
+BIN="$DEP_EMSDK/build-only/emsdk/upstream/bin"
 mkdir -p "$CACHE/wasi" "$OUT"
 cd "$CACHE/wasi"
 
 # libc++/libc++abi with exceptions, libunwind, GoogleTest (cached after the
-# first run; build.sh has normally run it already).
+# first run; the libs unit has normally run it already).
 "$HERE/build-cxx-runtime.sh"
 EH="$CACHE/eh"
 
@@ -64,7 +75,7 @@ find "$cxx" -type d -empty -delete
 # Static libraries only (nothing loads a .so), without the LTO bitcode copies;
 # debug info stripped (libc++.a goes from 7.5 MB to 1.4 MB).
 for f in "$src"/lib/wasm32-wasip1/*.a "$src"/lib/wasm32-wasip1/crt1*.o; do
-  "$CACHE/emsdk/upstream/bin/llvm-strip" --strip-debug -o "stage/wasi/lib/wasm32-wasip1/$(basename "$f")" "$f"
+  "$BIN/llvm-strip" --strip-debug -o "stage/wasi/lib/wasm32-wasip1/$(basename "$f")" "$f"
 done
 # C++ exceptions: wasi-sdk's libc++ and libc++abi are built without them
 # (no __cxa_throw), so they are replaced by the same libraries built with
@@ -73,7 +84,7 @@ done
 for f in libc++.a libc++abi.a libc++experimental.a libunwind.a yukibana-uncaught.o; do
   cp "$EH/lib/$f" stage/wasi/lib/wasm32-wasip1/
 done
-"$CACHE/emsdk/upstream/bin/llvm-strip" --strip-debug \
+"$BIN/llvm-strip" --strip-debug \
   -o stage/usr/lib/clang/21/lib/wasm32-unknown-wasip1/libclang_rt.builtins.a \
   "x/libclang_rt-$WASI_SDK_VERSION.0/wasm32-unknown-wasip1/libclang_rt.builtins.a"
 # The sysroot tarball carries no licence; its VERSION file names wasi-libc
@@ -88,7 +99,7 @@ rm -rf x stage
 step "test framework libraries (gtest.tar, catch2.tar, doctest.tar, rapidcheck.tar)"
 # One archive per framework, fetched by runner.js only to build tests (or a
 # program) that include that framework, so a project downloads the one it
-# uses. The headers are in sysroot.tar.gz (build.sh), which both workers
+# uses. The headers are in sysroot.tar.gz (build-sysroot.sh), which both workers
 # download anyway. Plain tar: its .br/.gz siblings are what travels.
 "$HERE/build-test-frameworks.sh"
 TESTFW="$CACHE/testfw"
@@ -110,80 +121,22 @@ cp "$TESTFW/LICENSE-catch2.txt" "$OUT/LICENSE-catch2.txt"
 cp "$TESTFW/LICENSE-doctest.txt" "$OUT/LICENSE-doctest.txt"
 cp "$TESTFW/LICENSE-rapidcheck.txt" "$OUT/LICENSE-rapidcheck.txt"
 
-step "compilers (from the stamped artifacts)"
-# Only from $CACHE/artifacts, which build-runner.sh and build-cross.sh stamp
-# (README, Build): never from a build tree, which may have been reconfigured
-# for the other compiler since.
-# A file that did not change keeps its time, so its .br/.gz are not redone;
-# one that did gets the time of its copy, which is newer than its old .br.
-# (It was copied with -p, keeping the artifact's own time: an artifact built
-# before the .br in OUT was made, by another branch's cache say, then looked
-# older than that .br, and the compressed copies of the previous compiler
-# were served beside the new one.)
-ART="$CACHE/artifacts"
-# Written beside its target and renamed over it, as everything here, so a
-# hard link to the old file (the app's build) keeps the old bytes.
-put() {
-  cmp -s "$1" "$2" && return 0
-  cp "$1" "$2.part"
-  mv "$2.part" "$2"
-}
-for c in cc cc-cross; do
-  if [ -f "$ART/$c/llvm.wasm" ]; then
-    put "$ART/$c/llvm.wasm" "$OUT/$c.wasm"
-    put "$ART/$c/llvm.js" "$OUT/$c.js"
-  fi
-done
-
 step "GoogleTest and RapidCheck for the Linux targets"
-# targets/<arch>/gtest.tar and rapidcheck.tar, compiled with cc-cross itself
-# (build-test-frameworks-linux.sh), so only once it and the targets' headers
-# are here.
-linux_testfw=()
-if [ -f "$OUT/cc-cross.wasm" ] && [ -f "$OUT/targets/x86_64/include.tar" ]; then
-  "$HERE/build-test-frameworks-linux.sh"
-  for f in "$OUT"/targets/*/gtest.tar "$OUT"/targets/*/rapidcheck.tar; do [ -f "$f" ] && linux_testfw+=("$f"); done
-else
-  echo "skipped: no cc-cross.wasm or targets/ (build-cross.sh, build-targets.sh)"
-fi
+# targets/<arch>/gtest.tar and rapidcheck.tar, compiled with the compilers
+# unit's cc-cross against the headers build-sysroot.sh and build-targets.sh
+# wrote (build-test-frameworks-linux.sh).
+"$HERE/build-test-frameworks-linux.sh"
 
 step "sanitizer runtimes (asan.tar, ubsan.tar, targets/<arch>/asan.tar, ubsan.tar)"
 # Fetched by runner.js only for a project that asks for a sanitizer
 # (README, "Sanitizers"); compressed by the script itself.
 "$HERE/build-sanitizers.sh"
 
-step "runner.js, explorer.js"
-npm_deps "$HERE"
-size() { stat -c %s "$1" 2>/dev/null || echo 0; }
-# The decoded sizes of the per-target files, for progress (a host that sends
-# .br gives a compressed Content-Length).
-target_sizes="{$(cd "$OUT" && for f in targets/*/*.tar; do [ -f "$f" ] && printf '"%s":%s,' "$f" "$(size "$f")"; done | sed 's/,$//')}"
-defines=(--define:CC_WASM_SIZE="$(size "$OUT/cc.wasm")" --define:CC_CROSS_WASM_SIZE="$(size "$OUT/cc-cross.wasm")"
-  --define:WASI_SYSROOT_SIZE="$(size "$OUT/wasi-sysroot.tar.gz")" --define:SYSROOT_SIZE="$(size "$OUT/sysroot.tar.gz")"
-  --define:GTEST_SIZE="$(size "$OUT/gtest.tar")" --define:CATCH2_SIZE="$(size "$OUT/catch2.tar")"
-  --define:DOCTEST_SIZE="$(size "$OUT/doctest.tar")" --define:RAPIDCHECK_SIZE="$(size "$OUT/rapidcheck.tar")" --define:DEMANGLE_WASM_SIZE="$(size "$OUT/demangle.wasm")"
-  --define:ASAN_SIZE="$(size "$OUT/asan.tar")" --define:UBSAN_SIZE="$(size "$OUT/ubsan.tar")"
-  --define:TARGET_SIZES="$target_sizes")
-# runner-linux.js (linking and running for a Linux target) and vm.js (the
-# emulator's bundle, build-vm.sh) are imported by runner.js only for a Linux
-# target, and sanitizer.js (a sanitized program's host half and report
-# symbolizer) only for a project that asks for a sanitizer, so they stay
-# separate files; the compilers' and the demangler's glue are imported by
-# URL at run time. Each is written beside its target and renamed over it, so
-# that a hard link to the old file (the app's build) does not change.
-for worker in runner runner-linux explorer sanitizer; do
-  "$HERE/node_modules/.bin/esbuild" "$HERE/src/$worker.js" --bundle --outfile="$OUT/$worker.js.part" --format=esm --minify \
-    --target=es2022 --external:./runner-linux.js --external:./vm.js --external:./cc.js --external:./cc-cross.js \
-    --external:./sanitizer.js "${defines[@]}" --log-level=warning
-  if cmp -s "$OUT/$worker.js.part" "$OUT/$worker.js"; then rm "$OUT/$worker.js.part"; else mv "$OUT/$worker.js.part" "$OUT/$worker.js"; fi
-done
-files=("$OUT/runner.js" "$OUT/runner-linux.js" "$OUT/explorer.js" "$OUT/sanitizer.js" "$OUT/gtest.tar" "$OUT/catch2.tar" "$OUT/doctest.tar" "$OUT/rapidcheck.tar" "${linux_testfw[@]}")
-[ -f "$OUT/cc.wasm" ] && files+=("$OUT/cc.js" "$OUT/cc.wasm")
-[ -f "$OUT/cc-cross.wasm" ] && files+=("$OUT/cc-cross.js" "$OUT/cc-cross.wasm")
-# Brotli at quality 11 takes minutes on a compiler: only when the file changed.
+step "compress"
+# Brotli at quality 11 takes a while: only when the file changed.
 compress=()
-for f in "${files[@]}"; do
+for f in "$OUT"/{gtest,catch2,doctest,rapidcheck}.tar "$OUT"/targets/*/gtest.tar "$OUT"/targets/*/rapidcheck.tar; do
   if [ ! -f "$f.br" ] || [ ! -f "$f.gz" ] || [ "$f" -nt "$f.br" ]; then compress+=("$f"); fi
 done
 [ ${#compress[@]} -eq 0 ] || node "$HERE/compress.mjs" "${compress[@]}"
-ls -la "$OUT"/runner.js "$OUT"/runner-linux.js "$OUT"/explorer.js "$OUT"/cc.* "$OUT"/cc-cross.* "$OUT"/wasi-sysroot.tar.gz "$OUT"/{gtest,catch2,doctest,rapidcheck}.tar* 2>/dev/null || true
+ls -la "$OUT"/wasi-sysroot.tar.gz "$OUT"/{gtest,catch2,doctest,rapidcheck}.tar*

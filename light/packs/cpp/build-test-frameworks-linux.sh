@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # GoogleTest and RapidCheck for the Linux targets (README, "Targets", Tests),
-# into ../../app/static/packs/cpp/targets/<arch>/:
+# into $OUT/targets/<arch>/, the libs unit's toolchain:
 #
 #   gtest.tar        usr/lib/<multiarch>/libgtest.a, libgtest_main.a
 #   rapidcheck.tar   usr/lib/<multiarch>/librapidcheck.a
@@ -13,34 +13,39 @@
 # The same sources as the default target's libraries, pinned the same way
 # (GoogleTest's release tarball by SHA-256, as build-cxx-runtime.sh fetches
 # it; RapidCheck's commit and tree hash, as build-test-frameworks.sh does:
-# both from pins.sh, so there is one of each). Compiled
-# by build-test-libs-linux.mjs with cc-cross.wasm itself, in Node, so the
+# both from toolchains/libs/pins.sh, so there is one of each). Compiled by
+# build-test-libs-linux.mjs with cc-cross.wasm itself, in Node, so the
 # libraries come from the compiler, headers and flags a student's tests on
 # that target are compiled with; archived with wasi-sdk 30's llvm-ar
 # (deterministic, no timestamps). Catch2 and doctest are not built for
 # Linux (yet): the runner refuses them there by name.
 #
-# Needs cc-cross.{wasm,js}, sysroot.tar.gz and targets/<arch>/include.tar in
-# app/static/packs/cpp (build.sh: build-cross.sh, build-targets.sh), and
-# build-cxx-runtime.sh's wasi-sdk. Idempotent: while $CACHE/testfw-linux/.built
-# holds the stamp of everything that makes them (build-lib.sh's
-# linux_testfw_inputs: the scripts, the pins, the compile driver
-# toolchain.js and targets.js(on), the compiler cc-cross.wasm with its glue
-# cc-cross.js, and the headers in sysroot.tar.gz and the three include.tar),
-# the archives kept beside it in $CACHE/testfw-linux/out are copied to
-# app/static/packs/cpp and nothing is compiled; so a build into an empty
-# app/static/packs/cpp reuses them too.
+# Run by pack-runner.sh in the libs unit, after build-sysroot.sh and
+# build-targets.sh have written sysroot.tar.gz and targets/<arch>/include.tar
+# into $OUT. The compiler is the compilers unit's, at $DEP_COMPILERS: the
+# driver reads the pack's files from one directory ($OUT to it), so it is
+# given $CACHE/testfw-linux-view, links to those five kinds of file and
+# nothing else. Idempotent: while $CACHE/testfw-linux/.built holds the stamp
+# of everything that makes them (libs-lib.sh's linux_testfw_inputs: the
+# scripts, the pins, the compile driver toolchain.js and targets.js(on), the
+# compiler cc-cross.wasm with its glue cc-cross.js, and the headers in
+# sysroot.tar.gz and the three include.tar), the archives kept beside it in
+# $CACHE/testfw-linux/out are copied to $OUT and nothing is compiled.
 # About 6 minutes (111 compiles, one at a time).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=toolchains/libs/pins.sh
+source "$HERE/toolchains/libs/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
-OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
+# shellcheck source-path=SCRIPTDIR source=libs-lib.sh
+source "$HERE/libs-lib.sh"
+: "${OUT:?OUT is the toolchain directory of the libs unit (pack-toolchain.sh sets it)}"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
+need_unit compilers
 WORK="$CACHE/testfw-linux"
+VIEW="$CACHE/testfw-linux-view"
 NICE="nice -n 10"
 WSDK="$CACHE/wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux"
 ARCHES=(x86_64 aarch64 riscv64)
@@ -48,11 +53,19 @@ ARCHES=(x86_64 aarch64 riscv64)
 declare -A MULTIARCH=()
 for arch in "${ARCHES[@]}"; do MULTIARCH[$arch]=$(multiarch "$arch"); done
 
-for f in cc-cross.wasm cc-cross.js sysroot.tar.gz "${ARCHES[@]/#/targets/}"; do
-  case $f in targets/*) f="$f/include.tar" ;; esac
-  [ -f "$OUT/$f" ] || die "$OUT/$f is missing (build.sh builds it)"
+# The view: the compiler from the compilers unit, the headers from this one.
+rm -rf "$VIEW" && mkdir -p "$VIEW"
+for f in cc-cross.wasm cc-cross.js; do
+  [ -f "$DEP_COMPILERS/$f" ] || die "$DEP_COMPILERS/$f is missing (the compilers unit builds it)"
+  ln -s "$DEP_COMPILERS/$f" "$VIEW/$f"
 done
-mapfile -t inputs < <(linux_testfw_inputs "$OUT")
+for f in sysroot.tar.gz "${ARCHES[@]/#/targets/}"; do
+  case $f in targets/*) f="$f/include.tar" ;; esac
+  [ -f "$OUT/$f" ] || die "$OUT/$f is missing (build-sysroot.sh and build-targets.sh write it first)"
+  mkdir -p "$(dirname "$VIEW/$f")"
+  ln -s "$OUT/$f" "$VIEW/$f"
+done
+mapfile -t inputs < <(linux_testfw_inputs "$VIEW")
 stamp=$(stamp_of "${inputs[@]}")
 # The archives this step writes, as paths under OUT and under $WORK/out.
 archives=()
@@ -88,7 +101,7 @@ got=$(git -C rapidcheck-src rev-parse HEAD)
 got=$(rapidcheck_tree_sha256 rapidcheck-src)
 [ "$got" = "$RAPIDCHECK_TREE_SHA256" ] || die "RapidCheck's tree hashes to $got, expected $RAPIDCHECK_TREE_SHA256"
 
-$NICE node "$HERE/build-test-libs-linux.mjs" "$WORK/googletest-$GTEST_VERSION" "$WORK/rapidcheck-src" "$WORK/obj"
+OUT="$VIEW" $NICE node "$HERE/build-test-libs-linux.mjs" "$WORK/googletest-$GTEST_VERSION" "$WORK/rapidcheck-src" "$WORK/obj"
 
 for arch in "${ARCHES[@]}"; do
   lib="stage/$arch/usr/lib/${MULTIARCH[$arch]}"
@@ -104,7 +117,7 @@ for arch in "${ARCHES[@]}"; do
   pack gtest.tar libgtest.a libgtest_main.a
   pack rapidcheck.tar librapidcheck.a
 done
-rm -rf obj stage rapidcheck-src "googletest-$GTEST_VERSION"
+rm -rf obj stage rapidcheck-src "googletest-$GTEST_VERSION" "$VIEW"
 echo "$stamp" > "$WORK/.built"
 put
 ls -la "$OUT"/targets/*/{gtest,rapidcheck}.tar

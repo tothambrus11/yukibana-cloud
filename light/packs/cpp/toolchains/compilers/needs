@@ -1,0 +1,4 @@
+# Every compiler here is compiled with the pack's one Emscripten, which the
+# emsdk unit installs and this unit finds at $DEP_EMSDK (build-lib.sh's
+# emsdk_use).
+cpp/emsdk

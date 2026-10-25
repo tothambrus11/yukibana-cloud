@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the sanitizer runtimes (README, "Sanitizers") into
-# ../../app/static/packs/cpp/, each archive fetched by the runner only for a
+# Builds the sanitizer runtimes (README, "Sanitizers") into $OUT, the libs
+# unit's toolchain, each archive fetched by the runner only for a
 # project whose compile_flags.txt asks for that sanitizer:
 #
 #   asan.tar     usr/lib/clang/21/lib/wasm32-unknown-wasip1/libclang_rt.asan.a:
@@ -20,43 +20,47 @@
 # WebAssembly: compiler-rt's Emscripten port (emsdk's
 # upstream/emscripten/system/lib/compiler-rt, LLVM 22.1.8's with Emscripten's
 # changes) with patches/compiler-rt-wasi.patch, compiled for wasm32-wasip1
-# by wasi-sdk 30's clang (build-cxx-runtime.sh fetches it) with the source
+# by wasi-sdk 30's clang (build-cxx-runtime.sh fetches it; the emsdk is the
+# emsdk unit's, read-only at $DEP_EMSDK) with the source
 # lists and flags of Emscripten's tools/system_libs.py, plus
 # src/sanitizer-rt/: what Emscripten's runtime would give the port (the host
 # half is src/sanitizer.js). No debug information: a runtime frame reads
 # "in malloc (program.wasm+0x...)", as natively for a library without it.
 #
 # Linux: Alpine v3.23's compiler-rt 21.1.2 (the same package
-# build-targets.sh takes the builtins from) and musl 1.2.5, pinned by
-# SHA-256, the runtimes' debug information stripped.
+# build-targets.sh takes the builtins from) and musl 1.2.5, the musl unit's
+# checked copies (apk_of), the runtimes' debug information stripped.
 #
 # Idempotent: while $CACHE/sanitizers/.built holds the stamp of everything
-# that makes them (build-lib.sh's sanitizer_inputs: this script, pins.sh,
-# build-lib.sh, the patch, every file of src/sanitizer-rt/, and
-# src/targets.json, which names each arch's multiarch directory), the
-# archives and their .gz/.br kept beside it in $CACHE/sanitizers/out are
-# copied to app/static/packs/cpp and nothing is built; so a build into an
-# empty app/static/packs/cpp reuses them too.
+# that makes them (libs-lib.sh's sanitizer_inputs: this script, the libs,
+# emsdk and musl units' pins, build-lib.sh, libs-lib.sh, the patch, every
+# file of src/sanitizer-rt/, and src/targets.json, which names each arch's
+# multiarch directory), the archives and their .gz/.br kept beside it in
+# $CACHE/sanitizers/out are copied to $OUT and nothing is built.
 # Under a minute at -j3.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=toolchains/libs/pins.sh
+source "$HERE/toolchains/libs/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
-OUT="$(cd "$HERE/../.." && pwd)/app/static/packs/cpp"
+# shellcheck source-path=SCRIPTDIR source=libs-lib.sh
+source "$HERE/libs-lib.sh"
+: "${OUT:?OUT is the toolchain directory of the libs unit (pack-toolchain.sh sets it)}"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
+need_unit musl    # MUSL_VERSION, and the packages (apk_of)
+need_unit emsdk
 WASI_SDK="$CACHE/wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux"
-EMSDK_LIB="$CACHE/emsdk/upstream/emscripten/system/lib"
-BIN="$CACHE/emsdk/upstream/bin"   # llvm-strip and llvm-ar handle every ELF arch
+EMSDK_LIB="$DEP_EMSDK/build-only/emsdk/upstream/emscripten/system/lib"
+BIN="$DEP_EMSDK/build-only/emsdk/upstream/bin"   # llvm-strip and llvm-ar handle every ELF arch
 W="$CACHE/sanitizers"
 K="$W/out"   # the archives, kept with the stamp that made them
 LLVM_LIB=usr/lib/llvm21/lib/clang/21/lib
 
 [ -x "$WASI_SDK/bin/clang" ] || die "no wasi-sdk in $WASI_SDK (build-cxx-runtime.sh fetches it)"
-[ -f "$EMSDK_LIB/compiler-rt/lib/asan/asan_emscripten.cpp" ] || die "no emsdk in $CACHE/emsdk (build.sh installs it)"
+[ -f "$EMSDK_LIB/compiler-rt/lib/asan/asan_emscripten.cpp" ] || die "no emsdk at $DEP_EMSDK/build-only/emsdk (the emsdk unit installs it)"
 
 mapfile -t inputs < <(sanitizer_inputs)
 stamp=$(stamp_of "${inputs[@]}")
@@ -84,7 +88,7 @@ if [ -n "$kept" ] && [ "$(cat "$W/.built" 2>/dev/null)" = "$stamp" ]; then
   exit 0
 fi
 rm -rf "$K" "$W/.built"
-mkdir -p "$W/dl" "$K/targets"
+mkdir -p "$K/targets"
 
 step "compiler-rt for wasm32-wasip1"
 rm -rf "$W/rt" "$W/obj" "$W/stage"
@@ -147,18 +151,15 @@ rm -rf rt obj stage stage-ub
 
 step "Alpine's sanitizer runtimes for the Linux targets"
 # compiler-rt, the package build-targets.sh takes the builtins from, and musl
-# for its dynamic loader (libc.so and ld-musl-<arch>.so.1 are one file),
-# pinned in pins.sh.
+# for its dynamic loader (libc.so and ld-musl-<arch>.so.1 are one file), the
+# musl unit's.
 for arch in x86_64 aarch64 riscv64; do
   ma=$(multiarch "$arch")
   x="$W/x/$arch"
   rm -rf "$x" && mkdir -p "$x"
   for name in compiler-rt musl; do
-    pin=$(apk_pin "$name" "$arch")
-    read -r pkg sha <<< "$pin"
-    apk=$(fetch_apk "$arch" "$pkg" "$sha")
     mkdir -p "$x/$name"
-    tar xzf "$apk" -C "$x/$name" --warning=no-unknown-keyword 2>/dev/null
+    tar xzf "$(apk_of "$arch" "$name")" -C "$x/$name" --warning=no-unknown-keyword 2>/dev/null
   done
   # The same musl release as sysroot.tar.gz's headers.
   grep -qF "pkgver = $MUSL_VERSION-" "$x/musl/.PKGINFO" || die "$arch: musl is not musl $MUSL_VERSION"

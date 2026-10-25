@@ -1,0 +1,7 @@
+# The compilers unit's LLVM tarball and pins (the runtimes and headers are
+# that LLVM's, and cc-cross compiles the Linux targets' frameworks), the
+# emsdk unit's compiler-rt sources and llvm-strip, and the musl unit's
+# musl and Alpine packages.
+cpp/compilers
+cpp/emsdk
+cpp/musl

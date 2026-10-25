@@ -1,0 +1,5 @@
+build-only/emsdk/upstream/emscripten/emcc
+build-only/emsdk/emsdk_env.sh
+build-only/emsdk/.emscripten
+build-only/pins.sh
+versions-emsdk.json

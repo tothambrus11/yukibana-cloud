@@ -8,20 +8,21 @@
 # what each hunk does) on the tree build-qemu.sh prepares, and compat headers:
 #   - patches/compat-wasm-host-syscall.h.patch: the force-included host syscall
 #     numbering (asm-generic) and the guest memory functions;
-#   - the musl 1.2.5 headers Emscripten's libc leaves out (sys/signalfd.h, ...);
+#   - the musl 1.2.5 headers Emscripten's libc leaves out (sys/signalfd.h, ...),
+#     from the musl unit's release tarball ($DEP_MUSL);
 #   - the Linux UAPI headers linux-user needs for struct layouts and constants, from
 #     the pinned kernel (build-kernel.sh's headers), never the build machine's.
-# Needs build-qemu.sh first (the dependencies, the QEMU tree; this script installs
-# the pack's emsdk itself, as build-qemu.sh does) and
-# build-kernel.sh x86_64 (the UAPI headers).
+# Needs build-qemu.sh first (the dependencies, the QEMU tree) and
+# build-kernel.sh x86_64 (the UAPI headers), and the emsdk and musl units at
+# $DEP_EMSDK and $DEP_MUSL (the vm unit's needs).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../pins.sh
-source "$HERE/../pins.sh"
-# shellcheck source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source=../toolchains/vm/pins.sh
+source "$HERE/../toolchains/vm/pins.sh"
 # shellcheck source=../build-lib.sh
 source "$HERE/../build-lib.sh"
+need_unit emsdk   # emsdk_made_by
+need_unit musl    # MUSL_VERSION, MUSL_SHA256
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 JOBS=${JOBS:-3}
@@ -35,8 +36,6 @@ HDR=$QC/hdr/x86_64/include
 # same resident memory (the guest region's growth dominates); 16 leaves headroom.
 USER_INITIAL_MEMORY_MB=${USER_INITIAL_MEMORY_MB:-16}
 CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp
-EMSDK_DIR=$CACHE/emsdk
-MUSL_INCLUDE=${MUSL_INCLUDE:-$CACHE/musl-$MUSL_VERSION/include}
 
 CFLAGS="-idirafter $C -include $C/wasm-host-syscall.h -O3 -Wno-unused-command-line-argument -Wno-error=incompatible-pointer-types -matomics -mbulk-memory -pthread -DEMSCRIPTEN -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE"
 LDFLAGS="-sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sINITIAL_MEMORY=512MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -sMALLOC=emmalloc -sEXPORT_ES6=1 -L$TARGET/lib -sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,FS"
@@ -47,19 +46,19 @@ FINAL="-sEXIT_RUNTIME=1 -sINITIAL_MEMORY=${USER_INITIAL_MEMORY_MB}MB -sEXPORTED_
 
 [ -f "$TARGET/lib/libglib-2.0.a" ] && [ -f "$SRC/configure" ] && [ -f "$TARGET/.yk-made-by" ] || { echo "run build-qemu.sh first" >&2; exit 1; }
 [ -f "$HDR/linux/types.h" ] || { echo "run build-kernel.sh x86_64 first (UAPI headers)" >&2; exit 1; }
-# --- musl's headers (the cpp pack's build.sh unpacks the same tarball), before the
-# stamp, which hashes the ones used
-if [ ! -f "$MUSL_INCLUDE/sys/signalfd.h" ]; then
-  mkdir -p "$QC/src"
-  curl -sSfL -o "$QC/src/musl.tar.gz" "https://musl.libc.org/releases/musl-$MUSL_VERSION.tar.gz"
-  echo "$MUSL_SHA256  $QC/src/musl.tar.gz" | sha256sum -c --quiet -
-  tar xzf "$QC/src/musl.tar.gz" -C "$QC/src" && rm "$QC/src/musl.tar.gz"
-  MUSL_INCLUDE=$QC/src/musl-$MUSL_VERSION/include
-fi
+# --- musl's headers, from the musl unit's tarball (the one the libs unit's
+# sysroot.tar.gz takes them from), before the stamp, which hashes the ones used.
+# There used to be a MUSL_INCLUDE knob naming any directory, and a download of
+# its own when that had none.
+MUSL_TREE=$QC/src/musl-$MUSL_VERSION
+keep_tree "$MUSL_TREE" "musl $MUSL_SHA256"
+[ -f "$MUSL_TREE/include/sys/signalfd.h" ] ||
+  tar xzf "$DEP_MUSL/build-only/musl-$MUSL_VERSION.tar.gz" -C "$MUSL_TREE" --strip-components=1
+MUSL_INCLUDE=$MUSL_TREE/include
 # What this build is made of besides its own files: the QEMU tree build-qemu.sh
 # prepared (by content: its git tree, since the patch's commit is dated), the
 # dependencies it built (their record), the kernel's UAPI headers, and the musl
-# headers (MUSL_INCLUDE: its files, whichever directory it names), and the
+# headers (MUSL_INCLUDE: its files), and the
 # Emscripten that compiles it (emsdk_made_by). Each of them reaches the build
 # through a path that stays the same when it changes.
 MADE_OF="$(emsdk_made_by)
@@ -69,20 +68,16 @@ uapi $(files_sha256 "$HDR")
 musl $(files_sha256 "$MUSL_INCLUDE")"
 # The final link's memory (USER_INITIAL_MEMORY_MB) is in it too: it used to be
 # left out, so another value kept the binaries linked with the first.
-stamp=$({ cat "$HERE/pins.sh" "$HERE/patches/"*.patch "${BASH_SOURCE[0]}"; echo "$MADE_OF"; echo "initial-memory $USER_INITIAL_MEMORY_MB"; } |
+stamp=$({ cat "$HERE/../toolchains/vm/pins.sh" "$HERE/patches/"*.patch "${BASH_SOURCE[0]}"; echo "$MADE_OF"; echo "initial-memory $USER_INITIAL_MEMORY_MB"; } |
   sha256sum | cut -d' ' -f1)
 if [ "${PRINT_STAMP:-}" = 1 ]; then echo "$stamp"; exit 0; fi
 if [ "$(cat "$ART/user.stamp" 2>/dev/null)" = "$stamp" ]; then echo "qemu user: up to date"; exit 0; fi
-# The Emscripten the stamp and the trees name (MADE_OF), installed here and not
-# only looked for: build-qemu.sh installs it after its own stamp check, so with
-# qemu-system up to date it never runs, and the emsdk under the same path may be
-# another release (build.sh at an older commit installs its own pin there). A
-# check that emsdk_env.sh existed once relinked this binary with that other
-# release while user.stamp named the pinned one. emsdk_install returns at once
-# when the emsdk is already at EMSDK_COMMIT.
-emsdk_install
-# shellcheck source=/dev/null
-source "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
+# The Emscripten the stamp and the trees name (MADE_OF): the emsdk unit's, the
+# one this build was given (emsdk_use). It used to be whatever emsdk sat at a
+# shared path in the cache, which another commit's build could have replaced:
+# a check that emsdk_env.sh existed once relinked this binary with another
+# release while user.stamp named the pinned one.
+emsdk_use
 export PATH=$QC/venv/bin:$PATH
 
 # --- the patched tree: hard links to build-qemu.sh's tree, so it costs no space;
@@ -99,11 +94,18 @@ fi
 
 # --- compat headers
 # Made of the patch, Emscripten's headers (MADE_OF names it), the musl and UAPI headers.
-csha=$({ cat "$HERE/patches/compat-wasm-host-syscall.h.patch" "$HERE/pins.sh"; echo "$MADE_OF"; } | sha256sum | cut -d' ' -f1)
+csha=$({ cat "$HERE/patches/compat-wasm-host-syscall.h.patch" "$HERE/../toolchains/vm/pins.sh"; echo "$MADE_OF"; } | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$C/.yk-stamp" 2>/dev/null)" != "$csha" ]; then
   rm -rf "$C" "$B"; mkdir -p "$C/asm"
-  E=$EMSDK_DIR/upstream/emscripten/cache/sysroot/include
-  [ -d "$E" ] || E=$EMSDK_DIR/upstream/emscripten/system/include
+  # Emscripten's libc headers as emcc installs them into its cache on first
+  # use (EM_CACHE, emsdk_use): one compile makes sure they are there, so the
+  # set copied below never depends on whether build-qemu.sh compiled first.
+  E=$EM_CACHE/sysroot/include
+  if [ ! -d "$E" ]; then
+    printf 'int yk_probe;\n' > "$C/probe.c"
+    emcc -c "$C/probe.c" -o "$C/probe.o" && rm -f "$C/probe.c" "$C/probe.o"
+  fi
+  [ -d "$E" ] || { echo "build-qemu-user.sh: emcc installed no headers into $E" >&2; exit 1; }
   # musl headers Emscripten leaves out (sys/signalfd.h, sys/prctl.h, ...)
   (cd "$MUSL_INCLUDE" && find . -name '*.h') | while read -r f; do
     [ -e "$E/$f" ] || { mkdir -p "$C/$(dirname "$f")"; cp "$MUSL_INCLUDE/$f" "$C/$f"; }
@@ -126,7 +128,7 @@ configured() {
 # configuring again would not show (keep_tree); the trees above remove it when
 # they change.
 configured || rm -rf "$B"
-keep_tree "$B" "$(sha256sum < "$HERE/pins.sh" | cut -d' ' -f1) pins.sh
+keep_tree "$B" "$(sha256sum < "$HERE/../toolchains/vm/pins.sh" | cut -d' ' -f1) pins.sh
 $MADE_OF"
 if ! configured; then
   cd "$B"

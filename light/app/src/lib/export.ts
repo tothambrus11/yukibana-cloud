@@ -111,13 +111,13 @@ const TESTS = /^tests\//;
 
 /**
  * GoogleTest as the browser runs it: the release the C++ pack builds
- * (pinned in packs/cpp/pins.sh), with its checksum, so a local build tests
+ * (pinned in packs/cpp/toolchains/libs/pins.sh), with its checksum, so a local build tests
  * against the same version.
  */
 const GTEST_VERSION = '1.18.0';
 const GTEST_SHA256 = '6e3191c1455468b3fc35a417fb565c1c5071aee1b7e7f85e30cf48a98d37d8b5';
 /**
- * Catch2 and doctest as the browser runs them (pinned in packs/cpp/pins.sh),
+ * Catch2 and doctest as the browser runs them (pinned in packs/cpp/toolchains/libs/pins.sh),
  * pinned by the commit of their release tags: neither publishes a source
  * archive of its own, and a commit names its whole tree.
  */
@@ -126,7 +126,7 @@ const CATCH2_COMMIT = '08092139210881f01a34e60c5f2fd6afa0ea4024';
 const DOCTEST_VERSION = '2.5.3';
 const DOCTEST_COMMIT = '2d0a9359a60c51affe2a9bebb1be1dca47868151';
 /**
- * RapidCheck as the browser runs it (pinned in packs/cpp/pins.sh): a
+ * RapidCheck as the browser runs it (pinned in packs/cpp/toolchains/libs/pins.sh): a
  * commit of its master branch, since RapidCheck has no releases or tags.
  */
 const RAPIDCHECK_COMMIT = '2c3c4365aca21ef4e612768fdc95b1ce8b39a651';

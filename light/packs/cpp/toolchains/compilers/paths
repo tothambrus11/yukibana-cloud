@@ -1,0 +1,15 @@
+# The pack files the compilers unit builds with, besides this directory:
+# the scripts it runs, what they share, the patches to LLVM's sources and
+# the demangler's own source. Nothing of the libraries, the VM or the glue.
+build-lib.sh
+llvm-lib.sh
+build-clangd.sh
+build-cross.sh
+build-runner.sh
+build-demangle.sh
+compress.mjs
+patches/clangd-browser.patch
+patches/wasm-ld-only.patch
+patches/elf-ld-only.patch
+src/demangle/demangle.cpp
+src/demangle/demangle.h

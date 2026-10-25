@@ -9,8 +9,8 @@
 # Needs build-kernel.sh's UAPI headers in $QC/hdr/<karch>/include.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source=../toolchains/vm/pins.sh
+source "$HERE/../toolchains/vm/pins.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
 N=$QC/linux-$LINUX_VERSION/tools/include/nolibc

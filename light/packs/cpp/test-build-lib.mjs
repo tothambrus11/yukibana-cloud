@@ -1,9 +1,11 @@
 // Tests of what decides whether the C/C++ pack's build reuses a cached tree
-// or a skipped step (build-lib.sh's keep_tree, follow_patch,
-// llvm_lld_sources, npm_deps, emsdk_install, the stamps' input lists, and
-// vm/build-qemu-user.sh's stamp), and of where the pack's pins live, with
-// throwaway directories and fakes in place of LLVM, npm, emsdk and QEMU: no
-// compiler is built, so it takes a second.
+// or a skipped step (build-lib.sh's keep_tree, follow_patch, llvm-lib.sh's
+// llvm_lld_sources, glue-lib.sh's npm_deps, the emsdk unit's emsdk_install,
+// the stamps' input lists, and vm/build-qemu-user.sh's stamp), of how a
+// unit's scripts reach the units it needs (need_unit, emsdk_use, apk_of),
+// and of where the pack's pins live, with throwaway directories and fakes
+// in place of LLVM, npm, emsdk, musl and QEMU: no compiler is built, so it
+// takes a second.
 //
 //   node --test test-build-lib.mjs   (from light/packs/cpp; needs bash, git, tar, xz, patch)
 import assert from 'node:assert/strict';
@@ -25,13 +27,21 @@ const fresh = () => {
     return dir;
 };
 
+/** Every unit's pins, then every helper file, as the pack's scripts source them. */
+const SOURCES = [
+    'toolchains/emsdk/pins.sh', 'toolchains/musl/pins.sh', 'toolchains/compilers/pins.sh', 'toolchains/libs/pins.sh', 'toolchains/vm/pins.sh',
+    'build-lib.sh', 'llvm-lib.sh', 'libs-lib.sh', 'toolchains/emsdk/emsdk.sh', 'toolchains/musl/alpine.sh', 'glue-lib.sh',
+];
+
 /**
- * Runs `script` in bash with `lib` (default: this pack's build-lib.sh, after
- * pins.sh) sourced, from `cwd`, with CACHE set; returns status, stdout and
- * stderr. Nothing of the caller's environment but PATH and HOME reaches it.
+ * Runs `script` in bash with `lib`'s (default: this pack's) pins and
+ * helpers (SOURCES) sourced, from `cwd`, with CACHE set; returns status,
+ * stdout and stderr. Nothing of the caller's environment but PATH and HOME
+ * reaches it.
  */
 function bash(script, { cwd = root, lib = HERE, env = {} } = {}) {
-    const r = spawnSync('bash', ['-c', `set -euo pipefail; source "${lib}/pins.sh"; source "${lib}/build-lib.sh"; ${script}`], {
+    const sources = SOURCES.map((f) => `source "${lib}/${f}"; `).join('');
+    const r = spawnSync('bash', ['-c', `set -euo pipefail; ${sources}${script}`], {
         cwd, encoding: 'utf8', env: { PATH: process.env.PATH, HOME: process.env.HOME, CACHE: cwd, ...env },
     });
     return { status: r.status, out: r.stdout, err: r.stderr };
@@ -48,6 +58,73 @@ const write = (file, text) => {
 /** Sets a file's times to `seconds` after the epoch. */
 const age = (file, seconds) => fs.utimesSync(file, seconds, seconds);
 const mtime = (file) => fs.statSync(file).mtimeMs / 1000;
+
+/** A copy of `files` (pack-relative; default: the pins and helpers) in a fresh directory, a pack of its own whose files a test may change. */
+function fakePack(files = SOURCES) {
+    const pack = fresh();
+    for (const f of files) {
+        fs.mkdirSync(path.dirname(path.join(pack, f)), { recursive: true });
+        fs.copyFileSync(path.join(HERE, f), path.join(pack, f));
+    }
+    return pack;
+}
+
+/** The files vm/build-qemu-user.sh reads from the pack. */
+const QEMU_USER_FILES = () => [...SOURCES, 'vm/build-qemu-user.sh', ...fs.readdirSync(path.join(HERE, 'vm/patches')).map((p) => `vm/patches/${p}`)];
+
+/**
+ * Fake toolchains of the emsdk and musl units, as a dependent's build sees
+ * them at $DEP_EMSDK and $DEP_MUSL: each unit's exported pins (copies of
+ * the real ones, which the test may change), an installed-looking emsdk
+ * whose emsdk_env.sh logs which emsdk it is and stops the script (exit 7),
+ * and a musl release tarball holding `headers` (path to text) under
+ * include/. Returns the two directories and the log's path.
+ */
+function fakeUnits(headers = { 'sys/signalfd.h': '/* musl */\n' }) {
+    const emsdk = fresh();
+    const musl = fresh();
+    const log = path.join(emsdk, 'log');
+    fs.mkdirSync(path.join(emsdk, 'build-only'), { recursive: true });
+    fs.copyFileSync(path.join(HERE, 'toolchains/emsdk/pins.sh'), path.join(emsdk, 'build-only/pins.sh'));
+    const em = path.join(emsdk, 'build-only/emsdk');
+    write(path.join(em, '.emscripten'), '');
+    write(path.join(em, 'upstream/emscripten/emcc'), '#!/bin/sh\n');
+    fs.chmodSync(path.join(em, 'upstream/emscripten/emcc'), 0o755);
+    write(path.join(em, 'emsdk_env.sh'), `echo "compiles with the emsdk unit's ${em}" >> "${log}"; exit 7\n`);
+    fs.mkdirSync(path.join(musl, 'build-only'), { recursive: true });
+    fs.copyFileSync(path.join(HERE, 'toolchains/musl/pins.sh'), path.join(musl, 'build-only/pins.sh'));
+    const version = pinsOf(path.join(HERE, 'toolchains/musl/pins.sh')).get('MUSL_VERSION');
+    const tree = fresh();
+    for (const [f, text] of Object.entries(headers)) write(path.join(tree, `musl-${version}/include`, f), text);
+    execFileSync('tar', ['czf', path.join(musl, `build-only/musl-${version}.tar.gz`), '-C', tree, `musl-${version}`]);
+    return { DEP_EMSDK: emsdk, DEP_MUSL: musl, LOG: log };
+}
+
+/** Sets pin `name` to `value` in pins file `file`. */
+const swapPin = (file, name, value) => fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(new RegExp(`^${name}=.*$`, 'm'), `${name}=${value}`));
+
+/**
+ * A QEMU cache as build-qemu.sh and build-kernel.sh leave it for
+ * build-qemu-user.sh: the dependencies with their record, a QEMU checkout
+ * (a git repository, whose tree is in the stamp), the UAPI headers.
+ */
+function fakeQemuCache() {
+    const qc = fresh();
+    write(path.join(qc, 'work/target/lib/libglib-2.0.a'), '');
+    write(path.join(qc, 'work/target/.yk-made-by'), 'yukibana-tree/1\nsome dependencies\n');
+    write(path.join(qc, 'work/qemu-wasm/configure'), '#!/bin/sh\n');
+    execFileSync('git', ['init', '-q', path.join(qc, 'work/qemu-wasm')]);
+    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), 'add', '.']);
+    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'qemu']);
+    write(path.join(qc, 'hdr/x86_64/include/linux/types.h'), '/* uapi */\n');
+    return qc;
+}
+
+/** Runs `pack`'s vm/build-qemu-user.sh over cache `qc` with `env`, and nothing else of the caller's environment but PATH and HOME. */
+const qemuUser = (pack, qc, env) => spawnSync('bash', [path.join(pack, 'vm/build-qemu-user.sh')], {
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), ...env },
+});
 
 /** A unified diff that changes `files` (paths under a/ and b/). */
 const diff = (...files) => files.map((f) => `--- a/${f}\n+++ b/${f}\n@@ -1 +1 @@\n-old\n+new\n`).join('');
@@ -131,10 +208,8 @@ test('a tree that follows two patches is built again once when it learns of the 
 });
 
 test('the wasm-only lld is extracted again when its patch changes, not kept because it was once patched', () => {
-    // A pack of its own: build-lib.sh's patches are found beside it.
-    const pack = fresh();
-    fs.copyFileSync(path.join(HERE, 'build-lib.sh'), path.join(pack, 'build-lib.sh'));
-    fs.copyFileSync(path.join(HERE, 'pins.sh'), path.join(pack, 'pins.sh'));
+    // A pack of its own: llvm-lib.sh's patches are found beside it.
+    const pack = fakePack();
     const cache = fresh();
     const top = 'llvm-project-21.1.8.src';
     write(path.join(cache, 'x', top, 'lld/tools/lld/lld.cpp'), 'old\n');
@@ -156,7 +231,7 @@ test('the Linux test libraries are built again when the compiler, its glue, the 
     const files = ['cc-cross.wasm', 'cc-cross.js', 'sysroot.tar.gz', 'targets/x86_64/include.tar', 'targets/aarch64/include.tar', 'targets/riscv64/include.tar'];
     for (const f of files) write(path.join(out, f), f);
     const inputs = ok(`linux_testfw_inputs "${out}"`).out.trim().split('\n');
-    for (const f of ['src/toolchain.js', 'src/targets.js', 'src/targets.json', 'build-test-libs-linux.mjs', 'build-test-frameworks-linux.sh', 'pins.sh', 'build-lib.sh'])
+    for (const f of ['src/toolchain.js', 'src/targets.js', 'src/targets.json', 'build-test-libs-linux.mjs', 'build-test-frameworks-linux.sh', 'toolchains/libs/pins.sh', 'build-lib.sh', 'libs-lib.sh'])
         assert.ok(inputs.includes(path.join(HERE, f)), `${f} is an input`);
     const stamp = () => ok(`stamp_of $(linux_testfw_inputs "${out}")`).out.trim();
     const first = stamp();
@@ -181,12 +256,23 @@ test('a stamp is the same wherever the checkout is, and a missing input fails it
     assert.match(r.err, /three is missing/);
 });
 
-test('the sanitizer runtimes are built again when any file of their runtime sources or the targets table changes', () => {
-    const inputs = ok('sanitizer_inputs').out.trim().split('\n');
+test('the sanitizer runtimes are built again when any file of their runtime sources, the targets table, or the Emscripten or musl they come from changes', () => {
+    const { DEP_EMSDK, DEP_MUSL } = fakeUnits();
+    const env = { DEP_EMSDK, DEP_MUSL };
+    const inputs = ok('sanitizer_inputs', { env }).out.trim().split('\n');
     const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
     for (const f of walk(path.join(HERE, 'src/sanitizer-rt'))) assert.ok(inputs.includes(f), `${path.relative(HERE, f)} is an input`);
-    for (const f of ['src/targets.json', 'patches/compiler-rt-wasi.patch', 'build-sanitizers.sh']) assert.ok(inputs.includes(path.join(HERE, f)), `${f} is an input`);
-    assert.equal(ok(`stamp_of $(sanitizer_inputs)`).status, 0);
+    for (const f of ['src/targets.json', 'patches/compiler-rt-wasi.patch', 'build-sanitizers.sh', 'toolchains/libs/pins.sh', 'libs-lib.sh']) assert.ok(inputs.includes(path.join(HERE, f)), `${f} is an input`);
+    const stamp = () => ok('stamp_of $(sanitizer_inputs)', { env }).out.trim();
+    const first = stamp();
+    swapPin(path.join(DEP_EMSDK, 'build-only/pins.sh'), 'EMSDK_RELEASE', '1'.repeat(40));
+    assert.notEqual(stamp(), first, "another Emscripten is another compiler-rt");
+    const second = stamp();
+    swapPin(path.join(DEP_MUSL, 'build-only/pins.sh'), 'APK_COMPILER_RT_X86_64', '0'.repeat(64));
+    assert.notEqual(stamp(), second, "another Alpine compiler-rt is another Linux runtime");
+    const r = bash('sanitizer_inputs');
+    assert.notEqual(r.status, 0, 'without the units it needs, it cannot say what makes the runtimes');
+    assert.match(r.err, /the emsdk unit/);
 });
 
 test("the pack's build tools are installed again when package-lock.json changes, and only then", () => {
@@ -206,22 +292,11 @@ test("the pack's build tools are installed again when package-lock.json changes,
     assert.equal(calls(), 2, 'a changed lock reaches node_modules');
 });
 
-test("another initial memory or other musl headers for the user-mode QEMU is another build, not the last one's", () => {
-    const qc = fresh();
-    write(path.join(qc, 'work/target/lib/libglib-2.0.a'), '');
-    write(path.join(qc, 'work/target/.yk-made-by'), 'yukibana-tree/1\nsome dependencies\n');
-    write(path.join(qc, 'work/qemu-wasm/configure'), '#!/bin/sh\n');
-    execFileSync('git', ['init', '-q', path.join(qc, 'work/qemu-wasm')]);
-    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), 'add', '.']);
-    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'qemu']);
-    write(path.join(qc, 'hdr/x86_64/include/linux/types.h'), '/* uapi */\n');
-    const musl = path.join(qc, 'musl/include');
-    write(path.join(musl, 'sys/signalfd.h'), '/* musl */\n');
-    const stamp = (env = {}) => {
-        const r = spawnSync(path.join(HERE, 'vm/build-qemu-user.sh'), [], {
-            encoding: 'utf8',
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: musl, PRINT_STAMP: '1', ...env },
-        });
+test("another initial memory or another musl for the user-mode QEMU is another build, not the last one's", () => {
+    const qc = fakeQemuCache();
+    const units = fakeUnits();
+    const stamp = (env = {}, deps = units) => {
+        const r = qemuUser(HERE, qc, { DEP_EMSDK: deps.DEP_EMSDK, DEP_MUSL: deps.DEP_MUSL, PRINT_STAMP: '1', ...env });
         assert.equal(r.status, 0, r.stderr);
         return r.stdout.trim();
     };
@@ -229,23 +304,59 @@ test("another initial memory or other musl headers for the user-mode QEMU is ano
     assert.match(first, /^[0-9a-f]{64}$/);
     assert.equal(stamp({ USER_INITIAL_MEMORY_MB: '16' }), first, '16 MiB is the default');
     assert.notEqual(stamp({ USER_INITIAL_MEMORY_MB: '32' }), first);
-    write(path.join(musl, 'sys/signalfd.h'), '/* another musl */\n');
-    assert.notEqual(stamp(), first);
+    // Another musl release is another tarball under another pin, both the musl unit's.
+    const other = fakeUnits({ 'sys/signalfd.h': '/* another musl */\n' });
+    swapPin(path.join(other.DEP_MUSL, 'build-only/pins.sh'), 'MUSL_SHA256', '2'.repeat(64));
+    assert.notEqual(stamp({}, other), first, "the musl unit's headers are in the stamp");
+    assert.equal(stamp({ MUSL_INCLUDE: fresh() }), first, 'MUSL_INCLUDE no longer names the headers: they are the musl unit\'s');
+});
+
+test('a unit script outside a unit build, or without a unit it needs, stops naming that unit', () => {
+    const r = bash('need_unit musl');
+    assert.notEqual(r.status, 0);
+    assert.match(r.err, /needs the cpp\/musl unit at \$DEP_MUSL/);
+    const qc = fakeQemuCache();
+    const { DEP_EMSDK } = fakeUnits();
+    const user = qemuUser(HERE, qc, { DEP_EMSDK, PRINT_STAMP: '1' });
+    assert.notEqual(user.status, 0);
+    assert.match(user.stderr, /needs the cpp\/musl unit at \$DEP_MUSL/, 'the user-mode QEMU names the musl unit it was not given');
+});
+
+test("a unit's exported pins are what a dependent reads, and an Alpine package is the musl unit's copy or a named error", () => {
+    const { DEP_EMSDK, DEP_MUSL } = fakeUnits();
+    swapPin(path.join(DEP_MUSL, 'build-only/pins.sh'), 'MUSL_VERSION', '9.9.9');
+    // The pack's own pins are sourced first (SOURCES); need_unit overrides
+    // them with what the unit that was built exports.
+    assert.equal(ok('need_unit musl; echo "$MUSL_VERSION"', { env: { DEP_MUSL } }).out.trim(), '9.9.9');
+    write(path.join(DEP_MUSL, 'build-only/apk/aarch64/musl-dev.apk'), 'apk');
+    assert.equal(ok('apk_of aarch64 musl-dev', { env: { DEP_MUSL } }).out.trim(), path.join(DEP_MUSL, 'build-only/apk/aarch64/musl-dev.apk'));
+    const r = bash('apk_of aarch64 libc++-dev', { env: { DEP_MUSL } });
+    assert.notEqual(r.status, 0);
+    assert.match(r.err, /the musl unit has no libc\+\+-dev for aarch64/);
+    assert.equal(ok('need_unit emsdk; emsdk_made_by', { env: { DEP_EMSDK } }).out, ok('emsdk_made_by').out, "the emsdk unit's pins name the pack's Emscripten");
 });
 
 /** The NAME=value pins a pins file assigns, as a map from name to value. */
 const pinsOf = (file) => new Map(fs.readFileSync(file, 'utf8').split('\n')
     .filter((l) => /^[A-Z][A-Z0-9_]*=/.test(l)).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
 
-test("the pack pins one Emscripten, in pins.sh, and the VM's pins name nothing pins.sh names", () => {
-    const pack = pinsOf(path.join(HERE, 'pins.sh'));
-    const vm = pinsOf(path.join(HERE, 'vm/pins.sh'));
-    assert.ok(pack.has('EMSDK_VERSION') && pack.has('EMSDK_COMMIT') && pack.has('EMSDK_RELEASE'), 'pins.sh pins the emsdk');
-    assert.deepEqual([...vm.keys()].filter((k) => pack.has(k)), [], 'no pin is in both files');
-    assert.deepEqual([...vm.keys()].filter((k) => k.startsWith('EMSDK_') || k.startsWith('MUSL_')), [], 'the VM has no Emscripten or musl of its own');
-    for (const line of fs.readFileSync(path.join(HERE, 'vm/pins.sh'), 'utf8').split('\n'))
-        assert.ok(line === '' || line.startsWith('#') || /^[A-Z][A-Z0-9_]*=[^$`(]*$/.test(line), `vm/pins.sh: '${line}' is a plain NAME=value pin`);
-    assert.ok(!fs.existsSync(path.join(HERE, 'vm/pins.txt')), 'vm/pins.txt is gone');
+test('the pack pins one Emscripten, in the emsdk unit, and no pin is in two units', () => {
+    const units = fs.readdirSync(path.join(HERE, 'toolchains')).sort();
+    assert.deepEqual(units, ['compilers', 'emsdk', 'libs', 'musl', 'vm']);
+    const pins = new Map(units.map((u) => [u, pinsOf(path.join(HERE, 'toolchains', u, 'pins.sh'))]));
+    for (const u of units)
+        for (const line of fs.readFileSync(path.join(HERE, 'toolchains', u, 'pins.sh'), 'utf8').split('\n'))
+            assert.ok(line === '' || line.startsWith('#') || /^[A-Z][A-Z0-9_]*=[^$`(]*$/.test(line), `toolchains/${u}/pins.sh: '${line}' is a plain NAME=value pin`);
+    for (const [u, p] of pins)
+        for (const [v, q] of pins)
+            if (u < v) assert.deepEqual([...p.keys()].filter((k) => q.has(k)), [], `no pin is in both ${u} and ${v}`);
+    const owner = (prefix) => units.filter((u) => [...(pins.get(u)?.keys() ?? [])].some((k) => k.startsWith(prefix)));
+    assert.deepEqual(owner('EMSDK_'), ['emsdk'], 'one Emscripten, the emsdk unit\'s');
+    assert.deepEqual(owner('MUSL_'), ['musl'], 'one musl, the musl unit\'s');
+    assert.deepEqual(owner('APK_'), ['musl'], 'one set of Alpine packages, the musl unit\'s');
+    assert.deepEqual(owner('LLVM_'), ['compilers'], 'one LLVM, the compilers unit\'s');
+    for (const gone of ['pins.sh', 'vm/pins.sh', 'vm/pins.txt', 'deps.apt'])
+        assert.ok(!fs.existsSync(path.join(HERE, gone)), `${gone} is gone: each unit has its own`);
 });
 
 test('nothing in the pack patches, or deletes from, the installed Emscripten', () => {
@@ -336,96 +447,36 @@ test('an Emscripten archive whose checksum is not the pinned one is never handed
 });
 
 test("the VM's user-mode QEMU is built again for another Emscripten, and not for a pin that is not the VM's", () => {
-    // A copy of the pack's files the script reads, so that its pins can change.
-    const pack = fresh();
-    for (const f of ['pins.sh', 'build-lib.sh', 'vm/pins.sh', 'vm/build-qemu-user.sh', ...fs.readdirSync(path.join(HERE, 'vm/patches')).map((p) => `vm/patches/${p}`)]) {
-        fs.mkdirSync(path.dirname(path.join(pack, f)), { recursive: true });
-        fs.copyFileSync(path.join(HERE, f), path.join(pack, f));
-    }
-    fs.chmodSync(path.join(pack, 'vm/build-qemu-user.sh'), 0o755);
-    const qc = fresh();
-    write(path.join(qc, 'work/target/lib/libglib-2.0.a'), '');
-    write(path.join(qc, 'work/target/.yk-made-by'), 'yukibana-tree/1\nsome dependencies\n');
-    write(path.join(qc, 'work/qemu-wasm/configure'), '#!/bin/sh\n');
-    execFileSync('git', ['init', '-q', path.join(qc, 'work/qemu-wasm')]);
-    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), 'add', '.']);
-    execFileSync('git', ['-C', path.join(qc, 'work/qemu-wasm'), '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'qemu']);
-    write(path.join(qc, 'hdr/x86_64/include/linux/types.h'), '/* uapi */\n');
-    write(path.join(qc, 'musl/include/sys/signalfd.h'), '/* musl */\n');
+    const qc = fakeQemuCache();
+    const units = fakeUnits();
     const stamp = () => {
-        const r = spawnSync(path.join(pack, 'vm/build-qemu-user.sh'), [], {
-            encoding: 'utf8',
-            env: { PATH: process.env.PATH, HOME: process.env.HOME, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: path.join(qc, 'musl/include'), PRINT_STAMP: '1' },
-        });
+        const r = qemuUser(HERE, qc, { DEP_EMSDK: units.DEP_EMSDK, DEP_MUSL: units.DEP_MUSL, PRINT_STAMP: '1' });
         assert.equal(r.status, 0, r.stderr);
         return r.stdout.trim();
     };
-    const pinsFile = path.join(pack, 'pins.sh');
-    const swap = (name, value) => fs.writeFileSync(pinsFile, fs.readFileSync(pinsFile, 'utf8').replace(new RegExp(`^${name}=.*$`, 'm'), `${name}=${value}`));
     const first = stamp();
-    swap('APK_MUSL_X86_64', '0'.repeat(64));
+    swapPin(path.join(units.DEP_MUSL, 'build-only/pins.sh'), 'APK_MUSL_X86_64', '0'.repeat(64));
     assert.equal(stamp(), first, "an Alpine package's pin is none of the VM's business");
-    swap('EMSDK_RELEASE', '1'.repeat(40));
+    swapPin(path.join(units.DEP_EMSDK, 'build-only/pins.sh'), 'EMSDK_RELEASE', '1'.repeat(40));
     assert.notEqual(stamp(), first, 'another Emscripten release is another build');
 });
 
-test("the user-mode QEMU is never compiled with an Emscripten another checkout left in the cache, nor refused for a missing one", () => {
-    // build-qemu.sh installs the emsdk only after its own stamp check, so with
-    // qemu-system up to date build-qemu-user.sh is the only script that can
-    // put the pinned release back. It once only checked that emsdk_env.sh
-    // existed, and relinked with whatever release was there while user.stamp
-    // named the pinned one.
-    const pack = fresh();
-    for (const f of ['pins.sh', 'build-lib.sh', 'vm/pins.sh', 'vm/build-qemu-user.sh', ...fs.readdirSync(path.join(HERE, 'vm/patches')).map((p) => `vm/patches/${p}`)]) {
-        fs.mkdirSync(path.dirname(path.join(pack, f)), { recursive: true });
-        fs.copyFileSync(path.join(HERE, f), path.join(pack, f));
-    }
-    fs.chmodSync(path.join(pack, 'vm/build-qemu-user.sh'), 0o755);
-    const pinsFile = path.join(pack, 'pins.sh');
-    const sha = execFileSync('sha256sum', { input: 'archive\n', encoding: 'utf8' }).split(' ')[0];
-    for (const name of ['EMSDK_BINARIES_SHA256', 'EMSDK_NODE_SHA256'])
-        fs.writeFileSync(pinsFile, fs.readFileSync(pinsFile, 'utf8').replace(new RegExp(`^${name}=.*$`, 'm'), `${name}=${sha}`));
-    const pinned = pinsOf(pinsFile).get('EMSDK_COMMIT');
-    assert.match(pinned, /^[0-9a-f]{40}$/);
-    const { PATH, LOG } = emsdkFakes();
-    const qc = fresh();
-    write(path.join(qc, 'work/target/lib/libglib-2.0.a'), '');
-    write(path.join(qc, 'work/target/.yk-made-by'), 'yukibana-tree/1\nsome dependencies\n');
-    write(path.join(qc, 'work/qemu-wasm/configure'), '#!/bin/sh\n');
-    // The fake git reads a checkout's HEAD (and here its tree) from .head.
-    write(path.join(qc, 'work/qemu-wasm/.head'), `${'d'.repeat(40)}\n`);
-    write(path.join(qc, 'hdr/x86_64/include/linux/types.h'), '/* uapi */\n');
-    write(path.join(qc, 'musl/include/sys/signalfd.h'), '/* musl */\n');
-    const em = path.join(qc, 'cpp/emsdk');
-    // An emsdk at another commit, whose emsdk_env.sh would put that release's emcc first.
-    write(path.join(em, '.head'), `${'b'.repeat(40)}\n`);
-    write(path.join(em, '.emscripten'), '');
-    write(path.join(em, 'upstream/emscripten/emcc'), '#!/bin/sh\n');
-    fs.chmodSync(path.join(em, 'upstream/emscripten/emcc'), 0o755);
-    // emsdk_env.sh says which emsdk the script was about to compile with, and
-    // stops it there: nothing after it is under test.
-    const envSh = `echo "compiles with $(cat "$(dirname "\${BASH_SOURCE[0]}")/.head")" >> "${LOG}"; exit 7\n`;
-    write(path.join(em, 'emsdk_env.sh'), envSh);
-    const run = () => spawnSync(path.join(pack, 'vm/build-qemu-user.sh'), [], {
-        encoding: 'utf8',
-        env: { PATH, HOME: process.env.HOME, LOG, FAKE_COMMIT: pinned, PACK_CACHE: qc, QC: qc, ART: path.join(qc, 'art'), MUSL_INCLUDE: path.join(qc, 'musl/include') },
-    });
-    const log = () => fs.readFileSync(LOG, 'utf8').trim().split('\n');
-    // The fake emsdk's install writes no emsdk_env.sh; the test's own stands in for it.
-    const reinstall = (r) => {
-        assert.equal(r.status, 7, r.stderr);
-        return log();
-    };
-    const r = run();
-    assert.ok(fs.existsSync(LOG) && log().some((l) => l.startsWith('git clone')), `the stale emsdk is installed again: ${r.stderr}`);
-    assert.ok(!log().some((l) => l.startsWith('compiles with')), 'nothing was compiled with the stale emsdk');
-    assert.notEqual(r.status, 0, 'the fake install has no emsdk_env.sh, so the script stops');
+test('the user-mode QEMU compiles with the emsdk unit it was given, never with an emsdk left in the cache', () => {
+    // It once only checked that an emsdk_env.sh existed under the cache, and
+    // relinked with whatever release another checkout had left there while
+    // user.stamp named the pinned one; then installed the pinned one there
+    // itself. A dependent now never installs or looks for an Emscripten: the
+    // emsdk unit's, read-only at $DEP_EMSDK, is the only one it reaches.
+    const qc = fakeQemuCache();
+    const { DEP_EMSDK, DEP_MUSL, LOG } = fakeUnits();
+    const stale = path.join(qc, 'cpp/emsdk');
+    write(path.join(stale, '.emscripten'), '');
+    write(path.join(stale, 'emsdk_env.sh'), `echo "compiles with the cache's emsdk" >> "${LOG}"; exit 7\n`);
+    const r = qemuUser(HERE, qc, { DEP_EMSDK, DEP_MUSL });
+    assert.equal(r.status, 7, r.stderr);
+    assert.deepEqual(fs.readFileSync(LOG, 'utf8').trim().split('\n'), [`compiles with the emsdk unit's ${path.join(DEP_EMSDK, 'build-only/emsdk')}`]);
     assert.ok(!fs.existsSync(path.join(qc, 'art/user.stamp')), 'no stamp names a build that did not happen');
-    write(path.join(em, 'emsdk_env.sh'), envSh);
-    assert.deepEqual(reinstall(run()).filter((l) => l.startsWith('compiles with')), [`compiles with ${pinned}`], 'the pinned emsdk, once installed, is what compiles it');
-    assert.equal(log().filter((l) => l.startsWith('git clone')).length, 1, 'the pinned emsdk is not installed twice');
-    fs.rmSync(em, { recursive: true });
-    const missing = run();
-    assert.doesNotMatch(missing.stderr, /run build-qemu\.sh first/, 'a missing emsdk is installed, not blamed on build-qemu.sh');
-    assert.equal(log().filter((l) => l.startsWith('git clone')).length, 2, 'a missing emsdk is installed');
+    const missing = qemuUser(HERE, qc, { DEP_MUSL });
+    assert.notEqual(missing.status, 0);
+    assert.match(missing.stderr, /needs the cpp\/emsdk unit at \$DEP_EMSDK/, 'a missing emsdk is named, not installed');
 });

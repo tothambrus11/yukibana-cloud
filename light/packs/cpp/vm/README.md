@@ -186,8 +186,8 @@ default.
    signalled the waiter after unlocking, so a proxied call's wakeup could be lost.
    This was fixed in emscripten 5.0.5 (emscripten-core/emscripten#26582). QEMU was
    first built with a second Emscripten, 6.0.13, of its own; the whole pack is now
-   built with that one Emscripten (`pins.sh`, `emsdk_install` in `build-lib.sh`, in
-   `$PACK_CACHE/cpp/emsdk`). It is found with worker stacks over the DevTools protocol.
+   built with that one Emscripten (the emsdk unit's, `toolchains/emsdk/pins.sh`, taken
+   read-only from `$DEP_EMSDK` by `build-lib.sh`'s `emsdk_use`). It is found with worker stacks over the DevTools protocol.
 3. **The TCG backend gave wrong i32 results** once a block was compiled to Wasm (after
    1500 executions). The wrong ops were `add2/sub2/mulu2/muls2/extract/sextract/clz/ctz`
    on dirty upper halves, and two cases produced invalid Wasm. Symptoms were AArch64's
@@ -282,27 +282,29 @@ default.
 
 ## Building
 
-Run `./build-vm.sh`, which uses `JOBS=3` by default and `nice`. Each step is skipped when
-its stamp in `$PACK_CACHE/cpp/vm-artifacts` matches its inputs (`vm/pins.sh`, the
-patches, the configs, the script itself, the compiler version, and for the QEMU steps the
-Emscripten `pins.sh` names).
+The VM is the pack's `cpp/vm` unit (`toolchains/vm/`, needing the emsdk and musl units),
+which `../build.sh` builds or fetches with the rest; its `toolchain.sh` runs
+`../build-vm.sh`, with `JOBS=3` by default and `nice`. Each step is skipped when
+its stamp in `$PACK_CACHE/cpp/vm-artifacts` matches its inputs (`toolchains/vm/pins.sh`,
+the patches, the configs, the script itself, the compiler version, and for the QEMU steps
+the Emscripten the emsdk unit's pins name).
 
 | step | script | time here |
 |---|---|---|
-| the pack's emsdk (if `build.sh` has not installed it), zlib/libffi/glib/pixman, qemu-system ×3 | `vm/build-qemu.sh` | 210 s to relink the 3 targets (the dependencies and objects came from the research caches; a from-scratch build was not timed in this session) |
+| zlib/libffi/glib/pixman, qemu-system ×3, with the emsdk unit's Emscripten | `vm/build-qemu.sh` | 210 s to relink the 3 targets (the dependencies and objects came from the research caches; a from-scratch build was not timed in this session) |
 | Linux 6.12.114 per arch, with clang, + UAPI headers | `vm/build-kernel.sh <arch>` | about 30 s each with existing trees |
 | yk-init (nolibc), its unit tests (ASan+UBSan), clang-tidy | `vm/build-init.sh` | 4 s |
 | static strace 6.12 per arch (musl) | `vm/build-strace.sh` | 220–315 s for all three |
 | qemu-<arch> linux-user ×3 | `vm/build-qemu-user.sh` | 231 s configure + build; 24–41 s relink |
-| layout, vm.js (esbuild), .gz/.br | `vm/stage.sh` | 112 s, mostly brotli |
+| layout, .gz/.br (vm.js is the pack's glue, `../glue.sh`) | `vm/stage.sh` | 112 s, mostly brotli |
 
 - `USER_MODE=0` skips user mode, and `stage.sh` then ships no `user/`.
 - `KEEP_TREES=0` deletes the kernel and QEMU build trees, about 0.6 GB.
 - The caches take 2.6 GB under `$PACK_CACHE/qemu-wasm`.
-- The musl sysroots for strace and the fixtures are made by `../build-targets.sh`
-  (which `build.sh` runs before this) in `$PACK_CACHE/cpp/targets/sysroot/<arch>`, from
-  the same SHA-256-pinned Alpine packages as the targets' `lib.tar` (musl 1.2.5-r24,
-  compiler-rt 21.1.2); see `vm/cc.sh`. Every file of the sysroot is in strace's stamp.
+- The musl sysroots for strace and the fixtures are made by `vm/build-sysroot.sh`
+  (the first step) in `$PACK_CACHE/cpp/targets/sysroot/<arch>`, from the musl unit's
+  copies of the same SHA-256-pinned Alpine packages as the targets' `lib.tar` (musl
+  1.2.5-r24, compiler-rt 21.1.2); see `vm/cc.sh`. Every file of the sysroot is in strace's stamp.
   (Until review they came from a hand-copied `$PACK_CACHE/qemu-wasm/sysroots` that no
   script made; strace was rebuilt against the pinned sysroot.)
 - These outputs were built from the research caches and are byte-identical to the
@@ -349,8 +351,9 @@ The pack ships these GPL and other licensed binaries:
 
 The corresponding source is:
 
-- the upstream releases and commits pinned by SHA-256 or commit in `vm/pins.sh`:
-  ktock/qemu-wasm, linux-6.12.114, strace-6.12, and the qboot and OpenSBI submodule
-  commits of that QEMU, and in `pins.sh` the Emscripten that compiles QEMU and the
-  musl whose headers the user-mode build takes;
+- the upstream releases and commits pinned by SHA-256 or commit in
+  `toolchains/vm/pins.sh`: ktock/qemu-wasm, linux-6.12.114, strace-6.12, and the qboot
+  and OpenSBI submodule commits of that QEMU, and in `toolchains/emsdk/pins.sh` and
+  `toolchains/musl/pins.sh` the Emscripten that compiles QEMU and the musl whose
+  headers the user-mode build takes;
 - plus `vm/patches/`, `vm/kconfig/`, `vm/devices/` and `vm/guest/`.

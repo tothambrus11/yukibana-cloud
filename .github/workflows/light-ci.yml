@@ -116,6 +116,8 @@ jobs:
             light/packs/cpp/test-emit.mjs
             light/packs/cpp/test-cpio.mjs
             light/packs/cpp/test-build-lib.mjs
+            light/packs/cpp/test-units.mjs
+            light/packs/cpp/glue.paths
             light/packs/cpp/*.sh
             light/packs/cpp/build-test-libs-linux.mjs
             light/packs/cpp/patches
@@ -271,9 +273,9 @@ jobs:
       # cpio test compares with GNU cpio, which the runner image has. The
       # build-lib test decides, with fakes, when the build reuses a cached
       # tree or step (git, tar, xz and patch, which the image has too).
-      - name: C++ pack (compiler output views, initramfs archives, reuse of build trees)
+      - name: C++ pack (compiler output views, initramfs archives, reuse of build trees, its units' keys)
         working-directory: light/packs/cpp
-        run: node --test test-emit.mjs test-cpio.mjs test-build-lib.mjs
+        run: node --test test-emit.mjs test-cpio.mjs test-build-lib.mjs test-units.mjs
 
       - name: Haskell pack (outline, symbol search, inlay hints)
         working-directory: light/packs/haskell

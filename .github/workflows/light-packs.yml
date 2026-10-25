@@ -674,10 +674,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The system packages a pack needs are in its deps.apt.
-          - pack: cpp
-            timeout: 355
-            free-disk: true
+          # The system packages a pack needs are in its deps.apt. cpp is
+          # split: its units are built by the wave jobs and it is assembled
+          # by the assemble job.
           - pack: haskell
             timeout: 60
           - pack: java

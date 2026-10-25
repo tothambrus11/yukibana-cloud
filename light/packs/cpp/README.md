@@ -2,7 +2,7 @@
 
 **Server:** clangd from LLVM **21.1.8** (upstream:
 <https://github.com/llvm/llvm-project>, release tarball pinned by SHA-256),
-compiled to WebAssembly by `build.sh` with Emscripten **6.0.13**. It is the
+compiled to WebAssembly by the compilers unit (`build-clangd.sh`; "Build") with Emscripten **6.0.13**. It is the
 real clangd, built from source here; nothing is a third-party prebuilt.
 
 **Headers:** musl **1.2.5** (`/usr/include`), libc++ from the same LLVM
@@ -149,8 +149,9 @@ Upstream signals before unlocking since 5.0.5 (emscripten-core/emscripten#26582)
 The pack was on 4.0.22 and patched the cached emsdk's `proxying.c` in place,
 deleting the prebuilt `libc-mt*.a` so that emcc rebuilt them, while the VM
 used a second Emscripten, 6.0.13. Now the whole pack, clangd and the VM
-alike, is built with one Emscripten, 6.0.13, installed by `emsdk_install`
-(`build-lib.sh`) and never modified (plan D52), so a fix Emscripten lacks
+alike, is built with one Emscripten, 6.0.13, the emsdk unit's (installed by
+`emsdk_install` in `toolchains/emsdk/emsdk.sh`, used read-only by every
+other unit) and never modified (plan D52), so a fix Emscripten lacks
 is a newer pin, not a patch to a cached tool. Before the patch was dropped,
 its race test (the caller taking the lock 10 ms late, the finishing thread
 waiting 50 ms between its two last steps) passed against 6.0.13's own
@@ -245,35 +246,80 @@ Does not, or differently from native clangd:
 
 ## Build
 
-`./build.sh` (idempotent; caches in `~/.cache/yukibana-packs/cpp`, about
-4 GB while building). It fetches LLVM and musl (release tarballs pinned by
-SHA-256) and emsdk (the `6.0.13` tag, checked against its commit; the
-toolchain and node archives `emsdk install` uses are fetched first and
-checked against pinned SHA-256s, since emsdk checks none; `emsdk_install`
-in `build-lib.sh`, which `vm/build-qemu.sh` calls too), applies the
-patch (the source tree records the patch's SHA-256 and is re-extracted
-when the patch changes), builds the native
-table generators, then clangd for wasm (MinSizeRel, X86 target only, no
-tests, tools, static analyzer or tidy checks, linked with `-Oz` so wasm-opt
-runs at `-Oz`; cmake is re-run every time, so a changed flag is not
-shadowed by an old cache), installs the libc++ headers configured for musl, packs the
-sysroot, minifies `server.js` with esbuild and writes `.gz`/`.br` siblings.
+`./build.sh` builds the pack into `app/static/packs/cpp` on this machine.
+It is two halves, both `light/scripts/pack-toolchain.sh`'s: the
+toolchain, five units each kept in the toolchain store under a key of
+exactly its own inputs, and the glue, assembled over them in seconds. A
+unit is taken from the local cache, fetched from the store, or built here,
+each after the units it needs; the arguments of `build.sh` go to
+`pack-toolchain.sh ensure cpp` (`--no-fetch` builds every unit here).
+Uncommitted changes are built for this machine only (`--build-dirty`).
+CI builds each unit in its own job (`light-toolchain-unit.yml`) and
+assembles the pack once (`light-packs.yml`), so no job builds more than one
+unit and a glue edit builds none.
 
-Every pinned input of every build script (versions, commits, SHA-256s, the
-Alpine packages per arch) is in **`pins.sh`**, and what the scripts share
-(`step`, `fetch`, `die`, `tarball`, the Alpine fetcher, and the cmake
-arguments `cc.wasm` and `cc-cross.wasm` have in common) is in
-**`build-lib.sh`**; each script sources both. A version bump is one line in
-`pins.sh`. The VM's own pins (QEMU, its dependencies, Linux, strace, the
-firmware) are in `vm/pins.sh`, and no input is pinned in both: the VM takes
-Emscripten and musl from `pins.sh`. `PRINT_STAMP=1
-./build-runner.sh` (or `./build-cross.sh`) prints a compiler's stamp without
-building, so a change to the scripts can be checked to leave it alone.
+### Units
+
+| Unit | Needs | Builds | Inputs besides its directory (`paths`) |
+| --- | --- | --- | --- |
+| `cpp/emsdk` | | the pack's one Emscripten, **6.0.13** (`build-only/emsdk`), and its pins: nothing served | `build-lib.sh` |
+| `cpp/musl` | | musl **1.2.5**'s tarball and Alpine v3.23's packages per arch, checked (`build-only/`): nothing served | `build-lib.sh` |
+| `cpp/compilers` | emsdk | `clangd.*`, `cc.*`, `cc-cross.*`, `demangle.*`, `LICENSE-llvm.txt`; and for libs, the checked LLVM tarball and its pins (`build-only/`) | `build-clangd.sh`, `build-runner.sh`, `build-cross.sh`, `build-demangle.sh`, `llvm-lib.sh`, the three LLVM patches, `src/demangle/` |
+| `cpp/libs` | compilers, emsdk, musl | `sysroot.tar.gz`, `wasi-sysroot.tar.gz`, `{gtest,catch2,doctest,rapidcheck}.tar`, `{asan,ubsan}.tar`, `targets/<arch>/*.tar`, their licences | `build-cxx-runtime.sh`, `build-test-frameworks*.sh`, `build-test-libs-linux.mjs`, `build-sysroot.sh`, `build-targets.sh`, `build-sanitizers.sh`, `pack-runner.sh`, `libs-lib.sh`, `compiler-rt-wasi.patch`, `src/sanitizer-rt/`, `src/uncaught.cpp`, `src/toolchain.js`, `src/targets.js(on)` |
+| `cpp/vm` | emsdk, musl | `vm/<arch>/`, `user/<arch>/`, their licences | `build-vm.sh`, `vm/build-*.sh`, `vm/cc.sh`, `vm/stage.sh`, `vm/{devices,guest,kconfig,patches}/`, `src/vm/cpio.js` |
+
+Every unit also takes `build-lib.sh` (what all the scripts share) and,
+when it compresses, `compress.mjs`. A unit's `needs` line carries the key
+of the unit it needs, so a change to the compilers re-keys libs and
+nothing else, a framework pin re-keys libs alone, and the VM, which needs
+only the Emscripten and musl, is never rebuilt by a compiler or library
+change. Each unit gets the units it needs read-only at `$DEP_<UNIT>`
+(`build-lib.sh`'s `need_unit`, `emsdk_use`, `apk_of`) and sees no other.
+A toolchain's `build-only/` reaches those units and is never linked into
+the pack: the Emscripten install, the source tarballs and the pins a
+dependent must agree with are inputs, not files a page downloads.
+
+The glue (`glue.sh`, and the files `glue.paths` names: `src/`, the tests,
+the documents) bundles `server.js`, `runner.js`, `runner-linux.js`,
+`explorer.js`, `sanitizer.js` and `vm.js` with the sizes of the files they
+fetch, and compresses them. It compiles nothing, so an edit to a worker
+rebuilds no toolchain.
+
+Emscripten and musl are units of their own, not part of the compilers: the
+VM and the libraries compile with the same Emscripten (plan D52) and the
+libraries and the VM link the same musl, and a VM that needed the compilers
+would be rebuilt by every compiler change.
+
+Every pin lives in the `pins.sh` of the unit that builds with it
+(`toolchains/<unit>/pins.sh`): LLVM in the compilers', Emscripten in
+emsdk's, musl and the Alpine packages in musl's, wasi-sdk and the test
+frameworks in libs', QEMU, its dependencies, Linux, strace and the firmware
+in vm's. No input is pinned twice: a unit that builds with another's
+input (libs with LLVM, the VM with musl) reads that unit's pins as it
+exports them (`$DEP_<UNIT>/build-only/pins.sh`). Each unit writes the
+versions it was built from to `versions-<unit>.json`. A unit's system
+packages are its `deps.apt`. `PRINT_STAMP=1 ./build-runner.sh` (or
+`./build-cross.sh`) prints a compiler's stamp without building, so a change
+to the scripts can be checked to leave it alone.
+
+Within a unit, the compilers' build fetches LLVM (the release tarball,
+pinned by SHA-256), applies the patch (the source tree records the patch's
+SHA-256 and is re-extracted when the patch changes), builds the native
+table generators, then clangd for wasm (MinSizeRel, X86 target only, no
+tests, tools, static analyzer or tidy checks, linked with `-Oz` so
+wasm-opt runs at `-Oz`; cmake is re-run every time, so a changed flag is
+not shadowed by an old cache). The emsdk unit fetches emsdk (the `6.0.13`
+tag, checked against its commit; the toolchain and node archives `emsdk
+install` uses are fetched first and checked against pinned SHA-256s, since
+emsdk checks none: `toolchains/emsdk/emsdk.sh`). The libs unit extracts the
+runtimes and headers from the compilers unit's LLVM tarball, installs the
+libc++ headers configured for musl and packs the sysroot.
 
 ### Reused trees, and what each step is keyed on
 
 The cache keeps every build tree between runs, and CI restores it from an
-earlier run, so that ninja recompiles only what changed. Ninja sees a
+earlier run (one Actions cache per unit), so that ninja recompiles only
+what changed. Ninja sees a
 changed source, header, flag or `CMakeLists.txt`. It does not see another
 compiler under the same path, a source tree extracted again with its
 release timestamps, or a configure step that runs only once. Each reused
@@ -288,20 +334,22 @@ Every step that is skipped instead has a stamp of its inputs.
 
 | Tree or step | Kept while these are unchanged |
 | --- | --- |
-| `llvm-project-*.src` | the tarball's pin and `clangd-browser.patch` (`.patched`) |
+| `llvm-project-*.src` (compilers) | the tarball's pin and `clangd-browser.patch` (`.patched`) |
+| `llvm-runtimes-*.src` (libs) | the tarball's pin |
 | `…src/lld` | the tarball's pin and `wasm-ld-only.patch` (`lld/.patched`; it was an empty marker, so a changed patch never reached `cc.wasm`) |
 | `lld-elf-*` | the tarball's pin and `elf-ld-only.patch` |
 | `musl-*` | the tarball's pin |
 | `build-native` | the LLVM tarball, the host's clang, its cmake arguments (configured once); ninja runs every time |
-| `emsdk` | the emsdk commit, and a finished install (`emcc` and `.emscripten`); never modified after it is installed |
+| `emsdk` (the emsdk unit's) | the emsdk commit, and a finished install (`emcc` and `.emscripten`); never modified after it is installed |
+| `em-cache` | the Emscripten (`emsdk_made_by`): the system libraries emcc compiles on first use, outside the read-only install |
 | `build-wasm`, `build-wasm-cc`, `build-wasm-cross` | the LLVM tarball and the Emscripten (`emsdk_made_by`: tag, commit, release and its SHA-256), plus the patches of what each compiles (cmake runs every time, so flags reach it) |
 | `cxx-headers` | the LLVM tarball and its cmake arguments |
 | `wasi/wasi-sdk-*` | the tarball's pin |
 | `artifacts/{cc,cc-cross}/STAMP` | LLVM version and tarball pin, `emcc --version`, the cmake arguments, the lld patch |
-| `eh/.built`, `testfw/.built` | the script, `pins.sh`, `build-lib.sh` (and `src/uncaught.cpp`) |
-| `sanitizers/.built` | `sanitizer_inputs`: the script, `pins.sh`, `build-lib.sh`, the patch, every file of `src/sanitizer-rt/`, `src/targets.json` |
-| `testfw-linux/.built` | `linux_testfw_inputs`: the scripts, `pins.sh`, `build-lib.sh`, `toolchain.js`, `targets.js(on)`, `cc-cross.wasm` and `cc-cross.js`, `sysroot.tar.gz`, the three `include.tar` (it hashed `cc-cross.wasm` and the headers only) |
-| `node_modules` | `package-lock.json` (`npm_deps`) |
+| `eh/.built`, `testfw/.built` | the script, libs' `pins.sh` (and the compilers', whose LLVM the runtime is), `build-lib.sh`, `libs-lib.sh` (and `src/uncaught.cpp`) |
+| `sanitizers/.built` | `sanitizer_inputs`: the script, the libs, emsdk and musl units' pins, `build-lib.sh`, `libs-lib.sh`, the patch, every file of `src/sanitizer-rt/`, `src/targets.json` |
+| `testfw-linux/.built` | `linux_testfw_inputs`: the scripts, libs' `pins.sh`, `build-lib.sh`, `libs-lib.sh`, `toolchain.js`, `targets.js(on)`, `cc-cross.wasm` and `cc-cross.js`, `sysroot.tar.gz`, the three `include.tar` |
+| `node_modules` | `package-lock.json` (`npm_deps`, `glue-lib.sh`) |
 | `qemu-wasm/venv` | the python and the meson and setuptools pins |
 | `qemu-wasm/work/{target,src}` | the dependencies' pins, Emscripten, and the text of `build_deps` |
 | `qemu-wasm/work/build-run` | Emscripten and the dependencies' record; the QEMU tree is checked by commit and patch-id |
@@ -310,72 +358,61 @@ Every step that is skipped instead has a stamp of its inputs.
 | `strace-<arch>.stamp` | also the compiler `cc.sh` runs (`CLANG`), not always `clang-18`'s version |
 
 The sanitizers and the Linux test libraries keep their archives beside
-their stamp and copy them to `app/static/packs/cpp` when it matches, so a
-build into an empty directory reuses them. `pack-runner.sh` no longer
-copies a compiler with its artifact's time (`cp -p`): a compiler built
-before the `.br` in `app/static/packs/cpp` looked older than it, and the
-compressed previous compiler was served beside the new one.
+their stamp and copy them into the libs unit's toolchain when it matches,
+so a build into an empty toolchain reuses them.
 
-On the first run after this change, every tree is built once again from
-empty, because none of them records what made it yet.
+### What each unit reads and writes
 
-### What each step reads and writes (for the toolchain units)
+`OUT` is the unit's toolchain directory; `C` is `$PACK_CACHE/cpp`; `Q` is
+`$PACK_CACHE/qemu-wasm`; `E`, `M` and `L` are the emsdk, musl and
+compilers units at `$DEP_EMSDK`, `$DEP_MUSL` and `$DEP_COMPILERS`. Nothing
+reads another unit's files but through these.
 
-`OUT` is `app/static/packs/cpp`; `C` is `$PACK_CACHE/cpp`; `Q` is
-`$PACK_CACHE/qemu-wasm`. A unit boundary (plan T4) cannot cut an edge
-below without a declared need (`needs`, `$DEP_<UNIT>`).
-
-| Step | Reads from `OUT` | Reads from the cache | Writes |
-| --- | --- | --- | --- |
-| `build.sh` (clangd, sysroot) | its own `clangd.wasm`, `sysroot.tar.gz` (sizes) | LLVM and musl tarballs; `C/emsdk`; `C/build-native`; `C/eh/include/gtest`; `C/testfw/include` | `C/llvm-project-*.src`, `C/musl-*`, `C/emsdk`, `C/build-native`, `C/build-wasm`, `C/cxx-headers`, `C/sysroot`; `OUT`: `clangd.*`, `server.js`, `sysroot.tar.gz`, `LICENSE-{llvm,musl}.txt` |
-| `build-cxx-runtime.sh` | | `C/llvm-project-*.src` (`runtimes`, `libcxx`, `libcxxabi`, `libc`; extracts `libunwind`); `C/wasi` | `C/wasi/wasi-sdk-*`, `C/googletest-*.tar.gz`, `C/eh` |
-| `build-test-frameworks.sh` | | `C/wasi/wasi-sdk-*` (runs the step above) | `C/dl`, `C/testfw` |
-| `build-cross.sh` | | `C/llvm-project-*.src` (and its `lld` must exist), `C/build-native/bin`, `C/emsdk` | `C/lld-elf-*`, `C/build-wasm-cross`, `C/artifacts/cc-cross` |
-| `build-targets.sh` | `sysroot.tar.gz` (build.sh's) | `C/cxx-headers`; `C/emsdk/upstream/bin` (`llvm-strip`, `llvm-ar`); Alpine packages | `C/targets/{dl,sysroot}`; `OUT/targets/<arch>/{include,lib}.tar` |
-| `build-demangle.sh` | | `C/llvm-project-*.src` (`Demangle`), `C/emsdk` | `C/demangle`; `OUT/demangle.*` |
-| `build-runner.sh` | | `C/llvm-project-*.src`, `C/build-native/bin`, `C/emsdk` | `…src/lld`, `C/build-wasm-cc`, `C/artifacts/cc`; then `pack-runner.sh` |
-| `pack-runner.sh` | `cc-cross.wasm`, `targets/x86_64/include.tar` (whether to run the next step); the size of every file it bundles a size of (`sysroot.tar.gz`, `demangle.wasm`, `targets/*/*.tar`, …) | `C/wasi` tarballs, `C/cxx-headers`, `C/eh`, `C/testfw`, `C/artifacts/{cc,cc-cross}`, `C/emsdk/upstream/bin/llvm-strip` | `OUT`: `wasi-sysroot.tar.gz`, `{gtest,catch2,doctest,rapidcheck}.tar`, `cc.*`, `cc-cross.*`, `runner.js`, `runner-linux.js`, `explorer.js`, `sanitizer.js`, licences |
-| `build-test-frameworks-linux.sh` (and `build-test-libs-linux.mjs`, whose `OUT` is still fixed: plan K6) | `cc-cross.{wasm,js}`, `sysroot.tar.gz`, `targets/<arch>/include.tar` | `C/googletest-*.tar.gz`, `C/wasi/wasi-sdk-*/bin/llvm-ar` | `C/testfw-linux`; `OUT/targets/<arch>/{gtest,rapidcheck}.tar` |
-| `build-sanitizers.sh` | | `C/wasi/wasi-sdk-*`; `C/emsdk/upstream/emscripten/system/lib/compiler-rt` (sources) and `upstream/bin`; `C/targets/dl` (Alpine) | `C/sanitizers`; `OUT/{asan,ubsan}.tar`, `OUT/targets/<arch>/{asan,ubsan}.tar` |
-| `build-vm.sh` and `vm/*` | | `C/emsdk` (the pack's one Emscripten, which `vm/build-qemu.sh` installs when `build.sh` has not); `Q` (venv, dependencies, QEMU and Linux trees); `C/targets/sysroot/<arch>` (`cc.sh`, for strace); `C/musl-*/include` (user mode's compat headers) | `Q`, `C/vm-artifacts`; `OUT/vm`, `OUT/user`, `OUT/vm.js`, licences |
-
-So the edges between the parts are these. The Linux test libraries are
-compiled by `cc-cross` (wasm and glue) against `sysroot.tar.gz` and the
-targets' `include.tar`. The targets read `sysroot.tar.gz` and
-`cxx-headers` (to check `__config_site`), and use emsdk's binutils. The
-sanitizers compile emsdk's compiler-rt sources with wasi-sdk's clang.
-`clangd`, `cc` and `cc-cross` share the LLVM source, `build-native` and
-the emsdk. `cc` and the runtimes share wasi-sdk (`eh`, `testfw`,
-sanitizers, `llvm-ar`). The VM reads nothing the compilers make: only
-`targets/sysroot` (Alpine's musl and compiler-rt, pinned) and musl's
-headers. `pack-runner.sh`'s bundling of `runner.js` with every file's
-size is glue: it reads every other step's output.
+| Step (unit) | Reads | Writes |
+| --- | --- | --- |
+| `toolchains/emsdk/toolchain.sh` | emsdk and its archives (pinned) | `C/emsdk`; `OUT/build-only/{emsdk,pins.sh}` |
+| `toolchains/musl/toolchain.sh` | musl's tarball and Alpine's packages (pinned; `ALPINE_MIRROR` first) | `C/musl-*.tar.gz`, `C/targets/dl`; `OUT/build-only/{musl-*.tar.gz,apk/<arch>/*.apk,pins.sh}` |
+| `build-clangd.sh` (compilers) | the LLVM tarball; `E` | `C/llvm-project-*.src`, `C/build-native`, `C/build-wasm`, `C/em-cache`; `OUT/clangd.*`, `LICENSE-llvm.txt` |
+| `build-cross.sh`, `build-runner.sh` (compilers) | `C/llvm-project-*.src`, `C/build-native/bin`; `E` | `…src/lld`, `C/lld-elf-*`, `C/build-wasm-{cc,cross}`, `C/artifacts/{cc,cc-cross}`; the unit copies `OUT/cc.*`, `OUT/cc-cross.*` from the artifacts |
+| `build-demangle.sh` (compilers) | `C/llvm-project-*.src` (`Demangle`); `E` | `C/demangle`; `OUT/demangle.*` |
+| `toolchains/libs/toolchain.sh` | `L/build-only` (the LLVM tarball, its pins) | `C/llvm-runtimes-*.src` (`SRC` for the steps below) |
+| `build-cxx-runtime.sh`, `build-test-frameworks.sh` (libs) | `SRC`; `C/wasi` | `C/wasi/wasi-sdk-*`, `C/googletest-*.tar.gz`, `C/eh`, `C/dl`, `C/testfw` |
+| `build-sysroot.sh` (libs) | `SRC`, `C/eh`, `C/testfw`; `M`'s tarball | `C/musl-*`, `C/cxx-headers`, `C/sysroot`; `OUT/sysroot.tar.gz`, `LICENSE-musl.txt` |
+| `build-targets.sh` (libs) | `OUT/sysroot.tar.gz`, `C/cxx-headers`; `M`'s packages; `E`'s `llvm-strip`, `llvm-ar` | `OUT/targets/<arch>/{include,lib}.tar` |
+| `pack-runner.sh` (libs) | `C/wasi` tarballs, `C/cxx-headers`, `C/eh`, `C/testfw`; `E`'s `llvm-strip` | `OUT/wasi-sysroot.tar.gz`, `OUT/{gtest,catch2,doctest,rapidcheck}.tar`, licences; runs the next two |
+| `build-test-frameworks-linux.sh`, `build-test-libs-linux.mjs` (libs) | `L/cc-cross.{wasm,js}`, `OUT/sysroot.tar.gz`, `OUT/targets/<arch>/include.tar` (through `C/testfw-linux-view`, the driver's `OUT`); `C/googletest-*.tar.gz`, `C/wasi/wasi-sdk-*/bin/llvm-ar` | `C/testfw-linux`; `OUT/targets/<arch>/{gtest,rapidcheck}.tar` |
+| `build-sanitizers.sh` (libs) | `C/wasi/wasi-sdk-*`; `E`'s compiler-rt sources and `upstream/bin`; `M`'s packages | `C/sanitizers`; `OUT/{asan,ubsan}.tar`, `OUT/targets/<arch>/{asan,ubsan}.tar` |
+| `build-vm.sh` and `vm/*` (vm) | `E`; `M`'s packages (`vm/build-sysroot.sh`, for `cc.sh`) and tarball (user mode's compat headers); `Q` | `C/targets/sysroot/<arch>`, `C/em-cache`, `Q`, `C/vm-artifacts`; `OUT/vm`, `OUT/user`, licences |
+| `glue.sh` (assembly) | the assembled pack: the size of every file a worker fetches | `server.js`, `runner.js`, `runner-linux.js`, `explorer.js`, `sanitizer.js`, `vm.js` and their `.gz`/`.br` |
 
 ### Settings a build reads from its environment
 
-As `toolchains/<unit>/env` would declare them (`NAME source|variant  #
-why`), or why not:
+Each unit's `toolchains/<unit>/env` declares what reaches its build
+(`NAME source|variant  # why`); nothing else does, under `env -i`:
 
 ```
-ALPINE_MIRROR          source   # every .apk is checked against its pin in pins.sh
-USER_MODE              variant  # USER_MODE=0 ships no user/ (build-vm.sh)
-USER_INITIAL_MEMORY_MB variant  # the user-mode QEMU's link (now in user.stamp)
-MUSL_INCLUDE           variant  # the user-mode build's musl headers; T4: take them from the unit's own tarball and drop it
-CLANG                  variant  # cc.sh's compiler for strace (now in its stamp)
-CC_HOST                variant  # build-init.sh's compiler for yk-init
+musl: ALPINE_MIRROR          source   # every .apk is checked against its pin
+vm:   USER_MODE              variant  # USER_MODE=0 ships no user/ (build-vm.sh)
+vm:   USER_INITIAL_MEMORY_MB variant  # the user-mode QEMU's link (in user.stamp)
+vm:   CLANG                  variant  # cc.sh's compiler for strace (in its stamp)
+vm:   CC_HOST                variant  # build-init.sh's compiler for yk-init
+vm:   KEEP_TREES             source   # 0 deletes the kernel and QEMU trees after a build
 ```
 
-Not declared: `PACK_CACHE`, `JOBS` and `OUT` are fixed variables of every
-build; `NICE` is set by each script itself. `CROSS_BUILD_DIR` only picks
-a build tree, which now records what made it, so it cannot change an
-output; `KEEP_TREES=0` deletes trees after a build; `PRINT_STAMP=1`
-builds nothing; `QC`, `ART`, `SYSROOTS` and `ARCHES` are set by
-`build-vm.sh` or are for a person running one `vm/` script (`SYSROOTS`'s
-files are in strace's stamp); `CLANG_TIDY` only runs a check. A unit
-would get none of them under `env -i`. The host's tools (`clang`,
-`clang-18`, `cmake`, `ninja`, `python3`, `node`) come from `PATH`
-(`deps.apt`); a host compiler's version is in the record of the tree it
-compiles (`build-native`, the kernel, strace).
+`MUSL_INCLUDE`, which named any directory for user mode's musl headers, is
+gone: they are the musl unit's. Not declared: `PACK_CACHE`, `JOBS` and
+`OUT` are fixed variables of every build; `NICE` is set by each script
+itself. `CROSS_BUILD_DIR` only picks a build tree, which records what made
+it; `PRINT_STAMP=1` builds nothing; `QC`, `ART`, `SYSROOTS` and `ARCHES`
+are set by `build-vm.sh` or are for a person running one `vm/` script;
+`CLANG_TIDY` only runs a check, with its default. The host's tools
+(`clang`, `clang-18`, `cmake`, `ninja`, `python3`, `node`) come from `PATH`
+(each unit's `deps.apt`); a host compiler's version is in the record of the
+tree it compiles (`build-native`, the kernel, strace).
+
+Cold time per unit is measured on T4's own pull-request run (each unit job
+writes its time to the run's summary); the figures below are the
+single-machine build before the split.
 
 Time on this machine (4 cores shared with other builds, `-j3`, `nice`):
 native table generators about 12 minutes, clangd for wasm (2267 steps)
@@ -864,19 +901,19 @@ SharedArrayBuffer (a page that is not isolated), stdin is at end of file.
 * An endless program is stopped by the app terminating the worker. The
   runner does not depend on finishing (tested).
 
-**Build**: `build.sh` calls `build-runner.sh`, which can also run alone
-after `build.sh`'s clangd steps, because it reuses their LLVM source,
-native table generators and emsdk. It extracts `lld/` from the cached
+**Build**: the compilers unit runs `build-runner.sh` after
+`build-clangd.sh`, whose LLVM source, native table generators and
+Emscripten it reuses. It extracts `lld/` from the cached
 tarball and applies the patch. It configures `build-wasm-cc` (MinSizeRel,
 `-Oz`, no tests/docs/static analyzer/plugins) and builds `llvm-driver`
-(2526 steps). It then calls `pack-runner.sh`: the WASI sysroot (download,
-checks, strip, the libraries with exceptions laid over wasi-sdk's, pack),
-`gtest.tar`, `catch2.tar`, `doctest.tar`, `runner.js` (esbuild), and
-`.gz`/`.br` siblings.
-`build-cxx-runtime.sh` (called by `build.sh` before the sysroot step, and
+(2526 steps). The libs unit's `pack-runner.sh` makes the WASI sysroot
+(download, checks, strip, the libraries with exceptions laid over
+wasi-sdk's, pack), `gtest.tar`, `catch2.tar`, `doctest.tar`, and their
+`.gz`/`.br` siblings; `runner.js` is the glue's (esbuild).
+`build-cxx-runtime.sh` (run by the libs unit before the sysroot step, and
 again by `pack-runner.sh`, a no-op once cached in `$PACK_CACHE/cpp/eh`)
-fetches wasi-sdk 30's toolchain and GoogleTest, extracts `libunwind/` from
-the LLVM tarball, and builds libc++, libc++abi, `Unwind-wasm.c`,
+fetches wasi-sdk 30's toolchain and GoogleTest, takes `libunwind/` from
+the LLVM tree the libs unit extracted, and builds libc++, libc++abi, `Unwind-wasm.c`,
 `src/uncaught.cpp` and GoogleTest: about 1.5 minutes at `-j3` on this
 machine, plus the 119 MB download the first time. `build-test-frameworks.sh`
 (called the same way, cached in `$PACK_CACHE/cpp/testfw`) builds Catch2,
@@ -1023,29 +1060,30 @@ first time `compile_flags.txt` names the target; `server.js` holds clangd's
 messages until it is unpacked, so the first parse already sees the target's
 headers.
 
-**Build.** `build.sh` runs `build-cross.sh`, `build-targets.sh` and
-`build-demangle.sh` before `build-runner.sh` (whose `pack-runner.sh` copies
-both compilers and bundles the three workers). `pack-runner.sh` also runs
-`build-test-frameworks-linux.sh`, which compiles GoogleTest 1.18.0 and
-RapidCheck (the same pinned sources as the WebAssembly libraries, from
-`pins.sh`) for
+**Build.** The compilers unit runs `build-cross.sh` and
+`build-demangle.sh` beside `build-runner.sh`, and copies both compilers
+from their stamped artifacts; the libs unit runs `build-targets.sh`, and
+its `pack-runner.sh` runs `build-test-frameworks-linux.sh`, which compiles
+GoogleTest 1.18.0 and RapidCheck (the same pinned sources as the
+WebAssembly libraries, from the libs unit's `pins.sh`) for
 each Linux target with **`cc-cross.wasm` itself**, in Node
 (`build-test-libs-linux.mjs`, through `toolchain.js` as the runner drives
 it, with Run's flags), archives them with wasi-sdk's `llvm-ar`, and writes
 `targets/<arch>/gtest.tar` and `rapidcheck.tar` with the libraries in
 `/usr/lib/<multiarch>`, where clang's Linux driver finds `-lgtest` and
 `-lrapidcheck`. 108 compiles, one after another: about 3.5 minutes,
-skipped while its stamp matches: the scripts, `pins.sh`, `build-lib.sh`,
-`toolchain.js` and `targets.js(on)`, the compiler (`cc-cross.wasm` and
-`cc-cross.js`), `sysroot.tar.gz` and the three `include.tar`
-(`linux_testfw_inputs` in `build-lib.sh`). For a Test, `runner-linux.js` links with
+skipped while its stamp matches: the scripts, the libs unit's `pins.sh`,
+`build-lib.sh`, `libs-lib.sh`, `toolchain.js` and `targets.js(on)`, the
+compiler (`cc-cross.wasm` and `cc-cross.js`, the compilers unit's),
+`sysroot.tar.gz` and the three `include.tar` (`linux_testfw_inputs` in
+`libs-lib.sh`). For a Test, `runner-linux.js` links with
 `-lgtest_main -lrapidcheck -lgtest` (as needed) after the objects, through
 the same `clang -###` and `ld.lld` (`linkLinux`'s `libs` and `archives`),
 and the guest gets `GTEST_COLOR=yes` in its environment. Both compilers are kept in
 `$CACHE/artifacts/{cc,cc-cross}` with a `STAMP`, the SHA-256 of the LLVM
 version and tarball pin, Emscripten's version, the cmake arguments and the patch
 (`PRINT_STAMP=1 ./build-runner.sh` prints `cc`'s); each LLVM step is skipped
-while its stamp matches, and `pack-runner.sh` copies compilers only from
+while its stamp matches, and the compilers unit copies compilers only from
 there, so building one never changes the other (`cc.wasm` is
 byte-identical to before targets existed). `build-cross.sh` can reuse any
 LLVM tree of the same LLVM and Emscripten (`CROSS_BUILD_DIR`; each tree
@@ -1054,7 +1092,7 @@ configurations is a **full rebuild**, not a relink: the default triple and
 the native target are in `llvm-config.h`, which 2,274 of the 2,531 objects
 include. Here it reused `build-wasm-cc` (with `JOBS=4`, `nice`, 4 cores
 shared with two other agents' builds): **51 minutes** (137 CPU-minutes),
-then 3 minutes of brotli in `pack-runner.sh`; a later `./build-runner.sh`
+then 3 minutes of brotli; a later `./build-runner.sh`
 for `cc` then rebuilds that tree too (about 100 minutes), so a machine that
 builds both often should give each a tree (`build-wasm-cross`, about
 450 MB). `build-targets.sh` takes about 70 s (downloads cached in
@@ -1299,7 +1337,7 @@ alone):
 
 A Linux report also fetches `demangle.wasm` and `demangle.js` (31 KB, see
 "Compiler output views") the first time. The runtimes are built by
-`build-sanitizers.sh` (a step of `pack-runner.sh`), which caches its
+`build-sanitizers.sh` (a step of the libs unit's `pack-runner.sh`), which caches its
 inputs and outputs in `~/.cache/yukibana-packs/cpp/sanitizers`.
 
 ### On WebAssembly (wasm32-wasip1)

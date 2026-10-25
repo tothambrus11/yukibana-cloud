@@ -14,7 +14,9 @@
 #
 # pack-runner.sh puts the first four into wasi-sysroot.tar.gz, in place of
 # wasi-sdk's libraries (built without exceptions), and the GoogleTest
-# libraries into gtest.tar; build.sh puts the headers into sysroot.tar.gz.
+# libraries into gtest.tar; build-sysroot.sh puts the headers into
+# sysroot.tar.gz. All three are the libs unit's (toolchains/libs/), which
+# runs this with the LLVM source tree it extracted at $SRC.
 #
 # Compiled with wasi-sdk 30's own clang (21.1.4, a native x86_64 build, pinned
 # by SHA-256): the in-browser clang (cc.wasm) is the only other compiler here
@@ -28,23 +30,26 @@
 # not the legacy one (try/catch/delegate), which browsers are phasing out.
 #
 # Idempotent: skipped when $CACHE/eh/.built holds the SHA-256 of this script,
-# pins.sh, build-lib.sh and src/uncaught.cpp. About 4 minutes at -j3.
+# the libs unit's pins, the compilers unit's (the LLVM the sources are
+# from), build-lib.sh and src/uncaught.cpp. About 4 minutes at -j3.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=toolchains/libs/pins.sh
+source "$HERE/toolchains/libs/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
-SRC="$CACHE/llvm-project-$LLVM_VERSION.src"
+: "${SRC:?SRC is the LLVM source tree the libs unit extracted (toolchains/libs/toolchain.sh)}"
+need_unit compilers
 EH="$CACHE/eh"
 mkdir -p "$CACHE/wasi"
 cd "$CACHE"
 
-stamp=$(cat "$HERE/build-cxx-runtime.sh" "$HERE/pins.sh" "$HERE/build-lib.sh" "$HERE/src/uncaught.cpp" | sha256sum | cut -d' ' -f1)
+stamp=$(cat "$HERE/build-cxx-runtime.sh" "$HERE/toolchains/libs/pins.sh" "$DEP_COMPILERS/build-only/pins.sh" \
+  "$HERE/build-lib.sh" "$HERE/src/uncaught.cpp" | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$EH/.built" 2>/dev/null)" = "$stamp" ]; then
   echo "C++ runtime with exceptions and GoogleTest: cached in $EH"
   exit 0
@@ -61,11 +66,10 @@ fetch "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-$WASI_
 keep_tree "$WSDK" "wasi-sdk $WASI_SDK_VERSION $WASI_SDK_SHA256"
 [ -x "$WSDK/bin/clang" ] || tar xzf "wasi/wasi-sdk-$WASI_SDK_VERSION.0-x86_64-linux.tar.gz" -C wasi
 
-step "sources: libunwind (LLVM $LLVM_VERSION), GoogleTest $GTEST_VERSION"
-# build.sh extracts libcxx, libcxxabi, libc and runtimes; libunwind comes
-# from the same tarball.
-[ -f "$SRC/libunwind/src/Unwind-wasm.c" ] || \
-  tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" "llvm-project-$LLVM_VERSION.src/libunwind"
+step "sources: GoogleTest $GTEST_VERSION"
+# LLVM's runtimes (libcxx, libcxxabi, libc, libunwind, runtimes) are in
+# $SRC, which the libs unit extracted from the compilers unit's tarball.
+[ -f "$SRC/libunwind/src/Unwind-wasm.c" ] || die "no libunwind in $SRC (toolchains/libs/toolchain.sh extracts it)"
 fetch "https://github.com/google/googletest/releases/download/v$GTEST_VERSION/googletest-$GTEST_VERSION.tar.gz" \
   "$GTEST_SHA256" "googletest-$GTEST_VERSION.tar.gz"
 rm -rf "googletest-$GTEST_VERSION" && tar xzf "googletest-$GTEST_VERSION.tar.gz"

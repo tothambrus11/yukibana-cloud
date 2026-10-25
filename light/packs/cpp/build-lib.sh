@@ -1,15 +1,31 @@
 # shellcheck shell=bash
-# What the C/C++ pack's build scripts share: each build-*.sh and
-# pack-runner.sh, and vm/'s scripts, source this file after their pins. It
-# defines functions and two constants (BUILD_LIB_DIR, YK_TREE_FORMAT) and
-# nothing else, so sourcing it runs no command, and a script keeps its own
-# HERE, CACHE, OUT and JOBS. The functions that use the cache read CACHE,
-# which every script sets to $PACK_CACHE/cpp before calling them.
+# What the C/C++ pack's build scripts share, whichever toolchain unit they
+# build: every unit's toolchain.sh, the build-*.sh scripts, pack-runner.sh
+# and vm/'s scripts source this file after their pins. It is named in the
+# `paths` of every unit (toolchains/<unit>/paths), so it is an input of
+# every unit's key: what only one unit uses lives with that unit instead
+# (llvm-lib.sh, libs-lib.sh, toolchains/emsdk/emsdk.sh,
+# toolchains/musl/alpine.sh), and an edit to it rebuilds only that unit and
+# the ones that need it; what only the glue uses is glue-lib.sh's, in no
+# unit's key. It defines functions and two constants
+# (BUILD_LIB_DIR, YK_TREE_FORMAT) and nothing else, so sourcing it runs no
+# command, and a script keeps its own HERE, CACHE, OUT and JOBS. The
+# functions that use the cache read CACHE, which every script sets to
+# $PACK_CACHE/cpp before calling them.
+#
+# A unit is built by light/scripts/pack-toolchain.sh in a stage holding
+# only its inputs, with OUT its toolchain's directory and each unit it
+# needs read-only at $DEP_<UNIT> (README, "Units"); need_unit, emsdk_use
+# and apk_of are how a script reaches those, and fail by name when it runs
+# outside such a build.
 #
 # Every function exits the script through die() when it cannot do what it
 # says (the scripts run under `set -euo pipefail`), naming the script, so a
 # step never goes on with a missing or unverified input.
 
+# The pack's directory, as the files beside this one (llvm-lib.sh,
+# libs-lib.sh) find the patches and sources they name.
+# shellcheck disable=SC2034 # read by the files sourced after this one
 BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # step <words...>: prints a step's heading, the way the build's log is read.
@@ -46,52 +62,6 @@ tarball() {
   [ $# -gt 0 ] || set -- usr
   reproducible_tar -C "$dir" -c "$@" > "$out.part"
   mv "$out.part" "$out"
-}
-
-# multiarch <arch>: prints the multiarch directory clang's Linux driver uses
-# for a Linux target's arch (x86_64-linux-gnu for x86_64), as src/targets.json
-# says; dies when no target has that arch.
-multiarch() {
-  node -e 'const t = require(process.argv[1]).find((t) => t.arch === process.argv[2]); if (!t) process.exit(1); console.log(t.multiarch)' \
-    "$BUILD_LIB_DIR/src/targets.json" "$1" || die "no target with arch $1 in src/targets.json"
-}
-
-# apk_pin <package> <arch>: prints "<package>-<version> <sha256>" for one of
-# Alpine's packages, from pins.sh's APK_<NAME>_VERSION and APK_<NAME>_<ARCH>
-# (that file says how NAME is spelled); dies when either is not pinned.
-apk_pin() {
-  local name=${1^^}
-  name=${name//+/X}
-  name=APK_${name//-/_}
-  local version_var=${name}_VERSION sha_var=${name}_${2^^}
-  [ -n "${!version_var:-}" ] || die "$1 has no $version_var in pins.sh"
-  [ -n "${!sha_var:-}" ] || die "$1 has no $sha_var in pins.sh"
-  echo "$1-${!version_var} ${!sha_var}"
-}
-
-# fetch_apk <arch> <package-version> <sha256>: prints the path of a verified
-# copy of that Alpine package, cached in $CACHE/targets/dl/<arch>/. It is
-# taken from $ALPINE_MIRROR/<arch>/ first when that is set (a directory or a
-# URL holding copies, for a revision Alpine no longer serves), then from
-# ALPINE_REPO; a copy whose SHA-256 differs is named on stderr and skipped.
-fetch_apk() {
-  local file="$CACHE/targets/dl/$1/$2.apk" from
-  mkdir -p "$CACHE/targets/dl/$1"
-  if [ ! -f "$file" ] || ! echo "$3  $file" | sha256sum -c --quiet - 2>/dev/null; then
-    for from in ${ALPINE_MIRROR:+"$ALPINE_MIRROR"} "$ALPINE_REPO"; do
-      rm -f "$file.part"
-      case $from in
-        http://*|https://*) curl -sSfL -o "$file.part" "$from/$1/$2.apk" || continue ;;
-        *) cp "$from/$1/$2.apk" "$file.part" 2>/dev/null || continue ;;
-      esac
-      echo "$3  $file.part" | sha256sum -c --quiet - 2>/dev/null && break
-      echo "$(basename "$0"): checksum mismatch for $from/$1/$2.apk" >&2
-      rm -f "$file.part"
-    done
-    [ -f "$file.part" ] || die "no copy of $1/$2.apk with sha256 $3 (ALPINE_MIRROR=${ALPINE_MIRROR:-unset}, $ALPINE_REPO)"
-    mv "$file.part" "$file"
-  fi
-  echo "$file"
 }
 
 # Reused trees. The cache keeps build trees between runs (and CI restores
@@ -175,122 +145,66 @@ follow_patch() {
 
 # emsdk_made_by: prints the line that names the pack's Emscripten as a
 # maker, for keep_tree and for a stamp: the emsdk tag, its commit, the
-# toolchain release and that archive's SHA-256. Every tree or step compiled
-# with emcc records it, because emcc is found by a path (CMake's cache, the
-# PATH emsdk_env.sh sets) that stays the same when the Emscripten behind it
-# changes. One line for every user (clangd's, the compilers' and QEMU's
-# trees), so that no user can name the Emscripten by a part the others leave
-# out.
+# toolchain release and that archive's SHA-256, from the emsdk unit's pins
+# (sourced by emsdk_use, or by the emsdk unit itself). Every tree or step
+# compiled with emcc records it, because emcc is found by a path (CMake's
+# cache, the PATH emsdk_env.sh sets) that stays the same when the
+# Emscripten behind it changes. One line for every user (clangd's, the
+# compilers' and QEMU's trees), so that no user can name the Emscripten by
+# a part the others leave out.
 emsdk_made_by() {
   printf 'emsdk %s %s %s %s' "$EMSDK_VERSION" "$EMSDK_COMMIT" "$EMSDK_RELEASE" "$EMSDK_BINARIES_SHA256"
 }
 
-# emsdk_install: makes $CACHE/emsdk the emsdk at EMSDK_COMMIT with
-# EMSDK_VERSION installed and activated, from the two archives pins.sh pins
-# (fetched and checked here, since emsdk checks nothing, and handed to it as
-# kept downloads), and returns at once when it already is. An emsdk at
-# another commit, or one whose install did not finish (no emcc, or no
-# .emscripten, which activating writes last), is deleted
-# and installed again. The install is never modified afterwards: what the
-# pack's builds compile with is exactly the release pinned, and a fix
-# Emscripten lacks is a newer pin, not a patch to the cached copy (plan D52;
-# the cpp pack once patched proxying.c there, and had to delete prebuilt
-# libraries and keep a sentinel to make the patch reach the build). Every
-# entry point that compiles with emcc calls it before compiling (build.sh,
-# before the sub-scripts it runs; vm/build-qemu.sh; vm/build-qemu-user.sh,
-# which may run while qemu-system is up to date), so any may run first, and none
-# compiles with an emsdk another checkout left under the same path. That is
-# what makes the stamps and trees true: emsdk_made_by prints the pins, not
-# what is installed.
-emsdk_install() {
-  local em="$CACHE/emsdk"
-  if [ -x "$em/upstream/emscripten/emcc" ] && [ -f "$em/.emscripten" ] &&
-    [ "$(git -C "$em" rev-parse HEAD 2>/dev/null)" = "$EMSDK_COMMIT" ]; then
-    return 0
+# need_unit <unit>: checks that the build was given the cpp unit <unit> it
+# needs (its toolchains/<this unit>/needs names cpp/<unit>), at
+# $DEP_<UNIT>, and sources that unit's exported pins
+# ($DEP_<UNIT>/build-only/pins.sh) when it has them, so what this build
+# reads of it (LLVM_VERSION, MUSL_VERSION, the Emscripten's pins) is the
+# dependency's own and pinned nowhere else. Dies naming the unit when it is
+# not there: the script was run outside pack-toolchain.sh, or by a unit
+# whose needs file does not name it.
+need_unit() {
+  local var="DEP_${1^^}" dir
+  var=${var//-/_}
+  dir=${!var:-}
+  [ -n "$dir" ] && [ -d "$dir" ] ||
+    die "needs the cpp/$1 unit at \$$var: build through light/scripts/pack-toolchain.sh ensure, from a unit whose needs file names cpp/$1"
+  if [ -f "$dir/build-only/pins.sh" ]; then
+    # shellcheck source=/dev/null
+    source "$dir/build-only/pins.sh"
   fi
-  rm -rf "$em"
-  git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$EMSDK_VERSION" https://github.com/emscripten-core/emsdk "$em"
-  [ "$(git -C "$em" rev-parse HEAD)" = "$EMSDK_COMMIT" ] || die "emsdk $EMSDK_VERSION is not commit $EMSDK_COMMIT"
-  mkdir -p "$em/downloads"
-  fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/linux/$EMSDK_RELEASE/wasm-binaries.tar.xz" \
-    "$EMSDK_BINARIES_SHA256" "$em/downloads/$EMSDK_RELEASE-wasm-binaries.tar.xz"
-  fetch "https://storage.googleapis.com/webassembly/emscripten-releases-builds/deps/$EMSDK_NODE" \
-    "$EMSDK_NODE_SHA256" "$em/downloads/$EMSDK_NODE"
-  (cd "$em" && EMSDK_KEEP_DOWNLOADS=1 ./emsdk install "$EMSDK_VERSION" >/dev/null && ./emsdk activate "$EMSDK_VERSION" >/dev/null) ||
-    die "emsdk could not install $EMSDK_VERSION from the checked downloads"
-  [ -x "$em/upstream/emscripten/emcc" ] || die "emsdk installed $EMSDK_VERSION without upstream/emscripten/emcc"
-  rm -rf "$em/downloads"
 }
 
-# llvm_made_by: prints what made a build tree of the LLVM source with the
-# pack's Emscripten (clangd's, cc's and cc-cross's: the same lines, so that
-# build-cross.sh may still be pointed at cc's tree): the source tarball and
-# emsdk_made_by. Both stand behind paths ninja sees as unchanged (the
-# CMake cache holds emcc's path, not its version). The native table
-# generators are not in it: their binaries are inputs of every generated
-# file, which ninja regenerates when they change.
-llvm_made_by() {
-  printf 'llvm %s %s\n%s' "$LLVM_VERSION" "$LLVM_SHA256" "$(emsdk_made_by)"
+# emsdk_use: makes the pack's one Emscripten, the emsdk unit's install at
+# $DEP_EMSDK/build-only/emsdk, the one this script compiles with: sources
+# its pins (emsdk_made_by) and its emsdk_env.sh, which puts its emcc and
+# upstream/bin (clang, llvm-strip, llvm-ar) on PATH.
+# The install is read-only, as every dependency is, and emcc writes the
+# system libraries it compiles on first use into its cache, so EM_CACHE is
+# $CACHE/em-cache, which records the Emscripten that filled it (keep_tree)
+# and is emptied for another. It is set after emsdk_env.sh, which clears
+# an EM_CACHE it finds. Nothing writes into the install (plan D52).
+emsdk_use() {
+  need_unit emsdk
+  local dir="$DEP_EMSDK/build-only/emsdk"
+  [ -x "$dir/upstream/emscripten/emcc" ] && [ -f "$dir/.emscripten" ] ||
+    die "the emsdk unit at $DEP_EMSDK has no installed Emscripten (build-only/emsdk/upstream/emscripten/emcc)"
+  # shellcheck disable=SC1091
+  source "$dir/emsdk_env.sh" >/dev/null 2>&1
+  keep_tree "$CACHE/em-cache" "$(emsdk_made_by)"
+  export EM_CACHE="$CACHE/em-cache"
 }
 
-# llvm_lld_sources: makes $CACHE/llvm-project-$LLVM_VERSION.src/lld the
-# release's lld/ with patches/wasm-ld-only.patch applied, extracting it
-# again when its .patched record (the tarball's SHA-256 and the patch's)
-# differs. build-runner.sh compiles it into cc.wasm; build-cross.sh needs it
-# only to exist, because LLVM's CMake refuses LLVM_ENABLE_PROJECTS=lld
-# without llvm/../lld, even with LLVM_EXTERNAL_LLD_SOURCE_DIR set elsewhere,
-# and it runs first on a clean machine. Run from $CACHE, after build.sh's
-# sources step.
-llvm_lld_sources() {
-  local src="$CACHE/llvm-project-$LLVM_VERSION.src" patch="$BUILD_LIB_DIR/patches/wasm-ld-only.patch" want
-  want=$({ echo "$LLVM_SHA256"; cat "$patch"; } | sha256sum | cut -d' ' -f1)
-  [ "$(cat "$src/lld/.patched" 2>/dev/null)" != "$want" ] || return 0
-  rm -rf "$src/lld"
-  tar xJf "llvm-project-$LLVM_VERSION.src.tar.xz" "llvm-project-$LLVM_VERSION.src/lld"
-  patch -s -d "$src" -p1 < "$patch"
-  echo "$want" > "$src/lld/.patched"
-}
-
-# npm_deps <dir>: installs <dir>'s package-lock.json into its node_modules
-# (npm ci) unless node_modules/.yk-lock holds that lock file's SHA-256, so a
-# changed lock (esbuild's version, say) reaches the build instead of the
-# node_modules a previous one installed.
-npm_deps() {
-  local want
-  want=$(sha256sum < "$1/package-lock.json" | cut -d' ' -f1)
-  [ "$(cat "$1/node_modules/.yk-lock" 2>/dev/null)" != "$want" ] || return 0
-  (cd "$1" && npm ci --no-audit --no-fund >/dev/null)
-  echo "$want" > "$1/node_modules/.yk-lock"
-}
-
-# linux_testfw_inputs <out>: prints, one per line, every file that makes
-# the Linux targets' gtest.tar and rapidcheck.tar (build-test-frameworks-
-# linux.sh): the scripts, the
-# pins, the compile driver build-test-libs-linux.mjs and what it imports
-# (src/toolchain.js, which decides the compiler's arguments and file
-# system; src/targets.js and targets.json), and from <out> the compiler
-# (cc-cross.wasm and its glue cc-cross.js), the headers every object is
-# compiled against (sysroot.tar.gz, targets/<arch>/include.tar). Their
-# stamp_of is that step's stamp.
-linux_testfw_inputs() {
-  local here=$BUILD_LIB_DIR
-  printf '%s\n' "$here/build-test-frameworks-linux.sh" "$here/pins.sh" "$here/build-lib.sh" \
-    "$here/build-test-libs-linux.mjs" "$here/src/toolchain.js" "$here/src/targets.js" "$here/src/targets.json" \
-    "$1/cc-cross.wasm" "$1/cc-cross.js" "$1/sysroot.tar.gz" \
-    "$1/targets/x86_64/include.tar" "$1/targets/aarch64/include.tar" "$1/targets/riscv64/include.tar"
-}
-
-# sanitizer_inputs: prints, one per line, every file of the pack that makes
-# the sanitizer runtimes (build-sanitizers.sh), whose stamp_of is that
-# step's stamp: the script, the pins (wasi-sdk, Emscripten,
-# whose compiler-rt sources are compiled, and the Alpine packages), the
-# patch, every file under src/sanitizer-rt, and src/targets.json, which
-# names each arch's multiarch directory.
-sanitizer_inputs() {
-  local here=$BUILD_LIB_DIR
-  printf '%s\n' "$here/build-sanitizers.sh" "$here/pins.sh" "$here/build-lib.sh" \
-    "$here/patches/compiler-rt-wasi.patch" "$here/src/targets.json"
-  find "$here/src/sanitizer-rt" -type f | LC_ALL=C sort
+# apk_of <arch> <package>: prints the path of the musl unit's checked copy
+# of one of Alpine's packages for <arch> ($DEP_MUSL/build-only/apk/<arch>/
+# <package>.apk, pinned by SHA-256 in toolchains/musl/pins.sh), and dies
+# naming it when the unit has none.
+apk_of() {
+  need_unit musl
+  local file="$DEP_MUSL/build-only/apk/$1/$2.apk"
+  [ -f "$file" ] || die "the musl unit has no $2 for $1 ($file): add it to toolchains/musl/toolchain.sh's list, with its pins"
+  echo "$file"
 }
 
 # stamp_of <file...>: prints the SHA-256 of the files' own SHA-256s, one per
@@ -308,59 +222,9 @@ stamp_of() {
 # files_sha256 <dir>: prints the SHA-256 of a directory's files: every
 # file's SHA-256 and path outside .git, sorted by path, hashed. A stamp that
 # takes a directory as an input (the musl headers vm/build-qemu-user.sh
-# compiles with) takes this.
+# compiles with) takes this, and so does RapidCheck's tree pin
+# (libs-lib.sh).
 files_sha256() {
   (cd "$1" && find . -path ./.git -prune -o -type f -print | LC_ALL=C sort | xargs -r sha256sum | sha256sum | cut -d' ' -f1)
 }
 
-# rapidcheck_tree_sha256 <dir>: prints the SHA-256 that RAPIDCHECK_TREE_SHA256
-# pins, which is files_sha256 of the checkout.
-rapidcheck_tree_sha256() {
-  files_sha256 "$1"
-}
-
-# llvm_wasm_common_args <array> <environment> <targets> <lld-source-dir>
-#     <default-triple> <default-unwindlib>
-# sets the array named <array> to the cmake arguments of an Emscripten build
-# of clang and lld as one multi-call binary (LLVM's llvm-driver), which
-# build-runner.sh (cc.wasm) and build-cross.sh (cc-cross.wasm) both are. The
-# five parameters are everything in which the two differ: Emscripten's
-# ENVIRONMENT, LLVM_TARGETS_TO_BUILD, the lld source tree, the default target
-# triple and the default unwind library (empty for none).
-#
-# The order and spelling of the arguments are part of the compilers' stamps
-# (artifacts/*/STAMP hashes them one per line), so they are kept exactly as
-# the two scripts spelled them before they shared this: a reordering, or a
-# change in the link flags' whitespace, rebuilds both compilers.
-#
-# The link flags: an ES module factory (createCC) with a file system and
-# callMain, memory that grows to 4 GB, and 8 MB of stack, because clang's
-# parser recurses deeply. No threads, so compiling needs no SharedArrayBuffer;
-# the driver runs cc1 in-process (CLANG_SPAWN_CC1 off, the default) and the
-# link is a second call, because a browser cannot spawn the linker. The
-# native table generators are build.sh's ($CACHE/build-native).
-llvm_wasm_common_args() {
-  local -n args=$1
-  local ldflags="-sMODULARIZE -sEXPORT_ES6 -sEXPORT_NAME=createCC -sENVIRONMENT=$2 \
-  -sINVOKE_RUN=0 -sEXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 -sEXPORTED_RUNTIME_METHODS=FS,callMain \
-  -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=64MB -sMAXIMUM_MEMORY=4GB -sSTACK_SIZE=8MB"
-  # shellcheck disable=SC2034 # args is a nameref to the caller's array
-  args=(-G Ninja
-    -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_EXE_LINKER_FLAGS="$ldflags"
-    -DCMAKE_EXE_LINKER_FLAGS_MINSIZEREL="-Oz"
-    -DLLVM_ENABLE_PROJECTS="clang;lld" -DLLVM_TARGETS_TO_BUILD="$3"
-    -DLLVM_EXTERNAL_LLD_SOURCE_DIR="$4"
-    -DLLVM_TOOL_LLVM_DRIVER_BUILD=ON -DLLVM_DISTRIBUTION_COMPONENTS="clang;lld"
-    -DLLVM_HOST_TRIPLE=wasm32-unknown-emscripten -DLLVM_DEFAULT_TARGET_TRIPLE="$5"
-    -DCLANG_DEFAULT_CXX_STDLIB=libc++ -DCLANG_DEFAULT_RTLIB=compiler-rt -DCLANG_DEFAULT_UNWINDLIB="$6"
-    -DCLANG_DEFAULT_LINKER=lld
-    -DLLVM_NATIVE_TOOL_DIR="$CACHE/build-native/bin"
-    -DLLVM_TABLEGEN="$CACHE/build-native/bin/llvm-tblgen" -DCLANG_TABLEGEN="$CACHE/build-native/bin/clang-tblgen"
-    -DLLVM_ENABLE_THREADS=OFF -DLLVM_ENABLE_PIC=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF
-    -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_LIBPFM=OFF -DLLVM_ENABLE_CURL=OFF
-    -DLLVM_ENABLE_BACKTRACES=OFF -DLLVM_ENABLE_CRASH_OVERRIDES=OFF -DLLVM_ENABLE_UNWIND_TABLES=OFF
-    -DLLVM_ENABLE_PLUGINS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF
-    -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_UTILS=OFF -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_DOCS=OFF
-    -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_OBJC_REWRITER=OFF -DCLANG_PLUGIN_SUPPORT=OFF
-    -DCLANG_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_DOCS=OFF)
-}

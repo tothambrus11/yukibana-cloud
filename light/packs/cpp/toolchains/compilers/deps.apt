@@ -1,0 +1,8 @@
+# Debian/Ubuntu packages the compilers unit builds with, beyond git, curl,
+# python3 and Node (CI installs them for this unit's job; light/setup.sh
+# for a local build). Tested on Ubuntu 24.04. The host's clang, lld and
+# ninja build LLVM's native table generators; cmake configures every tree.
+clang
+cmake
+ninja-build
+lld

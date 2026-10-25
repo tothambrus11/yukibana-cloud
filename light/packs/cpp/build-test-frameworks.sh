@@ -16,7 +16,7 @@
 #                                      build makes it
 #   include/catch2/, include/doctest/  their headers (Catch2's with the
 #                                      catch_user_config.hpp this build
-#                                      generated); build.sh puts them in
+#                                      generated); build-sysroot.sh puts them in
 #                                      sysroot.tar.gz, for clangd and runner.js
 #   include/rapidcheck.h, rapidcheck/  RapidCheck's headers with its GoogleTest
 #                                      and Catch2 integrations
@@ -26,14 +26,14 @@
 # (catch2.tar, doctest.tar, rapidcheck.tar), fetched by runner.js only for a
 # project whose tests include that framework (or <rapidcheck...>).
 #
-# Sources are pinned (pins.sh): Catch2 by the commit its v3.16.1 tag names (a shallow
+# Sources are pinned (toolchains/libs/pins.sh): Catch2 by the commit its v3.16.1 tag names (a shallow
 # clone of the tag, checked against it: GitHub's source archives are not
 # reachable from the build machine, and Catch2 publishes no source tarball of
 # its own), doctest by the SHA-256 of doctest.h at its v2.5.3 commit.
 # RapidCheck has no releases or tags: it is pinned by a commit of its master
 # branch, fetched alone (a shallow fetch of that commit, checked with
 # rev-parse) and checked against the SHA-256 of its tree (every file's
-# SHA-256, sorted by path, hashed: what build-lib.sh's
+# SHA-256, sorted by path, hashed: what libs-lib.sh's
 # `rapidcheck_tree_sha256` prints),
 # without its submodules (ext/catch and ext/googletest, used only by its own
 # tests).
@@ -43,14 +43,17 @@
 # exception handling in its standard form, and libc++'s fast hardening.
 #
 # Idempotent: skipped when $CACHE/testfw/.built holds the SHA-256 of this
-# script, pins.sh and build-lib.sh. About a minute at -j3.
+# script, the libs unit's pins, build-lib.sh and libs-lib.sh. About a
+# minute at -j3.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source-path=SCRIPTDIR source=pins.sh
-source "$HERE/pins.sh"
+# shellcheck source-path=SCRIPTDIR source=toolchains/libs/pins.sh
+source "$HERE/toolchains/libs/pins.sh"
 # shellcheck source-path=SCRIPTDIR source=build-lib.sh
 source "$HERE/build-lib.sh"
+# shellcheck source-path=SCRIPTDIR source=libs-lib.sh
+source "$HERE/libs-lib.sh"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp"
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
@@ -58,7 +61,7 @@ OUT="$CACHE/testfw"
 mkdir -p "$CACHE/dl"
 cd "$CACHE"
 
-stamp=$(cat "$HERE/build-test-frameworks.sh" "$HERE/pins.sh" "$HERE/build-lib.sh" | sha256sum | cut -d' ' -f1)
+stamp=$(cat "$HERE/build-test-frameworks.sh" "$HERE/toolchains/libs/pins.sh" "$HERE/build-lib.sh" "$HERE/libs-lib.sh" | sha256sum | cut -d' ' -f1)
 if [ "$(cat "$OUT/.built" 2>/dev/null)" = "$stamp" ]; then
   echo "Catch2, doctest and RapidCheck: cached in $OUT"
   exit 0
