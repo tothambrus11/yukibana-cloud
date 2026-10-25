@@ -22,7 +22,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { CHECKED_WITH, INTERNALS, MonacoInternalsError, internalsProblems, monacoInternals } from '../monaco/internals.ts';
+import { CHECKED_WITH, INTERNALS, MonacoInternalsError, REFERENCES_PEEK, REFERENCES_TREE_SELECTOR, internalsProblems, monacoInternals } from '../monaco/internals.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ts = createRequire(join(here, '../../app/package.json'))('typescript');
@@ -164,6 +164,56 @@ function canaryProblems(read, table) {
 	return problems;
 }
 
+/**
+ * What a module does with string literals: the first-argument literals of
+ * each call, by the callee as written (`CommandsRegistry.registerCommand`,
+ * `this.setCssClass`), and every string literal's class names, read as a
+ * selector (`'div.ref-tree.inline'` has `ref-tree` and `inline`).
+ */
+function literals(path, source) {
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+	const found = { calls: new Map(), classes: new Set() };
+	const visit = (node) => {
+		if (ts.isCallExpression(node) && node.arguments[0] && ts.isStringLiteralLike(node.arguments[0])) {
+			const callee = node.expression.getText(file);
+			found.calls.set(callee, (found.calls.get(callee) ?? new Set()).add(node.arguments[0].text));
+		}
+		if (ts.isStringLiteralLike(node)) for (const name of node.text.split('.').slice(1)) found.classes.add(name);
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+	return found;
+}
+
+/**
+ * Every way the modules `read` returns differ from `peek`
+ * (REFERENCES_PEEK's shape), as sentences: the zone class is still given by
+ * `setCssClass` in the widget's module and the tree class still made there,
+ * `setCssClass` still a method of the class that puts it on the page, and
+ * the command still registered with CommandsRegistry.
+ */
+function peekProblems(read, peek) {
+	const problems = [];
+	const { tree, open } = peek;
+	const widget = read(tree.path);
+	if (widget === null) problems.push(`references peek: monaco-editor/${tree.path}.js is gone`);
+	else {
+		const found = literals(tree.path, widget);
+		if (!found.calls.get('this.setCssClass')?.has(tree.zone)) problems.push(`references peek: ${tree.path} no longer calls setCssClass('${tree.zone}')`);
+		if (!found.classes.has(tree.tree)) problems.push(`references peek: ${tree.path} no longer makes an element of class ${tree.tree}`);
+	}
+	const zone = read(tree.setBy.path);
+	const zoneClass = zone === null ? null : classIn(declarations(tree.setBy.path, zone), tree.setBy.name);
+	if (!zoneClass) problems.push(`references peek: ${tree.setBy.path} no longer declares ${tree.setBy.name}`);
+	else if (!zoneClass.members.has('setCssClass')) problems.push(`references peek: ${tree.setBy.path} ${tree.setBy.name} has no setCssClass`);
+	const controller = read(open.path);
+	if (controller === null) problems.push(`references peek: monaco-editor/${open.path}.js is gone`);
+	else if (!literals(open.path, controller).calls.get('CommandsRegistry.registerCommand')?.has(open.command)) {
+		problems.push(`references peek: ${open.path} no longer registers the command '${open.command}'`);
+	}
+	return problems;
+}
+
 /** The installed monaco-editor's ESM source of `path`, or null. */
 const installed = (path) => {
 	const file = join(MONACO, 'esm/vs', `${path}.js`);
@@ -175,13 +225,48 @@ test('every internal of Monaco the adapter uses is still where it was, with the 
 	assert.deepEqual(canaryProblems(installed, INTERNALS), []);
 });
 
+test("the references peek's classes are still the ones Monaco puts on it, and Enter's command is still registered", () => {
+	assert.ok(existsSync(MONACO), 'light/app is installed (npm ci), so its Monaco can be read');
+	assert.deepEqual(peekProblems(installed, REFERENCES_PEEK), []);
+	assert.equal(REFERENCES_TREE_SELECTOR, '.reference-zone-widget .ref-tree');
+});
+
+test('the canary names a references peek whose classes or command were renamed', () => {
+	const peek = {
+		tree: { path: 'widget', zone: 'zone', tree: 'tree', setBy: { path: 'base', name: 'Zone' }, why: '' },
+		open: { path: 'controller', command: 'open', why: '' },
+	};
+	const renamed = {
+		widget: "class W extends Zone { fill(c) { this.setCssClass('other-zone'); append(c, $('div.list.inline')); } }",
+		base: 'class Zone { setClass() {} }\nexport { Zone };',
+		controller: "CommandsRegistry.registerCommand('openOther', () => {});\nCommandsRegistry.registerCommandAlias('open', 'openOther');",
+	};
+	assert.deepEqual(peekProblems((path) => renamed[path] ?? null, peek), [
+		"references peek: widget no longer calls setCssClass('zone')",
+		'references peek: widget no longer makes an element of class tree',
+		'references peek: base Zone has no setCssClass',
+		"references peek: controller no longer registers the command 'open'",
+	]);
+	const same = {
+		widget: "class W extends Zone { fill(c) { this.setCssClass('zone'); append(c, $('div.tree.inline')); } }",
+		base: 'class Zone { setCssClass(name) {} }\nexport { Zone };',
+		controller: "CommandsRegistry.registerCommand('open', () => {});",
+	};
+	assert.deepEqual(peekProblems((path) => same[path] ?? null, peek), []);
+	assert.deepEqual(peekProblems(() => null, peek), [
+		'references peek: monaco-editor/widget.js is gone',
+		'references peek: base no longer declares Zone',
+		'references peek: monaco-editor/controller.js is gone',
+	]);
+});
+
 test('a Monaco upgrade fails until a person has read every internal again against it', () => {
 	const { version } = JSON.parse(readFileSync(join(MONACO, 'package.json'), 'utf8'));
 	assert.equal(
 		version,
 		CHECKED_WITH,
 		`monaco-editor ${version} is installed, and monaco/internals.ts was read against ${CHECKED_WITH}: ` +
-			"read each entry of INTERNALS (its `why` says what is relied on) in the new version's source, then set CHECKED_WITH",
+			"read each entry of INTERNALS and REFERENCES_PEEK (its `why` says what is relied on), and light/app/src/lib/monaco-workers.ts against the workers.js it stands in for, in the new version's source, then set CHECKED_WITH",
 	);
 });
 
@@ -471,6 +556,17 @@ test("the inline message, the peek's focused tree, its references and Monaco's c
 	assert.equal(internals.isReference({ groups: [] }), false);
 	await internals.executeCommand('openReference');
 	assert.deepEqual(fake.log.at(-1), ['command', 'openReference']);
+});
+
+test('a command Monaco no longer has, or one whose service lost executeCommand, rejects rather than throwing where the caller cannot catch it', async () => {
+	const fake = fakeMonaco();
+	fake.services.get('commandService').executeCommand = (id) => Promise.reject(new Error(`command '${id}' not found`));
+	await assert.rejects(monacoInternals(fake.modules).executeCommand('openReference'), /command 'openReference' not found/);
+	const lost = fakeMonaco();
+	lost.services.set('commandService', {});
+	const pending = monacoInternals(lost.modules).executeCommand('openReference');
+	assert.ok(pending instanceof Promise);
+	await assert.rejects(pending, /Monaco's commandService has no executeCommand/);
 });
 
 test("Monaco's light theme is vs and its dark theme vs-dark", () => {

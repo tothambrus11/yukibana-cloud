@@ -50,7 +50,11 @@ exports `INTERNALS` lists, imported by name from its own Monaco, under
 That keeps H1: the adapter never imports Monaco, so a host never ends up
 with a second copy of Monaco's services. `INTERNALS` lists every internal
 the adapter relies on, as data: its module under `monaco-editor/esm/vs/`,
-the export, the members called, and why it is needed.
+the export, the members called, and why it is needed. What a host matches
+in the page rather than imports is data too: `REFERENCES_PEEK` names the
+classes of the references peek's tree (`REFERENCES_TREE_SELECTOR`) and the
+command that goes to the focused reference, and `executeCommand` rejects,
+for the host to report, when Monaco has no such command.
 
 * **Checked when made.** `monacoInternals` throws `MonacoInternalsError`
   naming every module or export that is missing or is not what it was. A
@@ -63,7 +67,9 @@ the export, the members called, and why it is needed.
 * **The upgrade canary.** `../tests/internals.test.mjs` reads the installed
   monaco-editor's sources for every entry of `INTERNALS` and fails, naming
   the entry, when one has moved, stopped being exported, become another
-  service, or lost a member. It also fails on any version but
+  service, or lost a member; and for `REFERENCES_PEEK`, when the peek's
+  classes are no longer the ones Monaco gives it or the command is no
+  longer registered. It also fails on any version but
   `CHECKED_WITH`, since an internal can keep its name and change what it
   does: a person reads each entry's `why` against the new source, then
   changes `CHECKED_WITH`.

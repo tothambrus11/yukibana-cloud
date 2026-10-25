@@ -8,7 +8,10 @@
  * the references peek's tree, Monaco's undo stacks and its built-in themes.
  * Each is reached here and nowhere else, so a Monaco upgrade has one file to
  * read, and `INTERNALS` lists every one of them as data: which module of
- * monaco-editor's ESM tree, which export, which members, and why.
+ * monaco-editor's ESM tree, which export, which members, and why. What a
+ * host matches in Monaco's page rather than imports (the references peek's
+ * class names, and the id of the command that opens a reference) is data
+ * too, in `REFERENCES_PEEK`, read by the same canary.
  *
  * The host's Monaco is injected (H1), internals included: this file imports
  * Monaco's types only, and the host passes the internal exports it imported
@@ -23,13 +26,22 @@
  * naming the entry, when one has moved, lost a member or been renamed, and
  * it fails on any version other than `CHECKED_WITH`, since an internal can
  * keep its name and change what it does.
+ *
+ * One internal of Monaco is not reached through here, because it is not
+ * used but replaced: the app's build swaps Monaco's
+ * `internal/common/workers.js` for a copy without its side effects
+ * (light/app/src/lib/monaco-workers.ts, with its own canary,
+ * light/app/tests/unit/monaco-workers.test.mjs). It is pinned to
+ * `CHECKED_WITH` as well.
  */
 import type * as monaco from 'monaco-editor';
 
 /**
- * The monaco-editor version every entry of `INTERNALS` was last read
- * against, by a person, in its source. The canary fails on any other
- * installed version: read each entry's `why` against the new source, then
+ * The monaco-editor version every entry of `INTERNALS` and
+ * `REFERENCES_PEEK`, and the app's stand-in for Monaco's `workers.js`
+ * (light/app/src/lib/monaco-workers.ts), were last read against, by a
+ * person, in its source. The canaries fail on any other installed version:
+ * read each entry's `why`, and the stand-in, against the new source, then
  * change this.
  */
 export const CHECKED_WITH = '0.57.0';
@@ -150,7 +162,7 @@ export const INTERNALS = {
 				kind: 'service',
 				id: 'commandService',
 				implementedBy: { path: 'editor/standalone/browser/standaloneServices', name: 'StandaloneCommandService', members: ['executeCommand'] },
-				why: 'Runs a command by id: `openReference`, which is not an editor action, so `editor.trigger` cannot run it.',
+				why: "Runs a command by id: `REFERENCES_PEEK.open`'s, which is not an editor action, so `editor.trigger` cannot run it.",
 			},
 		},
 	},
@@ -212,6 +224,57 @@ export const INTERNALS = {
 		},
 	},
 } as const satisfies Record<string, InternalModule>;
+
+/**
+ * What of the references peek a host matches without importing it: the
+ * classes Monaco gives the peek's tree in the page, and the command that
+ * goes to the focused reference. Each entry names the module of
+ * monaco-editor's ESM tree (its path under `esm/vs/`, without `.js`) where
+ * the canary finds it.
+ */
+export interface ReferencesPeek {
+	readonly tree: {
+		/** The module whose widget gives the peek its class (`setCssClass(zone)`) and its tree's (`ref-tree`) in a `$('div.…')`. */
+		readonly path: string;
+		/** The class of the peek's zone widget. */
+		readonly zone: string;
+		/** The class of the tree's container, inside the zone. */
+		readonly tree: string;
+		/** The module and class whose `setCssClass` puts `zone` on the widget's element. */
+		readonly setBy: { readonly path: string; readonly name: string };
+		readonly why: string;
+	};
+	readonly open: {
+		/** The module that registers `command` with `CommandsRegistry.registerCommand`. */
+		readonly path: string;
+		readonly command: string;
+		readonly why: string;
+	};
+}
+
+/**
+ * The references peek, as a host finds it in the page and drives it. A
+ * renamed class would leave a host's key handlers matching nothing, and a
+ * renamed command would make Enter in the peek do nothing; the canary reads
+ * both in the installed Monaco's source.
+ */
+export const REFERENCES_PEEK = {
+	tree: {
+		path: 'editor/contrib/gotoSymbol/browser/peek/referencesWidget',
+		zone: 'reference-zone-widget',
+		tree: 'ref-tree',
+		setBy: { path: 'editor/contrib/zoneWidget/browser/zoneWidget', name: 'ZoneWidget' },
+		why: "The peek's tree takes the keys before any keybinding sees them, so a host that gives them VS Code's meaning listens on the page for events whose target is in an element of class `tree` inside one of class `zone`.",
+	},
+	open: {
+		path: 'editor/contrib/gotoSymbol/browser/peek/referencesController',
+		command: 'openReference',
+		why: 'Goes to the focused reference of the peek and closes it: what Enter does in VS Code. A command, not an editor action, so it runs through ICommandService.',
+	},
+} as const satisfies ReferencesPeek;
+
+/** The CSS selector of the references peek's tree: an element of its tree class inside its zone. */
+export const REFERENCES_TREE_SELECTOR = `.${REFERENCES_PEEK.tree.zone} .${REFERENCES_PEEK.tree.tree}`;
 
 /**
  * Monaco's service identifier: a function (it is a parameter decorator)
@@ -426,7 +489,11 @@ export interface MonacoInternals {
 	focusedList(): FocusedList | null;
 	/** Whether `element`, of the references peek's tree, is one reference rather than a file. */
 	isReference(element: unknown): boolean;
-	/** Runs Monaco's command `id` (one registered as a command, not an editor action). */
+	/**
+	 * Runs Monaco's command `id` (one registered as a command, not an editor
+	 * action). Rejects when Monaco has no such command, or the command threw;
+	 * the caller reports it.
+	 */
 	executeCommand(id: string, ...args: unknown[]): Promise<unknown>;
 	/** A new quick pick; only while an editor has focus, since Monaco places it there and throws without one. */
 	createQuickPick<T extends QuickPickItem>(): QuickPick<T>;
@@ -581,7 +648,7 @@ export function monacoInternals(modules: InternalModules): MonacoInternals {
 		isReference(element) {
 			return element instanceof modules.references.OneReference;
 		},
-		executeCommand(id, ...args) {
+		async executeCommand(id, ...args) {
 			return commands().executeCommand(id, ...args);
 		},
 		createQuickPick<T extends QuickPickItem>() {

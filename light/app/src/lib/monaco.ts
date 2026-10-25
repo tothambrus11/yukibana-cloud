@@ -20,7 +20,7 @@ import CssWorker from 'monaco-editor/languages/features/css/css.worker?worker';
 import { jsonDefaults } from 'monaco-editor/languages/features/json/register';
 import 'monaco-editor/languages/features/html/register';
 import 'monaco-editor/languages/features/css/register';
-import type { FocusedList, MonacoNotification, QuickPick, QuickPickItem } from '@yukibana/monaco';
+import { REFERENCES_PEEK, REFERENCES_TREE_SELECTOR, type FocusedList, type MonacoNotification, type QuickPick, type QuickPickItem } from '@yukibana/monaco';
 import { internals } from './monaco-internals';
 import { WORKSPACE } from './project';
 import { AppDialogService, WorkspaceBulkEditService } from './workspace-edits';
@@ -176,7 +176,11 @@ jsonDefaults.setDiagnosticsOptions({
 // selected with the key's event, which is what VS Code's `list.focusDown`
 // does; the tree then opens it as a preview. Enter is taken before the tree
 // gets it and runs `openReference`, Monaco's own command for going to the
-// focused reference and closing the peek.
+// focused reference and closing the peek. The peek's classes and the
+// command's id are Monaco's internals: they come from the adapter
+// (REFERENCES_PEEK), whose canary reads them in each Monaco upgrade. Enter
+// is taken before the command has run, so a command that fails is said in
+// the console and in the editor, where the Enter that did nothing was typed.
 //
 // The peek also opens with every file's references shown, not only the
 // current file's, so the arrows walk through all of them. Monaco's tree
@@ -196,7 +200,7 @@ function expandFiles(list: FocusedList): boolean {
 	return true;
 }
 window.addEventListener('focusin', (e) => {
-	if (!(e.target instanceof Element) || !e.target.closest('.reference-zone-widget .ref-tree')) return;
+	if (!(e.target instanceof Element) || !e.target.closest(REFERENCES_TREE_SELECTOR)) return;
 	const list = internals.focusedList();
 	if (!list || expandFiles(list) || !list.onDidChangeModel) return;
 	// Focused before its references arrived: expand them when they do.
@@ -208,7 +212,7 @@ window.addEventListener(
 	'keydown',
 	(e) => {
 		if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-		if (!(e.target instanceof Element) || !e.target.closest('.reference-zone-widget .ref-tree')) return;
+		if (!(e.target instanceof Element) || !e.target.closest(REFERENCES_TREE_SELECTOR)) return;
 		const list = internals.focusedList();
 		if (!list) return;
 		if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -217,7 +221,13 @@ window.addEventListener(
 		} else if (e.key === 'Enter' && internals.isReference(list.getFocus()[0])) {
 			e.preventDefault();
 			e.stopPropagation();
-			void internals.executeCommand('openReference');
+			internals.executeCommand(REFERENCES_PEEK.open.command).catch((error: unknown) => {
+				const why = error instanceof Error ? error.message : String(error);
+				console.error(`The references peek could not go to the reference: Monaco's '${REFERENCES_PEEK.open.command}' failed: ${why}`);
+				const editor = monaco.editor.getEditors().find((each) => each.hasWidgetFocus());
+				const position = editor?.getPosition();
+				if (editor && position) internals.showMessage(editor, `Could not go to the reference: ${why}`, position);
+			});
 		}
 	},
 	true,
