@@ -21,7 +21,9 @@ the app:
 
 * **No side effects on import.** No services, listeners, `<html>`
   attributes, styles, `MonacoEnvironment` or service-worker registration; a
-  host calls a function when it wants one.
+  host calls a function when it wants one. `tests/imports.test.mjs`
+  imports every module with the page's objects as tripwires, and fails on
+  any reach for one, any listener or timer, and any new global.
 * **The host's Monaco is injected.** Nothing here bundles or configures an
   editor.
 * **No app or framework.** No Svelte, dockview or `$app`, no

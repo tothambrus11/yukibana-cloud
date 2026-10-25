@@ -16,7 +16,7 @@
  * fails on the Monaco upgrade that does it.
  *
  * This is the same function without the side effects: the worker comes from
- * `MonacoEnvironment.getWorker` (set in monaco.ts), is sent the two messages
+ * `MonacoEnvironment.getWorker` (set by `startEditor` in monaco.ts), is sent the two messages
  * Monaco's worker bootstrap expects, and is handed to the editor's own
  * `createWebWorker`. Those steps are Monaco's private bootstrap, so the same
  * test compares Monaco's code for them with a recorded copy, and fails on

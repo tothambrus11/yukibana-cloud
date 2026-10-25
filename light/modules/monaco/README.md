@@ -9,8 +9,12 @@ files, the theme, and Monaco's editor services for a host that wants them.
 * The host's Monaco is injected (a `typeof monaco` argument). This module
   never bundles, configures or starts an editor, and never sets
   `MonacoEnvironment`.
-* Importing it registers nothing. A feature or service exists from the call
-  that registers it and is removed by disposing what that call returned.
+* Importing it changes nothing on the page: no service, listener, global,
+  style or `<html>` attribute. A feature or service exists from the call
+  that turns it on and is removed by disposing what that call returned.
+  `../tests/imports.test.mjs` imports every module with the page's objects
+  as tripwires and fails on any reach for one, any listener or timer, and
+  any new global.
 * It never parses `yukibana.json`, and keeps nothing in `localStorage`.
 
 ## What is here
@@ -18,6 +22,8 @@ files, the theme, and Monaco's editor services for a host that wants them.
 | File | What |
 |---|---|
 | `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, code actions and their context (one the editor can make only in part is disabled, with the reason), code lenses, document links, folds, smart select, inlay hints, a refused rename's reason |
+| `internals.ts` | the one adapter over Monaco's internals, the things a host needs that Monaco has no public API for: replacing editor services (file labels, notifications, the bulk edit service, dialogs), the inline message, the quick pick, the references peek's tree, commands, undo steps across files, and the built-in themes' rules |
+| `services.ts` | what a host may turn on beside the language features, each a call returning its `dispose`: `referencesPeekKeys` (the references peek's keys as VS Code has them: the arrows preview each reference, Enter goes to it, every file's references shown), `remeasureWhenFontLoads` (the caret kept on the text when the editor's font is a web font that arrives late), `notificationsInline` (Monaco's notifications, which standalone Monaco only logs, shown in the focused editor; the callback for `startServices`) |
 
 Three things a conversion cannot make without the host's Monaco, and how
 `convert.ts` does without it:
@@ -37,9 +43,22 @@ Three things a conversion cannot make without the host's Monaco, and how
   host's too, for the same reason: Light's app leaves out a `file:` link
   to a file it has no model for.
 
-| `internals.ts` | the one adapter over Monaco's internals, the things a host needs that Monaco has no public API for: replacing editor services (file labels, notifications, the bulk edit service, dialogs), the inline message, the quick pick, the references peek's tree, commands, undo steps across files, and the built-in themes' rules |
+The tests are `../tests/convert.test.mjs`, `../tests/internals.test.mjs`
+and `../tests/services.test.mjs`, run with the other modules'.
 
-Its tests are `../tests/convert.test.mjs`, run with the other modules'.
+## Turning the editor on
+
+A host's editor is on from the calls it makes, in this order, and from
+nothing it imports. Light's app makes them in `startEditor`
+(`app/src/lib/monaco.ts`), which its page calls before the first model:
+
+1. `monacoInternals(modules)`, which only checks the modules.
+2. `internals.startServices(overrides)`, before any editor, model, theme
+   or marker listener exists, since Monaco takes replacements only then
+   (and the call throws, naming it, for one Monaco did not take).
+3. `MonacoEnvironment`, which is the host's alone: this module never sets
+   it (H1).
+4. Whichever of `services.ts` the host wants.
 
 ## Monaco's internals
 

@@ -17,7 +17,13 @@
 	import { TEST_FRAMEWORKS, type TestFramework } from '../lib/cpp-tests';
 	import { TARGETS, type CppTargetId } from '../lib/cpp-targets';
 	import { levelsOf } from '../lib/optimization';
+	import { startEditor } from '../lib/monaco';
 
+	// The editor is on from here: importing it changed nothing on the page.
+	// Before the workspace, which listens to Monaco's markers and so starts
+	// Monaco's services, which startEditor must replace first.
+	startEditor();
+	theme.start();
 	const workspace = new Workspace();
 	let dockElement: HTMLElement;
 	let dock: ReturnType<typeof createDock> | undefined;

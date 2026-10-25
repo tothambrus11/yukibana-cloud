@@ -3,6 +3,10 @@
  * `<html data-theme>`; Monaco needs its own theme objects, defined here with
  * the same palette, every text colour at least 7:1 against the editor
  * (palette.ts). The choice follows the system until the user toggles it.
+ *
+ * Importing this module changes nothing on the page: `theme.start()`, after
+ * `startEditor` (monaco.ts), defines the editor's themes and applies the
+ * remembered one.
  */
 import { monaco } from './monaco';
 import { internals } from './monaco-internals';
@@ -35,48 +39,51 @@ export const VIEW_TEXT: Record<Theme, Hex[]> = {
 	light: viewText(THEME_RULES.light, lineNumbers('light')),
 };
 
-monaco.editor.defineTheme('yukibana-dark', {
-	base: 'vs-dark',
-	inherit: true,
-	rules: THEME_RULES.dark,
-	colors: {
-		'editor.background': EDITOR.dark.background,
-		'editor.lineHighlightBackground': EDITOR.dark.caretLine,
-		...lineNumbers('dark'),
-		'editorGutter.background': EDITOR.dark.background,
-		'editorWidget.background': '#1f1c1c',
-		'editorWidget.border': '#2e2a2a',
-		'editorHoverWidget.background': '#1f1c1c',
-		'editorHoverWidget.border': '#2e2a2a',
-		'editorSuggestWidget.background': '#1f1c1c',
-		'editorSuggestWidget.border': '#2e2a2a',
-		'editorSuggestWidget.selectedBackground': '#2b7256aa',
-		'list.hoverBackground': '#2e2a2a',
-		focusBorder: '#2b7256',
-		'editorCursor.foreground': '#4e9375',
-		'editor.selectionBackground': '#2b725666',
-	},
-});
+/** Defines the two editor themes with the page's Monaco; `theme.start()` does, once. */
+function defineThemes(): void {
+	monaco.editor.defineTheme('yukibana-dark', {
+		base: 'vs-dark',
+		inherit: true,
+		rules: THEME_RULES.dark,
+		colors: {
+			'editor.background': EDITOR.dark.background,
+			'editor.lineHighlightBackground': EDITOR.dark.caretLine,
+			...lineNumbers('dark'),
+			'editorGutter.background': EDITOR.dark.background,
+			'editorWidget.background': '#1f1c1c',
+			'editorWidget.border': '#2e2a2a',
+			'editorHoverWidget.background': '#1f1c1c',
+			'editorHoverWidget.border': '#2e2a2a',
+			'editorSuggestWidget.background': '#1f1c1c',
+			'editorSuggestWidget.border': '#2e2a2a',
+			'editorSuggestWidget.selectedBackground': '#2b7256aa',
+			'list.hoverBackground': '#2e2a2a',
+			focusBorder: '#2b7256',
+			'editorCursor.foreground': '#4e9375',
+			'editor.selectionBackground': '#2b725666',
+		},
+	});
 
-monaco.editor.defineTheme('yukibana-light', {
-	base: 'vs',
-	inherit: true,
-	rules: THEME_RULES.light,
-	colors: {
-		'editor.background': EDITOR.light.background,
-		'editor.lineHighlightBackground': EDITOR.light.caretLine,
-		...lineNumbers('light'),
-		'editorWidget.background': '#faf8f8',
-		'editorWidget.border': '#ddd5d5',
-		'editorHoverWidget.background': '#faf8f8',
-		'editorHoverWidget.border': '#ddd5d5',
-		'editorSuggestWidget.background': '#faf8f8',
-		'editorSuggestWidget.border': '#ddd5d5',
-		focusBorder: '#018053',
-		'editorCursor.foreground': '#018053',
-		'editor.selectionBackground': '#01805333',
-	},
-});
+	monaco.editor.defineTheme('yukibana-light', {
+		base: 'vs',
+		inherit: true,
+		rules: THEME_RULES.light,
+		colors: {
+			'editor.background': EDITOR.light.background,
+			'editor.lineHighlightBackground': EDITOR.light.caretLine,
+			...lineNumbers('light'),
+			'editorWidget.background': '#faf8f8',
+			'editorWidget.border': '#ddd5d5',
+			'editorHoverWidget.background': '#faf8f8',
+			'editorHoverWidget.border': '#ddd5d5',
+			'editorSuggestWidget.background': '#faf8f8',
+			'editorSuggestWidget.border': '#ddd5d5',
+			focusBorder: '#018053',
+			'editorCursor.foreground': '#018053',
+			'editor.selectionBackground': '#01805333',
+		},
+	});
+}
 
 function initial(): Theme {
 	try {
@@ -91,8 +98,19 @@ function initial(): Theme {
 /** The current theme; set `current` to change it everywhere. */
 class ThemeState {
 	#current = $state<Theme>(initial());
+	#started = false;
 
-	constructor() {
+	/**
+	 * Defines the editor's themes and applies the current one to the page
+	 * (`<html data-theme>`, the editors, the title bar's colour). Call it
+	 * once, after `startEditor`, since setting Monaco's theme starts its
+	 * services; a second call does nothing. Until then, setting `current`
+	 * only remembers the choice.
+	 */
+	start(): void {
+		if (this.#started) return;
+		this.#started = true;
+		defineThemes();
 		this.apply();
 	}
 
@@ -107,7 +125,7 @@ class ThemeState {
 		} catch {
 			// Not remembered; still applied.
 		}
-		this.apply();
+		if (this.#started) this.apply();
 	}
 
 	toggle(): void {

@@ -12,10 +12,17 @@
  *   themes), made from the internal modules the host imported from its own
  *   Monaco, checked when made and, against every Monaco upgrade, by the
  *   canary in ../tests/internals.test.mjs.
+ * - services.ts: what a host may turn on beside the language features (the
+ *   references peek's keys, remeasuring for a web font, notifications shown
+ *   in the editor), each by a call that returns its `dispose`.
  *
- * Still to come: the language features, the models and the opt-in editor
- * services (../README.md says the order). What it promises, and may import,
+ * Importing any of them changes nothing on the page: no listener, global,
+ * style or service exists until the host calls for it
+ * (../tests/imports.test.mjs).
+ *
+ * Still to come: the language features and the models (step M7). What it promises, and may import,
  * is in ./README.md and is enforced by ../boundaries.test.mjs.
  */
 export * from './convert.ts';
 export * from './internals.ts';
+export * from './services.ts';

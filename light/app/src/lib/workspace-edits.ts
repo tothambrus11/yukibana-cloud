@@ -1,6 +1,7 @@
 /**
  * Edits that span files, undone as VS Code undoes them. Two of Monaco's
- * services are replaced (monaco.ts installs them when the services start):
+ * services are replaced (`startEditor` in monaco.ts installs them when it
+ * starts the services):
  *
  * - The bulk edit service, through which Monaco applies every workspace
  *   edit: a rename, a quick fix or other code action, and (lsp/client.ts)

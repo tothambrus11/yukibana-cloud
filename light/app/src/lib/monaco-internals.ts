@@ -10,7 +10,7 @@
  *
  * Making the adapter checks every module and throws, naming each problem,
  * when one is not what the adapter was written against; it starts no
- * service (monaco.ts does, with `internals.startServices`).
+ * service (`startEditor` in monaco.ts does, with `internals.startServices`).
  */
 import { monacoInternals } from '@yukibana/monaco';
 import { StandaloneNotificationService, StandaloneServices } from 'monaco-editor/editor/standalone/browser/standaloneServices';
