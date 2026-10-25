@@ -43,11 +43,14 @@ function setCookies(response: Response): SetCookie[] {
   });
 }
 
-/** A form this site's own page submits. */
+/** A form this site's own page submits, as a browser does without
+ *  JavaScript: it accepts HTML, so SvelteKit answers an action's redirect
+ *  with a 303 rather than the JSON `{type: 'redirect'}` it gives a fetch
+ *  that accepts anything. */
 const ownForm = (fields: Record<string, string>): RequestInit => ({
   method: 'POST',
   redirect: 'manual',
-  headers: { origin: app.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/x-www-form-urlencoded' },
+  headers: { origin: app.origin, 'sec-fetch-site': 'same-origin', 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html' },
   body: new URLSearchParams(fields),
 });
 
