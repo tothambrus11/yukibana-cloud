@@ -40,8 +40,9 @@
 #       (assembly) rebuilds none. Exit 2: not split.
 #   pack-store.sh toolchain-key-report <pack> <base>    what changed the key
 #       since commit <base>: the inputs that differ, the env lines then and
-#       now, both keys when toolchain.paths or toolchain.env changed, and a
-#       last line `changed` or `unchanged`. Exit 6 when <base> is not in
+#       now, both keys when toolchain.paths, toolchain.env or the key's
+#       definition (toolchain-key.sh) changed, and a last line `changed` or
+#       `unchanged`. Exit 6 when <base> is not in
 #       this clone.
 #   pack-store.sh toolchain-dirty <pack>  exit 0 naming the inputs with
 #       uncommitted changes, 1 when there are none.
@@ -260,18 +261,25 @@ toolchain_key_report() {
   echo "new env: ${new_env:-(none)}" | sed '2,$s/^/         /'
   # toolchain.paths is no input of itself and toolchain.env reaches the key
   # only through the environment, so a change to either is shown as the key
-  # base would have had, computed from base's own files.
+  # base would have had, computed from base's own files. So is a change to
+  # toolchain-key.sh, the key's definition, which is no input of any key
+  # either: a bumped format tag or another rule for the key's lines changes
+  # every toolchain's key while no input differs, and a report that said
+  # `unchanged` then would hide a rebuild of every compiler. A comment there
+  # shows both keys, equal, and stays `unchanged`.
   # Each is named like the inputs above, so the report says what changed.
-  local was now
-  for f in toolchain.paths toolchain.env; do
-    was="$(git -C "$TOOLCHAIN_ROOT" show "$base:$dir/$f" 2>/dev/null || echo "<absent>")"
-    now="$(cat "$TOOLCHAIN_ROOT/$dir/$f" 2>/dev/null || echo "<absent>")"
+  local was now why
+  for f in "$dir/toolchain.paths" "$dir/toolchain.env" light/scripts/toolchain-key.sh; do
+    was="$(git -C "$TOOLCHAIN_ROOT" show "$base:$f" 2>/dev/null || echo "<absent>")"
+    now="$(cat "$TOOLCHAIN_ROOT/$f" 2>/dev/null || echo "<absent>")"
     [ "$was" != "$now" ] || continue
     differ=1
+    why=""
+    [ "$f" != light/scripts/toolchain-key.sh ] || why=" (the key's definition)"
     case "$was/$now" in
-      "<absent>/"*) printf 'A\t%s\n' "$dir/$f" ;;
-      *"/<absent>") printf 'D\t%s\n' "$dir/$f" ;;
-      *) printf 'M\t%s\n' "$dir/$f" ;;
+      "<absent>/"*) printf 'A\t%s%s\n' "$f" "$why" ;;
+      *"/<absent>") printf 'D\t%s%s\n' "$f" "$why" ;;
+      *) printf 'M\t%s%s\n' "$f" "$why" ;;
     esac
   done
   if [ -n "$differ" ]; then

@@ -565,6 +565,44 @@ test("a pack's toolchain key report names the file that changed it", async () =>
     assert.notEqual(baseKey, await key());
 });
 
+test("a change to the key's definition is named by the key report, with both keys, even though no input changed", async () => {
+    // toolchain-key.sh is no input of any key, so a bumped format tag changes
+    // every key while every input stays as it was: the report must say so on
+    // the pull request that makes it, or a rebuild of every compiler would
+    // be announced as `unchanged`.
+    const base = git('rev-parse', 'HEAD');
+    const baseKey = await key();
+    const def = path.join(light, 'scripts/toolchain-key.sh');
+    fs.writeFileSync(def, fs.readFileSync(def, 'utf8').replace('echo "yukibana-toolchain/1"', 'echo "yukibana-toolchain/2"'));
+    commit('the key means something else now');
+    try {
+        const newKey = await key();
+        assert.notEqual(newKey, baseKey);
+        const r = await store('toolchain-key-report', 'tool', base);
+        assert.equal(r.code, 0, r.err);
+        assert.match(r.out, /^M\tlight\/scripts\/toolchain-key\.sh \(the key's definition\)$/m);
+        assert.match(r.out, new RegExp(`^old key: ${baseKey}$`, 'm'));
+        assert.match(r.out, new RegExp(`^new key: ${newKey}$`, 'm'));
+        assert.equal(r.out.trim().split('\n').at(-1), 'changed');
+    } finally {
+        git('reset', '-q', '--hard', base);
+    }
+
+    // A comment there is named too, and keeps the key: `unchanged`.
+    fs.appendFileSync(def, '# a comment on how keys are made\n');
+    commit('a comment on the key');
+    try {
+        const r = await store('toolchain-key-report', 'tool', base);
+        assert.equal(r.code, 0, r.err);
+        assert.match(r.out, /^M\tlight\/scripts\/toolchain-key\.sh \(the key's definition\)$/m);
+        assert.match(r.out, new RegExp(`^old key: ${baseKey}$`, 'm'));
+        assert.match(r.out, new RegExp(`^new key: ${baseKey}$`, 'm'));
+        assert.equal(r.out.trim().split('\n').at(-1), 'unchanged');
+    } finally {
+        git('reset', '-q', '--hard', base);
+    }
+});
+
 /**
  * The names of the variables and functions toolchain-build-env.sh defines
  * that the toolchain-key.sh in `scripts` assigns or defines again, when
