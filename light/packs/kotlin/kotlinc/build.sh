@@ -28,7 +28,7 @@ KOTLIN_SHA256=7cc140e76daf416a0424a5557f99afd7ca89ebd463ea1101261e3e01c33e75cd
 # YK_GRAALVM_HOME set, that GraalVM is used instead (one ../graalvm/build.sh made, say).
 GRAALVM_RELEASE=kotlin-graalvm-25.4.4.1.1-1
 GRAALVM_FILE=graalvm-community-webimage-25.4.4.1.1-linux-x64.tar.gz
-GRAALVM_SHA256=0000000000000000000000000000000000000000000000000000000000000000
+GRAALVM_SHA256=65f8dab8823c052e8a849742ab12e881af5e9559262f316eff34faba4198588b
 BINARYEN_VERSION=133
 BINARYEN_SHA256=2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489
 # Maven Central publishes no .sha256 for it; this is the file's, checked against its .sha1
