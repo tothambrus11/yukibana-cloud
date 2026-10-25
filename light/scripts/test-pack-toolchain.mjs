@@ -38,7 +38,7 @@ const TRANSPORT = [
     'SSL_CERT_FILE', 'SSL_CERT_DIR', 'CURL_CA_BUNDLE', 'REQUESTS_CA_BUNDLE', 'GIT_SSL_CAINFO', 'NODE_EXTRA_CA_CERTS',
     'npm_config_https_proxy', 'npm_config_proxy', 'npm_config_cafile',
 ];
-const OWN = ['LIGHT_TOOLCHAIN_PROVENANCE', 'OPT', 'MIRROR', 'UNDECLARED', 'SECRET_TOKEN', 'STUB_LEVEL', 'ALLOW_OTHER_TOOLCHAIN', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS', 'JOBS', 'NICE', 'CI', 'PACK_CACHE', 'OUT'];
+const OWN = ['LIGHT_TOOLCHAIN_PROVENANCE', 'OPT', 'MIRROR', 'UNDECLARED', 'SECRET_TOKEN', 'STUB_LEVEL', 'ALLOW_OTHER_TOOLCHAIN', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS', 'JOBS', 'NICE', 'CI', 'PACK_CACHE', 'OUT', 'TOOLCHAIN_CACHE', 'GH_TOKEN'];
 
 // The toolchain store: asset name -> { bytes, created }.
 let toolchains = new Map();

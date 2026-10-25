@@ -26,6 +26,16 @@ import { fileURLToPath } from 'node:url';
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url));
 /** The scripts a test repository gets a copy of: pack-store.sh and what it reads. */
 const COPIED = ['pack-store.sh', 'toolchain-key.sh', 'toolchain-build-env.sh', 'pack-lib.sh', 'toolchain-manifest.mjs'];
+/**
+ * The variables a run of the scripts gets only from the test that asks for
+ * them: each is removed from what this process inherited before a test adds
+ * its own. Among them is everything a workflow running this file sets at
+ * workflow or job level that the scripts read (test-workflows.mjs keeps that
+ * true), because an inherited one silently changes what a test checks: once,
+ * light-packs.yml's LIGHT_TOOLCHAIN_PROVENANCE=required failed every fetch
+ * test in the very job that runs them, while they passed on every machine.
+ */
+const OWN = ['LIGHT_TOOLCHAIN_PROVENANCE', 'OPT', 'MIRROR', 'UNDECLARED', 'STUB_LEVEL', 'LTO', 'PROXYLESS', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS', 'CI', 'JOBS', 'NICE', 'PACK_CACHE', 'TOOLCHAIN_CACHE', 'GH_TOKEN'];
 /** The repository's stub pack, copied into the test repository as it is. */
 const STUB = path.resolve(SCRIPTS, '../packs/stub');
 
@@ -201,16 +211,16 @@ function store(...args) {
 
 /** Runs pack-store.sh with `vars` added to its environment (undefined removes one). */
 function storeWith(vars, ...args) {
-    const env = {
-        ...process.env,
+    const env = { ...process.env };
+    for (const name of OWN) delete env[name];
+    Object.assign(env, {
         LIGHT_PACKS_REPO: 'test/repo',
         LIGHT_PACKS_API: `http://127.0.0.1:${server.address().port}`,
         GH_TOKEN: '',
         FAKE_GH: `http://127.0.0.1:${server.address().port}/gh`,
         PATH: `${path.join(root, 'bin')}${path.delimiter}${process.env.PATH}`,
         TOOLCHAIN_CACHE: path.join(root, 'cache'),
-    };
-    for (const name of ['OPT', 'MIRROR', 'UNDECLARED', 'STUB_LEVEL', 'LTO', 'PROXYLESS', 'LIGHT_TOOLCHAINS_TAG', 'GITHUB_ACTIONS']) delete env[name];
+    });
     for (const [name, value] of Object.entries(vars)) {
         if (value === undefined) delete env[name];
         else env[name] = value;

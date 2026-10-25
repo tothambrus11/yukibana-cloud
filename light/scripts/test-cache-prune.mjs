@@ -15,6 +15,12 @@ import { olderOnRef, prefixOf, pullOf, stalePullCaches } from './cache-prune.mjs
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cache-prune.mjs');
 const MAIN = 'refs/heads/main';
+/**
+ * The variables cache-prune.mjs gets only from a test: removed from what this
+ * process inherited, so a workflow's GH_TOKEN never reaches the stand-in gh
+ * (test-workflows.mjs keeps this list covering what the workflows set).
+ */
+const OWN = ['GH_TOKEN', 'GITHUB_REPOSITORY'];
 /** @param {string} key @param {string} ref @param {string} createdAt */
 const cache = (key, ref, createdAt) => ({ key, ref, createdAt });
 
@@ -101,9 +107,11 @@ if (args[0] === 'cache' && args[1] === 'list') {
 `,
             { mode: 0o755 },
         );
+        const env = { ...process.env };
+        for (const name of OWN) delete env[name];
         const r = spawnSync(process.execPath, [SCRIPT, ...args], {
             encoding: 'utf8',
-            env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: 'test/repo' },
+            env: { ...env, PATH: `${dir}${path.delimiter}${process.env.PATH}`, GITHUB_REPOSITORY: 'test/repo' },
         });
         const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : [];
         return { ...r, calls };

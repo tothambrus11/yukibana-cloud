@@ -535,6 +535,58 @@ test('a light-v release is published only once every asset is attached', () => {
     assert.match(String(publish.if), ON_TAG);
 });
 
+// What a runner sets in every job without a workflow saying so.
+const RUNNER_ENV = ['CI', 'GITHUB_ACTIONS'];
+
+test("a workflow's own environment cannot change what the script tests it runs check", () => {
+    // A step that runs light/scripts/test-*.mjs inherits the workflow's,
+    // the job's and its own env, and passes it on to the scripts each test
+    // spawns (a test that spawns nothing is not concerned). Every such name a tested script reads must be in that test's
+    // OWN list, which it removes before setting what it means; otherwise a
+    // workflow env change breaks, or quietly weakens, its own test job, as
+    // LIGHT_TOOLCHAIN_PROVENANCE=required once broke light-packs.yml's store
+    // job while the tests passed everywhere else.
+    const scriptsDir = path.join(ROOT, 'light/scripts');
+    const scripts = fs.readdirSync(scriptsDir).filter((f) => /\.(sh|mjs)$/.test(f) && !f.startsWith('test-'));
+    const reads = (file, name) => new RegExp(`\\b${name}\\b`).test(fs.readFileSync(path.join(scriptsDir, file), 'utf8'));
+    let checked = 0;
+    for (const file of fs.readdirSync(path.join(ROOT, WORKFLOWS)).filter((f) => f.endsWith('.yml'))) {
+        if (!fs.readFileSync(path.join(ROOT, WORKFLOWS, file), 'utf8').includes('test-')) continue;
+        const wf = readWorkflow(`${WORKFLOWS}/${file}`);
+        for (const [jobName, job] of Object.entries(wf.jobs)) {
+            const defaults = /** @type {{ defaults?: { run?: { 'working-directory'?: string } } }} */ (job).defaults;
+            for (const step of stepsOf(job)) {
+                const run = typeof step.run === 'string' ? step.run : '';
+                const command = /node --test ([^\n]*)/.exec(run);
+                if (!command) continue;
+                const dir = /** @type {{ 'working-directory'?: string }} */ (step)['working-directory'] ?? defaults?.run?.['working-directory'] ?? '.';
+                const env = [...RUNNER_ENV, ...Object.keys(wf.env ?? {}), ...Object.keys(job.env ?? {}), ...Object.keys(step.env ?? {})];
+                for (const arg of String(command[1]).split(/\s+/)) {
+                    const test = path.resolve(ROOT, dir, arg);
+                    if (path.dirname(test) !== scriptsDir || !/^test-.*\.mjs$/.test(path.basename(test))) continue;
+                    const source = fs.readFileSync(test, 'utf8');
+                    // A test that runs no program passes nothing on.
+                    if (!/\b(spawn|spawnSync|execFile|execFileSync)\(/.test(source)) continue;
+                    const ownList = /^const OWN = \[([^\]]*)\];/m.exec(source);
+                    const own = ownList ? [...String(ownList[1]).matchAll(/'([^']+)'/g)].map((m) => m[1]) : [];
+                    const tested = scripts.filter((f) => source.includes(f));
+                    assert.ok(tested.length > 0, `${path.basename(test)} names no script it tests`);
+                    for (const name of env) {
+                        const reader = tested.find((f) => reads(f, name));
+                        if (!reader) continue;
+                        assert.ok(
+                            own.includes(name),
+                            `${file}: job ${jobName}, step "${step.name}": ${name} reaches ${path.basename(test)}, and ${reader} reads it, but the test's OWN does not clear it`,
+                        );
+                    }
+                    checked++;
+                }
+            }
+        }
+    }
+    assert.ok(checked >= 4, `only ${checked} script test runs found: the rule reads nothing`);
+});
+
 test('the workflow reader reads what YAML means and refuses what it does not know', () => {
     const doc = readYaml(
         [
