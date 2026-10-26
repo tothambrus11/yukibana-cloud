@@ -44,7 +44,7 @@
  * No DOM: the worker has none. Caches, `fetch` and reporting are passed in,
  * so tests/unit/verified-cache.test.mjs drives it with fakes.
  */
-import { HASH_HEADER } from './offline-cache.ts';
+import { deleteStored, HASH_HEADER, matchStored, putStored } from './offline-cache.ts';
 import { Sha256 } from './sha256.ts';
 
 /** One file of the build, as the table lists it. */
@@ -235,21 +235,25 @@ export class VerifiedCache {
 		const { cacheFor, isPack, url, report } = this.options;
 		const cache = await cacheFor(path);
 		const href = url(path);
-		const entry = await cache.match(href);
-		if (!entry) return null;
 		if (isPack(path)) {
+			// A pack file over WHOLE_LIMIT is stored in parts (offline-cache.ts): read as one body, checked as one file.
+			const entry = await matchStored(cache, href, file.size);
+			if (!entry) return null;
 			if (!entry.body) {
-				await this.drop(cache, href, `${path || 'index.html'}: the cached copy has no body`);
+				report(`${path}: the cached copy has no body`);
+				await deleteStored(cache, href, file.size);
 				return null;
 			}
 			const body = entry.body.pipeThrough(
 				verifying(file, path, async () => {
 					report(`${path}: the cached copy is not the bytes this build lists; deleted, so the next load fetches it again`);
-					await cache.delete(href).catch(() => false);
+					await deleteStored(cache, href, file.size);
 				}),
 			);
 			return this.served(path, file, body);
 		}
+		const entry = await cache.match(href);
+		if (!entry) return null;
 		const bytes = await entry
 			.arrayBuffer()
 			.then((b) => new Uint8Array(b))
@@ -282,11 +286,11 @@ export class VerifiedCache {
 				// every pack file cached on demand was dropped and downloaded
 				// again by the next app update, whether or not it had changed.
 				const headers = { 'Content-Type': contentTypeOf(path), 'Content-Length': String(file.size), [HASH_HEADER]: file.sha256 };
-				await cache.put(href, new Response(response.body.pipeThrough(verifying(file, path, () => undefined)), { headers }));
+				await putStored(cache, href, file.size, response.body.pipeThrough(verifying(file, path, () => undefined)), headers);
 				return true;
 			} catch (e) {
 				report(`${path}: not cached (${e instanceof Error ? e.message : String(e)})`);
-				await cache.delete(href).catch(() => false);
+				await deleteStored(cache, href, file.size);
 				return false;
 			}
 		}

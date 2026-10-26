@@ -11,7 +11,7 @@
  * not, until its one reload).
  */
 import { version } from '$app/env';
-import { appCacheName, DIRECT_HEADER, isOfflineManifest, isPackPath, MANIFEST_PATH, PACKS_CACHE, storable, type OfflineFile, type OfflineManifest } from './offline-cache';
+import { appCacheName, DIRECT_HEADER, isOfflineManifest, isPackPath, matchStored, MANIFEST_PATH, PACKS_CACHE, putStored, storable, type OfflineFile, type OfflineManifest } from './offline-cache';
 import { verifying } from './verified-cache';
 
 /** Several files at a time: a pack is a few large files and some small ones. */
@@ -59,7 +59,7 @@ export class Offline {
 		const [app, packs] = await Promise.all([caches.open(appCacheName(version)), caches.open(PACKS_CACHE)]);
 		const cached = new Set<string>();
 		const all = [...this.manifest.shell, ...this.manifest.lazy, ...Object.values(this.manifest.packs).flat()];
-		await Promise.all(all.map(async (f) => ((await (isPackPath(f.path) ? packs : app).match(url(f.path))) ? cached.add(f.path) : undefined)));
+		await Promise.all(all.map(async (f) => ((await matchStored(isPackPath(f.path) ? packs : app, url(f.path), f.size)) ? cached.add(f.path) : undefined)));
 		this.cached = cached;
 	}
 
@@ -157,7 +157,9 @@ export class Offline {
 		const count = (async () => {
 			for (let r = await reader.read(); !r.done; r = await reader.read()) received(r.value.byteLength);
 		})();
-		await Promise.all([count, cache.put(url(file.path), storable(new Response(stored, response), isPackPath(file.path) ? file : undefined))]);
+		const entry = storable(new Response(stored, response), isPackPath(file.path) ? file : undefined);
+		// A file over WHOLE_LIMIT goes in as parts, which Chromium can store (offline-cache.ts).
+		await Promise.all([count, entry.body ? putStored(cache, url(file.path), file.size, entry.body, entry.headers) : cache.put(url(file.path), entry)]);
 	}
 }
 
