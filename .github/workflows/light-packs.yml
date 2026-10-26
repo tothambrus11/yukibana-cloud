@@ -63,7 +63,7 @@
 # that changes a pack would otherwise build it, for hours, on every push. A
 # pack the store has no build of at all fails by name. The exception is a
 # pack whose matrix entry says `deploy-builds` (javascript, about two
-# minutes; kotlin, at most thirty): a deploy builds this commit's when the
+# minutes; kotlin, at most twenty): a deploy builds this commit's when the
 # store lacks it, so the site never runs an app newer than its pack (the
 # Preview asks the JavaScript server for `workspace/diagnostic`, and Run
 # asks the Kotlin pack for its runner, which older builds lack). A split pack is as in
@@ -796,11 +796,12 @@ jobs:
             deploy-builds: true
           # kotlinc's WebAssembly image, with kotlin-language-server in it:
           # about 10 minutes and 13 GB when kotlinc/ changes (the pack's cache
-          # keeps it otherwise), 20 with downloads. Deploys build it too: the
+          # keeps it otherwise), 20 with downloads, within the 30 a
+          # deploy-builds pack may take. Deploys build it too: the
           # app runs Kotlin programs only with a pack that has kotlinc
           # (runner.js), which an older stored build lacks.
           - pack: kotlin
-            timeout: 45
+            timeout: 30
             deploy-builds: true
           - pack: php
             timeout: 30
