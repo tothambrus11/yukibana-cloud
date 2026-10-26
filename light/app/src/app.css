@@ -367,10 +367,11 @@ body {
  *
  *   < 70rem  Mutate into ⋯; LLVM IR and Assembly read IR and Asm; the Build
  *            chip's summary is capped
- *   < 56rem  the brand is its icon; the Build chip reads "Build"
+ *   < 56rem  the brand is its icon; the Build chip reads "Build"; Share is
+ *            its icon
  *   < 44rem  LLVM IR, Assembly, Offline and Theme into ⋯; the language's
  *            short name
- *   < 30rem  the Build chip into ⋯; the language capped at 6rem
+ *   < 30rem  the Build chip and Share into ⋯; the language capped at 6rem
  *   < 22rem  no brand
  *
  * Every rule is written twice: once in a container query (`.cq`, set when
@@ -430,6 +431,7 @@ header.bar-host {
 @container bar (width < 56rem) {
 	.bar-host.cq .brand .name,
 	.bar-host.cq .brand .product,
+	.bar-host.cq .share-word,
 	.bar-host.cq .build-summary {
 		display: none;
 	}
@@ -438,6 +440,7 @@ header.bar-host {
 	}
 }
 .bar-host:not(.cq)[data-tier~='56'] .brand .name,
+.bar-host:not(.cq)[data-tier~='56'] .share-word,
 .bar-host:not(.cq)[data-tier~='56'] .brand .product,
 .bar-host:not(.cq)[data-tier~='56'] .build-summary {
 	display: none;

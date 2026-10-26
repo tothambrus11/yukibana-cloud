@@ -43,6 +43,7 @@ const INERT = {
 	raise: 'computes a colour (palette.ts)',
 	lineNumbers: "computes a theme's line number colours",
 	workspaceRoot: "makes a workspace root's value from its URI (@yukibana/runtime's paths.ts)",
+	type: "arktype's: compiles a validator from a schema (project-link.ts); it touches no global and nothing on the page",
 	ThemeState: 'reads the remembered theme and the system preference; it applies nothing until `start()`',
 	WeakSet: 'an empty collection',
 	WeakMap: 'an empty collection',

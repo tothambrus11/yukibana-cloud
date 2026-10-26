@@ -13,6 +13,7 @@
 		"test:e2e": "node tests/e2e.mjs",
 		"test:e2e:targets": "node tests/e2e-targets.mjs",
 		"test:e2e:layout": "node tests/e2e-layout.mjs",
+		"test:e2e:links": "node tests/e2e-links.mjs",
 		"test:export": "node tests/export.mjs"
 	},
 	"devDependencies": {
@@ -28,6 +29,7 @@
 	},
 	"dependencies": {
 		"@fontsource-variable/jetbrains-mono": "5.3.0",
+		"arktype": "2.2.9",
 		"dockview": "8.6.1",
 		"monaco-editor": "0.57.0",
 		"vscode-languageserver-protocol": "3.17.5"

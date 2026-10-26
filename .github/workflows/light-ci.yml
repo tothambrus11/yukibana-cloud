@@ -265,6 +265,11 @@ jobs:
         working-directory: light/app
         run: node tests/e2e.mjs javascript typescript web p5 p5-global
 
+      # Needs no pack; here because this job has a build and a Chromium.
+      - name: End-to-end (projects in links, Share)
+        working-directory: light/app
+        run: node tests/e2e-links.mjs
+
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.javascript-key }}

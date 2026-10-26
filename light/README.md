@@ -174,8 +174,17 @@ uncompressed files are only slower to download.
 
 ## What it does
 
-Projects have several files and folders, are kept in `localStorage`, and the
-language selector switches between one project per language. The editor has
+Projects have several files and folders, and the language selector
+switches between one project per language. A tab's project lives in its
+URL, as `#project=` and the project's JSON, compressed, in base64url
+(`app/src/lib/project-link.ts`): each tab keeps its own, a browser that
+restores its tabs restores each tab's project, and Share copies the link,
+which gives whoever opens it a copy of their own to edit. Nothing is
+stored on a server. The JSON says its schema's version, is checked with
+arktype, and an older version is migrated to the current one, so old links
+keep opening. A project is also kept in the tab's `sessionStorage` (so an
+edit made just before a reload is not lost) and, once edited, in
+`localStorage`, which a tab opened without a link starts from. The editor has
 diagnostics, completion, hover, go to definition (Alt+Left and Alt+Right
 to go back and forward), references, rename (F2), quick fixes, signature help,
 formatting, semantic highlighting, code lenses and a call hierarchy (Show
@@ -481,6 +490,11 @@ exit codes, opens, edits, closes and
 reopens the LLVM IR and assembly views, checks that a WebAssembly session
 fetches exactly the files it did before targets existed, and prints the
 bytes each use case downloads and the runner's timing marks (`--json` saves
-them). `app/tests/export.mjs` downloads each sample as the app does and builds,
+them). `app/tests/e2e-links.mjs` (`npm run test:e2e:links`, no pack needed)
+checks projects in links: two tabs with their own projects, both brought
+back from their URLs in a fresh browser, an edited copy that leaves the
+original alone, an edit kept across an immediate reload, Share, a link
+pasted into an open tab, a damaged link, and the Share button at each width.
+`app/tests/export.mjs` downloads each sample as the app does and builds,
 runs and tests it with CMake and CTest, SwiftPM, Node, pytest, sbt and Cargo,
 skipping (and saying so) any tool the machine lacks.

@@ -24,7 +24,8 @@ import { CallHierarchy } from './call-hierarchy.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
 import { appPacks, packOf, runnerSourceOf } from './packs';
-import { loadLanguage, loadProject, sampleProject, saveLanguage, saveProject, WORKSPACE, type Project } from './project';
+import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
+import { holdsProject } from './project-link';
 
 /** The model URI of a project path. */
 export function uriOf(path: string): monaco.Uri {
@@ -89,6 +90,12 @@ export interface EditorHost {
 const COMPILE_FLAGS = 'compile_flags.txt';
 
 const SAVE_DELAY_MS = 400;
+/**
+ * The longest link the URL is given, in characters. Chromium takes 2 MB
+ * and Firefox about 1 MB; past this a project is still saved in the
+ * browser, but its link is left as it was, and the output panel says so.
+ */
+const MAX_LINK = 1_000_000;
 const MAX_LOG_LINES = 2000;
 
 export class Workspace {
@@ -172,6 +179,24 @@ export class Workspace {
 	private runOptionsChosen = false;
 	/** The level chosen for a language whose level no project file holds (Swift, Scala), saved with the project; null: the default. */
 	private chosenLevel: string | null = null;
+	/**
+	 * Whether the project was changed in this tab since it was loaded: only
+	 * then is it saved for the next new tab (`localStorage`), so opening a
+	 * link someone shared, or a tab restored with the browser, does not
+	 * replace the project a new tab starts from until it is edited. Moving
+	 * between tabs is not a change.
+	 */
+	private changed = false;
+	/** Bumped by every write of the URL, so a slower one overtaken by a later one is not written. */
+	private linkWrites = 0;
+	/** The URL write under way, which Share waits for. */
+	private linkWriting: Promise<void> = Promise.resolve();
+	/** The fragment this tab last wrote, to tell its own writes from a link pasted into its address bar. */
+	private written: string | null = null;
+	/** Whether the last write of the URL put the project there: false when it was too large or failed, and the URL is older. */
+	private linkCurrent = false;
+	/** Whether the output panel already said that this project is too large for its link. */
+	private tooLongSaid = false;
 	/** Bumped by every language switch, so a switch overtaken by a later one is skipped. */
 	private generation = 0;
 	/**
@@ -184,11 +209,76 @@ export class Workspace {
 		monaco.editor.onDidChangeMarkers(() => this.refreshProblems());
 	}
 
-	/** Connects the editor area and loads the language chosen last (or the first). */
+	/**
+	 * Connects the editor area and loads the project the URL holds, else the
+	 * language chosen last (or the first) with its saved project.
+	 */
 	attach(host: EditorHost): void {
 		this.host = host;
-		const saved = loadLanguage();
-		void this.switchTo(isLanguageId(saved) ? saved : LANGUAGES[0]!.id);
+		const saved = tabProject(location.hash);
+		if (saved) {
+			// Reloaded, or restored with the browser, after a save its URL did not catch.
+			const generation = ++this.generation;
+			void this.serially(async () => {
+				if (generation !== this.generation) return;
+				this.language = saved.language;
+				saveLanguage(saved.language);
+				this.load(saved.project);
+				this.startClient();
+			});
+			return;
+		}
+		if (holdsProject(location.hash)) {
+			void this.openLink(location.hash);
+			return;
+		}
+		const chosen = loadLanguage();
+		void this.switchTo(isLanguageId(chosen) ? chosen : LANGUAGES[0]!.id);
+	}
+
+	/**
+	 * Opens the project a URL fragment holds, in place of the current one
+	 * (which is saved first): this tab was opened with a link, or one was
+	 * pasted into its address bar. A fragment this tab wrote itself is
+	 * ignored. A damaged link is reported and the tab keeps what it has, or
+	 * on first load starts from the saved project, as without a link.
+	 */
+	openLink(hash: string): Promise<void> {
+		if (hash === this.written || !holdsProject(hash)) return Promise.resolve();
+		const generation = ++this.generation;
+		return this.serially(async () => {
+			if (generation !== this.generation) return;
+			let opened;
+			try {
+				opened = await projectOfLink(hash);
+			} catch (e) {
+				this.write('error', `Could not open the project in this link: ${e instanceof Error ? e.message : String(e)}`);
+				if (this.models.size === 0) {
+					const saved = loadLanguage();
+					this.language = isLanguageId(saved) ? saved : LANGUAGES[0]!.id;
+					this.load(loadProject(this.language, (m) => this.write('warning', m)));
+					this.startClient();
+				} else void this.writeLink();
+				return;
+			}
+			await this.closeProject();
+			this.language = opened.language;
+			saveLanguage(opened.language);
+			this.load(opened.project);
+			this.startClient();
+		});
+	}
+
+	/**
+	 * The link to this tab's project as it is now, for Share: whoever opens
+	 * it gets a copy of their own. Null when the project is too large for a
+	 * link (the output panel says so).
+	 */
+	async shareLink(): Promise<string | null> {
+		clearTimeout(this.saveTimer);
+		if (this.models.size) this.saveNow();
+		await this.linkWriting;
+		return this.linkCurrent ? location.href : null;
 	}
 
 	/**
@@ -215,6 +305,7 @@ export class Workspace {
 			await this.stopClient();
 			this.disposeModels();
 			this.load(sampleProject(this.language));
+			this.changed = true;
 			this.saveNow();
 			this.startClient();
 		});
@@ -431,14 +522,6 @@ export class Workspace {
 		if (this.models.size) this.saveNow();
 	}
 
-	/**
-	 * Another tab saved this language's project. Each tab keeps its own
-	 * copy, so the last to save wins; say so rather than lose work silently.
-	 */
-	savedElsewhere(language: LanguageId): void {
-		if (language === this.language) this.write('warning', `This ${languageOf(language).label} project was changed in another tab. Whichever tab saves last keeps its version.`);
-	}
-
 	/** Every file of the project as last edited. */
 	private currentFiles(): Record<string, string> {
 		const files: Record<string, string> = {};
@@ -480,7 +563,7 @@ export class Workspace {
 		this.open = open;
 		this.active = active;
 		this.explorer?.activeChanged(active);
-		this.scheduleSave();
+		this.scheduleSave(undefined, false);
 	}
 
 	/** Why a new file or folder cannot be called `path`, or `null`. */
@@ -582,6 +665,11 @@ export class Workspace {
 		this.refreshTestFramework();
 		this.refreshTarget();
 		this.refreshOptimization();
+		// The tab holds its project from the start, before any edit: reopened or shared now, it is this one.
+		clearTimeout(this.saveTimer);
+		this.changed = false;
+		this.tooLongSaid = false;
+		void this.writeLink();
 	}
 
 	/**
@@ -802,7 +890,8 @@ export class Workspace {
 	 * under tests/, and the target only when it is compile_flags.txt, not on
 	 * every keystroke in any file.
 	 */
-	private scheduleSave(edited?: string): void {
+	private scheduleSave(edited?: string, change = true): void {
+		if (change) this.changed = true;
 		if (edited === undefined || edited.startsWith(TESTS_DIR)) this.refreshTestFramework();
 		if (edited === undefined || edited === COMPILE_FLAGS) {
 			this.refreshTarget();
@@ -814,9 +903,47 @@ export class Workspace {
 
 	private saveNow(): void {
 		clearTimeout(this.saveTimer);
+		const project = this.currentProject();
+		saveProject(this.language, project, { browser: this.changed }, (m) => this.write('error', m));
+		void this.writeLink(project);
+	}
+
+	/** The project as it is now, as it is saved. */
+	private currentProject(): Project {
 		const files = this.currentFiles();
-		const project = { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}) };
-		saveProject(this.language, project, (m) => this.write('error', m));
+		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}) };
+	}
+
+	/**
+	 * Puts the project into this tab's URL, replacing the history entry
+	 * rather than adding one, so Back still leaves the app instead of
+	 * stepping through edits. History's own API, not SvelteKit's
+	 * `replaceState`: that one updates the page's state on every save, and
+	 * nothing reads the fragment through the router (which in `vite dev`
+	 * warns once about it).
+	 */
+	private writeLink(project = this.currentProject()): Promise<void> {
+		const write = ++this.linkWrites;
+		this.linkWriting = linkOf(this.language, project).then(
+			(hash) => {
+				if (write !== this.linkWrites) return; // a later write overtook this one
+				if (hash.length > MAX_LINK) {
+					if (!this.tooLongSaid) this.write('warning', `This project is too large for a link (${Math.round(hash.length / 1000)} kB of the ${MAX_LINK / 1000} kB a URL may hold): this tab's link keeps an older version and cannot share it, and only this browser has the project as it is. Download it to keep it.`);
+					this.tooLongSaid = true;
+					this.linkCurrent = false;
+					return;
+				}
+				this.tooLongSaid = false;
+				this.written = hash;
+				history.replaceState(history.state, '', hash);
+				this.linkCurrent = true;
+			},
+			(e: unknown) => {
+				if (write === this.linkWrites) this.linkCurrent = false;
+				this.write('error', `Could not put the project into the link: ${e instanceof Error ? e.message : String(e)}`);
+			},
+		);
+		return this.linkWriting;
 	}
 }
 

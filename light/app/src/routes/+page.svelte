@@ -30,7 +30,6 @@
 	import Licenses from '../lib/components/Licenses.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
-	import { projectLanguageOf } from '../lib/project';
 	import { serverLabel } from '../lib/format';
 	import { followViewport } from '../lib/viewport';
 	import { startEditor } from '../lib/monaco';
@@ -63,17 +62,15 @@
 		// The save is debounced; a page being hidden may never come back.
 		const hidden = () => document.visibilityState === 'hidden' && workspace.flush();
 		const flush = () => workspace.flush();
-		const storage = (e: StorageEvent) => {
-			const language = e.key && projectLanguageOf(e.key);
-			if (language) workspace.savedElsewhere(language);
-		};
+		// A link pasted into this tab's address bar: open its project here.
+		const hashchange = () => void workspace.openLink(location.hash);
 		addEventListener('pagehide', flush);
-		addEventListener('storage', storage);
+		addEventListener('hashchange', hashchange);
 		document.addEventListener('visibilitychange', hidden);
 		return () => {
 			stopViewport();
 			removeEventListener('pagehide', flush);
-			removeEventListener('storage', storage);
+			removeEventListener('hashchange', hashchange);
 			document.removeEventListener('visibilitychange', hidden);
 			dock?.dispose();
 		};
@@ -101,6 +98,49 @@
 	/** The server's full name and version, for the status bar's title; its short form is shown. */
 	const serverFull = $derived(workspace.clientState.kind === 'running' ? workspace.clientState.server : '');
 	const mb = (bytes: number) => (bytes / 1048576).toFixed(1);
+
+	/** What the toast above the status bar says, briefly; null: nothing. */
+	let toast = $state<string | null>(null);
+	let toastTimer: ReturnType<typeof setTimeout> | undefined;
+	function say(message: string) {
+		toast = message;
+		clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => (toast = null), 3500);
+	}
+
+	/**
+	 * Share: the link to this project, which holds all of it (project-link.ts).
+	 * A phone's share sheet where there is one, which has Copy among its
+	 * targets; the clipboard elsewhere; a prompt to copy from when the
+	 * clipboard is refused (a page not served over HTTPS, say).
+	 */
+	async function share() {
+		const url = await workspace.shareLink();
+		if (url === null) {
+			say('This project is too large for a link. Download it to share it.');
+			return;
+		}
+		if (matchMedia('(pointer: coarse)').matches && typeof navigator.share === 'function') {
+			try {
+				await navigator.share({ title: document.title, url });
+				return;
+			} catch (e) {
+				if (e instanceof DOMException && e.name === 'AbortError') return; // closed without sharing
+			}
+		}
+		try {
+			await navigator.clipboard.writeText(url);
+			say('Link copied. Anyone who opens it gets their own copy to edit.');
+		} catch {
+			prompt('Copy this link to the project:', url);
+		}
+	}
+
+	// The tab's title says which project it is, so tabs restored with the browser can be told apart.
+	$effect(() => {
+		const file = workspace.active?.slice(workspace.active.lastIndexOf('/') + 1);
+		document.title = `${file ? `${file} · ` : ''}${language.label} · Yukibana Light`;
+	});
 
 	function reset() {
 		const label = languageOf(workspace.language).label;
@@ -165,6 +205,9 @@
 
 		<span class="spacer"></span>
 
+		<button class="btn share" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" /></svg><span class="share-word">Share</span>
+		</button>
 		{#if applyUpdate}
 			<button class="btn update" onclick={() => applyUpdate?.()} title="A new version is installed. Reload to use it">Update</button>
 		{/if}
@@ -199,6 +242,7 @@
 				{/each}
 				<div class="menu-divider" role="separator" data-fold="44"></div>
 			{/if}
+			<button class="menu-item" role="menuitem" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">Share link to project</button>
 			<button class="menu-item" role="menuitem" onclick={() => void workspace.download()} title="Download the project as a zip, with the build files an IDE needs">Download project (.zip)</button>
 			<button class="menu-item danger" role="menuitem" onclick={reset} title="Replace this language's project with the sample">Reset project…</button>
 			<div class="menu-divider" role="separator"></div>
@@ -213,6 +257,8 @@
 
 <Offline bind:this={offlineDialog} />
 <Licenses bind:this={licensesDialog} />
+
+<div class="toast" role="status" aria-live="polite" class:shown={toast !== null}>{toast ?? ''}</div>
 
 <footer class="status-bar">
 	<button class="server" popovertarget="server-menu" aria-haspopup="menu" title={serverFull || 'Language server'}>
@@ -382,6 +428,45 @@
 	.run-label::after {
 		content: attr(data-other);
 		visibility: hidden;
+	}
+	.share svg {
+		width: 1rem;
+		height: 1rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.2;
+		stroke-linecap: round;
+	}
+	.toast {
+		position: fixed;
+		/* Above the status bar, centred, and never wider than the window less its margins. */
+		bottom: 2.75rem;
+		left: 50%;
+		z-index: 20;
+		max-width: calc(100vw - 2rem);
+		padding: 0.55rem 0.9rem;
+		border: 1px solid var(--accent);
+		border-radius: 0.5rem;
+		background: var(--gray-6);
+		box-shadow: 0 0.5rem 1.5rem oklch(0% 0 0 / 0.3);
+		color: var(--white);
+		font-size: 0.85rem;
+		text-align: center;
+		opacity: 0;
+		pointer-events: none;
+		transform: translate(-50%, 0.5rem);
+		transition:
+			opacity 0.2s,
+			transform 0.2s;
+	}
+	.toast.shown {
+		opacity: 1;
+		transform: translate(-50%, 0);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.toast {
+			transition: none;
+		}
 	}
 	.update {
 		border-color: var(--accent);
