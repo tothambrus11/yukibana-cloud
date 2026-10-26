@@ -17,7 +17,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { createDock } from '../lib/dock';
-	import { LANGUAGE_GROUPS, languageOf, shortLabel, type LanguageId } from '../lib/languages';
+	import { languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf } from '../lib/packs';
 	import { KINDS, viewsOf } from '../lib/explore-views';
 	import { registerServiceWorker } from '../lib/pwa';
@@ -160,12 +160,8 @@
 			<span class="lang-label" aria-hidden="true"><span class="full">{language.label}</span><span class="short">{shortLabel(language)}</span></span>
 			<span class="sr-only">Language</span>
 			<select value={workspace.language} onchange={(e) => void workspace.switchTo(e.currentTarget.value as LanguageId)}>
-				{#each LANGUAGE_GROUPS as group (group.label)}
-					<optgroup label={group.label}>
-						{#each group.ids.map(languageOf) as l (l.id)}
-							<option value={l.id}>{l.label}{offline.isPackCached(packOf(l)) ? ' (offline)' : ''}</option>
-						{/each}
-					</optgroup>
+				{#each pickerLanguages() as l (l.id)}
+					<option value={l.id}>{l.label}{offline.isPackCached(packOf(l)) ? ' (offline)' : ''}</option>
 				{/each}
 			</select>
 			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>

@@ -72,19 +72,6 @@ export interface Language {
 /** A language's short name: `short` when it has one, else its label. */
 export const shortLabel = (language: Language): string => language.short ?? language.label;
 
-/**
- * The language picker's sections, in order, each with the languages it
- * lists: thirteen names in one flat list were hard to scan. Every language
- * is in exactly one (tests/unit/languages.test.mjs).
- */
-export const LANGUAGE_GROUPS: readonly { label: string; ids: readonly LanguageId[] }[] = [
-	{ label: 'Scripting', ids: ['python', 'javascript', 'typescript', 'php'] },
-	{ label: 'Web', ids: ['web', 'p5', 'p5-global'] },
-	{ label: 'Compiled', ids: ['cpp', 'rust', 'go', 'zig', 'swift'] },
-	{ label: 'JVM', ids: ['java', 'kotlin', 'scala'] },
-	{ label: 'Functional', ids: ['haskell'] },
-];
-
 export const LANGUAGES: readonly Language[] = [
 	{
 		id: 'python',
@@ -1416,4 +1403,14 @@ export function languageOf(id: LanguageId): Language {
 /** Narrows a stored or typed string to a language id. */
 export function isLanguageId(value: unknown): value is LanguageId {
 	return LANGUAGES.some((l) => l.id === value);
+}
+
+/**
+ * The languages as the picker lists them: one plain list, by name. It once
+ * had sections (Scripting, Web, Compiled, JVM, Functional), which Ambrus
+ * asked to remove; a name is found by its first letter. A function, so
+ * importing this module sorts nothing (editor-start.test.mjs).
+ */
+export function pickerLanguages(): Language[] {
+	return [...LANGUAGES].sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }));
 }
