@@ -179,10 +179,10 @@ The other ideas I checked:
      That link step belongs to the Java pack, and I have not tried it with
      kotlin-stdlib.
 * **Language features beyond diagnostics** (completion, hover, definition)
-  need the compiler's analysis, not just its CLI. They could be built in Java
-  on FIR inside this same image, the way the Java pack's
-  `LanguageService.java` works on javac's trees, and exposed next to
-  `compile`.
+  need the compiler's analysis, not just its CLI. Rather than build them
+  ourselves, the image now holds an existing language server,
+  fwcd/kotlin-language-server, compiled against this kotlinc and exposed
+  next to `compile` (`lspStart`, `lsp`, `lspIdle`; [`kls/README.md`](kls/README.md)).
 * **Toolchain risk.** Web Image is experimental. Oracle ships it prebuilt
   only in Oracle GraalVM, under terms (the early adopter ones, for the 25.1
   builds that have it) that do not allow shipping the pack, and GraalVM
@@ -209,4 +209,10 @@ in `$YK_CACHE` (default `~/.cache/yukibana-kotlin-wasm`; the pack's build
 passes `$PACK_CACHE/kotlin/kotlinc-build`).
 The image takes about 6 minutes to build on four cores, with a peak of about 11 GB.
 `config/traced-reachability-metadata.json` is the tracing agent's output for
-the compilations `test/run-node.mjs` makes. Delete it to trace again.
+the compilations `test/run-node.mjs` makes and a session of the language
+server (`trace/src/yk/Lsp.java`). Delete it to trace again: the GraalVM
+release has no tracing agent, so `build.sh` then downloads Oracle GraalVM
+25.0.4 (pinned) to run the trace on.
+
+The image also holds fwcd/kotlin-language-server, which the pack's editor
+asks for completion and the rest: [`kls/README.md`](kls/README.md).

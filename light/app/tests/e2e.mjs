@@ -1651,7 +1651,7 @@ async function licences() {
 		check(missing.length === 0, `every pack with a licence file has a row (${missing.join(', ') || 'none missing'})`);
 		if (installed.includes('kotlin')) {
 			const kotlin = (await dialog.locator('tr[data-pack="kotlin"]').textContent()) ?? '';
-			const wanted = ['LICENSE-kotlin.txt', 'LICENSE-graalvm.txt', 'LICENSE-openjdk.txt', 'SOURCES.txt'];
+			const wanted = ['LICENSE-kotlin.txt', 'LICENSE-graalvm.txt', 'LICENSE-kotlin-language-server.txt', 'LICENSE-openjdk.txt', 'SOURCES.txt'];
 			check(wanted.every((f) => kotlin.includes(f)), `the Kotlin row has kotlinc's, GraalVM's and OpenJDK's licences and SOURCES.txt (${kotlin.trim().replace(/\s+/g, ' ')})`);
 		}
 	} finally {

@@ -1,7 +1,9 @@
 // kotlinc in this worker: the real Kotlin compiler (K2), compiled to
 // WebAssembly GC by GraalVM Web Image (kotlinc/README.md), with an in-memory
-// file system. Shared by the language server's checker (check.js) and the
-// runner (runner.js), each of which loads its own: a worker holds one.
+// file system. Shared by the language server's checker (check.js), its
+// analyser (analysis.js, which runs fwcd/kotlin-language-server, compiled
+// into the same image) and the runner (runner.js), each of which loads its
+// own: a worker holds one.
 //
 // Everything compiles for Kotlin/Wasm with the WASI target, so what the
 // editor checks is what Run runs: Kotlin's common standard library, no
@@ -21,6 +23,8 @@ const BASE = new URL('./', import.meta.url);
 /** The libraries in the compiler's file system, by path. */
 export const STDLIB = '/lib/kotlin-stdlib-wasm-wasi.klib';
 export const KOTLIN_TEST = '/lib/kotlin-test-wasm-wasi.klib';
+/** The JVM standard library, which the language server analyses against. */
+export const JVM_STDLIB = '/lib/kotlin-stdlib.jar';
 /** kotlinc looks for itself here unless it exists (kotlinc/README.md). */
 const KOTLIN_HOME = '/kotlinc';
 
@@ -65,26 +69,29 @@ const encoder = new TextEncoder();
 
 /**
  * Downloads and starts kotlinc, once per worker; later calls get the same
- * one. report receives yukibana/loading-shaped progress.
+ * one. report receives yukibana/loading-shaped progress. libraries are the
+ * paths in the compiler's file system to download into it (each the pack
+ * file of the same name): by default, what a Kotlin/Wasm compilation reads.
  * @returns {Promise<{ versions: object, timings: object,
  *   write(path: string, text: string): void, remove(path: string): void,
  *   readBytes(path: string): Uint8Array, list(dir: string): string[],
- *   compile(args: string[]): { exit: number, ms: number, messages: object[] } }>}
+ *   compile(args: string[]): { exit: number, ms: number, messages: object[] },
+ *   lspStart(classPath: string): void, lsp(message: string): object[], lspIdle(): object[] }>}
  */
-export function startKotlinc({ report = () => {} } = {}) {
-    started ??= start(report);
+export function startKotlinc({ report = () => {}, libraries = [STDLIB, KOTLIN_TEST] } = {}) {
+    started ??= start(report, libraries);
     return started;
 }
 let started = null;
 
-async function start(report) {
+async function start(report, libraries) {
     const t0 = performance.now();
     const manifest = await (await fetch(new URL('manifest.json', BASE))).json();
     const size = (f) => manifest.files?.[f] ?? 0;
-    const [wasm, stdlib, test] = await Promise.all([
+    const name = (path) => path.slice(path.lastIndexOf('/') + 1);
+    const [wasm, ...libs] = await Promise.all([
         fetchBytes('kc.js.wasm', size('kc.js.wasm'), report),
-        fetchBytes('kotlin-stdlib-wasm-wasi.klib', size('kotlin-stdlib-wasm-wasi.klib'), report),
-        fetchBytes('kotlin-test-wasm-wasi.klib', size('kotlin-test-wasm-wasi.klib'), report),
+        ...libraries.map((path) => fetchBytes(name(path), size(name(path)), report)),
     ]);
     const downloaded = performance.now();
     const yk = await new Promise((resolve, reject) => {
@@ -95,8 +102,7 @@ async function start(report) {
     delete globalThis.ykWasmBytes;
     const instantiated = performance.now();
     yk.writeFile(`${KOTLIN_HOME}/lib/README`, 'kotlinc in WebAssembly has no home of its own\n');
-    yk.writeFile(STDLIB, latin1(stdlib));
-    yk.writeFile(KOTLIN_TEST, latin1(test));
+    libraries.forEach((path, i) => yk.writeFile(path, latin1(libs[i])));
     const kc = {
         versions: manifest.versions,
         timings: {
@@ -110,8 +116,23 @@ async function start(report) {
         list: (dir) => yk.listFiles(dir).split('\n').filter(Boolean),
         /** One kotlinc-wasm run; arguments as on its command line. */
         compile: (args) => JSON.parse(yk.compile('wasm', ['-kotlin-home', KOTLIN_HOME, ...args].join('\n'))),
+        /** Starts the language server (kotlinc/service/src/yk/LanguageServerBridge.java), once; throws why it cannot. */
+        lspStart: (classPath) => {
+            const error = String(yk.lspStart(classPath));
+            if (error) throw new Error(`kotlin-language-server: ${error}`);
+        },
+        /** One JSON-RPC message in; the messages the server sent meanwhile out. Throws if the server broke. */
+        lsp: (message) => messagesOf(String(yk.lsp(message))),
+        /** Runs the work the server put off; the messages it sent meanwhile. Throws if the server broke. */
+        lspIdle: () => messagesOf(String(yk.lspIdle())),
     };
     return kc;
+}
+
+/** The language server's answer: a JSON array of messages, or the Java stack trace of its failure. */
+function messagesOf(answer) {
+    if (!answer.startsWith('[')) throw new Error(`kotlin-language-server: ${answer}`);
+    return JSON.parse(answer);
 }
 
 /**

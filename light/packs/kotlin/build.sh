@@ -9,8 +9,12 @@
 #                                      Web Image (kotlinc/build.sh, kotlinc/README.md)
 #   kotlin-stdlib-wasm-wasi.klib,      the libraries a Kotlin/Wasm WASI compilation reads,
 #   kotlin-test-wasm-wasi.klib         with stored zip entries
+#   kotlin-stdlib.jar                  the JVM standard library, stored, which the language
+#                                      server (fwcd/kotlin-language-server, inside kc.js.wasm)
+#                                      analyses against
 #   kotlinc.js                         loads kotlinc into a worker (src/kotlinc.js)
-#   server.js, check.js                the language server worker, and its kotlinc worker
+#   server.js, check.js, analysis.js   the language server worker, its kotlinc worker, and its
+#                                      kotlin-language-server worker (kotlinc/kls/README.md)
 #   stdlib-index.json                  the standard library's and kotlin.test's names and
 #                                      signatures, which the server completes
 #                                      (scripts/stdlib-index.mjs, from kotlinc/build.sh's abi/)
@@ -69,7 +73,7 @@ python3 -I "$HERE/scripts/extract.py" "$CACHE/tree-sitter-kotlin-$KOTLIN_GRAMMAR
 # kotlinc, from the cache when kotlinc/ is unchanged. Its kc.js.wasm is
 # compressed there too: brotli at quality 11 takes minutes on 91 MB.
 # The key covers what the image is built from, not the README or the tests.
-KEY="$(cd "$HERE/kotlinc" && find build.sh config service substitutions tools trace -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)"
+KEY="$(cd "$HERE/kotlinc" && find build.sh config kls service substitutions tools trace -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16)"
 KC="$CACHE/kotlinc-$KEY"
 if [ ! -f "$KC/kc.js.wasm.br" ]; then
     find "$CACHE" -maxdepth 1 -name 'kotlinc-*' ! -name kotlinc-build -exec rm -rf {} +
@@ -82,9 +86,9 @@ fi
 sed 's|const file = await runtime.fetchData(wasmPath);|const file = globalThis.ykWasmBytes \|\| await runtime.fetchData(wasmPath);|' "$KC/kc.js" > "$OUT/kc.js"
 grep -q ykWasmBytes "$OUT/kc.js" || { echo "kc.js: the line that fetches the wasm moved" >&2; exit 1; }
 cp "$KC/kc.js.wasm" "$KC/kc.js.wasm.gz" "$KC/kc.js.wasm.br" "$OUT/"
-cp "$KC/lib/kotlin-stdlib-wasm-wasi.klib" "$KC/lib/kotlin-test-wasm-wasi.klib" "$OUT/"
-cp "$KC/LICENSE-graalvm.txt" "$KC/LICENSE-kotlin.txt" "$KC/LICENSE-openjdk.txt" "$KC/SOURCES.txt" "$OUT/"
+cp "$KC/lib/kotlin-stdlib-wasm-wasi.klib" "$KC/lib/kotlin-test-wasm-wasi.klib" "$KC/lib/kotlin-stdlib.jar" "$OUT/"
+cp "$KC/LICENSE-graalvm.txt" "$KC/LICENSE-kotlin.txt" "$KC/LICENSE-kotlin-language-server.txt" "$KC/LICENSE-openjdk.txt" "$KC/SOURCES.txt" "$OUT/"
 
 node "$HERE/scripts/stdlib-index.mjs" "$OUT/stdlib-index.json" "$KC"/abi/*.txt
-cp "$HERE"/src/server.js "$HERE"/src/check.js "$HERE"/src/kotlinc.js "$HERE"/src/runner.js "$HERE"/src/program.js "$OUT/"
+cp "$HERE"/src/server.js "$HERE"/src/check.js "$HERE"/src/analysis.js "$HERE"/src/kotlinc.js "$HERE"/src/runner.js "$HERE"/src/program.js "$OUT/"
 node "$HERE/scripts/finish.mjs" "$OUT" "$WEB_TREE_SITTER_VERSION" "$KOTLIN_GRAMMAR_VERSION" "$KC/versions.json"

@@ -7,12 +7,17 @@ why each workaround is there, is in [`kotlinc/README.md`](kotlinc/README.md).
 
 **Server:** ours (`src/server.js`), in one module Web Worker. Its
 diagnostics are kotlinc's: a worker of its own (`src/check.js`) compiles
-the whole project after each edit. Everything else (completion, hover,
-signature help, definition, references, rename, highlights, symbols)
-comes from [web-tree-sitter](https://www.npmjs.com/package/web-tree-sitter)
+the whole project after each edit. Completion, hover, signature help,
+definition, references, highlights and rename come from
+[fwcd/kotlin-language-server](https://github.com/fwcd/kotlin-language-server),
+an existing language server, compiled into the same image as kotlinc and
+run in a worker of its own (`src/analysis.js`,
+[`kotlinc/kls/README.md`](kotlinc/kls/README.md)). Until it has started,
+and for symbols, the server answers from the syntax trees of
+[web-tree-sitter](https://www.npmjs.com/package/web-tree-sitter)
 0.25.10 and the Kotlin grammar
 [`@tree-sitter-grammars/tree-sitter-kotlin`](https://github.com/tree-sitter-grammars/tree-sitter-kotlin)
-1.1.0, answered from the syntax trees as before.
+1.1.0.
 
 **Runner:** ours (`src/runner.js`). kotlinc compiles the project for
 **Kotlin/Wasm with the WASI target**, and the program runs in a worker of
@@ -45,18 +50,19 @@ compiles with. Numbers and data classes print as on the JVM
 
 | file | raw | gzip | brotli | what |
 |---|---|---|---|---|
-| `kc.js.wasm` | 88.9 MB | 30.3 MB | **20.0 MB** | kotlinc and our service (`kotlinc/service/`), WebAssembly GC |
+| `kc.js.wasm` | 114.7 MB | 38.9 MB | **25.7 MB** | kotlinc, kotlin-language-server and our service (`kotlinc/service/`), WebAssembly GC |
 | `kc.js` | 111 KB | | 18 KB | GraalVM's loader, patched by `build.sh` to take the bytes `kotlinc.js` downloaded |
 | `kotlin-stdlib-wasm-wasi.klib` | 11.7 MB | | 2.5 MB | the standard library for Kotlin/Wasm WASI, with stored zip entries |
 | `kotlin-test-wasm-wasi.klib` | 264 KB | | 78 KB | `kotlin.test` for it, from Maven Central |
+| `kotlin-stdlib.jar` | 4.8 MB | | 0.8 MB | the JVM standard library, stored, which the language server analyses against |
 | `tree-sitter-kotlin.wasm`, `tree-sitter.wasm`, `tree-sitter.js` | 3.80 MB | | 255 KB | the grammar 1.1.0 and web-tree-sitter 0.25.10, as published |
-| `server.js`, `check.js`, `kotlinc.js` | | | 15 KB | ours: the language server, its checker, the loader |
+| `server.js`, `check.js`, `analysis.js`, `kotlinc.js` | | | 21 KB | ours: the language server, its checker and analyser, the loader |
 | `stdlib-index.json` | 61 KB | | 8 KB | the standard library's and `kotlin.test`'s names and signatures, for completion (`scripts/stdlib-index.mjs`) |
 | `runner.js`, `program.js` | | | 7 KB | ours: the runner, the program's worker |
 | `manifest.json`, `LICENSE-*.txt`, `SOURCES.txt` | | | | sizes and versions; the licences, and where the GPL parts' source is |
 
 The language server and the runner share every large file by URL, so the
-browser downloads them once: **23.0 MB** with brotli for the pack. The
+browser downloads them once: **29.6 MB** with brotli for the pack. The
 syntax features answer as soon as tree-sitter has loaded (0.27 MB);
 kotlinc's diagnostics follow once it has downloaded and started.
 
@@ -74,6 +80,8 @@ Chromium (headless, Playwright) on a 4-core cloud container, from
 | the server answers `initialize` (tree-sitter) | 0.16 s |
 | kotlinc ready in the server's checker: download, instantiate, libraries | 3.2 s (0.5 + 1.6 + 0.7, local server) |
 | an edit to its new diagnostics (debounce included) | about 0.5 s |
+| kotlin-language-server ready in its worker (it starts when kotlinc has) | 3.4 s, 10.3 s after the server started |
+| its completion (`"abc".tr`, `hyp`), hover | 0.1 s, 0.08 s |
 | the runner's kotlinc ready, warm-up included | 16.6 s, of which the warm-up compile and link is 13.5 s |
 | first Run in the app (the runner warm since the language started) | 8.6 s |
 | a warm Run of the sample: compile, link, run | 1.0 s (0.2 + 0.7 + 0.1) |
@@ -86,6 +94,16 @@ of code as it runs; it happens while the person reads the sample, which
 is why the runner is started ahead (`warmRunner`).
 
 ## What the server does
+
+Once kotlin-language-server has started (`src/analysis.js`), completion,
+hover, signature help, definition, references, highlights and rename are
+its: Kotlin's own analysis, with inferred types, every library type's
+members and extensions (`"abc".tr`, `names.`), KDoc, and the import a name
+needs. Its answers are used as they are, except that a location outside the
+project (a library's declaration, which the editor cannot open) is dropped,
+and that an empty answer, an error, or one slower than ten seconds is
+answered from the trees instead, as everything is while it loads. What the
+trees answer:
 
 * **Diagnostics:** kotlinc's, every error and warning with its range, in
   kotlinc's words, source `kotlinc`. A check compiles every `.kt` of the
@@ -213,20 +231,17 @@ library is part of the JVM's.
 * **No JDK.** Programs use Kotlin's common standard library (see "Why
   Kotlin/Wasm for WASI"). No files, threads, networking, `exitProcess` or
   `System.currentTimeMillis()`; `kotlin.time` works.
-* **Library types in the editor:** kotlinc checks them, but completion and
-  hover come from the syntax trees and the standard library's index, which
-  know its top-level names but not the type of a value, so not `String`'s or
-  `List`'s members, nor extension functions (`"x".trim()`: the editor
-  offers the document's words), nor KDoc for library names. Exposing kotlinc's analysis (FIR) for
-  completion and hover is the next step; it would live in the same image
-  (`kotlinc/README.md`, "What this means for the Kotlin pack").
-* **Resolution for definition, references and rename is by name and
-  written types:** no inference across calls, no overload resolution, no
-  extension functions on library types, no smart casts. Rename misses what
-  references misses: a simple string template (`"$name"`), an override of a
-  renamed member, a named argument (`copy(x = 1.0)`).
-* **Memory:** kotlinc is an 89 MB WebAssembly module, and the server's
-  checker and the runner each hold one: about 570 MB of the tab's memory each in Chromium, 1.1 GB for both.
+* **The language server analyses for the JVM**, against the JVM standard
+  library without the JDK (kotlinc/kls/README.md): completion can offer the
+  few JVM-only names of `kotlin.jvm`, which kotlinc's check then reports.
+  It is K1, Kotlin's previous frontend, as fwcd/kotlin-language-server is.
+* **While it loads, resolution is by name and written types:** no
+  inference across calls, no library types' members. Rename then misses
+  what references misses: a simple string template (`"$name"`), an override
+  of a renamed member, a named argument (`copy(x = 1.0)`).
+* **Memory:** kotlinc is a 111 MB WebAssembly module, and the server's
+  checker, its analyser and the runner each hold one: about 600 MB of the
+  tab's memory each in Chromium.
 * **No formatting, no quick fixes, no property-based or mutation
   testing.** kotest-property and PIT need the JVM; they work in the
   downloaded Gradle build.
@@ -241,6 +256,10 @@ OpenJDK class library (`LICENSE-openjdk.txt`, with its third-party notices):
 GPLv2 with the Classpath Exception, and Apache 2.0 for jimfs and Guava.
 That GraalVM is Community, built from source (`graalvm/build.sh`), and its
 corresponding source is attached to the release `SOURCES.txt` names.
+fwcd/kotlin-language-server is MIT, and the libraries it is linked with are
+EPL-2.0 (Eclipse LSP4J), MPL-2.0 (H2), Apache 2.0 and MIT
+(`LICENSE-kotlin-language-server.txt`; `SOURCES.txt` says where the EPL and
+MPL parts' source is).
 web-tree-sitter and tree-sitter-kotlin are MIT
 (`LICENSE-web-tree-sitter.txt`, `LICENSE-tree-sitter-kotlin.txt`). The app
 lists every one of these files in its Licences dialog.

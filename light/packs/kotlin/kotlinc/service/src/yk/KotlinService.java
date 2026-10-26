@@ -63,7 +63,8 @@ public final class KotlinService {
     }
 
     /**
-     * Runs one compilation. which is "jvm", "js" or "wasm"; args are kotlinc's, one per line. Returns
+     * Runs one compilation, without kotlinc's scripting plugin. which is "jvm", "js" or "wasm"; args
+     * are kotlinc's, one per line. Returns
      * JSON: {"exit": n, "ms": n, "messages": [{"severity", "message", "path", "line", "column",
      * "lineEnd", "columnEnd"}]}, lines and columns 1-based as kotlinc reports them, -1 when unknown.
      */
@@ -79,10 +80,61 @@ public final class KotlinService {
         long t0 = System.nanoTime();
         int exit;
         try (PrintStream ps = new PrintStream(sink, true, StandardCharsets.UTF_8)) {
-            exit = c.exec(ps, r, args.asString().split("\n")).getCode();
+            // The language server's jars put kotlinc's scripting plugin on the class path, where
+            // kotlinc would load it for every compilation; nothing compiled here is a script.
+            String[] argv = ("-Xdisable-default-scripting-plugin\n" + args.asString()).split("\n");
+            exit = c.exec(ps, r, argv).getCode();
         }
         long ms = (System.nanoTime() - t0) / 1_000_000;
         return JSString.of("{\"exit\":" + exit + ",\"ms\":" + ms + ",\"messages\":[" + r.out + "]}");
+    }
+
+    /** The language server, once lspStart has made it. */
+    private LanguageServerBridge lsp;
+
+    /**
+     * Starts the language server (LanguageServerBridge), analysing against classPath, jar paths
+     * in this file system separated by ':'. Once. Returns "" when it started, or else why not, with
+     * the Java stack trace (an exception reaches JavaScript as an opaque proxy).
+     */
+    public JSString lspStart(JSString classPath) {
+        try {
+            if (lsp != null) throw new IllegalStateException("the language server has started already");
+            lsp = new LanguageServerBridge(classPath.asString());
+            return JSString.of("");
+        } catch (Throwable t) {
+            return JSString.of(stackTrace(t));
+        }
+    }
+
+    /**
+     * Delivers one JSON-RPC message to the language server; returns its messages, a JSON array, or
+     * else, when the server broke, a string that is not one: the Java stack trace.
+     */
+    public JSString lsp(JSString message) {
+        try {
+            return JSString.of(lsp.handle(message.asString()));
+        } catch (Throwable t) {
+            return JSString.of(stackTrace(t));
+        }
+    }
+
+    /**
+     * Runs the work the language server put off (re-analysing a changed file, building its index);
+     * returns what lsp() does. Call it when no message is waiting.
+     */
+    public JSString lspIdle() {
+        try {
+            return JSString.of(lsp.idle());
+        } catch (Throwable t) {
+            return JSString.of(stackTrace(t));
+        }
+    }
+
+    static String stackTrace(Throwable t) {
+        java.io.StringWriter w = new java.io.StringWriter();
+        t.printStackTrace(new java.io.PrintWriter(w));
+        return w.toString();
     }
 
     /** Collects messages as JSON objects instead of printing text. */

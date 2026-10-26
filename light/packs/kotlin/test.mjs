@@ -10,7 +10,9 @@
 // and what it refuses; then kotlinc's diagnostics once it has started: a
 // type error where it is, kotlin.test resolving in a test file, java.*
 // not existing on Kotlin/Wasm, a deleted file's declarations becoming
-// unresolved; and malformed and late requests.
+// unresolved; then kotlin-language-server once it has started after kotlinc:
+// a library type's members (`names.`, `"abc".tr`), hypot with its import,
+// an inferred type on hover; and malformed and late requests.
 //
 //   node test.mjs            (after ./build.sh; needs playwright-core)
 
@@ -344,6 +346,32 @@ try {
     kd = await diagnostics(M, (d) => d.length > 0, mark);
     check('java.util is unresolved: programs are Kotlin/Wasm, without the JDK', kd?.some((d) => d.range.start.line === 0 && /java/.test(d.message)), JSON.stringify(kd));
     await change(M, MAIN);
+
+    // kotlin-language-server, which starts after kotlinc, and then answers what the trees cannot.
+    let kls = null;
+    while (!kls && Date.now() - t0 < 300000) {
+        kls = (await lsp.log()).find((m) => m.method === 'window/logMessage' && /kotlin-language-server (ready|failed)/.test(m.params.message));
+        if (!kls) await page.waitForTimeout(250);
+    }
+    check('kotlin-language-server starts in the server\'s analysis worker', /ready/.test(kls?.params.message ?? ''), `${kls?.params.message} (${await lsp.elapsed()} ms after the worker started)`);
+    await change(M, insert('    names.'));
+    const [kn, knMs] = await timed(() => lsp.request('textDocument/completion', at(M, 6, 10)));
+    const knl = (kn.result?.items ?? []).map((i) => i.label.replace(/\(.*$/, ''));
+    check('completion after `names.` (a List<String> the syntax does not say) offers List\'s members and extensions', ['size', 'first', 'joinToString'].every((l) => knl.includes(l)), `${knMs} ms: ${JSON.stringify(knl.slice(0, 20))}`);
+    await change(M, insert('    "abc".tr'));
+    const [ks, ksMs] = await timed(() => lsp.request('textDocument/completion', at(M, 6, 12)));
+    const ksl = (ks.result?.items ?? []).map((i) => i.label);
+    check('completion of `"abc".tr` offers String\'s trim', ksl.some((l) => /^trim/.test(l)), `${ksMs} ms: ${JSON.stringify(ksl.slice(0, 20))}`);
+    await change(M, insert('    hyp'));
+    const [kh, khMs] = await timed(() => lsp.request('textDocument/completion', at(M, 6, 7)));
+    const khyp = (kh.result?.items ?? []).find((i) => /^hypot/.test(i.label));
+    check('completion of `hyp` offers kotlin.math.hypot, with its import', /import kotlin\.math\.hypot/.test(JSON.stringify(khyp?.additionalTextEdits ?? '')), `${khMs} ms: ${JSON.stringify(khyp)}`);
+    await change(M, MAIN);
+    const [kv, kvMs] = await timed(() => lsp.request('textDocument/hover', at(M, 3, 8)));
+    check('hover on `names` shows its inferred type, List<String>', /List<String>/.test(JSON.stringify(kv.result ?? '')), `${kvMs} ms: ${JSON.stringify(kv.result)}`);
+    const kd2 = await lsp.request('textDocument/definition', at(M, 4, 31));
+    const kt = [kd2.result].flat()[0];
+    check('go to definition of `distance` still lands in Geometry.kt', kt?.uri === uri(G) && kt?.range.start.line === 9, JSON.stringify(kd2.result));
 
     const malformed = await lsp.request('textDocument/completion', {});
     check('a completion request without a document or position is refused as InvalidParams', malformed.error?.code === -32602, JSON.stringify(malformed.error));

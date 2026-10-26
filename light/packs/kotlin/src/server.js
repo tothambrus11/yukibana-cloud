@@ -7,21 +7,24 @@
 // downloaded (about 25 MB), and if it cannot start, syntax errors come from
 // the trees below.
 //
-// Everything else is tree-sitter (web-tree-sitter, with the
+// Completion, hover, signature help, definition, references, highlights
+// and rename come from fwcd/kotlin-language-server, an existing language
+// server with Kotlin's own analysis (K1), compiled into the same WebAssembly
+// image as kotlinc and run in a worker of its own (analysis.js,
+// kotlinc/kls/README.md). It starts once the checker has, and knows every
+// library type's members (`"abc".tr`, `names.`), inferred types, and the
+// imports a name needs.
+//
+// Until it is ready, and when it fails, has nothing to say, or takes over
+// ten seconds, the answer comes from tree-sitter (web-tree-sitter, with the
 // tree-sitter-kotlin grammar) and name resolution done on the trees: what is
 // declared where, which declarations a scope sees, and the type a variable
-// was declared with or constructed as. That is enough for symbols,
-// definition, references, rename, hover with KDoc, signature help and
-// completion of names, of the members of the project's own classes and of
-// their enum entries (`Color.`, and in `when (color) {`). The standard
-// library's and kotlin.test's top-level names, and what their types' names
-// reach (`Int.MAX_VALUE`), come from stdlib-index.json, which the pack's
-// build makes from kotlinc's dump of their klibs: completion offers them all,
-// with every overload's signature, and adds the import a name needs
-// (`hypot` brings `import kotlin.math.hypot`); hover and signature help know
-// them too. The members of a library type's values (a String's, a List's)
-// are not known: kotlinc's analysis is not exposed beyond its diagnostics
-// yet (README.md).
+// was declared with or constructed as. Symbols and prepareRename always come
+// from the trees. The standard library's and kotlin.test's top-level names,
+// and what their types' names reach (`Int.MAX_VALUE`), come from
+// stdlib-index.json, which the pack's build makes from kotlinc's dump of
+// their klibs, so that completion offers them while the language server
+// loads.
 
 import { Parser, Language } from './tree-sitter.js';
 
@@ -564,6 +567,7 @@ function checkerFailed(error) {
     if (checker.state === 'failed') return;
     checker.state = 'failed';
     log(`kotlinc failed to start, so only syntax errors are shown: ${error}`, 1);
+    startAnalysis();
     for (const uri of docs.keys()) pending.add(uri);
     publish();
 }
@@ -573,6 +577,7 @@ function onChecker(m) {
         send({ jsonrpc: '2.0', method: 'yukibana/loading', params: { label: m.label, loaded: m.loaded, total: m.total } });
     } else if (m.type === 'ready') {
         checker.state = 'ready';
+        startAnalysis();
         const t = m.timings;
         log(`kotlinc ${m.versions?.kotlin ?? ''} (WebAssembly, GraalVM Web Image) ready: downloaded in ${t.download} ms, instantiated in ${t.instantiate} ms, libraries in ${t.libraries} ms`);
         requestCheck();
@@ -621,6 +626,119 @@ function publishChecked(snapshot, messages) {
         if (!doc || doc.version !== snapshot.get(uri)) continue;
         send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, version: doc.version, diagnostics } });
     }
+}
+
+// ---- Analysis: fwcd/kotlin-language-server's
+
+/**
+ * The language server that knows Kotlin's types: fwcd/kotlin-language-server
+ * in kotlinc's image, in its worker (analysis.js). It starts once the checker
+ * has, so that its download of the image is the browser's cached copy.
+ * state: 'off' until then, 'loading', 'ready', or 'failed' (the requests it
+ * would answer are answered from the trees, as while it loads).
+ */
+const analysis = { worker: null, state: 'off', id: 0, waiting: new Map() };
+/** The client's capabilities, from initialize, which the analyser is started with. */
+let clientCapabilities = {};
+/** The requests the analyser answers once it is ready; until then, and when it fails, the trees do. */
+const ANALYSED = new Set(['textDocument/completion', 'textDocument/hover', 'textDocument/signatureHelp', 'textDocument/definition',
+    'textDocument/references', 'textDocument/documentHighlight', 'textDocument/rename']);
+/** How long a request waits for the analyser before the trees answer it instead, in milliseconds. */
+const ANALYSIS_TIMEOUT_MS = 10_000;
+
+function startAnalysis() {
+    if (analysis.state !== 'off') return;
+    analysis.state = 'loading';
+    try {
+        analysis.worker = new Worker(new URL('analysis.js', import.meta.url), { type: 'module' });
+    } catch (e) {
+        analysisFailed(`cannot start its worker: ${e?.message ?? e}`);
+        return;
+    }
+    analysis.worker.onmessage = ({ data }) => onAnalysis(data);
+    analysis.worker.onerror = (e) => {
+        e.preventDefault?.();
+        analysisFailed(e.message ?? String(e));
+    };
+    // The analyser reports no progress of its own and asks for no configuration.
+    const { window: _, workspace: __, ...capabilities } = clientCapabilities ?? {};
+    analysis.worker.postMessage({ type: 'start', capabilities });
+    for (const doc of docs.values()) if (doc.uri.endsWith('.kt')) toAnalysis({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri: doc.uri, languageId: 'kotlin', version: doc.version, text: doc.text } } });
+}
+
+function analysisFailed(error) {
+    if (analysis.state === 'failed') return;
+    analysis.state = 'failed';
+    log(`kotlin-language-server failed, so completion, hover and the rest come from the syntax alone: ${error}`, 1);
+    for (const resolve of analysis.waiting.values()) resolve(null);
+    analysis.waiting.clear();
+    analysis.worker?.terminate();
+}
+
+function onAnalysis(m) {
+    if (m.type === 'ready') {
+        analysis.state = 'ready';
+        log(`kotlin-language-server ready in ${m.ms} ms`);
+    } else if (m.type === 'failed') {
+        analysisFailed(m.error);
+    } else if (m.type === 'lsp') {
+        for (const msg of m.messages) {
+            if (msg.id !== undefined && analysis.waiting.has(msg.id)) {
+                analysis.waiting.get(msg.id)(msg);
+                analysis.waiting.delete(msg.id);
+            } else if (msg.method === 'window/logMessage') {
+                log(`kotlin-language-server: ${msg.params?.message}`, msg.params?.type ?? 3);
+            }
+            // Its diagnostics are off; nothing else it sends is the client's.
+        }
+    }
+}
+
+/** A message for the analyser, if it is running; the worker holds it until the server has started. */
+function toAnalysis(msg) {
+    if (analysis.state === 'loading' || analysis.state === 'ready') analysis.worker.postMessage({ type: 'lsp', message: msg });
+}
+
+/**
+ * The analyser's answer to a request: its response ({ result } or
+ * { error }), or null when it is not ready, fails, or takes longer than
+ * ANALYSIS_TIMEOUT_MS (a late answer is dropped).
+ */
+function analyse(method, params) {
+    if (analysis.state !== 'ready') return Promise.resolve(null);
+    const id = ++analysis.id;
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+            if (!analysis.waiting.delete(id)) return;
+            log(`kotlin-language-server took over ${ANALYSIS_TIMEOUT_MS} ms on ${method}; answered from the syntax instead`, 2);
+            resolve(null);
+        }, ANALYSIS_TIMEOUT_MS);
+        analysis.waiting.set(id, (r) => { clearTimeout(timer); resolve(r); });
+        analysis.worker.postMessage({ type: 'lsp', message: { jsonrpc: '2.0', id, method, params } });
+    });
+}
+
+/**
+ * The analyser's result, if it has a useful one: not an error, not empty,
+ * and only places in the project (a library's declaration is in a jar the
+ * editor cannot open). Otherwise undefined, and the trees answer.
+ */
+function analysed(method, response) {
+    if (!response) return undefined;
+    if (response.error) {
+        log(`kotlin-language-server: ${method}: ${response.error.message}`, 4);
+        return undefined;
+    }
+    let r = response.result;
+    const inProject = (l) => typeof l?.uri === 'string' && l.uri.startsWith(PREFIX);
+    if (method === 'textDocument/definition' || method === 'textDocument/references') r = (Array.isArray(r) ? r : r ? [r] : []).filter(inProject);
+    if (method === 'textDocument/rename') {
+        const uris = [...Object.keys(r?.changes ?? {}), ...(r?.documentChanges ?? []).map((c) => c.textDocument?.uri ?? c.uri)];
+        if (!uris.length || uris.some((uri) => typeof uri !== 'string' || !uri.startsWith(PREFIX))) return undefined;
+    }
+    const empty = r == null || (Array.isArray(r) && !r.length) || (Array.isArray(r?.items) && !r.items.length) ||
+        (method === 'textDocument/signatureHelp' && !r.signatures?.length);
+    return empty ? undefined : r;
 }
 
 // ---- Publishing
@@ -844,7 +962,8 @@ function parametersOf(d) {
 }
 
 const requests = {
-    initialize: async () => {
+    initialize: async (p) => {
+        clientCapabilities = p?.capabilities ?? {};
         await ready;
         return { capabilities, serverInfo: { name: `kotlinc ${manifest.versions.kotlin} (diagnostics) and tree-sitter-kotlin ${manifest.versions.kotlinGrammar}`, version: manifest.versions.kotlin } };
     },
@@ -1025,6 +1144,7 @@ const notifications = {
         if (!isKotlin(uri)) return;
         setDoc(parser, uri, version, text);
         schedule(uri);
+        if (uri.endsWith('.kt')) toAnalysis({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: p });
     },
     'textDocument/didChange': (parser, p) => {
         const text = p.contentChanges.at(-1)?.text;
@@ -1032,6 +1152,7 @@ const notifications = {
         if (text === undefined || !isKotlin(uri)) return;
         setDoc(parser, uri, p.textDocument.version, text);
         schedule(uri);
+        if (uri.endsWith('.kt')) toAnalysis({ jsonrpc: '2.0', method: 'textDocument/didChange', params: { textDocument: p.textDocument, contentChanges: [{ text }] } });
     },
     'textDocument/didClose': (parser, p) => {
         const uri = p.textDocument.uri;
@@ -1043,6 +1164,7 @@ const notifications = {
         send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri, diagnostics: [] } });
         // The others may have used what it declared.
         if (uri.endsWith('.kt') && checker.state === 'ready') requestCheck();
+        if (uri.endsWith('.kt')) toAnalysis({ jsonrpc: '2.0', method: 'textDocument/didClose', params: { textDocument: { uri } } });
     },
     'workspace/didChangeWatchedFiles': () => {},
 };
@@ -1062,7 +1184,7 @@ async function handle(msg) {
     }
     try {
         if (msg.method === 'initialize' || msg.method === 'shutdown' || msg.method === 'exit') {
-            const r = await (requests[msg.method] ?? notifications[msg.method])();
+            const r = await (requests[msg.method] ?? notifications[msg.method])(msg.params);
             if (isRequest) send({ jsonrpc: '2.0', id: msg.id, result: r });
             return;
         }
@@ -1073,7 +1195,8 @@ async function handle(msg) {
                 send({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: `unhandled method ${msg.method}` } });
                 return;
             }
-            send({ jsonrpc: '2.0', id: msg.id, result: fn(msg.params) ?? null });
+            const known = ANALYSED.has(msg.method) ? analysed(msg.method, await analyse(msg.method, msg.params)) : undefined;
+            send({ jsonrpc: '2.0', id: msg.id, result: known !== undefined ? known : fn(msg.params) ?? null });
         } else {
             notifications[msg.method]?.(parser, msg.params);
         }
