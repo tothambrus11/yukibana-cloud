@@ -5,7 +5,8 @@
 // README that must be ignored. Checks syntax errors (tree-sitter's, until
 // kotlinc is ready), completion of names and of a project class's members,
 // hover with KDoc, definition and references across files, symbols,
-// signature help, an enum's entries (after `Color.` and in `when`), rename
+// signature help, the standard library's names (kotlin.math.hypot, imported
+// as it is completed) and Int's companion, an enum's entries (after `Color.` and in `when`), rename
 // and what it refuses; then kotlinc's diagnostics once it has started: a
 // type error where it is, kotlin.test resolving in a test file, java.*
 // not existing on Kotlin/Wasm, a deleted file's declarations becoming
@@ -267,6 +268,34 @@ try {
     const ed = await lsp.request('textDocument/definition', at(C, 9, 12));
     const et = [ed.result].flat()[0];
     check('go to definition of `RED` in `Color.RED` lands on the entry', et?.uri === uri(C) && et?.range.start.line === 2 && et?.range.start.character === 4, JSON.stringify(ed.result));
+
+    // The standard library beyond the default imports: kotlin.math.hypot, its import, and Int's companion.
+    await change(M, insert('    hyp'));
+    const hc = await lsp.request('textDocument/completion', at(M, 6, 7));
+    const hyp = (hc.result?.items ?? []).find((i) => i.label === 'hypot');
+    check('completion of `hyp` offers kotlin.math.hypot with both overloads, importing it at the top of a file without imports',
+        hyp?.labelDetails?.description === 'kotlin.math' && /^fun hypot\(Double, Double\): Double/.test(hyp.detail) && /Float/.test(hyp.documentation?.value ?? '') &&
+        JSON.stringify(hyp.additionalTextEdits) === JSON.stringify([{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import kotlin.math.hypot\n\n' }]), JSON.stringify(hyp));
+    const pl = (hc.result?.items ?? []).find((i) => i.label === 'println');
+    check('println, imported by default, comes with its signature and no import', /^fun println\(/.test(pl?.detail ?? '') && !pl.additionalTextEdits, JSON.stringify(pl));
+    await change(M, 'import kotlin.test.Test\n' + insert('    hyp'));
+    const hc2 = await lsp.request('textDocument/completion', at(M, 7, 7));
+    const hyp2 = (hc2.result?.items ?? []).find((i) => i.label === 'hypot');
+    check('in a file with imports, hypot\'s import goes after the last one', JSON.stringify(hyp2?.additionalTextEdits?.[0]) === JSON.stringify({ range: { start: { line: 0, character: 23 }, end: { line: 0, character: 23 } }, newText: '\nimport kotlin.math.hypot' }), JSON.stringify(hyp2?.additionalTextEdits));
+    await change(M, 'import kotlin.math.*\n' + insert('    hyp'));
+    const hc3 = await lsp.request('textDocument/completion', at(M, 7, 7));
+    const hyp3 = (hc3.result?.items ?? []).find((i) => i.label === 'hypot');
+    check('with `import kotlin.math.*`, hypot needs no import', !!hyp3 && !hyp3.additionalTextEdits, JSON.stringify(hyp3));
+    await change(M, 'import kotlin.math.hypot\n' + insert('    hypot(3.0, '));
+    const hs = await lsp.request('textDocument/signatureHelp', at(M, 7, 15));
+    check('signature help inside `hypot(3.0, ` shows both overloads, the second parameter active',
+        hs.result?.signatures?.length === 2 && hs.result.signatures[0].label === 'fun hypot(Double, Double): Double' && hs.result.activeParameter === 1, JSON.stringify(hs.result));
+    const hh = await lsp.request('textDocument/hover', at(M, 7, 6));
+    check('hover on hypot shows its overloads and package', /fun hypot\(Double, Double\): Double/.test(hh.result?.contents?.value ?? '') && /kotlin\.math/.test(hh.result?.contents?.value ?? ''), JSON.stringify(hh.result));
+    await change(M, insert('    Int.'));
+    const ic = await lsp.request('textDocument/completion', at(M, 6, 8));
+    const max = (ic.result?.items ?? []).find((i) => i.label === 'MAX_VALUE');
+    check('completion after `Int.` offers its companion\'s MAX_VALUE, typed', max?.detail === 'const val MAX_VALUE: Int', JSON.stringify((ic.result?.items ?? []).map((i) => i.label)));
 
     await change(M, MAIN);
     const pr = await lsp.request('textDocument/prepareRename', at(M, 4, 31));

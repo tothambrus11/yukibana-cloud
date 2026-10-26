@@ -270,6 +270,7 @@ async function run(language, c) {
 	if (language === 'web') check(!requests.some((u) => /\/(p5-|packages-p5-(global-)?)[\d.]+\.js(on)?$/.test(u)), 'a web project that does not use p5 downloads nothing of p5.js');
 	if (language === 'p5' || language === 'p5-global') await sketching(page, check, requests, language === 'p5-global');
 	if (language === 'python') await peek(page, check);
+	if (language === 'kotlin') await kotlinImport(page, check);
 	if (c.callHierarchy) await callHierarchy(page, check, c.callHierarchy);
 	if (language === 'haskell') await typeLens(page, check);
 	if (c.workspaceSymbol) await workspaceSymbols(page, check, c.workspaceSymbol);
@@ -880,6 +881,31 @@ async function inlayHints(page, check, h) {
 		.then(() => true, () => false);
 	check(written, `double-clicking the hint writes its signature: ${JSON.stringify((await modelText(page, h.file))?.split('\n').slice(5, 9))}`);
 	if (text !== null) await setText(page, h.file, text);
+}
+
+/**
+ * Kotlin's standard library beyond the default imports (packs/kotlin/README.md,
+ * "Completion"): `hyp` offers kotlin.math's hypot, and accepting it writes
+ * the import at the top of the file.
+ */
+async function kotlinImport(page, check) {
+	const path = 'src/main/kotlin/Main.kt';
+	const text = await modelText(page, path);
+	await openFile(page, 'Main.kt');
+	await place(page, 'fun main() {');
+	await page.keyboard.press('End');
+	await page.keyboard.type('\nval h = hyp');
+	await page.keyboard.press('Control+Space');
+	const suggest = page.locator('.suggest-widget .monaco-list-row');
+	const offered = await suggest.filter({ hasText: /^hypot/ }).first().waitFor({ timeout: 30_000 }).then(() => true, () => false);
+	check(offered, `completion of hyp offers hypot (offered: ${(await suggest.allTextContents()).slice(0, 6).join(' | ').slice(0, 160)})`);
+	if (offered) {
+		await suggest.filter({ hasText: /^hypot/ }).first().click();
+		const imported = await page.waitForFunction((path) => /^import kotlin\.math\.hypot\n\n[^]*val h = hypot/.test(globalThis.monaco.editor.getModels().find((m) => m.uri.path === `/workspace/${path}`)?.getValue() ?? ''), path, { timeout: 10_000 }).then(() => true, () => false);
+		check(imported, `accepting hypot imports kotlin.math.hypot: ${JSON.stringify((await modelText(page, path))?.split('\n').slice(0, 4))}`);
+	}
+	await page.keyboard.press('Escape');
+	if (text !== null) await setText(page, path, text);
 }
 
 /** Opens a project file from the explorer and waits for its tab. */

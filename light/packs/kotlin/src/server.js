@@ -13,9 +13,15 @@
 // was declared with or constructed as. That is enough for symbols,
 // definition, references, rename, hover with KDoc, signature help and
 // completion of names, of the members of the project's own classes and of
-// their enum entries (`Color.`, and in `when (color) {`). The members of a
-// library type (String, List) are not known to it: kotlinc's analysis is
-// not exposed beyond its diagnostics yet (README.md).
+// their enum entries (`Color.`, and in `when (color) {`). The standard
+// library's and kotlin.test's top-level names, and what their types' names
+// reach (`Int.MAX_VALUE`), come from stdlib-index.json, which the pack's
+// build makes from kotlinc's dump of their klibs: completion offers them all,
+// with every overload's signature, and adds the import a name needs
+// (`hypot` brings `import kotlin.math.hypot`); hover and signature help know
+// them too. The members of a library type's values (a String's, a List's)
+// are not known: kotlinc's analysis is not exposed beyond its diagnostics
+// yet (README.md).
 
 import { Parser, Language } from './tree-sitter.js';
 
@@ -45,12 +51,29 @@ async function fetchBytes(name, total) {
 }
 
 let manifest = null;
+
+/**
+ * The standard library's and kotlin.test's names (stdlib-index.json, whose
+ * shape scripts/stdlib-index.mjs gives), or an empty index when it could not
+ * be read: completion then offers the project's names and the keywords.
+ */
+let stdlib = { top: [], statics: {} };
+async function loadStdlib() {
+    try {
+        const res = await fetch(new URL('stdlib-index.json', BASE));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        stdlib = await res.json();
+    } catch (e) {
+        log(`stdlib-index.json: ${e?.message ?? e}; the standard library's names are not completed`, 2);
+    }
+}
 const ready = (async () => {
     const t0 = performance.now();
     manifest = await (await fetch(new URL('manifest.json', BASE))).json();
     const [runtime, grammar] = await Promise.all([
         fetchBytes(manifest.runtime.file, manifest.runtime.size),
         fetchBytes(manifest.grammar.file, manifest.grammar.size),
+        loadStdlib(),
     ]);
     await Parser.init({ wasmBinary: runtime });
     const parser = new Parser();
@@ -664,9 +687,108 @@ function at(p) {
 const KEYWORDS = ('abstract annotation as break by catch class companion const constructor continue crossinline data do else enum expect external ' +
     'false final finally for fun get if import in infix init inline inner interface internal is lateinit noinline null object open operator ' +
     'out override package private protected public reified return sealed set super suspend tailrec this throw true try typealias val value var vararg when where while').split(' ');
-// The standard library's names a program uses most; their signatures are not known here.
-const STDLIB_FUNCTIONS = 'println print readln readLine readlnOrNull listOf mutableListOf arrayListOf emptyList mapOf mutableMapOf hashMapOf emptyMap setOf mutableSetOf emptySet arrayOf intArrayOf doubleArrayOf sequenceOf maxOf minOf require requireNotNull check error repeat lazy buildString buildList run let apply also with takeIf TODO'.split(' ');
-const STDLIB_TYPES = 'Any Unit Nothing Int Long Short Byte Double Float Boolean Char String List MutableList Map MutableMap Set MutableSet Array IntArray Pair Triple Sequence Comparable Iterable Collection Exception IllegalArgumentException IllegalStateException'.split(' ');
+/** The packages every Kotlin file imports, on every platform. */
+const DEFAULT_IMPORTS = new Set(['kotlin', 'kotlin.annotation', 'kotlin.collections', 'kotlin.comparisons', 'kotlin.io', 'kotlin.ranges', 'kotlin.sequences', 'kotlin.text']);
+
+/** A file's package and what its imports name: whole names (`kotlin.math.hypot`) and packages (`kotlin.math.*`). */
+function importsOf(doc) {
+    const names = new Set();
+    const packages = new Set();
+    for (const m of doc.text.matchAll(/^[ \t]*import[ \t]+([\w.`]+?)(\.\*)?(?:[ \t]+as[ \t]+\w+)?[ \t]*;?[ \t]*$/gm)) (m[2] ? packages : names).add(m[1].replaceAll('`', ''));
+    const pkg = /^[ \t]*package[ \t]+([\w.`]+)/m.exec(doc.text)?.[1].replaceAll('`', '') ?? '';
+    return { pkg, names, packages };
+}
+
+/** Whether a standard library name in package pkg can be used in a file as it is, without an import. */
+const visibleFrom = (imports, pkg, name) => DEFAULT_IMPORTS.has(pkg) || imports.packages.has(pkg) || imports.names.has(`${pkg}.${name}`) || imports.pkg === pkg;
+
+/** The edit that imports a name: after the file's last import, else after its package line, else at its top. */
+function importEdit(doc, fqName) {
+    let last = null;
+    for (const m of doc.text.matchAll(/^[ \t]*import[ \t].*$/gm)) last = m;
+    const anchor = last ?? /^[ \t]*package[ \t].*$/m.exec(doc.text);
+    if (!anchor) return { range: rangeOf(doc, 0, 0), newText: `import ${fqName}\n\n` };
+    const end = anchor.index + anchor[0].length;
+    return { range: rangeOf(doc, end, end), newText: `${last ? '\n' : '\n\n'}import ${fqName}` };
+}
+
+/** Overloads' signatures as Kotlin, for a completion's documentation or a hover. */
+const signaturesBlock = (signatures) => '```kotlin\n' + signatures.join('\n') + '\n```';
+
+/** A completion item for a row of stdlib-index.json, with the import it needs when it needs one. */
+function stdlibItem(doc, imports, [name, kind, pkg, signatures, deprecated]) {
+    const visible = visibleFrom(imports, pkg, name);
+    const value = kind === 'fun' || kind === 'property';
+    return {
+        label: name,
+        kind: COMPLETION_KIND[kind] ?? 6,
+        labelDetails: { description: pkg },
+        detail: signatures[0] + (signatures.length > 1 ? ` (+${signatures.length - 1} overload${signatures.length > 2 ? 's' : ''})` : ''),
+        ...(signatures.length > 1 ? { documentation: { kind: 'markdown', value: signaturesBlock(signatures) } } : {}),
+        ...(deprecated ? { tags: [1] } : {}),
+        // Defaults before what needs an import; deprecated last.
+        sortText: `${deprecated ? 7 : !visible ? 6 : value ? 3 : 4}${name}`,
+        ...(visible ? {} : { additionalTextEdits: [importEdit(doc, `${pkg}.${name}`)] }),
+    };
+}
+
+/** The rows of the standard library's top level that a name means in a file, as it imports them. */
+function stdlibNamed(doc, name) {
+    const imports = importsOf(doc);
+    return stdlib.top.filter((r) => r[0] === name && visibleFrom(imports, r[2], name));
+}
+
+/**
+ * What follows `Name.` when Name is a standard library type the file can
+ * see, and no declaration of the project's or the scope's: the rows of
+ * stdlib-index.json's statics. Null for anything else.
+ */
+function stdlibTypeAt(doc, end) {
+    const before = doc.text.slice(0, end).replace(/\s+$/, '');
+    const m = /([A-Za-z_]\w*)$/.exec(before);
+    if (!m) return null;
+    const start = before.length - m[1].length;
+    if (before.slice(0, start).trimEnd().endsWith('.')) return null;
+    if (visibleAt(doc, start).some((x) => x.name === m[1])) return null;
+    for (const [name, kind, pkg] of stdlibNamed(doc, m[1])) {
+        if (kind !== 'fun' && kind !== 'property' && stdlib.statics[`${pkg}/${name}`]) return stdlib.statics[`${pkg}/${name}`];
+    }
+    return null;
+}
+
+/** Hover for a standard library name the project does not declare: its overloads' signatures and package. */
+function stdlibHover(doc, node) {
+    const parent = node.parent;
+    if (parent?.type === 'navigation_expression' && parent.namedChild(0)?.id !== node.id) return null;
+    const rows = stdlibNamed(doc, node.text);
+    if (!rows.length) return null;
+    const value = rows.map(([, , pkg, signatures]) => `${signaturesBlock(signatures)}\n\n*${pkg}*`).join('\n\n---\n\n');
+    return { contents: { kind: 'markdown', value }, range: rangeOf(doc, node.startIndex, node.endIndex) };
+}
+
+/** A signature's parameters as [start, end) offsets into it: the top-level commas of its first parenthesised list. */
+function parameterRanges(signature) {
+    const open = signature.indexOf('(');
+    if (open < 0) return [];
+    const out = [];
+    let depth = 0;
+    let from = open + 1;
+    for (let i = from; i < signature.length; i++) {
+        const c = signature[i];
+        if (c === '(' || c === '<') depth++;
+        else if ((c === ')' || c === '>') && signature[i - 1] !== '-') {
+            if (depth === 0) {
+                if (i > from) out.push([from, i]);
+                break;
+            }
+            depth--;
+        } else if (c === ',' && depth === 0) {
+            out.push([from, i]);
+            from = i + 2;
+        }
+    }
+    return out;
+}
 const ANY_MEMBERS = [['toString', 'fun toString(): String'], ['equals', 'fun equals(other: Any?): Boolean'], ['hashCode', 'fun hashCode(): Int']];
 /** What every enum class has besides its entries, for `Color.`. */
 const ENUM_MEMBERS = (name) => [[10, 'entries', `val entries: EnumEntries<${name}>`], [2, 'values', `fun values(): Array<${name}>`], [2, 'valueOf', `fun valueOf(value: String): ${name}`]];
@@ -746,6 +868,19 @@ const requests = {
                 const extra = type.kind === 'enum' ? ENUM_MEMBERS(type.name).map(([kind, label, detail]) => ({ label, kind, detail, sortText: `1${label}` })) : [];
                 return { isIncomplete: false, items: [...statics, ...extra].map(withRange) };
             }
+            // A standard library type's name: what it reaches (`Int.MAX_VALUE`).
+            const lib = !cls && stdlibTypeAt(doc, receiverEnd);
+            if (lib) {
+                const items = lib.map(([label, kind, signatures, deprecated]) => ({
+                    label,
+                    kind: COMPLETION_KIND[kind] ?? 6,
+                    detail: signatures[0] + (signatures.length > 1 ? ` (+${signatures.length - 1})` : ''),
+                    ...(signatures.length > 1 ? { documentation: { kind: 'markdown', value: signaturesBlock(signatures) } } : {}),
+                    ...(deprecated ? { tags: [1] } : {}),
+                    sortText: `${deprecated ? 7 : 0}${label}`,
+                }));
+                return { isIncomplete: false, items: items.map(withRange) };
+            }
             // A receiver whose class the syntax does not say: nothing, so
             // that the editor falls back to the words of the document.
             if (!cls) return { isIncomplete: false, items: [] };
@@ -768,8 +903,8 @@ const requests = {
             textEdit: { range, newText: visible.includes(m) ? m.name : `${subject.name}.${m.name}` },
         }));
         for (const k of KEYWORDS) if (!names.has(k)) items.push({ label: k, kind: 14, sortText: `5${k}` });
-        for (const f of STDLIB_FUNCTIONS) if (!names.has(f)) items.push({ label: f, kind: 3, detail: 'Kotlin standard library', sortText: `3${f}` });
-        for (const t of STDLIB_TYPES) if (!names.has(t)) items.push({ label: t, kind: 7, detail: 'Kotlin standard library', sortText: `4${t}` });
+        const imports = importsOf(doc);
+        for (const row of stdlib.top) if (!names.has(row[0])) items.push(stdlibItem(doc, imports, row));
         return { isIncomplete: false, items: [...entries, ...items.map(withRange)] };
     },
     'completionItem/resolve': (p) => p,
@@ -777,7 +912,8 @@ const requests = {
         const here = at(p);
         if (!here) return null;
         const s = symbolAt(here.doc, here.offset);
-        if (!s?.decl || s.decl.implicit) return null;
+        if (!s?.decl) return s ? stdlibHover(here.doc, s.node) : null;
+        if (s.decl.implicit) return null;
         const d = s.decl;
         const where = d.container ? `\n\n*member of ${d.container.name}*` : d.doc !== here.doc ? `\n\n*in ${pathOf(d.doc.uri)}*` : '';
         const kdoc = kdocOf(d.node);
@@ -793,7 +929,15 @@ const requests = {
         if (!call) return null;
         const recv = here.doc.text.slice(0, call.start).trimEnd();
         const d = recv.endsWith('.') ? resolveName(here.doc, call.name, call.start, recv.length - 1) : (projectClass(call.name) ?? resolveName(here.doc, call.name, call.start, null));
-        if (!d) return null;
+        if (!d) {
+            // A standard library function: each overload, the first that takes as many arguments as are written active.
+            const rows = recv.endsWith('.') ? [] : stdlibNamed(here.doc, call.name).filter((r) => r[1] === 'fun');
+            const signatures = rows.flatMap((r) => r[3]).map((label) => ({ label, parameters: parameterRanges(label).map((range) => ({ label: range })) }));
+            if (!signatures.length) return null;
+            const fits = signatures.findIndex((x) => x.parameters.length > call.active || x.label.includes('(vararg') || x.label.includes(', vararg'));
+            const active = Math.max(0, fits);
+            return { signatures, activeSignature: active, activeParameter: Math.min(call.active, Math.max(0, signatures[active].parameters.length - 1)) };
+        }
         const params = parametersOf(d);
         if (!params) return null;
         const label = `${call.name}(${params.join(', ')})` + (d.type && typeof d.type === 'string' ? `: ${d.type}` : '');
@@ -866,7 +1010,7 @@ function renameTarget(doc, offset) {
     }
     if (s.decl?.implicit) throw new RequestError(InvalidParams, '`it` is the implicit parameter of the lambda; name it (`{ x -> … }`) to rename it');
     if (!s.decl?.nameNode) {
-        const library = STDLIB_FUNCTIONS.includes(s.node.text) || STDLIB_TYPES.includes(s.node.text);
+        const library = stdlibNamed(doc, s.node.text).length > 0;
         throw new RequestError(InvalidParams, `\`${s.node.text}\` is ${library ? 'from the Kotlin standard library' : 'not declared in this project (a library\'s, or one this server cannot resolve)'}, so it cannot be renamed`);
     }
     return s;

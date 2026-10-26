@@ -51,6 +51,7 @@ compiles with. Numbers and data classes print as on the JVM
 | `kotlin-test-wasm-wasi.klib` | 264 KB | | 78 KB | `kotlin.test` for it, from Maven Central |
 | `tree-sitter-kotlin.wasm`, `tree-sitter.wasm`, `tree-sitter.js` | 3.80 MB | | 255 KB | the grammar 1.1.0 and web-tree-sitter 0.25.10, as published |
 | `server.js`, `check.js`, `kotlinc.js` | | | 15 KB | ours: the language server, its checker, the loader |
+| `stdlib-index.json` | 61 KB | | 8 KB | the standard library's and `kotlin.test`'s names and signatures, for completion (`scripts/stdlib-index.mjs`) |
 | `runner.js`, `program.js` | | | 7 KB | ours: the runner, the program's worker |
 | `manifest.json`, `LICENSE-*.txt`, `SOURCES.txt` | | | | sizes and versions; the licences, and where the GPL parts' source is |
 
@@ -111,10 +112,22 @@ is why the runner is started ahead (`warmRunner`).
   so it works while the `when` is unfinished. Elsewhere: the
   names visible at the cursor (locals declared before it, parameters,
   lambda parameters and `it`, members of the enclosing class, top-level
-  declarations of every file), keywords, and common standard library
-  functions and types (`println`, `listOf`, `String`, …).
-* **Hover:** the declaration's signature, its KDoc, and where it is.
-* **Signature help** in calls of project functions and constructors.
+  declarations of every file), keywords, and every top-level class,
+  function and property of the standard library and `kotlin.test`, with
+  each overload's signature and its package. A name outside the default
+  imports comes with its import: accepting `hypot` adds
+  `import kotlin.math.hypot` after the file's imports (none if the file
+  already imports it or `kotlin.math.*`). After a standard library type's
+  name (`Int.`, `Random.`): its companion's members and nested types.
+  These come from `stdlib-index.json`, which the build makes from kotlinc's
+  ABI dump of the two klibs a Run compiles against
+  (`kotlinc/tools/src/yk/DumpAbi.java`, `scripts/stdlib-index.mjs`), so they
+  are exactly Kotlin/Wasm's; a klib keeps no parameter names, so their
+  signatures have types only (`fun hypot(Double, Double): Double`).
+* **Hover:** the declaration's signature, its KDoc, and where it is; for a
+  standard library name, its overloads and package.
+* **Signature help** in calls of project functions and constructors, and
+  of standard library functions (every overload).
 * **Definition, references and highlights** of project declarations, by
   scope: a parameter, a local, a member through a receiver of known class,
   an enum entry or companion member through its class's name, a top-level
@@ -201,9 +214,10 @@ library is part of the JVM's.
   Kotlin/Wasm for WASI"). No files, threads, networking, `exitProcess` or
   `System.currentTimeMillis()`; `kotlin.time` works.
 * **Library types in the editor:** kotlinc checks them, but completion and
-  hover come from the syntax trees, which do not know `String`'s or
-  `List`'s members (the editor offers the document's words), and hover over
-  a library name shows nothing. Exposing kotlinc's analysis (FIR) for
+  hover come from the syntax trees and the standard library's index, which
+  know its top-level names but not the type of a value, so not `String`'s or
+  `List`'s members, nor extension functions (`"x".trim()`: the editor
+  offers the document's words), nor KDoc for library names. Exposing kotlinc's analysis (FIR) for
   completion and hover is the next step; it would live in the same image
   (`kotlinc/README.md`, "What this means for the Kotlin pack").
 * **Resolution for definition, references and rename is by name and

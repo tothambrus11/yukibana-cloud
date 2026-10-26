@@ -10,6 +10,8 @@
 #                       kotlin-stdlib-js.klib, kotlin-stdlib-wasm-wasi.klib,
 #                       kotlin-test-wasm-wasi.klib (Maven Central; kotlinc's zip has no kotlin.test
 #                       for Kotlin/Wasm)
+#   abi/                kotlin-stdlib-wasm-wasi.txt and kotlin-test-wasm-wasi.txt, those klibs'
+#                       public API as kotlinc dumps it (tools/src/yk/DumpAbi.java)
 #
 # Steps: download and check the pinned GraalVM, binaryen and kotlinc; patch the compiler's jars
 # (tools/); compile the service, the substitutions and the tracing driver;
@@ -111,6 +113,13 @@ store "$KLIB/kotlin-stdlib.jar" "$DIST/lib/kotlin-stdlib.jar"
 store "$KLIB/kotlin-stdlib-js.klib" "$DIST/lib/kotlin-stdlib-js.klib"
 store "$KLIB/kotlin-stdlib-wasm-wasi.klib" "$DIST/lib/kotlin-stdlib-wasm-wasi.klib"
 store "$CACHE/kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib" "$DIST/lib/kotlin-test-wasm-wasi.klib"
+
+# The API of the two a Kotlin/Wasm program sees, as kotlinc's ABI dump, which the pack's build
+# turns into the language server's index of the standard library (../scripts/stdlib-index.mjs).
+rm -rf "$DIST/abi" && mkdir "$DIST/abi"
+for k in "$KLIB/kotlin-stdlib-wasm-wasi.klib" "$CACHE/kotlin-test-wasm-wasi-$KOTLIN_VERSION.klib"; do
+    java -cp "$B/tools:$KLIB/kotlin-compiler.jar:$KLIB/kotlin-stdlib.jar" yk.DumpAbi "$k" "$DIST/abi/$(basename "$k" .klib | sed "s/-$KOTLIN_VERSION\$//").txt"
+done
 
 # Reflection, resources and proxies kotlinc uses, traced on HotSpot over the same compilations
 # test/run-node.mjs makes. Committed in config/; delete it to trace again.

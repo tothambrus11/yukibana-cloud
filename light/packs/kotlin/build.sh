@@ -11,6 +11,9 @@
 #   kotlin-test-wasm-wasi.klib         with stored zip entries
 #   kotlinc.js                         loads kotlinc into a worker (src/kotlinc.js)
 #   server.js, check.js                the language server worker, and its kotlinc worker
+#   stdlib-index.json                  the standard library's and kotlin.test's names and
+#                                      signatures, which the server completes
+#                                      (scripts/stdlib-index.mjs, from kotlinc/build.sh's abi/)
 #   runner.js, program.js              the runner (CONTRACT.md, "Running a program"), and
 #                                      the worker a program runs in
 #   manifest.json                      file names, sizes and versions
@@ -82,5 +85,6 @@ cp "$KC/kc.js.wasm" "$KC/kc.js.wasm.gz" "$KC/kc.js.wasm.br" "$OUT/"
 cp "$KC/lib/kotlin-stdlib-wasm-wasi.klib" "$KC/lib/kotlin-test-wasm-wasi.klib" "$OUT/"
 cp "$KC/LICENSE-graalvm.txt" "$KC/LICENSE-kotlin.txt" "$KC/LICENSE-openjdk.txt" "$KC/SOURCES.txt" "$OUT/"
 
+node "$HERE/scripts/stdlib-index.mjs" "$OUT/stdlib-index.json" "$KC"/abi/*.txt
 cp "$HERE"/src/server.js "$HERE"/src/check.js "$HERE"/src/kotlinc.js "$HERE"/src/runner.js "$HERE"/src/program.js "$OUT/"
 node "$HERE/scripts/finish.mjs" "$OUT" "$WEB_TREE_SITTER_VERSION" "$KOTLIN_GRAMMAR_VERSION" "$KC/versions.json"
