@@ -123,6 +123,16 @@ static int split_or_fail(char *buf, ssize_t len, char **out, int cap, const char
 static int open_channel(const char *path, int flags)
 {
 	int fd = open(path, flags | O_NOCTTY, 0);
+	/*
+	 * virtio_console probes its ports while init already runs: an open can
+	 * find no node yet (ENOENT) or a node whose port is not ready (ENODEV,
+	 * ENXIO). CI's riscv64 runs hit both on /dev/hvc3 (2026-10-27), and the
+	 * VM rebooted before the program started. Wait for the port, up to 5 s.
+	 */
+	for (int tries = 0; fd < 0 && (errno == ENOENT || errno == ENODEV || errno == ENXIO) && tries < 500; tries++) {
+		usleep(10000);
+		fd = open(path, flags | O_NOCTTY, 0);
+	}
 	if (fd < 0)
 		fail("cannot open", path);
 	struct termios t;
