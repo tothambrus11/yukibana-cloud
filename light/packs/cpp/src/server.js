@@ -68,6 +68,7 @@ const TOOLCHAIN = typeof TOOLCHAIN_SIZES === 'object' && TOOLCHAIN_SIZES ? TOOLC
 /** clangd's command line. --use-dirty-headers: an edited, unsaved header is
  * seen by the files including it. The resource dir is where sysroot.tar.gz
  * puts clang's own headers. */
+// A copy goes to each callMain, which puts the program name in front of the array it is given.
 const ARGS = [
     '--background-index=false',
     '--use-dirty-headers',
@@ -149,6 +150,8 @@ class Clangd {
         this.outLen = 0;
         this.bodyLength = -1; // -1 while reading headers
         this.errLine = [];
+        /** Its last lines of log, said when a clangd the client is not talking to fails. */
+        this.recent = [];
         this.ownId = 0;
     }
 
@@ -208,6 +211,8 @@ class Clangd {
         const line = decoder.decode(new Uint8Array(this.errLine));
         this.errLine = [];
         const type = line.startsWith('E[') ? 1 : line.startsWith('I[') ? 3 : 4;
+        this.recent.push(line);
+        if (this.recent.length > 20) this.recent.shift();
         // The log of the clangd the client is not talking to is of interest only when it fails.
         if (this === active || type === 1) logMessage(type, this === active ? line : `${this.name}: ${line}`);
     }
@@ -252,6 +257,9 @@ function fromClangd(instance, message) {
         else instance.write({ jsonrpc: '2.0', id: message.id, result: null });
         return;
     }
+    // clangd reports on the configuration files it read, the root .clangd this
+    // file writes among them: only the project's own are the client's.
+    if (message.method === 'textDocument/publishDiagnostics' && !message.params?.uri?.startsWith('file:///workspace/')) return;
     if (message.method === 'textDocument/publishDiagnostics' && instance === incoming) {
         incoming.diagnostics.set(message.params.uri, message);
         if (incomingReady()) promote();
@@ -413,7 +421,7 @@ function receive(message, retried = false) {
             post({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: failure } });
         return;
     }
-    if (message.method === 'yukibana/configure') return configure(message.params ?? {});
+    if (message.method === 'yukibana/configure') return configure(message.params?.yukibana ?? {});
     if (early || waiting) {
         (early ?? waiting).push(message);
         return;
@@ -624,7 +632,7 @@ async function loadTidy() {
     tidy.FS.writeFile('/.clangd', rootConfig());
     tidy.diagnostics = new Map();
     incoming = tidy;
-    tidy.module.callMain(ARGS);
+    tidy.module.callMain([...ARGS]);
     tidy.request('initialize', initializeParams, () => {
         if (incoming !== tidy) return;
         if (incomingReady()) promote();
@@ -666,6 +674,8 @@ function stop(instance) {
     instance.stopping = true;
     instance.request('shutdown', null, () => instance.write({ jsonrpc: '2.0', method: 'exit' }));
 }
+
+self.onmessage = ({ data }) => receive(data);
 
 // ---- loading.
 
@@ -751,7 +761,10 @@ async function instantiate(name, tag, create, compiled) {
             if (instance === active) {
                 logMessage(code === 0 ? 3 : 1, `${name} exited with status ${code}`);
                 self.close();
-            } else if (code !== 0) logMessage(1, `${name} exited with status ${code}`);
+            } else if (code !== 0) {
+                logMessage(1, `${name} exited with status ${code}${instance.recent.length ? `:\n${instance.recent.join('\n')}` : ''}`);
+                status('failed', `${name} exited with status ${code}`);
+            }
         },
         onAbort(reason) {
             if (instance === active) fail(`${name} aborted: ${reason}`);
@@ -792,7 +805,7 @@ async function start() {
     // `initialize` comes first, and with it the project's language, which the root configuration needs.
     for (const message of queued) receive(message);
     writeFile('/.clangd', rootConfig());
-    active.module.callMain(ARGS);
+    active.module.callMain([...ARGS]);
 }
 
 function fail(reason) {
