@@ -55,7 +55,11 @@ function sampleOf(source, id) {
         else if (c === '{') depth++;
         else if (c === '}' && --depth === 0) break;
     }
-    return new Function(`return (${source.slice(start, i + 1)});`)();
+    // A file the sample shares with another (CPP_TIDY, CLANG_FORMAT) is
+    // named by its top-level `export const NAME = \`...\`;`, given here.
+    const shared = {};
+    for (const m of source.matchAll(/^export const ([A-Z_]+) = (`(?:\\[\s\S]|[^`\\])*`);$/gm)) shared[m[1]] = new Function(`return ${m[2]};`)();
+    return new Function(...Object.keys(shared), `return (${source.slice(start, i + 1)});`)(...Object.values(shared));
 }
 const SAMPLE = sampleOf(fs.readFileSync(path.resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8'), 'cpp');
 const withTarget = (files, triple) => ({ ...files, 'compile_flags.txt': `--target=${triple}\n${files['compile_flags.txt'] ?? ''}` });
