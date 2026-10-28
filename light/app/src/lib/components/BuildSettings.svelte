@@ -58,7 +58,7 @@
 	const levelValue = $derived(!workspace.optimization ? '' : workspace.optimization.kind === 'other' ? 'other' : workspace.optimization.level.flag);
 	const levelHelp = $derived(
 		cFamily
-			? 'The level Run, Test and the IR and assembly views compile at. Rewrites the -O line of compile_flags.txt.'
+			? `The level Run${cpp ? ', Test' : ''} and the IR and assembly views compile at. Rewrites the -O line of compile_flags.txt.`
 			: workspace.language === 'scala'
 				? 'Whether Run links with the Scala.js optimizer, as sbt fastLinkJS does. It adds about a second to each Run.'
 				: 'The level Run and Test compile at, saved with the project and written into Package.swift by Download.',
