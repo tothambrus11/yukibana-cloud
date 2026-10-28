@@ -384,7 +384,7 @@ const pinsOf = (file) => new Map(fs.readFileSync(file, 'utf8').split('\n')
 
 test('the pack pins one Emscripten, in the emsdk unit, and no pin is in two units', () => {
     const units = fs.readdirSync(path.join(HERE, 'toolchains')).sort();
-    assert.deepEqual(units, ['compilers', 'emsdk', 'libs', 'musl', 'vm']);
+    assert.deepEqual(units, ['compilers', 'emsdk', 'libs', 'musl', 'tidy', 'vm']);
     const pins = new Map(units.map((u) => [u, pinsOf(path.join(HERE, 'toolchains', u, 'pins.sh'))]));
     for (const u of units)
         for (const line of fs.readFileSync(path.join(HERE, 'toolchains', u, 'pins.sh'), 'utf8').split('\n'))
