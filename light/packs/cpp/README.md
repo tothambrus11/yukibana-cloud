@@ -28,6 +28,9 @@ editor (see "Running", Tests and Properties).
 | `server.js` | the worker: transport, file mirroring, loader, a Linux target's `bits/` headers on demand (esbuild-bundled and minified, with `targets.js`) | 6.6 KB | 3.1 KB | 2.8 KB |
 | `clangd.js` | Emscripten glue, ES module | 76 KB | 20 KB | 18 KB |
 | `clangd.wasm` | clangd 21.1.8, `-Oz` | 24.0 MB | 8.5 MB | 6.0 MB |
+| `clangd-tidy.js` | the same glue for clangd with clang-tidy (tidy unit; "clang-tidy") | 87 KB | 23 KB | 20 KB |
+| `clangd-tidy.wasm` | clangd 21.1.8 with clang-tidy's checks, `-Oz`, fetched after the toolchain | 28.7 MB | 9.8 MB | 6.8 MB |
+| `tidy-checks.json` | the rule editor's list of clang-tidy's 446 checks | 112 KB | 25 KB | 21 KB |
 | `sysroot.tar.gz` | 2264 headers: musl, libc++, clang freestanding, GoogleTest, Catch2, doctest, RapidCheck | 2.18 MB (gzip, unpacked in the worker) | | |
 
 First load is about **8.2 MB** with brotli (10.8 MB with gzip); the test
@@ -35,7 +38,8 @@ frameworks' headers are 0.37 MB of it (GoogleTest 0.13 MB, Catch2's 183
 headers 0.12 MB, doctest's one 0.06 MB; Catch2 and doctest grew the archive
 from 1,938,546 to 2,119,426 bytes; RapidCheck's 135 headers, 275 KB
 unpacked, grew it to 2,177,109, +58 KB). The `LICENSE-*.txt` files are not
-fetched.
+fetched. clang-tidy adds 6.8 MB (brotli) after the toolchain, and nothing
+when a project turns it off.
 
 `server.js` downloads `clangd.wasm` and `sysroot.tar.gz` in parallel when
 the worker starts, reporting each with `yukibana/loading`, compiles the wasm

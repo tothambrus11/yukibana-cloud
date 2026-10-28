@@ -150,6 +150,13 @@ class Clangd {
         this.outLen = 0;
         this.bodyLength = -1; // -1 while reading headers
         this.errLine = [];
+        /**
+         * The documents `refresh` gave a newline more, to be given their text
+         * back once diagnosed. A ranged edit of the client's meanwhile keeps
+         * the newline in clangd's copy, so the text goes back whatever came
+         * between.
+         */
+        this.restoring = new Set();
         /** Its last lines of log, said when a clangd the client is not talking to fails. */
         this.recent = [];
         this.ownId = 0;
@@ -260,6 +267,10 @@ function fromClangd(instance, message) {
     // clangd reports on the configuration files it read, the root .clangd this
     // file writes among them: only the project's own are the client's.
     if (message.method === 'textDocument/publishDiagnostics' && !message.params?.uri?.startsWith('file:///workspace/')) return;
+    if (message.method === 'textDocument/publishDiagnostics' && instance.restoring.delete(message.params.uri)) {
+        const doc = forwarded.get(message.params.uri);
+        if (doc) instance.write(changeOf(message.params.uri, doc.version, documents.get(message.params.uri) ?? ''));
+    }
     if (message.method === 'textDocument/publishDiagnostics' && instance === incoming) {
         incoming.diagnostics.set(message.params.uri, message);
         if (incomingReady()) promote();
@@ -521,17 +532,25 @@ function refreshSoon() {
  * it is now. clangd rebuilds a file's diagnostics only when its text or its
  * compile command changed (TUScheduler: "inputs are the same"), and a
  * change of clang-tidy's rules is neither. So each document's text is sent
- * once with a newline more at its end and then as it is: two changes,
- * after the leading #includes, so the preamble (the slow part) is kept and
- * only the file's own AST, and its checks, are built again.
+ * with a newline more at its end, and once clangd has diagnosed that, as it
+ * is (`restoring`, in fromClangd): two changes after the leading #includes,
+ * so the preamble (the slow part) is kept and only the file's own AST, and
+ * its checks, are built again. Sending both at once was not enough: clangd
+ * skips an update it has not started when a newer one comes, and the newer
+ * one, the text it already had, was then "the same" and not rebuilt.
  */
 function refresh() {
-    for (const [uri, doc] of forwarded) {
-        const text = documents.get(uri) ?? '';
-        for (const changed of [`${text}\n`, text])
-            toDocuments({ jsonrpc: '2.0', method: 'textDocument/didChange', params: { textDocument: { uri, version: doc.version }, contentChanges: [{ text: changed }] } });
+    for (const instance of [active, incoming]) {
+        if (!instance || (instance === incoming && !instance.initialized)) continue;
+        for (const [uri, doc] of forwarded) {
+            instance.restoring.add(uri);
+            instance.write(changeOf(uri, doc.version, `${documents.get(uri) ?? ''}\n`));
+        }
     }
 }
+
+/** A didChange of a whole document. */
+const changeOf = (uri, version, text) => ({ jsonrpc: '2.0', method: 'textDocument/didChange', params: { textDocument: { uri, version }, contentChanges: [{ text }] } });
 
 /**
  * The app's settings for this project (`yukibana/configure`, and
