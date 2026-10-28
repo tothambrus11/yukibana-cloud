@@ -11,17 +11,21 @@
 # Run by hand (Actions, "Run workflow"), it only uploads the archive as the
 # run's artifact yukibana-light-preview-<run number>.
 #
-# Both a light-v* tag and a push to the branch yukibana-light deploy the
-# archive to https://light.yukibana.dev (the deploy job). The branch is the
-# integration branch of Light until it merges into main, and what is on it
-# is what people should try; the GitHub release stays the tags' alone. A
-# branch push only deploys, so it never builds a pack: its packs run passes
-# `stored`, and a pack whose sources the store lacks ships as the store's
-# newest build of that pack, said in the run's summary (the deploy rule in
-# light-packs.yml). The stores are written on main only, so a branch that
-# changes a pack would otherwise rebuild it, compilers and all, on every
-# push. The `paths` filter keeps pushes that change nothing of Light's from
-# deploying; GitHub never applies it to a tag.
+# A light-v* tag, a push to main that changes Light, and a finished green
+# run of light-packs.yml on main each deploy the archive to
+# https://light.yukibana.dev (the deploy job); the GitHub release stays the
+# tags' alone. Until Light merged into main (#71) the branch yukibana-light
+# deployed instead. A deploy from main never builds a pack: its packs run
+# passes `stored`, and a pack whose sources the store lacks ships as the
+# store's newest build of that pack, said in the run's summary (the deploy
+# rule in light-packs.yml). A push that changes a pack starts light-packs.yml
+# too, which builds and stores it, for hours when a compiler changed; the
+# push's own deploy ships the store's older build meanwhile (or fails by
+# name, for a split pack whose new unit is not stored yet), and the deploy
+# that light-packs.yml's green run starts (workflow_run) ships the new one.
+# The `paths` filter keeps pushes that change nothing of Light's from
+# deploying; GitHub never applies it to a tag. A workflow_run run checks out
+# main as it is then, so it ships main's newest commit.
 #
 # A light-v* release is immutable once published (assets and tag), under a
 # tag ruleset that keeps light-v* tags from moving or being deleted; a
@@ -47,13 +51,20 @@ on:
     tags:
       - light-v*
     branches:
-      - yukibana-light
+      - main
     paths:
       - light/**
       - .github/workflows/light-release.yml
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
       - .github/actions/once/**
+  workflow_run:
+    workflows:
+      - Yukibana Light packs
+    types:
+      - completed
+    branches:
+      - main
 
 # A second run of the same ref waits for the first rather than cancelling
 # it: a run that finishes leaves its packs for the next. GitHub keeps one
@@ -69,12 +80,15 @@ permissions:
 jobs:
   packs:
     name: Packs
+    # A light-packs.yml run on main that failed stored nothing new: nothing
+    # to deploy.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/light-packs.yml
     with:
       upload: true
-      # A branch push deploys what the store has and builds no pack; a tag
-      # and a run by hand ship this commit's packs, built if need be.
-      stored: ${{ github.event_name == 'push' && github.ref == 'refs/heads/yukibana-light' }}
+      # A deploy from main ships what the store has and builds no pack; a
+      # tag and a run by hand ship this commit's packs, built if need be.
+      stored: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_run' }}
     # A called workflow's jobs may ask for no more than its caller grants,
     # whether or not they run, so this is the most any job of light-packs.yml
     # asks for. The jobs that write (store-units, store-packs, caches) run
@@ -265,7 +279,7 @@ jobs:
             "yukibana-light-$GITHUB_REF_NAME.zip" packs.json toolchains.json
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
 
-  # A light-v* tag or a push to yukibana-light goes live at
+  # A light-v* tag or a deploy from main goes live at
   # https://light.yukibana.dev (light/deploy): the archive's build/ is the
   # Worker's assets, and the pack files too big for an asset go to its R2
   # bucket first. The token is the "light" environment's secret, so only
@@ -277,8 +291,9 @@ jobs:
   deploy:
     name: Deploy to light.yukibana.dev
     if: >-
-      ${{ github.event_name == 'push' &&
-      (startsWith(github.ref, 'refs/tags/light-v') || github.ref == 'refs/heads/yukibana-light') }}
+      ${{ (github.event_name == 'push' &&
+      (startsWith(github.ref, 'refs/tags/light-v') || github.ref == 'refs/heads/main')) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') }}
     needs: assemble
     runs-on: ubuntu-24.04
     timeout-minutes: 30
