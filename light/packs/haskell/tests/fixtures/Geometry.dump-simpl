@@ -1,0 +1,120 @@
+
+==================== Tidy Core ====================
+
+Result size of Tidy Core
+  = {terms: 85, types: 39, coercions: 0, joins: 0/0}
+
+-- RHS size: {terms: 5, types: 4, coercions: 0, joins: 0/0}
+py :: Point -> Double
+py
+  = \ (ds_dI5 :: Point) ->
+      src</workspace/Geometry.hs:4:35-36>
+      case ds_dI5 of { Point ds1_dI6 ds2_dI7 -> ds2_dI7 }
+
+-- RHS size: {terms: 5, types: 4, coercions: 0, joins: 0/0}
+px :: Point -> Double
+px
+  = \ (ds_dI2 :: Point) ->
+      src</workspace/Geometry.hs:4:21-22>
+      case ds_dI2 of { Point ds1_dI3 ds2_dI4 -> ds1_dI3 }
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$trModule1_rIg :: Addr#
+$trModule1_rIg = "main"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$trModule2_rIh :: TrName
+$trModule2_rIh = TrNameS $trModule1_rIg
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$trModule3_rIi :: Addr#
+$trModule3_rIi = "Geometry"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$trModule4_rIj :: TrName
+$trModule4_rIj = TrNameS $trModule3_rIi
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$trModule :: Module
+$trModule = Module $trModule2_rIh $trModule4_rIj
+
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+$krep_rIk :: KindRep
+$krep_rIk = KindRepTyConApp $tcDouble ([] @KindRep)
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$tcPoint1_rIl :: Addr#
+$tcPoint1_rIl = "Point"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tcPoint2_rIm :: TrName
+$tcPoint2_rIm = TrNameS $tcPoint1_rIl
+
+-- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
+$tcPoint :: TyCon
+$tcPoint
+  = TyCon
+      14465664668707857508#Word64
+      10791344104965576672#Word64
+      $trModule
+      $tcPoint2_rIm
+      0#
+      krep$*
+
+-- RHS size: {terms: 3, types: 1, coercions: 0, joins: 0/0}
+$krep1_rIn :: KindRep
+$krep1_rIn = KindRepTyConApp $tcPoint ([] @KindRep)
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$krep2_rIo :: KindRep
+$krep2_rIo = KindRepFun $krep_rIk $krep1_rIn
+
+-- RHS size: {terms: 3, types: 0, coercions: 0, joins: 0/0}
+$krep3_rIp :: KindRep
+$krep3_rIp = KindRepFun $krep_rIk $krep2_rIo
+
+-- RHS size: {terms: 1, types: 0, coercions: 0, joins: 0/0}
+$tc'Point1_rIq :: Addr#
+$tc'Point1_rIq = "'Point"#
+
+-- RHS size: {terms: 2, types: 0, coercions: 0, joins: 0/0}
+$tc'Point2_rIr :: TrName
+$tc'Point2_rIr = TrNameS $tc'Point1_rIq
+
+-- RHS size: {terms: 7, types: 0, coercions: 0, joins: 0/0}
+$tc'Point :: TyCon
+$tc'Point
+  = TyCon
+      8859752923274051943#Word64
+      14799879522436965057#Word64
+      $trModule
+      $tc'Point2_rIr
+      0#
+      $krep3_rIp
+
+-- RHS size: {terms: 16, types: 8, coercions: 0, joins: 0/0}
+norm :: Point -> Double
+norm
+  = \ (ds_dI1 :: Point) ->
+      src</workspace/Geometry.hs:7:1-39>
+      case ds_dI1 of { Point x_aho y_ahp ->
+      src</workspace/Geometry.hs:7:20-39>
+      sqrt
+        @Double
+        $fFloatingDouble
+        (src</workspace/Geometry.hs:7:25-39>
+         + @Double
+           $fNumDouble
+           (src</workspace/Geometry.hs:7:26-30>
+            * @Double
+              $fNumDouble
+              (src</workspace/Geometry.hs:7:26> x_aho)
+              (src</workspace/Geometry.hs:7:30> x_aho))
+           (src</workspace/Geometry.hs:7:34-38>
+            * @Double
+              $fNumDouble
+              (src</workspace/Geometry.hs:7:34> y_ahp)
+              (src</workspace/Geometry.hs:7:38> y_ahp)))
+      }
+
+

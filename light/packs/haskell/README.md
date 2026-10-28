@@ -1,0 +1,290 @@
+# Haskell pack: GHC 9.14 in WebAssembly
+
+**Server and runner:** GHC 9.14.1 itself, compiled to WebAssembly by GHC's
+own wasm backend (ghc-wasm-meta), with every boot package and the packages
+a course uses as wasm shared libraries, loaded in the browser by GHC's own
+dynamic linker (`dyld.mjs`). A small GHC API program of ours,
+`ghc/Yuki.hs` (built into `libyuki.so`), answers both workers:
+
+* `server.js` speaks LSP over `postMessage`. Each check type checks the
+  project as `ghc -fno-code -Wall` does (GHC2021, deferred type errors and
+  holes, as HLS checks), and answers GHC's diagnostics as GHC's own JSON
+  (`-fdiagnostics-as-json`) and every name GHC resolved, from the modules'
+  `.hie` files (the files HLS reads). Diagnostics, hover, definition,
+  references, highlights, rename, completion, symbols, quick fixes,
+  HLS's import and export actions, call hierarchy, signature help,
+  semantic tokens, type lenses, the nested outline, workspace symbols and
+  HLS's inlay hints for local bindings come from that; folding ranges
+  from the text. Template Haskell splices run while
+  checking, in GHC's interpreter, as in a build. **hlint** 3.10 adds its
+  hints, and **ormolu** 0.9.0.0 formats, both parsing as GHC 9.14 does
+  (ghc-lib-parser 9.14): each is its own WASI command
+  (`ghc/build-tools.sh`), started only when wanted.
+* `runner.js` loads the project into GHC's bytecode interpreter and runs
+  `main`, as `runghc` and GHCi do. **Test** does the same with
+  `tests/Spec.hs`, an hspec suite with QuickCheck. One runner runs program
+  after program, as one GHCi session does: the second Run answers in about
+  0.1 s.
+
+Packages, all of them exposed to both workers as GHC's `-package` flags
+(`PACKAGES` in `src/ghc.js`; GHC's versions, the Hackage ones built in CI):
+`base` 4.22.1, `containers` 0.8, `mtl` 2.3.1, `transformers` 0.6.3,
+`text` 2.1.4, `bytestring` 0.12.2, `array`, `deepseq`, `directory`,
+`filepath`, `time` 1.15, `stm`, `exceptions`, `template-haskell` 2.24,
+`parsec` 3.1.18, `pretty`, `binary`, and from Hackage **QuickCheck**
+2.19.0.0, **hspec** 2.11.18 (with HUnit 1.6.2), **random** 1.3.1,
+**vector** 0.13.2.0 (with primitive), **unordered-containers** 0.2.21,
+**hashable** 1.5.1.0, **split** 0.2.5.1 and **async** 2.2.6 (their
+dependencies as Hackage's index had them on 2026-10-24, `INDEX_STATE` in
+`ghc/build-rootfs.sh`). Download's cabal file names the ones a project
+imports (`haskellDepends` in the app's `export.ts`).
+
+## Why this engine
+
+The task was desktop parity: GHC's errors, GHC's types, a real `base` and
+the libraries courses use, QuickCheck, a GHCi-like Run, hints and a
+formatter. Options compared (measured where marked):
+
+| | What it type checks | Download (br) | Editor features | Verdict |
+| --- | --- | --- | --- | --- |
+| **GHC 9.14 wasm + GHC API (chosen)** | everything GHC does, all extensions, Template Haskell, real `base` | **36.2 MB** once (measured) | ours on the GHC API and `.hie` files (HLS's sources of truth) | parity on diagnostics, types and libraries; 5 to 8 s cold start |
+| MicroHs 0.16 (the previous engine) | Haskell 2010 and many extensions, its own `base` | 1.6 MB | ours on a patched type checker | one error per module, its own messages and types, no QuickCheck, mtl, text or bytestring |
+| HLS / ghcide on wasm | everything | — | the real ones | needs processes, a real file system and threads; no wasm build exists or is near |
+| ghc-in-browser (GHC's browser GHCi demo) | everything | ~49 MB zstd | none: a REPL | the same wasm GHC; we use its dyld.mjs and pieces of its approach, not its image |
+| GHC's JavaScript backend | — | — | — | compiles Haskell to JS, does not run GHC in a browser |
+
+* GHC's wasm backend ships GHC itself as wasm shared libraries
+  (`libHSghc.so`) since 9.10, and its `dyld.mjs` links them in a browser.
+  What was missing for an editor was a program on the GHC API and the
+  plumbing: `Yuki.hs` is that program, about 900 lines, exporting two
+  JSFFI functions (`yukiInit`, `yukiRequest`). Everything else is GHC's.
+* **HLS cannot run**, but what HLS reads can: GHC's typechecked modules,
+  its `.hie` files, its JSON diagnostics with their hints. The features
+  are written against those, the way ghcide's are, so the answers are
+  GHC's own (a hover shows the type GHC inferred at that place).
+* The cost is the download and the start: 33 MB once, cached afterwards,
+  and 5 to 8 s from worker start to GHC ready on this machine.
+
+## What works (parity with a desktop GHC + HLS + hlint + ormolu)
+
+| Feature | Desktop (GHC 9.14, HLS, hlint, ormolu) | Here | Evidence (`node test.mjs`) |
+| --- | --- | --- | --- |
+| Diagnostics | GHC's, every error of every module, -Wall warnings | the same: GHC's JSON diagnostics, codes (`GHC-83865`), hints, unused tags | type mismatch, String for Int, out-of-scope with "Perhaps use", parse error, an error in an imported module reported there |
+| Hover | type at that place, declared type, Haddock, module | the same (`print :: Double -> IO ()` then `print :: Show a => a -> IO ()`, Haddock rendered as Markdown, "Defined in ‘GHC.Internal.System.IO’") | 6 hover checks |
+| Definition, references, highlights | across the project | across the project; library names have no source in the pack | 4 checks |
+| Rename | project-wide, refuses library names | the same, and refuses a name of the wrong kind | 3 checks |
+| Completion | in-scope names with types, qualified, modules after `import` | the same, from GHC's renamer (270 items in the sample, 562 modules); while a line does not parse yet, the names of the last module that did | 4 checks |
+| Document symbols | yes, nested (constructors under their type, methods under their class) | nested the same way, from the declarations' spans in the `.hie` file (`outline` in Yuki.hs, nested by `src/symbols.js`): constructors under their type and record fields under their constructor (the field's type as detail), method signatures under their class, each instance (`instance Show Point`) with its bindings; a deriving clause's generated bindings left out | 3 checks; in the app, Go to Symbol (Ctrl+Shift+O) shows a field under its constructor (app e2e) |
+| Workspace symbols | Ctrl+T across the project | `workspace/symbol` over every file's outline: the name itself first, then a prefix, a part, the letters in order (`dst` finds `distance`), nested symbols with their container | 4 checks; in the app, Go to Symbol in Workspace (Ctrl+T, or F1) for any server that has them (app e2e: 2 checks) |
+| Inlay hints | HLS 2.x: the types of local bindings without a signature | the same: after each `let` and `where` binding and each `x <- e` of a do block (`binds` in Yuki.hs: GHC 9.10+ type checks a do block as the `>>=` chain it expands to, so the `.hie` file has `x` as a lambda's argument, told apart by the text) its inferred type, `:: Point`; a double click writes a let or where binding's signature in its layout block (not for a type with type variables); refreshed after each check | 3 checks, and 2 in the app's e2e |
+| Folding | HLS's: declarations, imports, comments, nested blocks | declarations with their signature and every equation, the export list, the import block (as imports), `{- -}` comments and runs of `--` lines, everything indented under a line; from the text, so before a check too | 2 checks |
+| Type lenses | HLS's: the inferred signature above a binding without one, written when clicked | the same, from `-Wmissing-signatures`; clicking runs `haskell.addSignature`, which has the client apply the edit (for local bindings: the inlay hints below) | 2 checks, and 2 in the app's e2e |
+| Quick fixes | HLS: suggestions, signatures, unused, imports, holes, extensions | from GHC's hints: replace a misspelt name, add the inferred signature, prefix unused with `_`, remove a redundant import, hole fits, add a LANGUAGE pragma | 5 checks |
+| Imports and exports | HLS: add an import for a name not in scope, make an import list explicit (lens and action), remove a redundant import or the names an import list has too much, export an unused binding | the same, as code actions: "Add import Data.List (sort)", "Add sort to the import list of Data.List", `import qualified Data.Map as Map` for `Map.insert`, a constructor with its type (`Data.Ord (Down (Down))`), from the project's modules and every module of the packages (an index of their exports, made on the first request); "Make this import explicit" / "Make all imports explicit" (the list from GHC's renamer and the .hie file); "Remove ‘nub’ from the import of Data.List"; "Export ‘helper’" in the export list's own style | 9 checks |
+| Call hierarchy | HLS's plugin: prepare, incoming and outgoing calls from `.hie` files | the same (`textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `…/outgoingCalls`): every value binding of the project, top-level and local, its callers grouped with where they call it, across modules; a library function has none | 5 checks; in the app, Show Call Hierarchy (Shift+Alt+H, or the context menu) opens a Call Hierarchy panel of callers and callees (app e2e: 6 checks) |
+| hlint | hints as warnings, apply or ignore | hlint 3.10's hints (default rules) as `hlint` diagnostics; "Apply hint" and "Ignore hint in this module"; parses GHC 9.14's syntax | 3 checks |
+| Formatting | ormolu or fourmolu | ormolu 0.9.0.0, GHC 9.14's syntax; a module that does not parse is refused with ormolu's message | 4 checks |
+| Run | `runghc` / GHCi | GHC's bytecode interpreter: stdout unbuffered, stdin from the terminal (`getLine`, `getContents` to Ctrl-D), `exitWith`, uncaught exceptions with GHC's message and call stack, compile errors in colour, many runs in one session | 11 checks |
+| Test | `cabal test` with hspec + QuickCheck | hspec 2.11's report, coloured, QuickCheck properties (`property`, with the shrunk counterexample of one that fails) | 4 checks |
+| Signature help | HLS's: the function's type, the argument at the cursor highlighted | the same: the call found in the text as typed (a space or `(` starts an argument), the type GHC declared or inferred, split by GHC into context, arguments and result, with Haddock; locals, qualified names, constructors, class methods | 8 checks |
+| Semantic tokens | HLS's plugin, from `.hie` files | the same classification from the same files (function, variable, method, field, constructor, type, class, type family, type variable, operator, module); asked before a check finishes, a token follows its line or is dropped | 4 checks |
+| Template Haskell | splices and quasi-quotes, compiled with the interpreter | the same, in the editor and in Run: the project's own splice functions and quasi-quoters, `template-haskell`'s; errors in a splice reported at it | 5 checks, and 1 of Run |
+| Packages | whatever cabal installs | the list above; others are not there (see Limits) | runner: vector, unordered-containers, hashable, split, async, parsec |
+
+Measured (Chromium, this machine, local server so download time is not
+included; a script drives both workers, as test.mjs does):
+
+| | cold | warm |
+| --- | --- | --- |
+| server ready (`initialize` answered: unpack 247 MB, link GHC) | 5.3 to 6.1 s | |
+| first check of the three-file sample | 1.0 to 1.8 s | |
+| edit to diagnostics (250 ms debounce included) | 1.2 s | 0.45 to 0.58 s |
+| hover, definition, references | 6 ms | 1 to 2 ms |
+| completion | 180 ms | 90 to 105 ms |
+| hlint over the project | 2.2 s | 1.2 to 1.4 s |
+| format (ormolu) | 0.5 s | 0.25 s |
+| Run, runner started at the same moment | 7.1 to 7.7 s | 0.1 s (same runner) |
+| Run, runner started ahead (the app's warm runner) | 0.25 s | 0.1 s |
+| Test (hspec, 4 examples) | 0.2 s | 0.13 s |
+
+## What is in `app/static/packs/haskell/`
+
+| file | raw | gzip | brotli | what |
+|---|---|---|---|---|
+| `rootfs.tar` | 268.9 MB | 53.9 MB | 36.2 MB | GHC's libdir, the packages and libyuki.so, unpacked by each worker into memory |
+| `dyld.mjs`, `prelude.mjs`, `post-link.mjs` | 57 KB | 19 KB | 17 KB | GHC's wasm dynamic linker (patched, `scripts/patch-dyld.mjs`) |
+| `wasi.js` | 32 KB | 9 KB | 8 KB | browser_wasi_shim (the haskell-wasm fork), bundled |
+| `ghc.js`, `server.js`, `symbols.js`, `text.js`, `runner.js`, `tools.js` | 97 KB | 33 KB | 28 KB | ours |
+| `explorer.js`, `dumps.js` | 24 KB | 9 KB | 8 KB | the compiler output views' worker and filters, fetched only when a view opens |
+| `ormolu.wasm` | 16.5 MB | 4.9 MB | 3.4 MB | ormolu 0.9.0.0, a WASI command |
+| `hlint.wasm`, `hlint-data.json` | 15.7 MB | 4.8 MB | 3.4 MB | hlint 3.10 (on ghc-lib-parser 9.14) and its hint files |
+| `LICENSE-*.txt`, `manifest.json` | | | | licences; versions and sizes |
+
+Downloads (brotli), by what the person does:
+
+| | |
+| --- | --- |
+| open a Haskell project (editor) | **36.2 MB** (rootfs) + 0.04 MB |
+| hints, after the first check | + 3.4 MB |
+| first Format | + 3.4 MB |
+| Run and Test | + 3 KB (`runner.js`): the runner fetches the same `rootfs.tar`, from the browser's cache or the service worker |
+
+In memory each worker holds the unpacked file system and GHC: about
+250 MB of JavaScript heap for the server (measured with
+`performance.measureUserAgentSpecificMemory`), and as much for a runner.
+
+## Building
+
+```sh
+./build.sh          # writes app/static/packs/haskell/
+npm install && node test.mjs
+npm run test:unit   # the server's pure parts (outline, workspace symbols, inlay hints, positions), no GHC
+```
+
+GHC's wasm toolchain takes some 3 GB installed, so the two heavy parts are
+built in CI and `build.sh` takes their artifacts, each pinned by its run
+and by the sha256 of its `SHA256SUMS` (which holds every file's):
+
+1. `ghc/build-rootfs.sh` (`.github/workflows/light-haskell-ghc.yml`): installs
+   ghc-wasm-meta at a pinned commit (FLAVOUR 9.14), builds the Hackage
+   packages with `wasm32-wasi-cabal` (at a pinned Hackage index state), builds
+   `libyuki.so` from `ghc/Yuki.hs`, strips the shared libraries, drops what
+   no program uses (Cabal, haddock, haskeline), writes `rootfs.tar` and its
+   `.br`/`.gz`, and smoke-tests check, hover and run in Node
+   (`ghc/smoke.mjs`). About 12 minutes with its cache.
+2. `ghc/build-tools.sh` (`.github/workflows/light-haskell-ghc-tools.yml`):
+   ormolu and hlint from their Hackage tarballs (sha256-checked), with the
+   same GHC 9.14 wasm toolchain as the root file system, both on
+   ghc-lib-parser 9.14 (ormolu since 0.8.2; hlint by
+   `ghc/hlint-3.10-ghc-9.14.patch`, below). Smoke-tested with wasmtime,
+   GHC 9.14 syntax (explicit level imports) included.
+
+Download an artifact (`haskell-ghc-rootfs`, `haskell-ghc-tools`) of the
+pinned run and pass it as `HASKELL_GHC_ROOTFS=…zip` / `HASKELL_GHC_TOOLS=…zip`;
+the release workflow does that itself. Artifacts are kept 90 days. To keep
+the pinned inputs past that, `.github/workflows/light-haskell-inputs-release.yml`
+(run by hand, a draft by default) checks both artifacts against the pins
+and attaches them to a GitHub release named `haskell-inputs-<rootfs
+run>-<tools run>` (`INPUTS_RELEASE`); once that release is published,
+`build.sh` given no artifact downloads them from it (sha256-checked the
+same way), and the release workflow falls back to it when an artifact has
+expired. Without the release, a pin older than 90 days needs the workflow
+run again (and the pins updated).
+`HASKELL_GHC_ROOTFS=build` builds the root file system locally with the
+toolchain installed.
+
+### What we patch
+
+* `dyld.mjs` (`scripts/patch-dyld.mjs`): imports the pack's `wasi.js` instead
+  of esm.sh; takes the runner's stdin/stdout/stderr as WASI fds; resolves
+  `..` in paths in the browser's file system (GHC loads boot libraries as
+  `lib/../lib/…`); keeps fds 0 to 2 open when a program closes them (one
+  runner runs many programs).
+* hlint 3.10 (`ghc/hlint-3.10-ghc-9.14.patch`): moved from ghc-lib-parser
+  9.12 to 9.14 and ghc-lib-parser-ex 9.14, the `.cabal` bounds and the
+  source changes 9.14's syntax tree asks for (right-hand sides are a
+  `NonEmpty`, holes are `HsHole`, `PrefixCon` lost its type arguments,
+  record fields are `HsConDeclRecField`, exact-print annotations). It is
+  hlint's open pull request #1673 (against master) carried back to the
+  3.10 tarball, two hunks redone by hand; to be dropped once a release
+  has it. Built with `-f-threaded` (the wasm RTS is not threaded).
+* ormolu's `.cabal` file: `-threaded` and `-with-rtsopts=-N` removed (it
+  has no flag for them).
+
+## Limits
+
+* **The download**: 36 MB the first time, then cached. MicroHs was 1.6 MB.
+* **The start**: 5 to 8 s from opening a project to the first diagnostics;
+  a Run pressed in the first seconds waits for its own GHC (the app starts
+  the runner ahead, once the server is up).
+* **Packages are fixed**: the list above, built in CI. A `build-depends` on
+  anything else is not there; Download's cabal project builds it on a
+  desktop. Adding one is a line in `PACKAGES` of `ghc/build-rootfs.sh`
+  and of `src/ghc.js` (vector and the four after it cost 3 MB brotli).
+  Installing from Hackage at run time is not realistic: Hackage sends no
+  CORS headers (a browser cannot fetch its tarballs or its 140 MB index
+  without a proxy), there is no cabal solver in the browser, and a package
+  with C sources (hashable, text-short, ...) or `CPP` needs a C compiler
+  and preprocessor that the browser does not have. A pure-Haskell package
+  could be loaded from source into the interpreter, but slowly and only
+  that kind.
+* **Template Haskell** runs a splice that its module needs compiled: the
+  editor compiles a project module a splice uses to bytecode
+  (`-fprefer-byte-code`), as GHC does when it generates no code. A splice
+  that does not type check is reported as GHC's "Exception when trying to
+  run compile-time code", with the type error inside (type errors are
+  deferred in the editor, as HLS does), and a hover on a name inside a
+  splice shows where it is defined but not its type (the `.hie` file has
+  none there).
+* **"Add import" reads every library module's interface once** (the first
+  time a name is not in scope), as HLS builds its export index; later
+  ones answer at once.
+* **Runtime errors' call stacks** point into the project's files and into
+  `ghc-internal`'s, as on a desktop.
+* **Memory**: two workers of about 250 MB each.
+* **A browser stops compiling wasm for new workers after a few in a row**
+  while the server's GHC is alive (Chromium: the fourth new runner in a row
+  stalled for tens of seconds). The runner is therefore reused across runs;
+  only Stop starts a new one.
+
+## Optimization: not offered
+
+Run loads the project into GHC's bytecode interpreter, as `runghc` and
+GHCi do, and GHC ignores `-O` for interpreted code unless
+`-fno-unoptimized-core-for-interpreter` is also given (experimental, per
+GHC 9.14's user guide). Measured with both flags on a strict fold, a list
+comprehension, a `Data.Map` build and an `Integer` sum: the first run took
+30.4 s against 17.7 s without them (the optimiser runs in the browser's
+GHC before anything executes), and the second run in the same session did
+not finish in 600 s. Compiling to wasm code instead (`-fobject-code`) would
+need a linker and a code generator per Run in the browser, which this pack
+does not have. So the app's Optimization select is not shown for Haskell;
+Download's cabal project builds with cabal's default, `-O1`.
+
+## Compiler output views (src/explorer.js, src/dumps.js)
+
+The app's **Core**, **STG**, **Cmm** and **Assembly** buttons show GHC's
+own dumps of the active module (../CONTRACT.md, "Showing compiler output"):
+Core after the simplifier (`-ddump-simpl`), the final STG, Cmm, and the
+WebAssembly assembly GHC's wasm backend writes, each line mapped to the
+source it came from.
+
+* How a module is compiled without a linker: the worker starts a runner's
+  session (the other modules are interpreted, as for Run) and puts
+  `{-# OPTIONS_GHC -fobject-code -O0 #-}` (or `-O`) in front of the shown
+  module's first line, so that it alone goes through STG, Cmm and the code
+  generator, with `-g` and every dump written to a file. GHC then stops at
+  the assembler, which a browser has not, after the last dump: that
+  failure is the expected end of every compile, and any other message is
+  the project's. `-O` goes in the pragma because GHC ignores it on the
+  command line of an interpreter's session. Columns of line 1 are shifted
+  back by the pragma's length.
+* One compile writes all four dumps, so **-O** and **Details** are one
+  setting for the four views (`shared` in the app's explore-views.ts) and
+  switching between them compiles nothing.
+* Mapping: Core and STG through the source notes `-g` puts in them
+  (`src<Main.hs:6:12>`), a note covering the lines under it; Cmm through
+  its `//tick` lines; the assembly through the Cmm procedure each function
+  was made from. Uniques are kept (`sat_s1ix`), because they are how a
+  local closure is found again in the assembly (`s1ix_entry`): with
+  `-dsuppress-uniques` every local procedure is `sat_entry`.
+* **Source notes** keeps the notes in the text (the colours show the same
+  without them). **Details** keeps IdInfo, coercions, module prefixes, the
+  size reports and the Typeable bindings (`$trModule`, `$tc…`, `$krep…`)
+  every module has. **Demangle** Z-decodes the assembly's symbols
+  (`ghczminternal_GHCziInternalziBase_zgzg_entry` is
+  `ghc-internal_GHC.Internal.Base_>>_entry`).
+* About 10 s for a module the first time (GHC starts), then a few seconds;
+  the other views of the same compile answer at once.
+
+`test-dumps.mjs` checks the filters on what the shipped GHC dumped for
+`tests/fixtures/sample.json`, both modules at -O0 and -O
+(`tests/fixtures/gen.mjs` makes them again, in Chromium).
+
+## Licences
+
+GHC and its libraries (BSD-3-Clause and others: `LICENSE-ghc-and-libraries.txt`
+collects every package's), QuickCheck, hspec and random (BSD/MIT), ormolu
+(BSD-3-Clause), hlint (BSD-3-Clause, built without its GPL `hscolour`
+option), browser_wasi_shim (MIT/Apache-2.0) are redistributed in compiled
+form with their licences next to the pack's files.

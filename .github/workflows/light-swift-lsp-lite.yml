@@ -1,0 +1,201 @@
+name: sourcekit-lsp-lite
+
+# The native build of light/toolchains/swift/tools/sourcekit-lsp-lite against the official Swift
+# toolchain's libsourcekitdInProc.so: warnings as errors on clang and GCC,
+# clang-tidy, cppcheck and clang-format, unit and LSP integration tests, all of
+# them again under AddressSanitizer + LeakSanitizer + UBSan, and a compile of
+# the same sources for wasm32-wasip1 with the WASI SDK. Minutes, not the hours
+# of light-swift-toolchain.yml, which links the wasm module itself (Stage 36).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "light/toolchains/swift/tools/sourcekit-lsp-lite/**"
+      - "light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh"
+      - ".github/workflows/light-swift-lsp-lite.yml"
+      - ".github/actions/light-swift-toolchain/**"
+      - ".github/actions/once/**"
+  pull_request:
+    paths:
+      - "light/toolchains/swift/tools/sourcekit-lsp-lite/**"
+      - "light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh"
+      - ".github/workflows/light-swift-lsp-lite.yml"
+      - ".github/actions/light-swift-toolchain/**"
+      - ".github/actions/once/**"
+  workflow_dispatch:
+
+concurrency:
+  group: lsp-lite-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The release the wasm sourcekitd is built from, so the C API and the
+  # responses the tests expect are the ones the browser gets.
+  SWIFT_VERSION: "6.3.3"
+  WASI_SDK_VERSION: "34.0"
+
+defaults:
+  run:
+    working-directory: light/toolchains/swift/tools/sourcekit-lsp-lite
+
+jobs:
+  # Which jobs already passed on exactly these inputs (.github/actions/once).
+  # A pull request's paths above are its whole diff against the base, so
+  # without this every push to a pull request that once touched the server
+  # would build it again.
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    env:
+      INPUTS: |
+        light/toolchains/swift/tools/sourcekit-lsp-lite
+        light/toolchains/swift/scripts/36-sourcekit-lsp-lite-wasm.sh
+        .github/actions/light-swift-toolchain
+        .github/workflows/light-swift-lsp-lite.yml
+    outputs:
+      test-done: ${{ steps.test.outputs.done }}
+      test-key: ${{ steps.test.outputs.key }}
+      analyze-done: ${{ steps.analyze.outputs.done }}
+      analyze-key: ${{ steps.analyze.outputs.key }}
+      wasm-done: ${{ steps.wasm.outputs.done }}
+      wasm-key: ${{ steps.wasm.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: test
+        uses: ./.github/actions/once
+        with:
+          name: lsp-lite-test
+          paths: ${{ env.INPUTS }}
+      - id: analyze
+        uses: ./.github/actions/once
+        with:
+          name: lsp-lite-analyze
+          paths: ${{ env.INPUTS }}
+      - id: wasm
+        uses: ./.github/actions/once
+        with:
+          name: lsp-lite-wasm
+          paths: ${{ env.INPUTS }}
+
+  test:
+    name: ${{ matrix.preset }}
+    needs: plan
+    if: needs.plan.outputs.test-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # dev: clang, warnings as errors. gcc: GCC's extra warnings.
+        # asan: AddressSanitizer + LeakSanitizer + UBSan.
+        preset: [dev, gcc, asan]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install tools
+        working-directory: light/toolchains/swift
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang-18 libclang-rt-18-dev g++ python3 \
+            binutils libcurl4-openssl-dev libxml2-dev libncurses-dev libsqlite3-0 zlib1g-dev tzdata
+      - name: Install Swift ${{ env.SWIFT_VERSION }}
+        uses: ./.github/actions/light-swift-toolchain
+        with:
+          version: ${{ env.SWIFT_VERSION }}
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+      - name: Latencies
+        if: matrix.preset == 'dev'
+        run: |
+          python3 tests/integration/lsp_test.py --server build/dev/sourcekit-lsp-lite \
+            --project tests/project --report | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The matrix passes as a whole or not at all: recorded once every preset
+  # passed, so that one failing preset is not skipped next time.
+  test-passed:
+    needs: [plan, test]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.test-key }}
+
+  analyze:
+    name: clang-tidy, cppcheck, clang-format
+    needs: plan
+    if: needs.plan.outputs.analyze-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install tools
+        working-directory: light/toolchains/swift
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang-18 clang-tidy-18 clang-format-18 cppcheck \
+            binutils libcurl4-openssl-dev libxml2-dev libncurses-dev libsqlite3-0 zlib1g-dev tzdata
+          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy /usr/bin/clang-tidy-18 100
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-18 100
+      - name: Install Swift ${{ env.SWIFT_VERSION }}
+        uses: ./.github/actions/light-swift-toolchain
+        with:
+          version: ${{ env.SWIFT_VERSION }}
+      - name: clang-format
+        run: clang-format --dry-run --Werror src/*.h src/*.cpp tests/unit/*.cpp tests/integration/*.cpp
+      - name: clang-tidy (during the build, as errors)
+        run: cmake --preset tidy && cmake --build --preset tidy
+      - name: cppcheck (during the build)
+        run: cmake --preset cppcheck && cmake --build --preset cppcheck
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.analyze-key }}
+
+  wasm-compile:
+    name: compile for wasm32-wasip1
+    needs: plan
+    if: needs.plan.outputs.wasm-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch the WASI SDK
+        working-directory: light/toolchains/swift
+        run: |
+          major="${WASI_SDK_VERSION%%.*}"
+          curl -fsSL "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${major}/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux.tar.gz" |
+            tar -xz -C "$RUNNER_TEMP"
+      - name: Fetch sourcekitd.h at swift-${{ env.SWIFT_VERSION }}-RELEASE
+        working-directory: light/toolchains/swift
+        run: |
+          mkdir -p "$RUNNER_TEMP/sourcekitd"
+          curl -fsSL -o "$RUNNER_TEMP/sourcekitd/sourcekitd.h" \
+            "https://raw.githubusercontent.com/swiftlang/swift/swift-${SWIFT_VERSION}-RELEASE/tools/SourceKit/tools/sourcekitd/include/sourcekitd/sourcekitd.h"
+      # The server's own sources only: linking needs Stage 35's static
+      # sourcekitd, which light-swift-toolchain.yml builds.
+      - name: Compile (Stage 36, LITE_COMPILE_ONLY)
+        working-directory: light/toolchains/swift
+        run: |
+          WASI_SDK_PATH="$RUNNER_TEMP/wasi-sdk-${WASI_SDK_VERSION}-x86_64-linux" \
+          SOURCEKITD_INCLUDE="$RUNNER_TEMP/sourcekitd" LITE_COMPILE_ONLY=1 \
+            ./scripts/36-sourcekit-lsp-lite-wasm.sh
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.wasm-key }}

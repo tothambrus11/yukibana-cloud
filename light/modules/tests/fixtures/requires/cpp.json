@@ -1,0 +1,14 @@
+{
+	"lsp": {
+		"default": { "crossOriginIsolated": "required", "sameOriginPacks": true }
+	},
+	"runner": {
+		"default": { "crossOriginIsolated": "optional-stdin", "sameOriginPacks": false },
+		"targets": {
+			"linux": { "crossOriginIsolated": "required", "sameOriginPacks": true }
+		}
+	},
+	"explorer": {
+		"default": { "crossOriginIsolated": "no", "sameOriginPacks": false }
+	}
+}

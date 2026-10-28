@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Hylo runner fixture</title>
+		<link rel="stylesheet" href="./src/page.css" />
+	</head>
+	<body>
+		<main>
+			<h1>Hylo runner fixture</h1>
+			<p>
+				Not a page for readers: the end-to-end test drives it. The compiler is Hylo&rsquo;s; the program worker is a stand-in
+				that reads input, which today&rsquo;s Hylo programs cannot (README.md says why).
+			</p>
+			<p class="meta">Runners started on this page: <span class="runners">0</span>.</p>
+			<section class="snippet" data-snippet="greet" data-title="Greeting">
+				<h2>Greeting</h2>
+				<p>The program worker asks for a name and greets every line typed; Ctrl-D ends its input, and then the program runs.</p>
+				<textarea class="code" rows="1" spellcheck="false" aria-label="Greeting: main.hylo">public fun main() {}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<input class="input" placeholder="Type a line for the program, Enter to send it, Ctrl-D to end input" aria-label="Input" />
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="answer" data-title="The answer">
+				<h2>The answer</h2>
+				<p>The same stand-in asks first; after Ctrl-D the program exits with 42.</p>
+				<textarea class="code" rows="3" spellcheck="false" aria-label="The answer: main.hylo">public fun main() -&gt; Int32 {
+  (40 as Int32) + (2 as Int32)
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<input class="input" placeholder="Type a line for the program, Enter to send it, Ctrl-D to end input" aria-label="Input" />
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+		</main>
+		<script type="module" src="./src/fixture/main.ts"></script>
+	</body>
+</html>

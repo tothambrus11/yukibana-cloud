@@ -1,0 +1,45 @@
+# Prunes the pull requests' Light build caches, from main, once a day: every
+# cache of a closed pull request, and all but the newest of each unit and
+# pack of an open one (light/scripts/cache-prune.mjs). Each is deleted on its
+# own ref, so main's caches are never touched here; light-packs.yml prunes
+# main's in its own run.
+#
+# Why here and not in the pull request's run: deleting a cache needs
+# `actions: write`, and a pull request's run has `actions: read`, so its
+# copy of the workflows cannot delete main's warm caches however it is
+# edited. GitHub also evicts a cache unused for seven days, and the least
+# recently used ones above 10 GB; this keeps the pull requests' caches from
+# pushing main's out first.
+name: Yukibana Light caches
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prune:
+    name: Prune the pull requests' build caches
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write # deleting caches
+      pull-requests: read # which pull requests are open
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Delete stale pull request caches
+        run: node light/scripts/cache-prune.mjs --stale-pulls

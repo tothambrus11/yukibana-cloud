@@ -1,0 +1,437 @@
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $tc'Point3_bytes" {
+     $tc'Point3_bytes:
+         I8[] "'Point"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $tcPoint2_bytes" {
+     $tcPoint2_bytes:
+         I8[] "Point"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule2_bytes" {
+     $trModule2_bytes:
+         I8[] "Geometry"
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""cstring" . $trModule4_bytes" {
+     $trModule4_bytes:
+         I8[] "main"
+ }]
+
+
+==================== Output Cmm ====================
+
+[Point_entry() { //  [R2, R3]
+         { info_tbls: [(cKd,
+                        label: Point_info
+                        rep: HeapRep static { Fun {arity: 2 fun_type: ArgSpec 15} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKd: // cK9
+           unwind Sp = Just Sp;
+           unwind Sp = Just Sp;
+           Hp = Hp + 12;
+           if (Hp > HpLim) (likely: False) goto cKh; else goto cKg;
+       cKh: // cK9
+           unwind Sp = Just Sp;
+           HpAlloc = 12;
+           unwind Sp = Just Sp;
+           R1 = Point_closure;
+           call (stg_gc_fun)(R3, R2, R1) args: 4, res: 0, upd: 4;
+       cKg: // cK9
+           unwind Sp = Just Sp;
+           //tick src</workspace/Geometry.hs:4:14-47>
+           I32[Hp - 8] = Point_con_info;
+           P32[Hp - 4] = R2;
+           P32[Hp] = R3;
+           R1 = Hp - 7;
+           call (I32[P32[Sp]])(R1) args: 4, res: 0, upd: 4;
+     }
+ },
+ section ""data" . Point_closure" {
+     Point_closure:
+         const Point_info;
+ }]
+
+
+==================== Output Cmm ====================
+
+[py_entry() { //  [R2]
+         { info_tbls: [(cKr,
+                        label: py_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKr: // cKj
+           unwind Sp = Just Sp;
+           if ((Sp + -4) < SpLim) (likely: False) goto cKs; else goto cKt;
+       cKs: // cKj
+           unwind Sp = Just Sp;
+           R1 = py_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       cKt: // cKj
+           unwind Sp = Just Sp;
+           //tick src</workspace/Geometry.hs:4:35-36>
+           I32[Sp - 4] = block_cKm_info;
+           R1 = R2;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 4;
+           if (R1 & 3 != 0) goto n0; else goto cKn;
+       n0: // global
+           call _blk_cKm(R1) args: 0, res: 0, upd: 0;
+       cKn: // cKj
+           unwind Sp = Just Sp + 4;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . py_closure" {
+     py_closure:
+         const py_info;
+ },
+ _blk_cKm() { //  [R1]
+         { info_tbls: [(cKm,
+                        label: block_cKm_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKm: // cKj
+           unwind Sp = Just Sp + 4;
+           R1 = P32[R1 + 7] & (-4);
+           Sp = Sp + 4;
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[px_entry() { //  [R2]
+         { info_tbls: [(cKE,
+                        label: px_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKE: // cKw
+           unwind Sp = Just Sp;
+           if ((Sp + -4) < SpLim) (likely: False) goto cKF; else goto cKG;
+       cKF: // cKw
+           unwind Sp = Just Sp;
+           R1 = px_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       cKG: // cKw
+           unwind Sp = Just Sp;
+           //tick src</workspace/Geometry.hs:4:21-22>
+           I32[Sp - 4] = block_cKz_info;
+           R1 = R2;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 4;
+           if (R1 & 3 != 0) goto n1; else goto cKA;
+       n1: // global
+           call _blk_cKz(R1) args: 0, res: 0, upd: 0;
+       cKA: // cKw
+           unwind Sp = Just Sp + 4;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . px_closure" {
+     px_closure:
+         const px_info;
+ },
+ _blk_cKz() { //  [R1]
+         { info_tbls: [(cKz,
+                        label: block_cKz_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKz: // cKw
+           unwind Sp = Just Sp + 4;
+           R1 = P32[R1 + 3] & (-4);
+           Sp = Sp + 4;
+           unwind Sp = Just Sp;
+           call (I32[I32![R1]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule3_closure" {
+     $trModule3_closure:
+         const TrNameS_con_info;
+         const $trModule4_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule1_closure" {
+     $trModule1_closure:
+         const TrNameS_con_info;
+         const $trModule2_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $trModule_closure" {
+     $trModule_closure:
+         const Module_con_info;
+         const $trModule3_closure+1;
+         const $trModule1_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep_rJJ_closure" {
+     $krep_rJJ_closure:
+         const KindRepTyConApp_con_info;
+         const $tcDouble_closure+1;
+         const []_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tcPoint1_closure" {
+     $tcPoint1_closure:
+         const TrNameS_con_info;
+         const $tcPoint2_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tcPoint_closure" {
+     $tcPoint_closure:
+         const TyCon_con_info;
+         const $trModule_closure+1;
+         const $tcPoint1_closure+1;
+         const krep$*_closure+3;
+         const 14465664668707857508 :: W64;
+         const 10791344104965576672 :: W64;
+         const 0;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep1_rJK_closure" {
+     $krep1_rJK_closure:
+         const KindRepTyConApp_con_info;
+         const $tcPoint_closure+1;
+         const []_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $krep2_rJL_closure" {
+     $krep2_rJL_closure:
+         const KindRepFun_con_info;
+         const $krep_rJJ_closure+1;
+         const $krep1_rJK_closure+1;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tc'Point1_closure" {
+     $tc'Point1_closure:
+         const KindRepFun_con_info;
+         const $krep_rJJ_closure+1;
+         const $krep2_rJL_closure+3;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tc'Point2_closure" {
+     $tc'Point2_closure:
+         const TrNameS_con_info;
+         const $tc'Point3_bytes;
+ }]
+
+
+==================== Output Cmm ====================
+
+[section ""data" . $tc'Point_closure" {
+     $tc'Point_closure:
+         const TyCon_con_info;
+         const $trModule_closure+1;
+         const $tc'Point2_closure+1;
+         const $tc'Point1_closure+3;
+         const 8859752923274051943 :: W64;
+         const 14799879522436965057 :: W64;
+         const 0;
+         const 3;
+ }]
+
+
+==================== Output Cmm ====================
+
+[norm_entry() { //  [R2]
+         { info_tbls: [(cLe,
+                        label: norm_info
+                        rep: HeapRep static { Fun {arity: 1 fun_type: ArgSpec 5} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cLe: // cKJ
+           unwind Sp = Just Sp;
+           if ((Sp + -12) < SpLim) (likely: False) goto cLf; else goto cLg;
+       cLf: // cKJ
+           unwind Sp = Just Sp;
+           R1 = norm_closure;
+           call (stg_gc_fun)(R2, R1) args: 4, res: 0, upd: 4;
+       cLg: // cKJ
+           unwind Sp = Just Sp;
+           //tick src</workspace/Geometry.hs:7:1-39>
+           I32[Sp - 4] = block_cKM_info;
+           R1 = R2;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 4;
+           if (R1 & 3 != 0) goto n4; else goto cKN;
+       n4: // global
+           call _blk_cKM(R1) args: 0, res: 0, upd: 0;
+       cKN: // cKJ
+           unwind Sp = Just Sp + 4;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ section ""data" . norm_closure" {
+     norm_closure:
+         const norm_info;
+ },
+ _blk_cKM() { //  [R1]
+         { info_tbls: [(cKM,
+                        label: block_cKM_info
+                        rep: StackRep []
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKM: // cKJ
+           unwind Sp = Just Sp + 4;
+           //tick src</workspace/Geometry.hs:7:20-39>
+           I32[Sp - 4] = block_cKR_info;
+           _sJX::P32 = P32[R1 + 7];
+           R1 = P32[R1 + 3];
+           P32[Sp] = _sJX::P32;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 8;
+           if (R1 & 3 != 0) goto n2; else goto cKS;
+       n2: // global
+           call _blk_cKR(R1) args: 0, res: 0, upd: 0;
+       cKS: // cKJ/cKQ
+           unwind Sp = Just Sp + 8;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ _blk_cKR() { //  [R1]
+         { info_tbls: [(cKR,
+                        label: block_cKR_info
+                        rep: StackRep [False]
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKR: // cKJ/cKQ
+           unwind Sp = Just Sp + 8;
+           //tick src</workspace/Geometry.hs:7:30>
+           //tick src</workspace/Geometry.hs:7:34>
+           I32[Sp - 4] = block_cKW_info;
+           _sJZ::F64 = F64[R1 + 3];
+           R1 = P32[Sp + 4];
+           F64[Sp] = _sJZ::F64;
+           Sp = Sp - 4;
+           unwind Sp = Just Sp + 12;
+           if (R1 & 3 != 0) goto n3; else goto cKX;
+       n3: // global
+           call _blk_cKW(R1) args: 0, res: 0, upd: 0;
+       cKX: // cKJ/cKQ/cKV
+           unwind Sp = Just Sp + 12;
+           call (I32[I32![R1]])(R1) args: 4, res: 4, upd: 4;
+     }
+ },
+ _blk_cKW() { //  [R1]
+         { info_tbls: [(cKW,
+                        label: block_cKW_info
+                        rep: StackRep [True, True]
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cKW: // cKJ/cKQ/cKV
+           unwind Sp = Just Sp + 12;
+           Hp = Hp + 12;
+           if (Hp > HpLim) (likely: False) goto cLl; else goto cLk;
+       cLl: // cKJ/cKQ/cKV/cL0
+           unwind Sp = Just Sp + 12;
+           HpAlloc = 12;
+           call stg_gc_unpt_r1(R1) args: 4, res: 4, upd: 4;
+       cLk: // cKJ/cKQ/cKV/cL0
+           unwind Sp = Just Sp + 12;
+           //tick src</workspace/Geometry.hs:7:38>
+           _sJZ::F64 = F64[Sp + 4];
+           _sK1::F64 = F64[R1 + 3];
+           (_cLa::F64) = call MO_F64_Sqrt(%MO_F_Add_W64(%MO_F_Mul_W64(_sJZ::F64,
+                                                                      _sJZ::F64),
+                                                        %MO_F_Mul_W64(_sK1::F64, _sK1::F64)));
+           I32[Hp - 8] = D#_con_info;
+           F64[Hp - 4] = _cLa::F64;
+           R1 = Hp - 7;
+           Sp = Sp + 12;
+           unwind Sp = Just Sp;
+           call (I32[P32[Sp]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+
+
+==================== Output Cmm ====================
+
+[Point_con_entry() { //  [R1]
+         { info_tbls: [(cLm,
+                        label: Point_con_info
+                        rep: HeapRep 2 ptrs { Con {tag: 0 descr:"main:Geometry.Point"} }
+                        srt: Nothing)]
+           stack_info: arg_space: 0
+         }
+     {offset
+       cLm: // cLm
+           unwind Sp = Just Sp;
+           R1 = R1 + 1;
+           call (I32[P32[Sp]])(R1) args: 4, res: 0, upd: 4;
+     }
+ }]
+

@@ -1,0 +1,3 @@
+# libs is compiled by the compilers unit's bin/cc, so it is built after it,
+# with it at $DEP_COMPILERS, and its key carries the compilers' key.
+stub/compilers

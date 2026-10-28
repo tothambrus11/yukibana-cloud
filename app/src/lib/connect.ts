@@ -6,11 +6,22 @@
  *  opens `/auth/connect` with a PKCE challenge, its loopback address and a
  *  state of its own. The person logs in to the website as usual (GitHub or
  *  an emailed code), sees whom they are signed in as, and confirms. Only
- *  then does the browser go to Supabase Auth's OAuth 2.1 server, which
- *  sends it to the website's consent route; that approves for the person
- *  signed in, takes the code from Auth's answer, and sends the browser with
- *  it straight to the loopback. The CLI trades the code for a session of
- *  its own with its PKCE verifier.
+ *  then does the website ask Supabase Auth's OAuth 2.1 server, server to
+ *  server, for an authorization, and send the browser with its id to the
+ *  website's consent route; that approves for the person signed in, takes
+ *  the code from Auth's answer, and sends the browser with it straight to
+ *  the loopback. The CLI trades the code for a session of its own with its
+ *  PKCE verifier.
+ *
+ *  The website makes the authorization itself, rather than sending the
+ *  browser to Auth to make it, so that it knows the id before the browser
+ *  comes back with one. The consent route is a GET (Auth's
+ *  `authorization_url_path` is one), and the first look at an
+ *  authorization binds it to whoever is signed in: a page on a sibling
+ *  subdomain, which the browser sends this site's cookies for, could
+ *  otherwise name an authorization of its own and have Auth bind and
+ *  approve it as the person viewing it. Now the route asks Auth about one
+ *  id only, the one this browser's "Continue" was given.
  *
  *  Auth matches a client's redirect URIs exactly, and a loopback listener's
  *  port is whatever the system gave it, so no loopback address can be
@@ -98,8 +109,10 @@ export const relayState = (r: Relay): string => `${r.port}.${r.state}.${r.nonce}
  *  browser clicked "Continue" for the login with this nonce. One per login,
  *  so two at once (the IDE and a terminal, two windows, a double click) do
  *  not overwrite each other. `__Host-`: this origin's alone, only over TLS
- *  (or to 127.0.0.1 in development), for every path. Its value says
- *  nothing; its name is the proof. */
+ *  (or to 127.0.0.1 in development), for every path. Its name is the proof
+ *  that the state's nonce is this browser's; its value is the id of the
+ *  authorization "Continue" made, the only one the consent route will ask
+ *  Auth about. HttpOnly, so no page can read either. */
 export const CONNECT_COOKIE_PREFIX = '__Host-yukibana-connect-';
 export const connectCookie = (nonce: string): string => `${CONNECT_COOKIE_PREFIX}${nonce}`;
 
@@ -119,9 +132,10 @@ export function relayOf(state: string | null): Relay | null {
   return { port, state: s, nonce: n };
 }
 
-/** Where the browser goes once the person has confirmed: Auth's OAuth 2.1
- *  authorization endpoint, for the registry's client, coming back to
- *  `returnUrl`. `scope` is Auth's default, `email`: the registry needs
+/** What the website asks for once the person has confirmed: Auth's OAuth
+ *  2.1 authorization endpoint, for the registry's client, coming back to
+ *  `returnUrl`. The Worker requests it, not the browser (`start` in
+ *  #lib/server/connect). `scope` is Auth's default, `email`: the registry needs
  *  nothing an ordinary session does not carry. */
 export function authorizeUrl(supabaseUrl: string, clientId: string, returnUrl: string, req: ConnectRequest, nonce: string): URL {
   const url = new URL('/auth/v1/oauth/authorize', supabaseUrl);

@@ -1,0 +1,344 @@
+/**
+ * The source ↔ output line mapping of the compiler output views: which
+ * lines of the LLVM IR or assembly came from a source line, and which source
+ * line an output line came from. The pack's explorer sends one entry per
+ * output line (packs/CONTRACT.md, "Showing compiler output"); these are the
+ * lookups the views make on every caret move, so they are pure and tested
+ * on their own (tests/unit/explorer-map.test.mjs).
+ *
+ * Imports nothing, so `node` can load this file directly.
+ */
+
+/** A source line: a project path (or a path outside the project, for a system header) and a 1-based line. */
+export interface SourceLine {
+	file: string;
+	line: number;
+}
+
+/**
+ * Where an output line came from: its source line, and the column there the
+ * compiler recorded (1-based; 0 or absent: none), which is where the
+ * expression the line computes starts, or its operator, and, for code of a
+ * project function inlined into another, the call it was inlined at
+ * (packs/CONTRACT.md).
+ */
+export interface MappedLine extends SourceLine {
+	column?: number;
+	via?: SourceLine;
+}
+
+/** Per output line, in order, the source line it came from, or null (labels, directives, lines with no location). */
+export type LineMap = readonly (MappedLine | null)[];
+
+/** A project line that has code without optimisation, and how many instructions (packs/CONTRACT.md, `unoptimized`). */
+export interface LineCode extends SourceLine {
+	count: number;
+}
+
+/**
+ * Whether source text `text` (one line) is a statement, the kind of line
+ * whose code an optimiser can remove: not a closing brace, and not a
+ * function's (or class's) opening line, which have code without
+ * optimisation (prologue, epilogue) that no optimised build keeps anyway.
+ */
+export function isStatement(text: string): boolean {
+	const t = text.trim();
+	if (t === '' || t === '}' || t === '};') return false;
+	return !(t.endsWith('{') && !/^(if|for|while|switch|else|do|case|default)\b/.test(t) && !/^}\s*else\b/.test(t));
+}
+
+/**
+ * The statements an optimised output left no code for: the lines of
+ * `unoptimized` (from every view) that none of `maps` has code for, whose
+ * text (`textOf`; null: unknown) is a statement, with their instruction
+ * count without optimisation, keyed by `lineKey`.
+ */
+export function linesWithoutCode(unoptimized: readonly (readonly LineCode[])[], maps: readonly LineMap[], textOf: (file: string, line: number) => string | null): Map<string, number> {
+	const mapped = new Set<string>();
+	for (const map of maps) for (const at of map) if (at) mapped.add(lineKey(at.file, at.line));
+	const out = new Map<string, number>();
+	for (const list of unoptimized)
+		for (const l of list) {
+			const key = lineKey(l.file, l.line);
+			if (mapped.has(key) || out.has(key)) continue;
+			const text = textOf(l.file, l.line);
+			if (text !== null && isStatement(text)) out.set(key, l.count);
+		}
+	return out;
+}
+
+/**
+ * The output lines (1-based, ascending) that came from line `line` of
+ * `file`; empty when none did, or when `line` is not a positive integer.
+ * `lines[i]` describes output line i + 1.
+ */
+export function outputLinesFor(lines: LineMap, file: string, line: number): number[] {
+	const found: number[] = [];
+	if (!Number.isInteger(line) || line < 1) return found;
+	for (let i = 0; i < lines.length; i++) {
+		const at = lines[i];
+		if (at && at.line === line && at.file === file) found.push(i + 1);
+	}
+	return found;
+}
+
+/**
+ * The source line output line `outputLine` (1-based) came from, or null
+ * when it came from none, or is outside the output.
+ */
+export function sourceOf(lines: LineMap, outputLine: number): SourceLine | null {
+	if (!Number.isInteger(outputLine) || outputLine < 1) return null;
+	return lines[outputLine - 1] ?? null;
+}
+
+/**
+ * Runs of consecutive output lines (1-based, inclusive) among `outputLines`,
+ * which must be ascending: what a view decorates as one block each, so a
+ * mapped stretch reads as one highlight rather than a stack of lines.
+ */
+export function runsOf(outputLines: readonly number[]): { start: number; end: number }[] {
+	const runs: { start: number; end: number }[] = [];
+	for (const n of outputLines) {
+		const last = runs.at(-1);
+		if (last && n === last.end + 1) last.end = n;
+		else runs.push({ start: n, end: n });
+	}
+	return runs;
+}
+
+/** C and C++ sources, which the views compile; headers are compiled through a source that includes them. */
+const SOURCE = /\.(c|cc|cpp|cxx|c\+\+|C)$/;
+
+/** Whether `path` is a C or C++ source file (`.c .cc .cpp .cxx .c++ .C`), the kind a view can show. */
+export function isViewSource(path: string): boolean {
+	return SOURCE.test(path);
+}
+
+/**
+ * The source a view shows once the editor shows `active`: `active` itself
+ * when it is a source the views can show (`isSource`: the language's,
+ * explore-views.ts; a C or C++ source by default), else (a header, any
+ * other file, no file) the source shown before, `previous`, which may be
+ * null: the view then asks for a source to be opened.
+ */
+export function viewSourceFor(active: string | null, previous: string | null, isSource: (path: string) => boolean = isViewSource): string | null {
+	return active !== null && isSource(active) ? active : previous;
+}
+
+/**
+ * clang's arguments as the view's toolbar shows them: the ones that say how
+ * the code is compiled (`-O2`, `-std=`, `-f…`, `-m…`, `-D…`), without the
+ * target (the toolbar shows its triple), the ones that only say where files
+ * are (`-I`, `-isystem`, `--sysroot`, `-o`, `-resource-dir` and their values),
+ * and the ones every view adds and that do not change the code (`-S`,
+ * `-emit-llvm`, `-gline-tables-only`, `-fno-discard-value-names`). The full
+ * list is the toolbar's title.
+ */
+export function shortFlags(flags: readonly string[]): string[] {
+	const withValue = new Set(['-I', '-isystem', '-internal-isystem', '-idirafter', '-iquote', '-o', '-resource-dir', '--sysroot', '-isysroot', '-include', '-MF']);
+	const joined = /^(-I|-isystem|-iquote|-idirafter|--sysroot=|-isysroot|-resource-dir=|-o)./;
+	const same = new Set(['-S', '-emit-llvm', '-c', '-fno-color-diagnostics', '-fcolor-diagnostics', '-gline-tables-only', '-fno-discard-value-names']);
+	const shown: string[] = [];
+	for (let i = 0; i < flags.length; i++) {
+		const f = flags[i]!;
+		if (withValue.has(f)) {
+			i++;
+			continue;
+		}
+		if (joined.test(f) || same.has(f) || f.startsWith('--target=')) continue;
+		shown.push(f);
+	}
+	return shown;
+}
+
+/**
+ * The flags the person chose, out of clang's arguments for a view: those of
+ * `shortFlags`, less the ones the toolchain adds on its own and that say
+ * nothing about the project (packs/cpp/src/toolchain.js `compileArgs`): the
+ * WebAssembly exceptions flags (`-fwasm-exceptions`, `-mllvm` and its
+ * value), libc++'s hardening mode when it is the toolchain's default
+ * (`-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST`), the Intel
+ * syntax the view's own toggle asks for (`-masm=`), and the frame pointer
+ * AddressSanitizer needs. What is left is what a person would write in
+ * compile_flags.txt: `-O2 -std=c++20 -Wall`. The view's details show these
+ * beside the full command.
+ */
+export function userFlags(flags: readonly string[]): string[] {
+	const shown = shortFlags(flags);
+	const asan = flags.some((f) => /^-fsanitize=.*\baddress\b/.test(f));
+	const out: string[] = [];
+	for (let i = 0; i < shown.length; i++) {
+		const f = shown[i]!;
+		if (f === '-mllvm') {
+			i++;
+			continue;
+		}
+		if (f === '-fwasm-exceptions' || f === '-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST' || f.startsWith('-masm=')) continue;
+		if (asan && f === '-fno-omit-frame-pointer') continue;
+		out.push(f);
+	}
+	return out;
+}
+
+/** What a view's header says its output was made with, in short (`viewSummary`). */
+export interface ViewSummary {
+	/** The optimisation level, the last `-O` flag (`-O2`, Swift's `-Onone`; rustc's `-C opt-level=3`), or null when there is none. */
+	opt: string | null;
+	/** The sanitizers on: `ASan`, `UBSan`, `ASan + UBSan`, or null. */
+	sanitizers: string | null;
+	/** The language standard set with `-std=` (`c++20`), or null for clang's default. */
+	std: string | null;
+}
+
+/**
+ * The choices a view's header shows as chips, read from clang's arguments:
+ * the optimisation level, the sanitizers and the language standard (the
+ * target is the view's own field). Later flags win, as in clang.
+ */
+export function viewSummary(flags: readonly string[]): ViewSummary {
+	let opt: string | null = null;
+	let std: string | null = null;
+	const sanitize = new Set<string>();
+	for (const f of flags) {
+		if (/^-O(\d|s|z|fast|g|none|size)?$/.test(f)) opt = f;
+		else if (/^-Copt-level=/.test(f)) opt = `-C ${f.slice(2)}`;
+		else if (f.startsWith('-std=')) std = f.slice('-std='.length);
+		else if (f.startsWith('-fsanitize=')) for (const s of f.slice('-fsanitize='.length).split(',')) sanitize.add(s);
+		else if (f.startsWith('-fno-sanitize=')) for (const s of f.slice('-fno-sanitize='.length).split(',')) sanitize.delete(s);
+	}
+	const asan = sanitize.has('address');
+	const ubsan = sanitize.has('undefined');
+	return { opt, std, sanitizers: asan && ubsan ? 'ASan + UBSan' : asan ? 'ASan' : ubsan ? 'UBSan' : null };
+}
+
+/** `file:line`, the key a source line goes by in `hueGroups`. */
+export const lineKey = (file: string, line: number) => `${file}:${line}`;
+
+/**
+ * A hue (an index below `hues`) for every source line that produced code in
+ * any of `maps`, keyed by `lineKey`, such that two lines whose output sits
+ * side by side in a view (consecutive rows), or which are next to each other
+ * in the source, never share one; among the hues their neighbours leave, a
+ * line takes the one used least so far (the lowest on a tie). Lines are
+ * coloured in source order (file, then line), so the same output gets the
+ * same colours. With more neighbours than hues, a line shares one with a
+ * neighbour rather than going without.
+ */
+export function hueGroups(maps: readonly LineMap[], hues: number): Map<string, number> {
+	const lines = new Map<string, SourceLine>();
+	const near = new Map<string, Set<string>>();
+	const link = (a: string, b: string) => {
+		if (a === b) return;
+		for (const [x, y] of [[a, b], [b, a]] as const) {
+			let set = near.get(x);
+			if (!set) near.set(x, (set = new Set()));
+			set.add(y);
+		}
+	};
+	for (const map of maps) {
+		let previous: string | null = null;
+		for (const at of map) {
+			const key = at ? lineKey(at.file, at.line) : null;
+			if (at && key) lines.set(key, { file: at.file, line: at.line });
+			if (key && previous) link(key, previous);
+			previous = key;
+		}
+	}
+	for (const [key, at] of lines) {
+		const below = lineKey(at.file, at.line + 1);
+		if (lines.has(below)) link(key, below);
+	}
+	const order = [...lines.entries()].sort(([, a], [, b]) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
+	const hue = new Map<string, number>();
+	const used = new Array<number>(hues).fill(0);
+	for (const [key] of order) {
+		const taken = new Set([...(near.get(key) ?? [])].map((n) => hue.get(n)).filter((h) => h !== undefined));
+		let best = -1;
+		for (let h = 0; h < hues; h++) if (!taken.has(h) && (best < 0 || used[h]! < used[best]!)) best = h;
+		if (best < 0) best = used.indexOf(Math.min(...used));
+		hue.set(key, best);
+		used[best]!++;
+	}
+	return hue;
+}
+
+/** A part of one source line: columns `start` (1-based, inclusive) to `end` (exclusive). */
+export interface Part {
+	start: number;
+	end: number;
+}
+
+/** A language server range (0-based lines and characters, end exclusive), as `textDocument/selectionRange` gives them. */
+export interface ServerRange {
+	start: { line: number; character: number };
+	end: { line: number; character: number };
+}
+
+/**
+ * The part of line `line` that code recorded at `column` came from, out of
+ * the selection ranges at that position (`chain`, innermost first, as a
+ * language server's `selectionRange` nests them): the largest range on the
+ * line alone that starts at `column` (a call, `++i`, a member access), or,
+ * when none starts there (the compiler records a binary expression at its
+ * operator, the `<` of `i < n`), the innermost range on the line alone, which
+ * is the expression the operator belongs to. Null when no range of the chain
+ * lies on the line alone, or `column` is 0.
+ */
+export function partFromChain(chain: readonly ServerRange[], line: number, column: number): Part | null {
+	if (column < 1) return null;
+	const onLine = chain
+		.filter((r) => r.start.line === line - 1 && r.end.line === line - 1 && r.end.character > r.start.character)
+		.map((r) => ({ start: r.start.character + 1, end: r.end.character + 1 }))
+		.filter((p) => p.start <= column && column < p.end);
+	let largest: Part | null = null;
+	for (const p of onLine) if (p.start === column && (!largest || p.end - p.start > largest.end - largest.start)) largest = p;
+	return largest ?? onLine[0] ?? null;
+}
+
+/**
+ * The part a caret at `column` is in: the smallest of `parts` that contains
+ * it (a caret right after a part's last character counts as in it, when no
+ * part contains it otherwise), or null.
+ */
+export function partAt(parts: readonly Part[], column: number): Part | null {
+	const smallest = (fits: (p: Part) => boolean) => {
+		let best: Part | null = null;
+		for (const p of parts) if (fits(p) && (!best || p.end - p.start < best.end - best.start)) best = p;
+		return best;
+	};
+	return smallest((p) => p.start <= column && column < p.end) ?? smallest((p) => column === p.end);
+}
+
+export const samePart = (a: Part | null, b: Part | null) => !!a && !!b && a.start === b.start && a.end === b.end;
+
+/** The index of the run of `runs` that line `line` is in (a fraction, such as a view's middle, counts), or -1. */
+export function runIndex(runs: readonly { start: number; end: number }[], line: number): number {
+	return runs.findIndex((r) => r.start <= line && line <= r.end);
+}
+
+/**
+ * The run ◂ (`dir` -1) or ▸ (`dir` 1) goes to from run `at` of `runs`
+ * (-1: from none, which goes to the first, or with ◂ to the last), round
+ * from the last to the first and back; null when there are no runs.
+ */
+export function stepRun(runs: readonly { start: number; end: number }[], at: number, dir: -1 | 1): { start: number; end: number } | null {
+	if (runs.length === 0) return null;
+	const from = at < 0 ? (dir > 0 ? -1 : 0) : at;
+	return runs[(from + dir + runs.length) % runs.length]!;
+}
+
+/**
+ * Which of `runs` (output line runs, as runsOf gives them) to bring into a
+ * view showing lines `top` to `bottom`: null when one is already in view
+ * (no scrolling), else the one nearest to it.
+ */
+export function runToReveal(runs: readonly { start: number; end: number }[], top: number, bottom: number): { start: number; end: number } | null {
+	if (runs.some((r) => r.end >= top && r.start <= bottom)) return null;
+	let best: { start: number; end: number } | null = null;
+	let distance = Infinity;
+	for (const r of runs) {
+		const d = r.start > bottom ? r.start - bottom : top - r.end;
+		if (d < distance) (best = r), (distance = d);
+	}
+	return best;
+}

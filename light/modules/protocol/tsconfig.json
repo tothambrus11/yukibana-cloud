@@ -1,0 +1,13 @@
+{
+	// protocol runs unchanged in a page, a worker, the runner frame and Node,
+	// so it is checked with the language alone: no DOM, no WebWorker, no
+	// Node. The few platform types every one of those has, and that protocol
+	// uses, are declared in platform.d.ts, which no other project includes.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024"]
+	},
+	"include": ["."],
+	// What build.mjs writes: the module's sources are the project, not its output.
+	"exclude": ["dist"]
+}

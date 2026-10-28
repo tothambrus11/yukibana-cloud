@@ -85,6 +85,45 @@ edition. Negative tests are the only ones that catch a policy accidentally
 widened. `npm run db:test` runs them against the local stack; CI runs them on
 every push, after rebuilding the database from empty.
 
+## A sibling subdomain is another person's page
+
+Light, at light.yukibana.dev, runs programs people paste into it, and it is
+the same site as cloud.yukibana.dev: the browser sends the cloud's SameSite
+Lax cookies with every request a page there makes here, and that page can
+set cookies for the whole of yukibana.dev. Until Light moves to a domain of
+its own, the cloud protects itself, by these rules:
+
+* **No cookie-authenticated GET has side effects.** A GET handler and a
+  `load` only read. Two exceptions, each bounded. The login callback sets
+  the session, in cookies only this host can set. The IDE login's consent
+  route (`/auth/connect/consent`) is a GET because Auth's
+  `authorization_url_path` is one, and asking Auth about an authorization
+  binds it to whoever is signed in, a write in Auth: so the route asks only
+  about the one authorization whose id this browser's `__Host-` connect
+  cookie holds, set by the "Continue" form, which made that authorization
+  from the server. Any other request to it, or to `/auth/connect/return`,
+  is refused before Auth is asked and spends no cookie. A side effect a GET
+  can cause in Auth counts: `tests.fingerprint()` covers Auth's OAuth tables
+  so that the negatives see it.
+* **Cookie-authenticated writes are forms this site's pages submit, from its
+  own origin.** `forgery` in `app/src/lib/server/forgery.ts`, called first by
+  the hook, refuses any other non-GET request without a bearer: another
+  Origin, none, a `Sec-Fetch-Site` other than `same-origin`, or a body that
+  is not a form. SvelteKit's own origin check is not this rule: it lets a
+  `text/plain` POST through, and it is off under `vite dev`.
+* **Every other write is bearer-only** (`requireBearer`).
+* **The session cookies are `__Host-` cookies** (`SESSION_COOKIE` in
+  `app/src/lib/session-cookie.ts`, used by both the Worker's and the page's
+  client): Secure, path `/`, no Domain, so nothing but this host can set one
+  and a cookie tossed from a sibling is never read as a session. A new cookie
+  that carries authority gets the prefix too.
+
+The negatives are `app/tests/integration/sibling.test.ts`: every route,
+read from `src/routes`, sent what a light.yukibana.dev page can send, with a
+signed-in teacher's cookies, against the real app; nothing in the database
+or in Auth may change, nobody may be signed in or out, and a login in flight
+may not be bound, approved or cancelled.
+
 ## Everything is TypeScript, and the types say what the code means
 
 `app/` is SvelteKit 3 on the oxc/rolldown toolchain (Vite 8, oxlint

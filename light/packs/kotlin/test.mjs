@@ -1,0 +1,399 @@
+// Headless test of the Kotlin pack's language server, run the way the app
+// runs it: app/static served over http, `new Worker('/packs/kotlin/server.js',
+// { type: 'module' })` in Chromium, one JSON-RPC object per postMessage. A
+// two-file project (Main.kt uses Point and distance from Geometry.kt) and a
+// README that must be ignored. Checks syntax errors (tree-sitter's, until
+// kotlinc is ready), completion of names and of a project class's members,
+// hover with KDoc, definition and references across files, symbols,
+// signature help, the standard library's names (kotlin.math.hypot, imported
+// as it is completed) and Int's companion, an enum's entries (after `Color.` and in `when`), rename
+// and what it refuses; then kotlinc's diagnostics once it has started: a
+// type error where it is, kotlin.test resolving in a test file, java.*
+// not existing on Kotlin/Wasm, a deleted file's declarations becoming
+// unresolved; then kotlin-language-server once it has started after kotlinc:
+// a library type's members (`names.`, `"abc".tr`), hypot with its import,
+// an inferred type on hover; and malformed and late requests.
+//
+//   node test.mjs            (after ./build.sh; needs playwright-core)
+
+import { createServer } from 'node:http';
+import { readFile, stat } from 'node:fs/promises';
+import { extname, join, normalize, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright-core';
+
+const HERE = fileURLToPath(new URL('.', import.meta.url));
+const STATIC = resolve(HERE, '../../app/static');
+const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
+const TYPES = { '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.wasm': 'application/wasm' };
+
+// A plain static server: raw files, no content-encoding negotiation, so the
+// test sees the worst-case transfer.
+const server = createServer(async (req, res) => {
+    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (path === '/__test.html') {
+        res.writeHead(200, { 'content-type': 'text/html' }).end('<!doctype html><link rel=icon href="data:,"><title>kotlin pack test</title>');
+        return;
+    }
+    const file = normalize(join(STATIC, path));
+    try {
+        if (!file.startsWith(STATIC) || !(await stat(file)).isFile()) throw new Error('not a file');
+        const body = await readFile(file);
+        res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'content-length': body.length });
+        res.end(body);
+    } catch {
+        res.writeHead(404).end();
+    }
+});
+await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+const origin = `http://127.0.0.1:${server.address().port}`;
+
+
+const GEOMETRY = `import kotlin.math.hypot
+
+/** A point in the plane. */
+data class Point(val x: Double, val y: Double) {
+    /** Distance from the origin. */
+    fun norm(): Double = hypot(x, y)
+}
+
+/** Euclidean distance between two points. */
+fun distance(a: Point, b: Point): Double = hypot(a.x - b.x, a.y - b.y)
+`;
+const MAIN = `fun main() {
+    val a = Point(0.0, 0.0)
+    val b: Point = Point(3.0, 4.0)
+    val names = listOf("été", "x").map { it.uppercase() }
+    println("$a to $b: \${distance(a, b)} \${names}")
+    println(b.norm())
+}
+`;
+const COLOR = `/** A colour. */
+enum class Color(val hex: String) {
+    RED("#f00"), GREEN("#0f0"), BLUE("#00f");
+
+    fun dim(): Color = this
+}
+
+fun describe(c: Color): String = when (c) {
+    // RED unqualified would need an import.
+    Color.RED -> "red"
+    else -> "other"
+}
+`;
+// A new line 6, inside main.
+const inMain = (line) => MAIN.replace('}\n', `${line}\n}\n`).replace(/\}\n$/, '}\n');
+const insert = (line) => { const i = MAIN.lastIndexOf('}'); return MAIN.slice(0, i) + line + '\n' + MAIN.slice(i); };
+const MAIN_BROKEN = insert('    val broken = (1 + ');
+const MAIN_TYPING_B = insert('    b.');
+const MAIN_TYPING_NAME = insert('    dis');
+const README = `# Not Kotlin (at all\n`;
+
+await stat(join(STATIC, 'packs/kotlin/server.js')).catch(() => {
+    console.error(`no ${join(STATIC, 'packs/kotlin/server.js')}: run ./build.sh first`);
+    process.exit(2);
+});
+const browser = await chromium.launch({ executablePath: CHROMIUM });
+let failures = 0;
+const check = (name, ok, detail = '') => {
+    console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? `  ${detail}` : ''}`);
+    if (!ok) failures++;
+};
+
+try {
+    const page = await browser.newPage();
+    page.on('console', (m) => m.type() === 'error' && console.log(`[page] ${m.text()}`));
+    page.on('pageerror', (e) => console.log(`[page error] ${e.message}`));
+    await page.goto(`${origin}/__test.html`);
+
+    // A minimal LSP client in the page, the shape the app's client has.
+    await page.evaluate(() => {
+        const worker = new Worker('/packs/kotlin/server.js', { type: 'module' });
+        const pending = new Map();
+        const log = [];
+        let nextId = 1;
+        worker.onerror = (e) => log.push({ method: 'worker/error', params: String(e.message) });
+        worker.onmessage = ({ data: msg }) => {
+            if (msg.id !== undefined && msg.method) {
+                worker.postMessage({ jsonrpc: '2.0', id: msg.id, result: null });
+            } else if (msg.id !== undefined) {
+                pending.get(msg.id)?.(msg);
+                pending.delete(msg.id);
+            } else {
+                log.push(msg);
+            }
+        };
+        window.lsp = {
+            log,
+            t0: performance.now(),
+            request(method, params) {
+                const id = nextId++;
+                worker.postMessage({ jsonrpc: '2.0', id, method, params });
+                return new Promise((ok) => pending.set(id, ok));
+            },
+            notify(method, params) {
+                worker.postMessage({ jsonrpc: '2.0', method, params });
+            },
+        };
+    });
+
+    const lsp = {
+        request: (method, params) => page.evaluate(([m, p]) => window.lsp.request(m, p), [method, params]),
+        notify: (method, params) => page.evaluate(([m, p]) => window.lsp.notify(m, p), [method, params]),
+        log: () => page.evaluate(() => window.lsp.log),
+        elapsed: () => page.evaluate(() => Math.round(performance.now() - window.lsp.t0)),
+    };
+    const uri = (name) => `file:///workspace/${name}`;
+    let version = 1;
+    const change = (name, text) => lsp.notify('textDocument/didChange', { textDocument: { uri: uri(name), version: ++version }, contentChanges: [{ text }] });
+    /** Waits for the latest publishDiagnostics of a file (after `after` messages) to satisfy `ok`. */
+    async function diagnostics(name, ok, after = 0, timeoutMs = 60000) {
+        const deadline = Date.now() + timeoutMs;
+        let last;
+        while (Date.now() < deadline) {
+            const published = (await lsp.log()).slice(after).filter(
+                (m) => m.method === 'textDocument/publishDiagnostics' && m.params.uri === uri(name)
+            );
+            last = published.at(-1)?.params.diagnostics;
+            if (last && ok(last)) return last;
+            await page.waitForTimeout(100);
+        }
+        return last;
+    }
+    const at = (name, line, character) => ({ textDocument: { uri: uri(name) }, position: { line, character } });
+    const timed = async (fn) => { const t = Date.now(); const r = await fn(); return [r, Date.now() - t]; };
+
+    const init = await lsp.request('initialize', {
+        processId: null,
+        rootUri: 'file:///workspace/',
+        workspaceFolders: [{ uri: 'file:///workspace/', name: 'workspace' }],
+        capabilities: { textDocument: { hover: { contentFormat: ['markdown', 'plaintext'] } } },
+    });
+    const loading = (await lsp.log()).filter((m) => m.method === 'yukibana/loading');
+    check('initialize answers after the runtime and grammar download, with progress notifications', !!init.result?.capabilities?.hoverProvider && loading.length > 0,
+        `(${await lsp.elapsed()} ms, ${loading.length} progress messages, server ${init.result?.serverInfo?.name})`);
+    if (init.error) console.log(init.error);
+    await lsp.notify('initialized', {});
+    const G = 'src/main/kotlin/Geometry.kt';
+    const M = 'src/main/kotlin/Main.kt';
+    const short = (u) => u.split('/').pop();
+    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri(G), languageId: 'kotlin', version: 1, text: GEOMETRY } });
+    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri(M), languageId: 'kotlin', version: 1, text: MAIN } });
+    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('README.md'), languageId: 'markdown', version: 1, text: README } });
+
+    let diags = await diagnostics(M, () => true);
+    check('the sample has no syntax errors', diags?.length === 0, JSON.stringify(diags?.map((d) => d.message)));
+    const gd = await diagnostics(G, () => true);
+    check('Geometry.kt has none either', gd?.length === 0, JSON.stringify(gd?.map((d) => d.message)));
+
+    let mark = (await lsp.log()).length;
+    await change(M, MAIN_BROKEN);
+    diags = await diagnostics(M, (d) => d.length > 0, mark);
+    check('an unclosed parenthesis is a syntax error at the end of main', diags?.length > 0 && diags.every((d) => d.severity === 1 && d.range.start.line >= 6), JSON.stringify(diags?.map((d) => `${d.range.start.line}:${d.range.start.character} ${d.message}`)));
+
+    await change(M, MAIN_TYPING_B);
+    const c1 = await lsp.request('textDocument/completion', at(M, 6, 6));
+    const l1 = (c1.result?.items ?? []).map((i) => i.label);
+    check('completion after `b.` (declared `b: Point`) offers Point\'s members, then Any\'s, and copy', ['norm', 'x', 'y', 'toString', 'copy'].every((l) => l1.includes(l)), JSON.stringify(l1));
+    await change(M, insert('    a.'));
+    const c1b = await lsp.request('textDocument/completion', at(M, 6, 6));
+    const l1b = (c1b.result?.items ?? []).map((i) => i.label);
+    check('completion after `a.` (constructed `Point(...)`) offers Point\'s members too', ['norm', 'x', 'y'].every((l) => l1b.includes(l)), JSON.stringify(l1b));
+    await change(M, insert('    names.'));
+    const c1c = await lsp.request('textDocument/completion', at(M, 6, 10));
+    check('completion after a receiver of a library type offers nothing (the editor then offers the document\'s words)', (c1c.result?.items ?? []).length === 0, JSON.stringify(c1c.result));
+    // As the app's e2e types it at the end of the file (Monaco closes the brackets).
+    const AFTER = MAIN + '\nfun broken() { val = 1 }\n\nval q = Point(1.0, 2.0)\nval r = q.';
+    mark = (await lsp.log()).length;
+    await change(M, AFTER);
+    const ae = await diagnostics(M, (d) => d.length > 0, mark);
+    check('`val = 1` (no name) is a syntax error on its line', ae?.some((d) => d.range.start.line === 8), JSON.stringify(ae?.map((d) => `${d.range.start.line}: ${d.message}`)));
+    const ce = await lsp.request('textDocument/completion', at(M, 11, 10));
+    check('completion after `q.` on a top-level `val q = Point(...)` typed after a syntax error offers norm', (ce.result?.items ?? []).some((i) => i.label === 'norm'), JSON.stringify(ce.result?.items?.map((i) => i.label)));
+    await change(M, MAIN_TYPING_NAME);
+    const c2 = await lsp.request('textDocument/completion', at(M, 6, 7));
+    const i2 = c2.result?.items ?? [];
+    const dist = i2.find((i) => i.label === 'distance');
+    check('completion of a name offers the project\'s distance with its signature, locals, keywords and println', !!dist && /fun distance\(a: Point, b: Point\): Double/.test(dist.detail) &&
+        ['a', 'b', 'names', 'Point', 'println', 'val', 'when'].every((l) => i2.some((i) => i.label === l)), JSON.stringify(dist));
+
+    await change(M, MAIN);
+    const hover = await lsp.request('textDocument/hover', at(M, 5, 15));
+    const ht = hover.result?.contents?.value ?? '';
+    check('hover on `norm` shows its declaration and KDoc', /fun norm\(\): Double/.test(ht) && /Distance from the origin/.test(ht), JSON.stringify(ht));
+    const hover2 = await lsp.request('textDocument/hover', at(M, 1, 14));
+    const ht2 = hover2.result?.contents?.value ?? '';
+    check('hover on `Point` shows the data class and its KDoc', /data class Point\(val x: Double, val y: Double\)/.test(ht2) && /A point in the plane/.test(ht2), JSON.stringify(ht2));
+
+    const def = await lsp.request('textDocument/definition', at(M, 4, 31));
+    const t = [def.result].flat()[0];
+    check('go to definition of `distance` (inside a string template) lands in Geometry.kt', t?.uri === uri(G) && t?.range.start.line === 9 && t?.range.start.character === 4, JSON.stringify(def.result));
+    const def2 = await lsp.request('textDocument/definition', at(M, 5, 15));
+    const t2 = [def2.result].flat()[0];
+    check('go to definition of `b.norm` lands on `norm` in Geometry.kt', t2?.uri === uri(G) && t2?.range.start.line === 5, JSON.stringify(def2.result));
+    const def3 = await lsp.request('textDocument/definition', at(G, 9, 49));
+    const t3 = [def3.result].flat()[0];
+    check('go to definition of the parameter `a` in `a.x` lands on the parameter', t3?.uri === uri(G) && t3?.range.start.line === 9 && t3?.range.start.character === 13, JSON.stringify(def3.result));
+
+    const refs = await lsp.request('textDocument/references', { ...at(G, 3, 12), context: { includeDeclaration: true } });
+    const rl = (refs.result ?? []).map((r) => `${short(r.uri)}:${r.range.start.line}`).sort();
+    check('references to `Point` are its declaration, the parameter types and the uses in Main.kt', ['Geometry.kt:3', 'Geometry.kt:9', 'Main.kt:1', 'Main.kt:2'].every((x) => rl.includes(x)), JSON.stringify(rl));
+    const refsX = await lsp.request('textDocument/references', { ...at(G, 3, 21), context: { includeDeclaration: false } });
+    const rx = (refsX.result ?? []).map((r) => `${short(r.uri)}:${r.range.start.line}:${r.range.start.character}`).sort();
+    check('references to the property `x` are `x` in norm and `a.x`, `b.x` (not other names x)', JSON.stringify(rx) === JSON.stringify(['Geometry.kt:5:31', 'Geometry.kt:9:51', 'Geometry.kt:9:57']), JSON.stringify(rx));
+
+    const symbols = await lsp.request('textDocument/documentSymbol', { textDocument: { uri: uri(G) } });
+    const names = (symbols.result ?? []).flatMap((s) => [s.name, ...(s.children ?? []).map((c) => `${s.name}.${c.name}`)]);
+    check('document symbols list Point with x, y and norm, and distance', ['Point', 'Point.x', 'Point.y', 'Point.norm', 'distance'].every((n) => names.includes(n)), JSON.stringify(names));
+
+    const sig = await lsp.request('textDocument/signatureHelp', at(M, 4, 37));
+    check('signature help inside `distance(a, b)` shows its parameters, the second active', /distance\(a: Point, b: Point\): Double/.test(sig.result?.signatures?.[0]?.label ?? '') && sig.result?.activeParameter === 1, JSON.stringify(sig.result));
+    const sig2 = await lsp.request('textDocument/signatureHelp', at(M, 1, 18));
+    check('signature help inside `Point(...)` shows the constructor\'s parameters', /Point\(val x: Double, val y: Double\)/.test(sig2.result?.signatures?.[0]?.label ?? ''), JSON.stringify(sig2.result));
+
+    // An enum in a third file: its entries after `Color.` and in `when`, and rename.
+    const C = 'src/main/kotlin/Color.kt';
+    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri(C), languageId: 'kotlin', version: 1, text: COLOR } });
+    const cd = await diagnostics(C, () => true);
+    check('Color.kt, an enum class with entries and a when, has no syntax errors', cd?.length === 0, JSON.stringify(cd?.map((d) => d.message)));
+    await change(M, insert('    Color.'));
+    const ec = await lsp.request('textDocument/completion', at(M, 6, 10));
+    const el = (ec.result?.items ?? []).map((i) => i.label);
+    check('completion after `Color.` offers the enum\'s entries and entries/values/valueOf, not instance members', ['RED', 'GREEN', 'BLUE', 'entries', 'valueOf'].every((l) => el.includes(l)) && !el.includes('hex') && !el.includes('dim'), JSON.stringify(el));
+    await change(M, insert('    val c: Color = Color.RED\n    when (c) {\n        GR'));
+    const wc = await lsp.request('textDocument/completion', at(M, 8, 10));
+    const green = (wc.result?.items ?? []).find((i) => i.label === 'GREEN');
+    check('completion in an unfinished `when (c) {` with `c: Color` offers GREEN, inserted as Color.GREEN', green?.textEdit?.newText === 'Color.GREEN', JSON.stringify(green));
+    await change(M, insert('    val c: Color = Color.RED\n    when (c) {\n        Color.RED -> GR\n    }'));
+    const wb = await lsp.request('textDocument/completion', at(M, 8, 23));
+    check('after `->`, in a branch\'s body, the entries are not offered', !(wb.result?.items ?? []).some((i) => i.label === 'GREEN'), JSON.stringify((wb.result?.items ?? []).slice(0, 5).map((i) => i.label)));
+    const ed = await lsp.request('textDocument/definition', at(C, 9, 12));
+    const et = [ed.result].flat()[0];
+    check('go to definition of `RED` in `Color.RED` lands on the entry', et?.uri === uri(C) && et?.range.start.line === 2 && et?.range.start.character === 4, JSON.stringify(ed.result));
+
+    // The standard library beyond the default imports: kotlin.math.hypot, its import, and Int's companion.
+    await change(M, insert('    hyp'));
+    const hc = await lsp.request('textDocument/completion', at(M, 6, 7));
+    const hyp = (hc.result?.items ?? []).find((i) => i.label === 'hypot');
+    check('completion of `hyp` offers kotlin.math.hypot with both overloads, importing it at the top of a file without imports',
+        hyp?.labelDetails?.description === 'kotlin.math' && /^fun hypot\(Double, Double\): Double/.test(hyp.detail) && /Float/.test(hyp.documentation?.value ?? '') &&
+        JSON.stringify(hyp.additionalTextEdits) === JSON.stringify([{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: 'import kotlin.math.hypot\n\n' }]), JSON.stringify(hyp));
+    const pl = (hc.result?.items ?? []).find((i) => i.label === 'println');
+    check('println, imported by default, comes with its signature and no import', /^fun println\(/.test(pl?.detail ?? '') && !pl.additionalTextEdits, JSON.stringify(pl));
+    await change(M, 'import kotlin.test.Test\n' + insert('    hyp'));
+    const hc2 = await lsp.request('textDocument/completion', at(M, 7, 7));
+    const hyp2 = (hc2.result?.items ?? []).find((i) => i.label === 'hypot');
+    check('in a file with imports, hypot\'s import goes after the last one', JSON.stringify(hyp2?.additionalTextEdits?.[0]) === JSON.stringify({ range: { start: { line: 0, character: 23 }, end: { line: 0, character: 23 } }, newText: '\nimport kotlin.math.hypot' }), JSON.stringify(hyp2?.additionalTextEdits));
+    await change(M, 'import kotlin.math.*\n' + insert('    hyp'));
+    const hc3 = await lsp.request('textDocument/completion', at(M, 7, 7));
+    const hyp3 = (hc3.result?.items ?? []).find((i) => i.label === 'hypot');
+    check('with `import kotlin.math.*`, hypot needs no import', !!hyp3 && !hyp3.additionalTextEdits, JSON.stringify(hyp3));
+    await change(M, 'import kotlin.math.hypot\n' + insert('    hypot(3.0, '));
+    const hs = await lsp.request('textDocument/signatureHelp', at(M, 7, 15));
+    check('signature help inside `hypot(3.0, ` shows both overloads, the second parameter active',
+        hs.result?.signatures?.length === 2 && hs.result.signatures[0].label === 'fun hypot(Double, Double): Double' && hs.result.activeParameter === 1, JSON.stringify(hs.result));
+    const hh = await lsp.request('textDocument/hover', at(M, 7, 6));
+    check('hover on hypot shows its overloads and package', /fun hypot\(Double, Double\): Double/.test(hh.result?.contents?.value ?? '') && /kotlin\.math/.test(hh.result?.contents?.value ?? ''), JSON.stringify(hh.result));
+    await change(M, insert('    Int.'));
+    const ic = await lsp.request('textDocument/completion', at(M, 6, 8));
+    const max = (ic.result?.items ?? []).find((i) => i.label === 'MAX_VALUE');
+    check('completion after `Int.` offers its companion\'s MAX_VALUE, typed', max?.detail === 'const val MAX_VALUE: Int', JSON.stringify((ic.result?.items ?? []).map((i) => i.label)));
+
+    await change(M, MAIN);
+    const pr = await lsp.request('textDocument/prepareRename', at(M, 4, 31));
+    check('prepareRename on `distance` answers its range and name', pr.result?.placeholder === 'distance' && pr.result?.range?.start?.line === 4, JSON.stringify(pr.result ?? pr.error));
+    const rn = await lsp.request('textDocument/rename', { ...at(M, 4, 31), newName: 'dist' });
+    const rc = Object.fromEntries(Object.entries(rn.result?.changes ?? {}).map(([u, e]) => [short(u), e.map((x) => `${x.range.start.line}:${x.range.start.character}`).sort()]));
+    check('rename of `distance` edits its declaration in Geometry.kt and the call in Main.kt', JSON.stringify(rc) === JSON.stringify({ 'Geometry.kt': ['9:4'], 'Main.kt': ['4:25'] }), JSON.stringify(rn.result ?? rn.error));
+    const rr = await lsp.request('textDocument/rename', { ...at(C, 2, 5), newName: 'CRIMSON' });
+    const rrc = Object.fromEntries(Object.entries(rr.result?.changes ?? {}).map(([u, e]) => [short(u), e.map((x) => `${x.range.start.line}:${x.range.start.character}`).sort()]));
+    check('rename of the entry RED edits it and `Color.RED` in the when', JSON.stringify(rrc) === JSON.stringify({ 'Color.kt': ['2:4', '9:10'] }), JSON.stringify(rr.result ?? rr.error));
+    const rp = await lsp.request('textDocument/prepareRename', at(M, 5, 6));
+    check('rename of `println` is refused: it is the standard library\'s', /standard library/.test(rp.error?.message ?? ''), JSON.stringify(rp.result ?? rp.error));
+    const rk = await lsp.request('textDocument/prepareRename', at(M, 1, 5));
+    check('rename of the keyword `val` is refused as a keyword', /keyword/.test(rk.error?.message ?? ''), JSON.stringify(rk.result ?? rk.error));
+    const ri = await lsp.request('textDocument/prepareRename', at(M, 3, 41));
+    check('rename of the implicit `it` is refused', /implicit/.test(ri.error?.message ?? ''), JSON.stringify(ri.result ?? ri.error));
+    const rw = await lsp.request('textDocument/rename', { ...at(M, 4, 31), newName: 'when' });
+    check('a rename to a keyword is refused', /keyword/.test(rw.error?.message ?? ''), JSON.stringify(rw.result ?? rw.error));
+
+    // kotlinc: wait until it has started (it downloads about 25 MB).
+    const t0 = Date.now();
+    let ready = null;
+    while (!ready && Date.now() - t0 < 180000) {
+        ready = (await lsp.log()).find((m) => m.method === 'window/logMessage' && /^kotlinc .* ready/.test(m.params.message));
+        if (!ready) await page.waitForTimeout(250);
+    }
+    check('kotlinc starts in the server\'s checker worker', !!ready, `${ready?.params.message} (${await lsp.elapsed()} ms after the worker started)`);
+    mark = (await lsp.log()).length;
+    await change(M, MAIN + 'val wrong: Int = "no"\n');
+    let kd = await diagnostics(M, (d) => d.some((x) => x.source === 'kotlinc'), mark);
+    const wrong = kd?.find((d) => d.source === 'kotlinc');
+    check('a type error is kotlinc\'s, an error on its line, in its words', wrong?.severity === 1 && wrong.range.start.line === 7 && /mismatch/.test(wrong.message) && /String/.test(wrong.message) && /Int/.test(wrong.message),
+        JSON.stringify(kd));
+    mark = (await lsp.log()).length;
+    const fixedAt = Date.now();
+    await change(M, MAIN);
+    kd = await diagnostics(M, (d) => d.length === 0, mark);
+    check('fixing it clears it', kd?.length === 0, `${JSON.stringify(kd)} (${Date.now() - fixedAt} ms after the edit)`);
+    const T = 'src/test/kotlin/GeometryTest.kt';
+    mark = (await lsp.log()).length;
+    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri(T), languageId: 'kotlin', version: 1, text: 'import kotlin.test.Test\nimport kotlin.test.assertEquals\n\nclass GeometryTest {\n    @Test\n    fun norm() {\n        assertEquals(5.0, Point(3.0, 4.0).norm())\n    }\n}\n' } });
+    kd = await diagnostics(T, () => true, mark);
+    check('a test file using kotlin.test and the project\'s Point has no errors', kd?.length === 0, JSON.stringify(kd));
+    mark = (await lsp.log()).length;
+    await change(M, 'import java.util.Scanner\n\n' + MAIN);
+    kd = await diagnostics(M, (d) => d.length > 0, mark);
+    check('java.util is unresolved: programs are Kotlin/Wasm, without the JDK', kd?.some((d) => d.range.start.line === 0 && /java/.test(d.message)), JSON.stringify(kd));
+    await change(M, MAIN);
+
+    // kotlin-language-server, which starts after kotlinc, and then answers what the trees cannot.
+    let kls = null;
+    while (!kls && Date.now() - t0 < 300000) {
+        kls = (await lsp.log()).find((m) => m.method === 'window/logMessage' && /kotlin-language-server (ready|failed)/.test(m.params.message));
+        if (!kls) await page.waitForTimeout(250);
+    }
+    check('kotlin-language-server starts in the server\'s analysis worker', /ready/.test(kls?.params.message ?? ''), `${kls?.params.message} (${await lsp.elapsed()} ms after the worker started)`);
+    await change(M, insert('    names.'));
+    const [kn, knMs] = await timed(() => lsp.request('textDocument/completion', at(M, 6, 10)));
+    const knl = (kn.result?.items ?? []).map((i) => i.label.replace(/\(.*$/, ''));
+    check('completion after `names.` (a List<String> the syntax does not say) offers List\'s members and extensions', ['size', 'first', 'joinToString'].every((l) => knl.includes(l)), `${knMs} ms: ${JSON.stringify(knl.slice(0, 20))}`);
+    await change(M, insert('    "abc".tr'));
+    const [ks, ksMs] = await timed(() => lsp.request('textDocument/completion', at(M, 6, 12)));
+    const ksl = (ks.result?.items ?? []).map((i) => i.label);
+    check('completion of `"abc".tr` offers String\'s trim', ksl.some((l) => /^trim/.test(l)), `${ksMs} ms: ${JSON.stringify(ksl.slice(0, 20))}`);
+    await change(M, insert('    hyp'));
+    const [kh, khMs] = await timed(() => lsp.request('textDocument/completion', at(M, 6, 7)));
+    const khyp = (kh.result?.items ?? []).find((i) => /^hypot/.test(i.label));
+    check('completion of `hyp` offers kotlin.math.hypot, with its import', /import kotlin\.math\.hypot/.test(JSON.stringify(khyp?.additionalTextEdits ?? '')), `${khMs} ms: ${JSON.stringify(khyp)}`);
+    await change(M, MAIN);
+    const [kv, kvMs] = await timed(() => lsp.request('textDocument/hover', at(M, 3, 8)));
+    check('hover on `names` shows its inferred type, List<String>', /List<String>/.test(JSON.stringify(kv.result ?? '')), `${kvMs} ms: ${JSON.stringify(kv.result)}`);
+    const kd2 = await lsp.request('textDocument/definition', at(M, 4, 31));
+    const kt = [kd2.result].flat()[0];
+    check('go to definition of `distance` still lands in Geometry.kt', kt?.uri === uri(G) && kt?.range.start.line === 9, JSON.stringify(kd2.result));
+
+    const malformed = await lsp.request('textDocument/completion', {});
+    check('a completion request without a document or position is refused as InvalidParams', malformed.error?.code === -32602, JSON.stringify(malformed.error));
+
+    mark = (await lsp.log()).length;
+    await lsp.notify('textDocument/didClose', { textDocument: { uri: uri(G) } });
+    const gone = await lsp.request('textDocument/definition', at(M, 4, 31));
+    check('after Geometry.kt is deleted, `distance` has no definition', (gone.result ?? []).length === 0, JSON.stringify(gone.result));
+    const unresolved = await diagnostics(M, (d) => d.some((x) => /Point/.test(x.message)), mark);
+    check('after Geometry.kt is deleted, kotlinc reports Point unresolved in Main.kt', unresolved?.some((d) => d.source === 'kotlinc' && /Unresolved reference/i.test(d.message)), JSON.stringify(unresolved?.map((d) => d.message)));
+
+    const readme = (await lsp.log()).filter((m) => m.method === 'textDocument/publishDiagnostics' && m.params.uri === uri('README.md'));
+    check('a non-Kotlin project file is not parsed', readme.length === 0);
+    const shutdown = await lsp.request('shutdown', null);
+    check('shutdown answers', shutdown.error === undefined);
+    const late = await lsp.request('textDocument/hover', at(M, 1, 14));
+    check('a request after shutdown is refused as InvalidRequest', late.error?.code === -32600, JSON.stringify(late.error));
+    const errors = (await lsp.log()).filter((m) => m.method === 'worker/error' || (m.method === 'window/logMessage' && m.params.type === 1));
+    check('the worker reported no errors', errors.length === 0, JSON.stringify(errors));
+} finally {
+    await browser.close();
+    server.close();
+}
+console.log(failures ? `${failures} check(s) failed` : 'all checks passed');
+process.exit(failures ? 1 : 0);

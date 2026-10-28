@@ -1,0 +1,298 @@
+name: Build wasm toolchain
+
+# Produces the WebAssembly-hosted Swift toolchain — swift-frontend.wasm, wasm-ld.wasm,
+# the packed sysroot, sourcekitd-request.wasm, sourcekit-lsp-lite and
+# swift-frontend-lsp.wasm (compiler and language server in one module) — and publishes
+# them so a web IDE can fetch and run them.
+#
+# The build does not fit in one GitHub Actions job: cross-compiling LLVM, clang and the
+# Swift frontend takes several hours, against a six-hour job limit. The workflow is
+# therefore *resumable*. Every stage caches its build tree, and each job stops a little
+# before the limit, saves the cache, and reports whether it finished. Re-running the
+# workflow continues from where it stopped instead of starting over.
+#
+# It runs only by hand. In swift-toolchain-wasm a v* tag also built and published;
+# in this repository tags belong to other things, so publishing is the
+# publish_release input and nothing else.
+
+on:
+  workflow_dispatch:
+    inputs:
+      swift_version:
+        description: Swift release to build against
+        default: "6.3.3"
+      publish_release:
+        description: Publish artifacts as a GitHub release
+        type: boolean
+        default: false
+      macros:
+        description: >-
+          Build with macro support (the default): ASTGen, swift-syntax and
+          SwiftCompilerSources in the frontend, macro plugins as wasm (Stage 37), and
+          the macro smoke test (Stage 57). Off builds the smaller compiler without
+          them, under its own cache keys.
+        type: boolean
+        default: true
+      release_tag:
+        description: >-
+          Tag to publish under (default swift-<version>-wasm). A new tag, such as
+          swift-6.3.3-wasm-2, leaves the assets of an existing release in place for
+          consumers that pin them by SHA-256.
+        default: ""
+
+concurrency:
+  # Never two builds writing the same cache.
+  group: toolchain-${{ github.ref }}${{ (github.event_name != 'workflow_dispatch' || inputs.macros) && '-macros' || '' }}
+  cancel-in-progress: false
+
+env:
+  SWIFT_VERSION: ${{ inputs.swift_version || '6.3.3' }}
+  WASI_SDK_VERSION: "34.0"
+  # Leave headroom under the 6h limit to save caches and upload artifacts.
+  STAGE_TIMEOUT_MINUTES: "300"
+  SWIFT_MACROS: ${{ (github.event_name != 'workflow_dispatch' || inputs.macros) && '1' || '0' }}
+  # The build-tree cache key's prefix. A macros build must never restore into or
+  # save over the default build's keys, and the default's restore-keys prefix
+  # (build-<version>-) must not match a macros key, hence a different start.
+  BUILD_CACHE: ${{ (github.event_name != 'workflow_dispatch' || inputs.macros) && 'macros-build' || 'build' }}
+
+defaults:
+  run:
+    working-directory: light/toolchains/swift
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    # Publishing the release needs write access; nothing else here does.
+    permissions:
+      contents: write
+    outputs:
+      complete: ${{ steps.pipeline.outputs.complete }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          # The Swift toolchain's own runtime dependencies are needed too: swiftly
+          # installs successfully without them but then exits non-zero.
+          sudo apt-get install -y \
+            cmake ninja-build clang lld python3 \
+            binutils libcurl4-openssl-dev libxml2-dev libncurses-dev \
+            libsqlite3-0 zlib1g-dev tzdata brotli
+          # A standalone WASI runtime, so the artifacts are tested the way they are used.
+          curl -fsSL https://wasmtime.dev/install.sh | bash
+          echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
+
+      # The native toolchain only. `swift sdk install` used to run here too, but nothing
+      # needs it any more: Stage 40 fetches and checksums the wasm SDK artifactbundle
+      # itself, precisely because locating what `swift sdk install` had unpacked proved
+      # unreliable. Keeping the call cost a redundant ~700 MB download and one more way
+      # to fail — run #11 died in it, crashing inside URLSession._MultiHandle.deinit
+      # (libcurl teardown) after the same step had succeeded in runs #8, #9 and #10.
+      - name: Install Swift ${{ env.SWIFT_VERSION }}
+        run: |
+          # Stage 30 builds against this toolchain (SWIFT_NATIVE_CLANG_TOOLS_PATH), and
+          # the smoke test's example programs are built with it.
+          curl -fsSL -o swiftly.tar.gz https://download.swift.org/swiftly/linux/swiftly-x86_64.tar.gz
+          tar -xzf swiftly.tar.gz
+          ./swiftly init -y --skip-install
+          . "$HOME/.local/share/swiftly/env.sh"
+          swiftly install "$SWIFT_VERSION" --use
+
+      # Sources are large and immutable for a given Swift release: cache them separately
+      # from the build trees so a cache eviction does not force a re-clone of LLVM.
+      # Sources are large and immutable for a given Swift release, but they also matter
+      # more than they look: ninja compares mtimes, and a fresh `git clone` stamps every
+      # file with the current time. A restored build tree without its matching source
+      # tree therefore looks entirely out of date, and the compiler is rebuilt from
+      # scratch — hours of work — however good the build cache is. Like the build trees,
+      # these must be saved even when the run fails, or a string of failing runs never
+      # manages to cache them at all. That is exactly what happened here: every run
+      # re-cloned LLVM and Swift and then rebuilt everything.
+      # The JavaScript plugin host needs nothing built, so it is tested first.
+      - name: Test the macro plugin host
+        if: env.SWIFT_MACROS == '1'
+        run: node --test tools/plugin-host/test/*.test.mjs
+
+      # Keyed by build variant and patch series, so the next run restores exactly the
+      # tree, mtimes included, that the cached build trees were compiled from. Under one
+      # fixed key the cache kept its first snapshot forever (a saved key is never
+      # overwritten): every macros run then re-cloned swift-syntax and re-applied the
+      # macros patches onto it with new mtimes, and rebuilt the compiler from scratch
+      # (runs 25-28, two hours each).
+      - name: Restore sources
+        uses: actions/cache/restore@v5
+        with:
+          path: light/toolchains/swift/src
+          key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
+          restore-keys: |
+            src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-
+            src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}
+
+      # The build trees are the expensive thing. `restore-keys` is what makes the build
+      # resumable: a run that timed out leaves a partial tree under a stale key, and the
+      # next run picks it up and continues.
+      - name: Restore build trees
+        id: build-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: light/toolchains/swift/build
+          key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
+          # A first macros build starts from the default build's trees: LLVM is the
+          # same, and only the Swift frontend has to be rebuilt.
+          restore-keys: |
+            ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-
+            ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-
+            build-${{ env.SWIFT_VERSION }}-
+
+      - name: Build
+        id: pipeline
+        run: |
+          . "$HOME/.local/share/swiftly/env.sh"
+          set -o pipefail
+          # If the stage budget runs out, exit 0 with complete=false: the cache is still
+          # saved and the next run continues. Only a real build error fails the job.
+          if timeout "${STAGE_TIMEOUT_MINUTES}m" ./scripts/build-all.sh 2>&1 | tee build.log; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          elif [ "${PIPESTATUS[0]}" = "124" ]; then
+            echo "::warning::Stage budget exhausted; re-run this workflow to continue."
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Build failed. See build.log."
+            exit 1
+          fi
+
+      # Deliberately after the build and before anything else: a failed stage must not
+      # discard the compiled tree, or every retry pays the full rebuild again.
+      - name: Save sources
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: light/toolchains/swift/src
+          key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
+        continue-on-error: true
+
+      - name: Save build trees
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: light/toolchains/swift/build
+          key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
+
+      - name: Smoke-test the toolchain
+        if: steps.pipeline.outputs.complete == 'true'
+        run: |
+          . "$HOME/.local/share/swiftly/env.sh"
+          ./scripts/50-smoke-test.sh
+
+      # sourcekitd is new and the toolchain is not: let a failure here still upload
+      # everything (sourcekitd-request.wasm included, to debug with), then fail the job
+      # before anything is published.
+      - name: Smoke-test sourcekitd
+        id: sourcekitd-smoke
+        if: steps.pipeline.outputs.complete == 'true'
+        continue-on-error: true
+        run: ./scripts/52-sourcekitd-smoke-test.sh
+
+      # sourcekit-lsp-lite (Stage 36) is optional in build-all.sh, so its modules
+      # may be missing; say so, and never let it hold the toolchain back.
+      - name: Smoke-test sourcekit-lsp-lite
+        if: steps.pipeline.outputs.complete == 'true'
+        continue-on-error: true
+        run: |
+          missing=0
+          for f in out/sourcekit-lsp-lite.wasm out/sourcekit-lsp-lite-reactor.wasm out/swift-frontend-lsp.wasm; do
+            [ -f "$f" ] || { echo "::warning::$f was not built; see Stage 36 in the build log."; missing=1; }
+          done
+          [ "$missing" = 0 ] || exit 0
+          ./scripts/53-sourcekit-lsp-lite-smoke-test.sh
+
+      # The macro toolchain is new: let a failure here still upload everything, then
+      # fail the job before anything is published.
+      - name: Smoke-test macros
+        id: macros-smoke
+        if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_MACROS == '1'
+        continue-on-error: true
+        run: |
+          . "$HOME/.local/share/swiftly/env.sh"
+          ./scripts/57-macros-smoke-test.sh
+
+      - name: Compress artifacts
+        if: steps.pipeline.outputs.complete == 'true'
+        run: |
+          # Serve-ready: browsers fetch these over the network, so ship them compressed.
+          # -f because Stage 40 already writes swift-sysroot-core.tar.gz itself, and
+          # plain `gzip -k` refuses to overwrite an existing .gz and exits 2.
+          for f in out/*.wasm out/*.tar; do
+            [ -f "$f" ] || continue
+            gzip -9 -kf "$f"
+          done
+          ls -la out
+
+      - uses: actions/upload-artifact@v6
+        if: steps.pipeline.outputs.complete == 'true'
+        with:
+          name: swift-toolchain-wasm-${{ env.SWIFT_VERSION }}${{ env.SWIFT_MACROS != '1' && '-nomacros' || '' }}
+          path: light/toolchains/swift/out/
+          retention-days: 30
+
+      - name: Fail if the sourcekitd smoke test failed
+        if: steps.pipeline.outputs.complete == 'true' && steps.sourcekitd-smoke.outcome != 'success'
+        run: |
+          echo "::error::sourcekitd-request.wasm did not answer completion and cursor info; see the 'Smoke-test sourcekitd' step."
+          exit 1
+
+      - name: Fail if the macro smoke test failed
+        if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_MACROS == '1' && steps.macros-smoke.outcome != 'success'
+        run: |
+          echo "::error::the macro smoke test failed; see the 'Smoke-test macros' step."
+          exit 1
+
+      # Only the default (macros) build publishes: a release is one toolchain.
+      - name: Publish release
+        if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_MACROS == '1' && inputs.publish_release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          # A workflow_dispatch run has no tag of its own, and the action refuses to
+          # publish without one ("GitHub Releases requires a tag"). By default, one
+          # stable tag per Swift release: rebuilding replaces the artifacts in place,
+          # so consumers pointing at releases/latest/download keep working across
+          # rebuilds. That breaks consumers that pin an asset by SHA-256, so the
+          # release_tag input publishes under a new tag instead.
+          tag_name: ${{ inputs.release_tag || format('swift-{0}-wasm', env.SWIFT_VERSION) }}
+          name: Swift ${{ env.SWIFT_VERSION }} toolchain for WebAssembly hosts
+          make_latest: true
+          files: light/toolchains/swift/out/*
+          fail_on_unmatched_files: true
+          body: |
+            WebAssembly-hosted Swift toolchain, built from Swift ${{ env.SWIFT_VERSION }}.
+
+            | File | What |
+            | --- | --- |
+            | `swift-frontend.wasm` | the Swift compiler frontend, running on wasm |
+            | `wasm-ld.wasm` | LLVM's wasm linker, running on wasm |
+            | `swift-sysroot-core.tar` | stdlib modules, archives and wasi-libc to mount in the browser |
+            | `sourcekitd-request.wasm` | in-process sourcekitd with a minimal driver: YAML requests in, responses out |
+            | `sourcekit-lsp-lite.wasm` | an LSP server over the same sourcekitd, a WASI command speaking LSP on stdio (when Stage 36 built it) |
+            | `sourcekit-lsp-lite-reactor.wasm` | the same server as a WASI reactor for a browser worker: `lsp_handle` per message, `lsp_idle` for diagnostics |
+            | `swift-frontend-lsp.wasm` | that reactor and the compiler in one module: the `lsp_*` exports plus `swift_frontend_main(argc, argv)`, which runs `swift-frontend` (one compile per instance), so a browser downloads the compiler's code once |
+            | `SwiftMacroPlugins.wasm` | the macro plugins (`StringifyMacros`, `ObservationMacros`, swift-testing's `TestingMacros`) as one WASI module |
+            | `swift-plugin-host.mjs` | the embedder side of the compiler's plugin imports: runs those plugins, synchronously, in a browser worker or Node |
+            | `no-plugins.wat` | an embedder with no plugins, for wasmtime (`--preload swift_plugin_host=no-plugins.wat`) |
+
+            Every compiler module imports `swift_plugin_host.handle_message` and `swift_plugin_host.take_response`; pass `new SwiftPluginHost(...).imports` next to the WASI imports. See docs/status.md.
+
+            Serve these next to a page and point a `WasmBackend` at the directory.
+
+      - name: Report incomplete build
+        if: steps.pipeline.outputs.complete != 'true'
+        run: |
+          {
+            echo "### Build incomplete"
+            echo "The stage budget was exhausted. Re-run this workflow; it resumes from the cached build trees."
+            tail -50 build.log
+          } >> "$GITHUB_STEP_SUMMARY"

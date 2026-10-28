@@ -1,0 +1,15 @@
+{
+	// The page and its workers: the browser's globals and Vite's (for
+	// `?worker` imports), nothing of Node. The modules' own settings, so
+	// the example is held to what @yukibana/protocol and @yukibana/runtime
+	// are (light/modules/tsconfig.base.json).
+	"extends": "../../modules/tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		"types": ["vite/client"],
+		// The modules' sources through their `file:` links, as Vite and the
+		// unit tests read them (vite.config.ts); the built packages are M9a's.
+		"customConditions": ["@yukibana/source"]
+	},
+	"include": ["src"]
+}

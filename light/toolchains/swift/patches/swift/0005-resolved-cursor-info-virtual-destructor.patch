@@ -1,0 +1,131 @@
+Give ResolvedCursorInfo a virtual destructor.
+
+ResolvedCursorInfo is the base of a hierarchy (ResolvedValueRefCursorInfo,
+ResolvedModuleRefCursorInfo, ResolvedExprStartCursorInfo,
+ResolvedStmtStartCursorInfo) whose objects are made with new in
+CursorInfoResolver and owned as ResolvedCursorInfoPtr, an
+llvm::IntrusiveRefCntPtr<ResolvedCursorInfo>. Its refcount is
+llvm::RefCountedBase<ResolvedCursorInfo>, whose Release() does
+`delete static_cast<const ResolvedCursorInfo *>(this)`. Without a virtual
+destructor that deletes a subclass through the base: undefined behaviour,
+the subclass's members (ResolvedValueRefCursorInfo's two SmallVectors) are
+never destroyed, and the sized operator delete is passed the base's size,
+not the 232 bytes that were allocated. Allocators that use the size
+(tcmalloc, jemalloc, mimalloc with sized deallocation) can put the block back
+into the wrong size class.
+
+Symptom: sourcekit-lsp-lite's asan preset, run against the official
+Swift 6.3.3 libsourcekitdInProc.so, aborts in the rename test with
+"AddressSanitizer: new-delete-type-mismatch", allocated in
+CursorInfoResolver::tryResolve and freed from ~ASTUnit as the cached
+CursorInfoRequest results go (the evaluator's
+PerRequestCache::makeEmpty<CursorInfoRequest> deleter). The 6.4 release's
+library does the same. A reduced copy of the hierarchy under
+-fsanitize=address reports the same mismatch, and runs clean with the
+destructor virtual.
+
+The fix is the one SourceKit's own ref-counted hierarchy (ImmutableTextUpdate)
+and LLVM's (vfs::FileSystem over ThreadSafeRefCountedBase) already use.
+Nothing relies on the base being non-polymorphic: every instance is made with
+new and reached through a pointer, kinds are told apart by CursorInfoKind and
+classof, which a vtable does not change, and no instance is copied, stored by
+value or memcpy'd. The non-atomic refcount is not a second bug: every retain
+and release happens on the owning AST's serial consumer queue or while that
+AST is destroyed.
+
+unittests/IDE/ResolvedCursorInfoTest.cpp is the regression test for the
+upstream PR (this build does not compile unittests): a subclass released
+through ResolvedCursorInfoPtr must have its destructor run, which fails
+without the fix on any build; a second case fails only under ASan or LSan.
+docs/upstream-todo-resolvedcursorinfo.md has the history and the draft PR.
+
+Upstream: the same on main (include/swift/IDE/Utils.h, from PR #63612,
+"Pass ResolvedCursorInfo as shared pointer instead of by value", which
+made it a class hierarchy); not reported.
+
+diff --git a/include/swift/IDE/Utils.h b/include/swift/IDE/Utils.h
+index e7ff7fb..02bd0a5 100644
+--- a/include/swift/IDE/Utils.h
++++ b/include/swift/IDE/Utils.h
+@@ -149,6 +149,11 @@ public:
+   ResolvedCursorInfo() = default;
+   ResolvedCursorInfo(SourceFile *SF) : SF(SF) {}
+ 
++  /// Virtual because the subclasses are owned as \c ResolvedCursorInfoPtr,
++  /// whose \c llvm::RefCountedBase<ResolvedCursorInfo> deletes them through a
++  /// \c ResolvedCursorInfo pointer when the last reference goes.
++  virtual ~ResolvedCursorInfo() = default;
++
+   CursorInfoKind getKind() const { return Kind; }
+ 
+   SourceFile *getSourceFile() const { return SF; }
+diff --git a/unittests/IDE/CMakeLists.txt b/unittests/IDE/CMakeLists.txt
+index 607a574..5db13be 100644
+--- a/unittests/IDE/CMakeLists.txt
++++ b/unittests/IDE/CMakeLists.txt
+@@ -2,6 +2,7 @@ add_swift_unittest(SwiftIDETests
+   CodeCompletionToken.cpp
+   FuzzyStringMatcherTest.cpp
+   Placeholders.cpp
++  ResolvedCursorInfoTest.cpp
+   )
+ target_link_libraries(SwiftIDETests
+   PRIVATE
+diff --git a/unittests/IDE/ResolvedCursorInfoTest.cpp b/unittests/IDE/ResolvedCursorInfoTest.cpp
+new file mode 100644
+index 0000000..8883284
+--- /dev/null
++++ b/unittests/IDE/ResolvedCursorInfoTest.cpp
+@@ -0,0 +1,52 @@
++//===--- ResolvedCursorInfoTest.cpp ---------------------------------------===//
++//
++// This source file is part of the Swift.org open source project
++//
++// Copyright (c) 2026 Apple Inc. and the Swift project authors
++// Licensed under Apache License v2.0 with Runtime Library Exception
++//
++// See https://swift.org/LICENSE.txt for license information
++// See https://swift.org/CONTRIBUTORS.txt for the list of Swift project authors
++//
++//===----------------------------------------------------------------------===//
++
++#include "swift/IDE/Utils.h"
++#include "gtest/gtest.h"
++
++using namespace swift;
++using namespace swift::ide;
++
++namespace {
++/// A subclass that records whether its destructor ran.
++struct DestructionProbe : public ResolvedCursorInfo {
++  bool &Destroyed;
++  explicit DestructionProbe(bool &Destroyed)
++      : ResolvedCursorInfo(CursorInfoKind::ValueRef, nullptr, SourceLoc()),
++        Destroyed(Destroyed) {}
++  ~DestructionProbe() { Destroyed = true; }
++};
++} // namespace
++
++TEST(ResolvedCursorInfo, ReleasingThroughBasePointerDestroysSubclass) {
++  bool Destroyed = false;
++  {
++    ResolvedCursorInfoPtr Info = new DestructionProbe(Destroyed);
++    EXPECT_FALSE(Destroyed);
++  }
++  EXPECT_TRUE(Destroyed);
++}
++
++// Without a virtual destructor this leaks ReceiverTypes' heap buffer and is a
++// new-delete-type-mismatch (232 bytes allocated, 24 freed on a 64-bit host);
++// it only fails under AddressSanitizer or LeakSanitizer.
++TEST(ResolvedCursorInfo, ReleasingValueRefThroughBasePointer) {
++  SmallVector<NominalTypeDecl *> ReceiverTypes(16, nullptr);
++  ResolvedCursorInfoPtr Info = new ResolvedValueRefCursorInfo(
++      /*SF=*/nullptr, SourceLoc(), /*ValueD=*/nullptr, /*CtorTyRef=*/nullptr,
++      /*ExtTyRef=*/nullptr, /*IsRef=*/true,
++      /*SolutionSpecificInterfaceType=*/Type(), /*ContainerType=*/Type(),
++      /*CustomAttrRef=*/std::nullopt, /*IsKeywordArgument=*/false,
++      /*IsDynamic=*/true, ReceiverTypes, /*ShorthandShadowedDecls=*/{});
++  EXPECT_TRUE(isa<ResolvedValueRefCursorInfo>(Info.get()));
++  Info.reset();
++}

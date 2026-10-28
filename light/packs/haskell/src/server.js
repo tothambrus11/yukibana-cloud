@@ -1,0 +1,1419 @@
+// Yukibana Haskell pack: a language server whose answers come from GHC 9.14
+// itself, through the GHC API, in a module Web Worker. One JSON-RPC message
+// per postMessage, as CONTRACT.md says.
+//
+// libyuki.so (ghc/Yuki.hs) runs GHC in an editor session: a check type
+// checks the whole project as `ghc -fno-code` would, with the flags a
+// cabal build of the downloaded project uses (-Wall, GHC2021), and answers
+// GHC's diagnostics as GHC's own JSON (-fdiagnostics-as-json). Type errors
+// are deferred while checking (-fdefer-type-errors, as HLS does), so every
+// error of a module is reported, not the first, and the module still has a
+// .hie file: GHC's record of every name in it, where it is bound and its
+// type. Hover, definition, references, highlights and rename read the .hie
+// files; completion asks GHC's renamer what is in scope. Quick fixes come
+// from GHC's messages and hints, as ghcide's code actions do, and so do
+// HLS's import and export actions (add an import, make an import list
+// explicit, remove what an import list has too much, export a binding);
+// the call hierarchy is HLS's call-hierarchy plugin's, from the same .hie
+// files, and so are the nested outline, the workspace symbols and HLS's
+// inlay hints for local bindings (symbols.js).
+
+import { checkGroups, manifestOf, ROOT, sourceRoots, startGhc } from './ghc.js';
+import { bindingHints, outlineSymbols, searchSymbols, SymbolKind } from './symbols.js';
+import { characterOf, columnOf, lineMap } from './text.js';
+import { hlint, ormolu } from './tools.js';
+
+const send = (msg) => postMessage(msg);
+const log = (message, type = 3) => send({ jsonrpc: '2.0', method: 'window/logMessage', params: { type, message } });
+
+class RequestError extends Error {
+    constructor(code, message) {
+        super(message);
+        this.code = code;
+    }
+}
+const InvalidParams = -32602;
+const InvalidRequest = -32600;
+
+const PREFIX = 'file:///workspace/';
+const pathOf = (uri) => (uri.startsWith(PREFIX) ? decodeURIComponent(uri.slice(PREFIX.length)) : null);
+const uriOf = (path) => PREFIX + path.split('/').map(encodeURIComponent).join('/');
+const isHaskell = (uri) => /\.hs$/i.test(uri) && pathOf(uri) !== null;
+/** The project path of a file in GHC's file system, or null for one outside the workspace (a library's). */
+const projectPath = (file) => (typeof file === 'string' && file.startsWith(`${ROOT}/`) ? file.slice(ROOT.length + 1) : null);
+
+let ghc = null;
+/** Whether the client re-asks for semantic tokens when told to (workspace/semanticTokens/refresh). */
+let clientRefreshesTokens = false;
+/** Whether the client re-asks for code lenses when told to (workspace/codeLens/refresh). */
+let clientRefreshesLenses = false;
+/** Whether the client re-asks for inlay hints when told to (workspace/inlayHint/refresh). */
+let clientRefreshesHints = false;
+const ready = (async () => {
+    const t0 = performance.now();
+    const report = (p) => send({ jsonrpc: '2.0', method: 'yukibana/loading', params: p });
+    // -fprefer-byte-code: Template Haskell runs in GHC's interpreter, and
+    // a splice that uses a project module (a quasi-quoter defined in the
+    // project) needs that module compiled; with no code generated here,
+    // GHC compiles it to bytecode in memory rather than to object code,
+    // which needs a linker the browser does not have. A check without
+    // splices compiles nothing. -Wno-missed-extra-shared-lib: GHC's
+    // interpreter asks for libdl, which a wasm GHC has no use for.
+    ghc = await startGhc({ mode: 'editor', report, log: (s) => log(s), flags: ['-Wall', '-fprefer-byte-code', '-Wno-missed-extra-shared-lib'] });
+    log(`GHC ${ghc.versions.ghc} started in ${Math.round(performance.now() - t0)} ms (unpacked ${ghc.timings.unpacked} ms, linked ${ghc.timings.linked} ms)`);
+    return ghc;
+})();
+ready.catch((e) => log(`failed to start: ${e?.stack ?? e}`, 1));
+
+// ---- Documents and positions
+
+/** Open documents by project path: { uri, path, version, text, lines }. */
+const docs = new Map();
+
+function lineStarts(text) {
+    const starts = [0];
+    for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+    return starts;
+}
+function lineText(doc, line) {
+    if (line < 0 || line >= doc.lines.length) return '';
+    const start = doc.lines[line];
+    const end = line + 1 < doc.lines.length ? doc.lines[line + 1] - 1 : doc.text.length;
+    return doc.text.slice(start, end).replace(/\r$/, '');
+}
+
+/** An LSP range for a GHC span ({file, sl, sc, el, ec}, end exclusive) in a document. */
+function rangeOf(doc, s) {
+    const sl = Math.max(0, s.sl - 1);
+    const el = Math.max(sl, s.el - 1);
+    return {
+        start: { line: sl, character: characterOf(lineText(doc, sl), s.sc) },
+        end: { line: el, character: characterOf(lineText(doc, el), s.ec) },
+    };
+}
+
+// ---- Checking
+
+/**
+ * Per project path, what the last check that type checked the file said:
+ * { module, tops, outline } (its top-level declarations, and its
+ * declarations as the outline nests them: null from a root file system
+ * whose Yuki.hs has none), the text the check saw when GHC wrote a .hie
+ * file for it (`text`, else null), and what was asked of that check since
+ * (`tokens`, `binds`, ...). A file that did not parse keeps the last one.
+ */
+const analyses = new Map();
+let generation = 0;
+
+const published = new Map();
+function publish(path, diagnostics) {
+    const before = published.get(path);
+    const now = JSON.stringify(diagnostics);
+    if (before === now) return;
+    published.set(path, now);
+    send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri: uriOf(path), diagnostics } });
+}
+
+/**
+ * Warnings that are type errors GHC deferred to keep checking (and to
+ * write the .hie file): shown as the errors they are, as HLS does.
+ */
+const DEFERRED = new Set(['deferred-type-errors', 'deferred-out-of-scope-variables', 'typed-holes']);
+const UNNECESSARY = /^unused-|^redundant-/;
+
+/**
+ * An LSP diagnostic from one of GHC's JSON diagnostics: GHC's message (its
+ * bullets on lines of their own, "•" as GHC prints them), its error code
+ * linked to the Haskell Error Index, the warning's flag as GHC appends it,
+ * and GHC's hints (kept in `data` for quick fixes).
+ */
+function diagnosticOf(doc, d) {
+    const flags = (d.reason?.flags ?? []).filter((f) => typeof f === 'string');
+    const deferred = flags.some((f) => DEFERRED.has(f));
+    const error = d.severity === 'Error' || deferred;
+    const parts = (d.message ?? []).map((m) => String(m).replace(/\s+$/, ''));
+    let message = parts.length > 1 ? parts.map((m) => `• ${m.replace(/\n/g, '\n  ')}`).join('\n') : (parts[0] ?? '');
+    if (!error && flags.length) message += `\n[-W${flags.join(', -W')}]`;
+    const hints = (d.hints ?? []).map(String);
+    if (hints.length) message += `\nSuggested fix${hints.length > 1 ? 'es' : ''}:\n${hints.map((h) => `  • ${h.replace(/\n/g, '\n    ')}`).join('\n')}`;
+    const out = {
+        severity: error ? 1 : 2,
+        source: 'GHC',
+        message,
+        range: rangeOf(doc, d.span),
+        data: { message: parts.join('\n'), hints, flags },
+    };
+    if (d.code) {
+        out.code = `GHC-${String(d.code).padStart(5, '0')}`;
+        out.codeDescription = { href: `https://errors.haskell.org/messages/${out.code}/` };
+    }
+    const tags = [];
+    if (!error && flags.some((f) => UNNECESSARY.test(f))) tags.push(1);
+    if (flags.some((f) => /deprecat/.test(f))) tags.push(2);
+    if (tags.length) out.tags = tags;
+    return out;
+}
+
+async function check() {
+    const files = {};
+    for (const [path, doc] of docs) files[path] = doc.text;
+    const groups = checkGroups(files);
+    if (groups.length === 0) return;
+    generation++;
+    const t0 = performance.now();
+    const roots = sourceRoots(files);
+    const answer = await ghc.request(['check', ...roots.map((r) => `-i${r}`), '==', ...groups.map((g) => g.join('\t'))]);
+    const byPath = new Map([...docs.keys()].filter((p) => p.endsWith('.hs')).map((p) => [p, []]));
+    const seen = new Set();
+    for (const d of answer.diagnostics) {
+        const path = projectPath(d.span?.file);
+        const doc = path !== null ? docs.get(path) : null;
+        if (!doc) {
+            // A driver error with no place in a file (a cycle, a missing
+            // module given on the command line): shown on every file.
+            if (!d.span && d.message) for (const [p, list] of byPath) list.push(diagnosticOf(docs.get(p), { ...d, span: { sl: 1, sc: 1, el: 1, ec: 1 } }));
+            continue;
+        }
+        const s = d.span;
+        const key = `${path}:${s.start?.line}:${s.start?.column}:${d.code}:${(d.message ?? []).join('|')}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const span = { sl: s.start.line, sc: s.start.column, el: s.end.line, ec: s.end.column };
+        byPath.get(path)?.push(diagnosticOf(doc, { ...d, span }));
+    }
+    for (const m of answer.modules) {
+        const path = projectPath(m.file);
+        if (path === null) continue;
+        // `text` is what GHC's .hie file is of (null without one): the
+        // positions the queries answer are in it.
+        if (m.hie || !analyses.has(path)) analyses.set(path, { module: m.module, tops: m.tops, outline: Array.isArray(m.outline) ? m.outline : null, generation, text: m.hie ? (files[path] ?? null) : null, tokens: null, binds: null, sigs: new Map(), imports: null, calls: new Map() });
+    }
+    for (const [path, list] of byPath) {
+        ghcDiagnostics.set(path, list);
+        publishFile(path);
+    }
+    log(`checked ${byPath.size} file(s) in ${Math.round(performance.now() - t0)} ms`);
+    // The names' colours are of the last check: the client asks again.
+    if (clientRefreshesTokens) send({ jsonrpc: '2.0', id: `refresh-${generation}`, method: 'workspace/semanticTokens/refresh' });
+    // The type lenses are of the last check's warnings.
+    if (clientRefreshesLenses) send({ jsonrpc: '2.0', id: `lenses-${generation}`, method: 'workspace/codeLens/refresh' });
+    // And the local bindings' types.
+    if (clientRefreshesHints) send({ jsonrpc: '2.0', id: `hints-${generation}`, method: 'workspace/inlayHint/refresh' });
+    void lint();
+}
+
+/** GHC's diagnostics of each file at its last check. */
+const ghcDiagnostics = new Map();
+/** hlint's diagnostics of each file, with the text they are of: { text, list }. */
+const hlintDiagnostics = new Map();
+
+/**
+ * Publishes a file's diagnostics: GHC's, and hlint's when they are of the
+ * file as it is now (an edit makes them wait for the next lint, not move
+ * about), in order of position.
+ */
+function publishFile(path) {
+    const doc = docs.get(path);
+    const h = hlintDiagnostics.get(path);
+    const list = [...(ghcDiagnostics.get(path) ?? []), ...(h && doc && h.text === doc.text ? h.list : [])];
+    publish(path, list.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character));
+}
+
+/** Whether the pack has ormolu and hlint (their CI build, ghc/build-tools.sh, may be missing). */
+const toolsReady = manifestOf().then((m) => ({ ormolu: 'ormolu.wasm' in m.files, hlint: 'hlint.wasm' in m.files && 'hlint-data.json' in m.files }));
+
+let linting = null;
+let lintAgain = false;
+/**
+ * Runs hlint over the open Haskell files, as `hlint .` would, after each
+ * check: one run at a time, the last request run once the current is done.
+ * Its suggestions and warnings are diagnostics of their own (source
+ * "hlint", the hint's name as code); a parse error is GHC's to report.
+ */
+async function lint() {
+    if (!(await toolsReady).hlint) return;
+    if (linting) {
+        lintAgain = true;
+        return;
+    }
+    linting = (async () => {
+        do {
+            lintAgain = false;
+            const files = {};
+            for (const [path, doc] of docs) if (path.endsWith('.hs')) files[path] = doc.text;
+            const t0 = performance.now();
+            try {
+                const ideas = await hlint(files);
+                const byPath = new Map(Object.keys(files).map((p) => [p, []]));
+                for (const idea of ideas) {
+                    const doc = docs.get(idea.file);
+                    if (!doc || files[idea.file] !== doc.text || idea.severity === 'Error' || idea.severity === 'Ignore') continue;
+                    byPath.get(idea.file)?.push(hlintDiagnostic(doc, idea));
+                }
+                for (const [path, list] of byPath) {
+                    hlintDiagnostics.set(path, { text: files[path], list });
+                    publishFile(path);
+                }
+                log(`hlint: ${ideas.length} idea(s) in ${Math.round(performance.now() - t0)} ms`);
+            } catch (e) {
+                log(`hlint failed: ${e?.message ?? e}`, 2);
+            }
+        } while (lintAgain);
+        linting = null;
+    })();
+}
+
+/** An LSP diagnostic from one of hlint's ideas, worded as hlint prints it. */
+function hlintDiagnostic(doc, idea) {
+    const lines = [idea.hint];
+    if (idea.from) lines.push(`Found:\n  ${idea.from.replace(/\n/g, '\n  ')}`);
+    if (idea.to !== null && idea.to !== undefined) lines.push(idea.to ? `Why not:\n  ${idea.to.replace(/\n/g, '\n  ')}` : 'Why not: remove it');
+    for (const n of idea.note ?? []) lines.push(`Note: ${n}`);
+    return {
+        severity: idea.severity === 'Warning' ? 2 : 3,
+        source: 'hlint',
+        code: idea.hint,
+        message: lines.join('\n'),
+        range: rangeOf(doc, { sl: idea.startLine, sc: idea.startColumn, el: idea.endLine, ec: idea.endColumn }),
+        data: { hlint: { hint: idea.hint, to: idea.to ?? null } },
+    };
+}
+
+let timer = null;
+function schedule() {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+        chain = chain.then(async () => {
+            await ready;
+            try {
+                await check();
+            } catch (e) {
+                log(`check failed: ${e?.stack ?? e}`, 1);
+            }
+        });
+    }, 250);
+}
+
+// ---- Queries
+
+/** A position's document and GHC coordinates, or null for a file GHC has not seen. */
+function at(p) {
+    const path = pathOf(p?.textDocument?.uri ?? '');
+    if (path === null) throw new RequestError(InvalidParams, 'expected a textDocument.uri in the workspace');
+    const doc = docs.get(path);
+    if (!doc || !analyses.has(path)) return null;
+    const line = p.position.line;
+    return { doc, path, line: line + 1, col: columnOf(lineText(doc, line), p.position.character) };
+}
+
+const ask = (kind, here) => ghc.request([kind, `${ROOT}/${here.path}`, String(here.line), String(here.col)]);
+
+const fence = (code) => '```haskell\n' + code + '\n```';
+
+/**
+ * Hover text as HLS shows it: the name with its type at this use, its
+ * general type or declaration when that says more, its Haddock comment,
+ * and where it is defined (a project file and line, or a library module
+ * and package).
+ */
+function hoverOf(info) {
+    const parts = [];
+    const name = /^[A-Za-z_]/.test(info.name ?? '') ? info.name : `(${info.name})`;
+    if (info.kind === 'module') return fence(`module ${info.name}`);
+    if (info.type && info.kind !== 'data' && info.kind !== 'newtype' && info.kind !== 'class' && info.kind !== 'synonym' && info.kind !== 'family' && info.kind !== 'type' && info.kind !== 'tyvar') parts.push(fence(`${name} :: ${info.type}`));
+    // A type's declaration as GHC prints it starts with its kind
+    // signature (`type Point :: *`), which says nothing for a plain type.
+    const decl = info.decl?.replace(/^type \S+ :: (\*|Type)\n/, '');
+    if (decl && !(parts.length && decl.replace(/\s+/g, ' ') === `${name} :: ${info.type}`.replace(/\s+/g, ' '))) parts.push(fence(decl));
+    if (!parts.length) parts.push(fence(info.type ? `${name} :: ${info.type}` : name));
+    if (info.doc) parts.push(haddock(info.doc));
+    const defPath = info.def ? projectPath(info.def.file) : null;
+    if (defPath) parts.push(`*Defined at ${defPath}:${info.def.sl}:${info.def.sc}*`);
+    else if (info.module) parts.push(`*Defined in ‘${info.module}’*${info.package ? ` *(${info.package.replace(/-[0-9a-f]{20,}$/, '').replace(/-inplace$/, '')})*` : ''}`);
+    return parts.join('\n\n');
+}
+
+/**
+ * Haddock markup as Markdown, roughly as HLS shows it: `@code@` and
+ * 'identifiers' in backticks (an identifier inside code loses its quotes),
+ * "Module" names too, `= Heading` lines as headings, `__bold__` as bold,
+ * and each `>>>` example with the lines of its result as a code block.
+ */
+function haddock(text) {
+    const code = [];
+    // Code first, kept aside, so the quotes of identifiers inside it go and nothing else touches it.
+    const hold = (s) => `\u0000${code.push(s) - 1}\u0000`;
+    return text
+        .split('\n')
+        .map((l) => l.replace(/^ /, ''))
+        .join('\n')
+        .replace(/^>>> [^\n]*(?:\n(?!>>> )[^\n]+)*/gm, (ex) => hold('```haskell\n' + ex + '\n```'))
+        .replace(/@([^@\n]+)@/g, (_, c) => hold('`' + c.replace(/'([^'\s]+)'/g, '$1') + '`'))
+        .replace(/'([A-Za-z_][\w'.]*)'/g, '`$1`')
+        .replace(/"([A-Z][\w.]*)"/g, '`$1`')
+        .replace(/^(=+) +(.*)$/gm, (_, level, title) => `${'#'.repeat(Math.min(level.length + 2, 6))} ${title}`)
+        .replace(/__([^_\n]+)__/g, '**$1**')
+        .replace(/\u0000(\d+)\u0000/g, (_, i) => code[Number(i)])
+        .trim();
+}
+
+const toLocation = (s) => {
+    const path = projectPath(s.file);
+    const doc = path !== null ? docs.get(path) : null;
+    return doc ? { uri: uriOf(path), range: rangeOf(doc, s) } : null;
+};
+
+async function referencesAt(here) {
+    const list = await ask('refs', here);
+    const seen = new Set();
+    const out = [];
+    for (const r of list) {
+        const loc = toLocation(r.span);
+        if (!loc) continue;
+        const k = `${loc.uri}:${loc.range.start.line}:${loc.range.start.character}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push({ ...loc, isDef: r.def });
+    }
+    return out;
+}
+
+// ---- Completion
+
+const KEYWORDS = ['case', 'class', 'data', 'default', 'deriving', 'do', 'else', 'foreign', 'if', 'import', 'in', 'infix', 'infixl', 'infixr', 'instance', 'let', 'module', 'newtype', 'of', 'qualified', 'then', 'type', 'where', 'as', 'hiding', 'forall', 'mdo', 'proc', 'rec'];
+const Kind = { Function: 3, Constructor: 4, Field: 5, Variable: 6, Class: 7, Interface: 8, Module: 9, Keyword: 14, Struct: 22, TypeParameter: 25 };
+
+function kindOf(n) {
+    switch (n.kind) {
+        case 'constructor':
+            return Kind.Constructor;
+        case 'class':
+            return Kind.Interface;
+        case 'data':
+        case 'newtype':
+        case 'family':
+            return Kind.Struct;
+        case 'synonym':
+            return Kind.TypeParameter;
+        default:
+            return n.type && n.type.includes('->') ? Kind.Function : Kind.Variable;
+    }
+}
+
+/** A name's type from its declaration (`name :: type`), as completion's detail shows it. */
+const detailOf = (n) => (n.type ? n.type.replace(/^\(?[^\s]+?\)?\s*::\s*/, '').replace(/\s+/g, ' ') : undefined);
+
+/**
+ * Per project path, the names in scope at the last completion that had
+ * any. Yuki's `scope` parses the module as the last check saw it, so once a
+ * check has seen text that does not parse (`print (Map.`, typed and left a
+ * moment) it has no names at all, and completion offered nothing: these
+ * stand in, as HLS answers from the last module that type checked.
+ */
+const lastNames = new Map();
+
+async function completions(doc, path, line, character) {
+    const text = lineText(doc, line).slice(0, character);
+    const scope = await ghc.request(['scope', `${ROOT}/${path}`, String(line + 1), String(columnOf(lineText(doc, line), character))]);
+    if (scope.names?.length) lastNames.set(path, scope.names);
+    else scope.names = lastNames.get(path) ?? [];
+    const items = [];
+    const seen = new Set();
+    const add = (item) => {
+        if (seen.has(item.label)) return;
+        seen.add(item.label);
+        items.push(item);
+    };
+    const imp = /^\s*import\s+(?:qualified\s+)?([\w.]*)$/.exec(text);
+    if (imp) {
+        for (const m of scope.modules) add({ label: m, kind: Kind.Module });
+        return items;
+    }
+    const qual = /(?:^|[^\w'.])((?:[A-Z][\w']*\.)+)([\w']*)$/.exec(text);
+    if (qual) {
+        const q = qual[1].slice(0, -1);
+        for (const n of scope.names) if (n.quals.includes(q)) add({ label: n.name, kind: kindOf(n), detail: detailOf(n), ...(n.module ? { labelDetails: { description: n.module } } : {}) });
+        return items;
+    }
+    for (const l of scope.locals) add({ label: l.name, kind: Kind.Variable, detail: l.type || undefined, sortText: `0${l.name}` });
+    for (const n of scope.names) {
+        if (!n.unqual || !/^[A-Za-z_]/.test(n.name)) continue;
+        add({ label: n.name, kind: kindOf(n), detail: detailOf(n), sortText: `${n.module ? 2 : 1}${n.name}`, ...(n.module ? { labelDetails: { description: n.module } } : {}) });
+    }
+    for (const k of KEYWORDS) add({ label: k, kind: Kind.Keyword, sortText: `3${k}` });
+    return items;
+}
+
+// ---- Semantic tokens (HLS's semantic tokens plugin, from the same .hie files)
+
+const TOKEN_TYPES = ['namespace', 'type', 'class', 'interface', 'typeParameter', 'enumMember', 'function', 'method', 'property', 'variable', 'operator', 'macro'];
+
+/**
+ * A file's semantic tokens, encoded as LSP's relative five-tuples: the
+ * names GHC resolved in its last check ('tokens' in Yuki.hs), each moved
+ * to where its line is now and kept only where the text there still
+ * names it (as written, qualified, in parentheses or in backticks): a
+ * check a keystroke behind colours the lines it saw and leaves the line
+ * being typed to the editor's own highlighting.
+ */
+function encodeTokens(doc, analysis) {
+    const flat = analysis.tokens;
+    const map = lineMap(analysis.text, doc.text);
+    const found = [];
+    for (let i = 0; i + 4 < flat.length; i += 5) {
+        const [sl, sc, ec, kind, name] = flat.slice(i, i + 5);
+        const type = TOKEN_TYPES.indexOf(kind);
+        const line = map.forward(sl - 1);
+        if (type < 0 || line < 0 || line >= map.lines.length) continue;
+        const text = map.lines[line];
+        const start = characterOf(text, sc);
+        const end = characterOf(text, ec);
+        const written = text.slice(start, end);
+        if (!(written === name || written.endsWith(`.${name}`) || written === `(${name})` || written === `\`${name}\``)) continue;
+        found.push([line, start, end - start, type]);
+    }
+    found.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    const data = [];
+    let pl = 0;
+    let pc = 0;
+    let lastEnd = -1;
+    for (const [line, start, length, type] of found) {
+        if (line === pl && data.length && start < lastEnd) continue;
+        data.push(line - pl, line === pl ? start - pc : start, length, type, 0);
+        pl = line;
+        pc = start;
+        lastEnd = start + length;
+    }
+    return data;
+}
+
+// ---- Signature help
+
+const LAYOUT_KEYWORDS = new Set(['case', 'class', 'data', 'default', 'deriving', 'do', 'else', 'forall', 'foreign', 'if', 'import', 'in', 'infix', 'infixl', 'infixr', 'instance', 'let', 'mdo', 'module', 'newtype', 'of', 'proc', 'rec', 'then', 'type', 'where']);
+const SYMBOLS = /^[!#$%&*+./<=>?@\\^|~:-]+/;
+
+/**
+ * The call a position is in, from the text as it is now: the function
+ * applied (`name`, as written: `distance`, `Map.insert`, `Point`) and the
+ * argument the position is at (`arg`, from 0), or null. Haskell's
+ * application is juxtaposition, so this reads the tokens from the start
+ * of the top-level declaration to the position: brackets nest, and an
+ * operator, `=`, `<-`, `,`, a keyword or a new line of a layout block
+ * (no deeper than the call's head) ends an application. A position just
+ * inside a bracket that opens no call of its own (`distance (`, a list,
+ * a tuple, `(1 +`) is at an argument of the call around it. A position in
+ * a comment or string is in no call.
+ */
+function applicationAt(text, offset) {
+    let start = text.lastIndexOf('\n', offset - 1) + 1;
+    while (start > 0 && (/[\s]/.test(text[start] ?? ' ') || text.startsWith('--', start) || text.startsWith('{-', start))) start = text.lastIndexOf('\n', start - 2) + 1;
+    const frames = [[]];
+    const top = () => frames[frames.length - 1];
+    const reset = () => {
+        frames[frames.length - 1] = [];
+    };
+    let typeApplication = false;
+    const push = (atom) => {
+        if (typeApplication) typeApplication = false;
+        else top().push(atom);
+    };
+    let lineStart = true;
+    let indent = 0;
+    let i = start;
+    while (i < offset) {
+        const c = text[i];
+        if (c === '\n') {
+            lineStart = true;
+            i++;
+            continue;
+        }
+        if (c === ' ' || c === '\t' || c === '\r') {
+            i++;
+            continue;
+        }
+        if (lineStart) {
+            // A line no deeper than the line of the call's head starts
+            // something new (the next statement of a do block).
+            lineStart = false;
+            indent = i - (text.lastIndexOf('\n', i - 1) + 1);
+            if (frames.length === 1 && top().length && indent <= top()[0].indent) reset();
+        }
+        const rest = text.slice(i, i + 256);
+        if (/^--+(?![!#$%&*+./<=>?@\\^|~:])/.test(rest)) {
+            const e = text.indexOf('\n', i);
+            if (e < 0 || e >= offset) return null;
+            i = e;
+            continue;
+        }
+        if (rest.startsWith('{-')) {
+            let depth = 0;
+            let j = i;
+            for (; j < text.length; j++) {
+                if (text.startsWith('{-', j)) {
+                    depth++;
+                    j++;
+                } else if (text.startsWith('-}', j)) {
+                    depth--;
+                    j++;
+                    if (depth === 0) break;
+                }
+            }
+            if (j >= offset) return null;
+            i = j + 1;
+            continue;
+        }
+        if (c === '"') {
+            let j = i + 1;
+            while (j < text.length && text[j] !== '"' && text[j] !== '\n') j += text[j] === '\\' ? 2 : 1;
+            if (j >= offset) return null;
+            push({ kind: 'literal', indent, end: j + 1 });
+            i = j + 1;
+            continue;
+        }
+        const char = /^'(?:\\[^']+|[^'\\])'/.exec(rest);
+        if (char) {
+            push({ kind: 'literal', indent, end: i + char[0].length });
+            i += char[0].length;
+            continue;
+        }
+        const word = /^(?:[A-Z][\w']*\.)*[A-Za-z_][\w']*/.exec(rest);
+        if (word) {
+            const end = Math.min(i + word[0].length, offset);
+            const name = text.slice(i, end);
+            if (LAYOUT_KEYWORDS.has(name)) reset();
+            else push({ kind: 'name', name, indent, end });
+            i += word[0].length;
+            continue;
+        }
+        const number = /^[0-9][\w.']*/.exec(rest);
+        if (number) {
+            push({ kind: 'literal', indent, end: i + number[0].length });
+            i += number[0].length;
+            continue;
+        }
+        if ('([{'.includes(c)) {
+            frames.push([]);
+            i++;
+            continue;
+        }
+        if (')]}'.includes(c)) {
+            if (frames.length > 1) {
+                frames.pop();
+                push({ kind: 'group', indent, end: i + 1 });
+            } else reset();
+            i++;
+            continue;
+        }
+        if (c === ',' || c === ';') {
+            reset();
+            i++;
+            continue;
+        }
+        if (c === '`') {
+            const e = text.indexOf('`', i + 1);
+            if (e < 0 || e >= offset) return null;
+            reset();
+            i = e + 1;
+            continue;
+        }
+        const op = SYMBOLS.exec(rest);
+        if (op) {
+            // `f @Int x`: a type application is not an argument.
+            if (op[0] === '@' && /\s/.test(text[i - 1] ?? ' ') && !/\s/.test(text[i + 1] ?? ' ')) typeApplication = true;
+            else reset();
+            i += op[0].length;
+            continue;
+        }
+        i++;
+    }
+    const touching = offset > 0 && !/\s/.test(text[offset - 1]);
+    const inner = top();
+    if (inner.length && inner[0].kind === 'name') {
+        const last = inner[inner.length - 1];
+        const arg = touching && last.end === offset ? inner.length - 2 : inner.length - 1;
+        return arg >= 0 ? { name: inner[0].name, arg } : null;
+    }
+    const outer = frames.length > 1 ? frames[frames.length - 2] : null;
+    if (outer?.length && outer[0].kind === 'name') return { name: outer[0].name, arg: outer.length - 1 };
+    return null;
+}
+
+async function signatureHelp(doc, path, position) {
+    const analysis = analyses.get(path);
+    if (!analysis) return null;
+    const call = applicationAt(doc.text, doc.lines[position.line] + position.character);
+    if (!call) return null;
+    // A local's type is looked up by where it is in scope: the line the
+    // check saw, as near as the edit since allows.
+    const line = analysis.text ? lineMap(analysis.text, doc.text).back(position.line) : position.line;
+    const key = `${call.name}\0${line}`;
+    let info = analysis.sigs.get(key);
+    if (!info) {
+        info = await ghc.request(['sig', `${ROOT}/${path}`, String(line + 1), String(columnOf(lineText(doc, position.line), position.character)), call.name]);
+        analysis.sigs.set(key, info);
+    }
+    if (!info.found || !info.args.length) return null;
+    const name = /^[A-Za-z_]/.test(info.name) ? info.name : `(${info.name})`;
+    let label = `${name} :: `;
+    if (info.context.length) label += `${info.context.length === 1 ? info.context[0] : `(${info.context.join(', ')})`} => `;
+    const parameters = [];
+    for (const a of info.args) {
+        parameters.push({ label: [label.length, label.length + a.length] });
+        label += `${a} -> `;
+    }
+    label += info.result;
+    const signature = { label, parameters, activeParameter: call.arg };
+    if (info.doc) signature.documentation = { kind: 'markdown', value: haddock(info.doc) };
+    return { signatures: [signature], activeSignature: 0, activeParameter: call.arg };
+}
+
+// ---- Symbols
+
+/**
+ * A file's document symbols: the nested outline (symbols.js) of its last
+ * check, or, from a root file system whose Yuki.hs answers no outline, the
+ * flat list of its top-level names.
+ */
+function documentSymbols(doc, analysis) {
+    if (analysis?.outline && analysis.text !== null) return outlineSymbols(analysis.outline, analysis.tops ?? [], analysis.text, (s) => rangeOf(doc, s));
+    const symbols = [];
+    for (const t of analysis?.tops ?? []) {
+        const range = rangeOf(doc, t.span);
+        const kind =
+            t.kind === 'class' ? SymbolKind.Interface
+            : t.kind === 'constructor' ? SymbolKind.Constructor
+            : t.kind === 'synonym' || t.kind === 'family' ? SymbolKind.TypeParameter
+            : t.kind === 'data' || t.kind === 'newtype' ? SymbolKind.Struct
+            : /->/.test(t.type) ? SymbolKind.Function
+            : SymbolKind.Constant;
+        symbols.push({ name: t.name, detail: detailOf(t) ?? t.type, kind, range, selectionRange: range });
+    }
+    return symbols.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.character - b.range.start.character);
+}
+
+/** The local bindings of a file's last check ('binds' in Yuki.hs), asked once per check; none from a Yuki.hs without them. */
+function bindsOf(path, analysis) {
+    analysis.binds ??= ghc.request(['binds', `${ROOT}/${path}`]).then(
+        (answer) => (Array.isArray(answer) ? answer : []),
+        (e) => {
+            log(`binds of ${path}: ${e?.message ?? e}`, 2);
+            return [];
+        },
+    );
+    return analysis.binds;
+}
+
+// ---- Call hierarchy (HLS's call-hierarchy plugin, from the same .hie files)
+
+/**
+ * The call hierarchy at a GHC position of a file ('calls' in Yuki.hs),
+ * asked once per position and check: prepare, then incoming and outgoing
+ * calls of the item it answered, all ask the same.
+ */
+async function callsAt(path, line, col) {
+    const analysis = analyses.get(path);
+    if (!analysis) return { item: null };
+    const key = `${line}:${col}`;
+    let answer = analysis.calls.get(key);
+    if (!answer) {
+        answer = await ghc.request(['calls', `${ROOT}/${path}`, String(line), String(col)]);
+        analysis.calls.set(key, answer);
+    }
+    return answer;
+}
+
+/**
+ * An LSP CallHierarchyItem from one of Yuki.hs's items: the whole binding
+ * as its range, the name at the binding as its selection, its type as the
+ * detail. `data` says where the name is (GHC's line and column), which is
+ * what incoming and outgoing calls ask about. Null for a binding in a file
+ * that is not open (the project's files all are).
+ */
+function callItem(i) {
+    const path = projectPath(i.span.file);
+    const doc = path !== null ? docs.get(path) : null;
+    if (!doc) return null;
+    return {
+        name: i.name,
+        kind: /->/.test(i.type) ? SymbolKind.Function : SymbolKind.Variable,
+        detail: i.type,
+        uri: uriOf(path),
+        range: rangeOf(doc, i.span),
+        selectionRange: rangeOf(doc, i.sel),
+        data: { path, line: i.sel.sl, col: i.sel.sc },
+    };
+}
+
+/** The calls on one side of an item: [{ item, fromRanges }], `fromRanges` in the file `rangesIn` names (the caller's). */
+async function callsOf(item, side) {
+    const d = item?.data;
+    if (!d || typeof d.path !== 'string' || !docs.has(d.path)) throw new RequestError(InvalidParams, 'expected a call hierarchy item this server made');
+    const answer = await callsAt(d.path, d.line, d.col);
+    const out = [];
+    for (const c of answer[side] ?? []) {
+        const other = callItem(side === 'incoming' ? c.from : c.to);
+        // Incoming: the uses are in the caller's file; outgoing: in the item's.
+        const doc = docs.get(side === 'incoming' ? pathOf(other?.uri ?? '') : d.path);
+        if (!other || !doc) continue;
+        out.push({ [side === 'incoming' ? 'from' : 'to']: other, fromRanges: c.ranges.map((r) => rangeOf(doc, r)) });
+    }
+    return out;
+}
+
+// ---- Imports and exports (HLS's: add an import, explicit import lists, export a binding)
+
+const isOperator = (name) => !/^[A-Za-z_]/.test(name);
+/** A name as an import or export list writes it. */
+const listItem = (name) => (isOperator(name) ? `(${name})` : name);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The offset of the bracket that closes the one at `open`, or -1 (strings and comments are not looked into: an import or export list has neither). */
+function closing(text, open) {
+    let depth = 0;
+    for (let i = open; i < text.length; i++) {
+        if (text[i] === '(') depth++;
+        else if (text[i] === ')' && --depth === 0) return i;
+    }
+    return -1;
+}
+
+/** An edit inserting `text` at an offset of a document. */
+function insertAt(doc, offset, text) {
+    const line = Math.max(0, doc.lines.findLastIndex((s) => s <= offset));
+    const pos = { line, character: offset - doc.lines[line] };
+    return { range: { start: pos, end: pos }, newText: text };
+}
+
+/**
+ * The edit adding `item` to the list in parentheses that opens at `open`:
+ * after its last item, in the list's style (`(a, b)` on one line, or one
+ * item a line with leading commas, as ormolu and the sample write an
+ * export list).
+ */
+function addToList(doc, open, item) {
+    const close = closing(doc.text, open);
+    if (close < 0) return null;
+    const inside = doc.text.slice(open + 1, close);
+    if (!inside.trim()) return insertAt(doc, open + 1, item);
+    const own = /\n([ \t]*)$/.exec(inside);
+    if (own) {
+        // `)` on a line of its own: the item goes on a line before it, as
+        // the other items' lines start (`  , x`).
+        const lead = /\n([ \t]*),/.exec(inside)?.[1] ?? own[1];
+        return insertAt(doc, close - own[1].length, `${lead}, ${item}\n`);
+    }
+    const end = open + 1 + inside.trimEnd().length;
+    return insertAt(doc, end, `, ${item}`);
+}
+
+/**
+ * Where a new import goes: after the last import (and the lines its list
+ * continues on), else after the module header, else at the top. `prefix`
+ * says whether the line needs a blank line before it.
+ */
+function importInsertion(doc) {
+    const n = doc.lines.length;
+    let last = -1;
+    for (let l = 0; l < n; l++) if (/^import\b/.test(lineText(doc, l))) last = l;
+    if (last >= 0) {
+        let l = last + 1;
+        while (l < n && /^[ \t]+\S/.test(lineText(doc, l))) l++;
+        return { line: l, prefix: '' };
+    }
+    const header = (() => {
+        for (let l = 0; l < n; l++) if (/^module\b/.test(lineText(doc, l))) return l;
+        return -1;
+    })();
+    if (header >= 0) {
+        for (let l = header; l < n; l++) if (/\bwhere\b/.test(lineText(doc, l))) return { line: l + 1, prefix: '\n' };
+    }
+    let l = 0;
+    while (l < n && /^\s*(\{-#|--|$)/.test(lineText(doc, l))) l++;
+    return { line: l, prefix: '' };
+}
+
+/** The not-in-scope name of a GHC diagnostic, as written (`sort`, `Map.insert`, `Map`), or null. */
+function notInScope(doc, d, written) {
+    const message = d.data?.message ?? '';
+    if (!/not in scope/i.test(message) || !written) return null;
+    const m = /^((?:[A-Z][\w']*\.)*)([\w']+|[!#$%&*+./<=>?@\\^|~:-]+)$/.exec(written.replace(/^\((.*)\)$/, '$1').replace(/^`(.*)`$/, '$1'));
+    if (!m) return null;
+    // A capitalised name is a constructor unless GHC says it is a type or class.
+    return { qual: m[1] ? m[1].slice(0, -1) : null, name: m[2], constructor: !/type constructor or class|Not in scope: type/i.test(message) };
+}
+
+/** The modules exporting a name, most likely first: the project's, then those named like the qualifier, then the public before GHC's internals, then the shortest. */
+async function exporters(name, qual, constructor) {
+    // `Down` is a type and a constructor: the message says which is missing.
+    const found = (await ghc.request(['exports', name])).filter((e) => !/^[A-Z:]/.test(name) || (e.kind === 'constructor') === constructor);
+    const seen = new Set();
+    const rank = (e) => [e.home ? 0 : 1, qual && (e.module === qual || e.module.endsWith(`.${qual}`)) ? 0 : 1, /^GHC\.|\.Internal\b|^Data\.OldList$/.test(e.module) ? 1 : 0, e.module.split('.').length, e.module.length];
+    const cmp = (a, b) => {
+        const x = rank(a);
+        const y = rank(b);
+        for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
+        return a.module < b.module ? -1 : 1;
+    };
+    return found.filter((e) => !seen.has(e.module) && seen.add(e.module)).sort(cmp);
+}
+
+/**
+ * "Add import" for a name GHC says is not in scope, as ghcide offers it:
+ * for a qualified name an `import qualified M as Q`, otherwise the name
+ * added to an import list the module already has, or a new `import M
+ * (name)`; a data constructor is imported with its type (`Maybe (Just)`).
+ */
+async function importActions(doc, missing, add) {
+    let list;
+    try {
+        list = await exporters(missing.name, missing.qual, missing.constructor);
+    } catch (e) {
+        log(`exports of ${missing.name}: ${e?.message ?? e}`, 2);
+        return;
+    }
+    const at = importInsertion(doc);
+    const newImport = (title, line) => add(title, [{ range: { start: { line: at.line, character: 0 }, end: { line: at.line, character: 0 } }, newText: `${at.prefix}${line}\n` }]);
+    for (const e of list.slice(0, 5)) {
+        if (e.kind === 'module') continue;
+        if (missing.qual) {
+            newImport(e.module === missing.qual ? `Add import qualified ${e.module}` : `Add import qualified ${e.module} as ${missing.qual}`, e.module === missing.qual ? `import qualified ${e.module}` : `import qualified ${e.module} as ${missing.qual}`);
+            continue;
+        }
+        const item = e.parent ? `${e.parent} (${listItem(missing.name)})` : listItem(missing.name);
+        const existing = new RegExp(`^import[ \\t]+(?:qualified[ \\t]+)?${escapeRe(e.module)}(?:[ \\t]+qualified)?(?:[ \\t]+as[ \\t]+[\\w.]+)?[ \\t]*\\(`, 'm').exec(doc.text);
+        const edit = existing && !/\bqualified\b/.test(existing[0]) ? addToList(doc, existing.index + existing[0].length - 1, item) : null;
+        if (edit) add(`Add ${item} to the import list of ${e.module}`, [edit]);
+        else newImport(`Add import ${e.module} (${item})`, `import ${e.module} (${item})`);
+    }
+}
+
+/**
+ * The edit removing names from an import list ("The import of ‘sort, nub’
+ * from module ‘Data.List’ is redundant"): the import declaration from its
+ * line, its list's items split at the top level, those GHC named dropped.
+ */
+function removeFromImport(doc, line, module, names) {
+    const start = doc.lines[line];
+    // The list may start on a line the declaration continues on (indented).
+    const decl = new RegExp(`^import[ \\t]+(?:qualified[ \\t]+)?${escapeRe(module)}(?![\\w.])(?:[^(\\n]|\\n[ \\t])*\\(`, 'm');
+    const m = decl.exec(doc.text.slice(start));
+    if (!m || m.index !== 0) return null;
+    const open = start + m[0].length - 1;
+    const close = closing(doc.text, open);
+    if (close < 0) return null;
+    const items = [];
+    let depth = 0;
+    let from = open + 1;
+    for (let i = open + 1; i <= close; i++) {
+        const ch = doc.text[i];
+        if (ch === '(') depth++;
+        else if (ch === ')' && depth > 0) depth--;
+        else if ((ch === ',' && depth === 0) || i === close) {
+            items.push(doc.text.slice(from, i).trim());
+            from = i + 1;
+        }
+    }
+    const norm = (s) => s.replace(/\s+/g, '');
+    const drop = new Set(names.map(norm));
+    const kept = items.filter((it) => it && !drop.has(norm(it)) && !drop.has(norm(it).replace(/^\((.*)\)$/, '$1')));
+    if (kept.length === items.filter(Boolean).length) return null;
+    const a = insertAt(doc, open, '').range.start;
+    const b = insertAt(doc, close + 1, '').range.start;
+    return { range: { start: a, end: b }, newText: `(${kept.join(', ')})` };
+}
+
+/** The edit adding a name to the module's export list, or null when it has none (everything is exported). */
+function exportEdit(doc, name) {
+    const m = /^module[ \t]+[\w.]+\s*\(/m.exec(doc.text);
+    return m ? addToList(doc, m.index + m[0].length - 1, listItem(name)) : null;
+}
+
+/** The import lists GHC would write for the implicit imports of a file, at its last check ('imports' in Yuki.hs). */
+async function explicitImports(path) {
+    const analysis = analyses.get(path);
+    if (!analysis?.text) return [];
+    analysis.imports ??= ghc.request(['imports', `${ROOT}/${path}`]);
+    return analysis.imports;
+}
+
+// ---- Quick fixes from GHC's messages and hints (as ghcide's code actions)
+
+/**
+ * The signature GHC inferred for a top-level binding that has none, from
+ * its -Wmissing-signatures warning ("Top-level binding with no type
+ * signature: f :: Int -> Int"): the signature on one line, and the edit
+ * that writes it above the binding, indented as the binding is. Null for
+ * any other diagnostic. The quick fix and the type lens both use it.
+ */
+function missingSignature(doc, d) {
+    const m = /Top-level binding with no type signature:\s*([\s\S]+)$/.exec(d.data?.message ?? d.message ?? '');
+    if (!m) return null;
+    const line = d.range.start.line;
+    const indent = /^\s*/.exec(lineText(doc, line))[0];
+    const text = m[1].trim();
+    return {
+        signature: text.replace(/\s+/g, ' '),
+        edit: { range: { start: { line, character: 0 }, end: { line, character: 0 } }, newText: `${indent}${text.replace(/\n\s*/g, '\n' + indent + '  ')}\n` },
+    };
+}
+
+/**
+ * HLS's type lenses: above each top-level binding without a signature,
+ * the signature GHC inferred, which writes it when clicked (the command
+ * `haskell.addSignature`, carrying its edit). From the last check's
+ * warnings, so a binding is lensed once the check that saw it is done,
+ * and only while the warning is on (-Wall has it).
+ */
+function typeLenses(doc, path) {
+    const lenses = [];
+    for (const d of ghcDiagnostics.get(path) ?? []) {
+        const sig = missingSignature(doc, d);
+        if (!sig) continue;
+        const edit = { changes: { [doc.uri]: [sig.edit] } };
+        lenses.push({ range: d.range, command: { title: sig.signature, command: 'haskell.addSignature', arguments: [edit] } });
+    }
+    return lenses;
+}
+
+// ---- Folding (HLS's: declarations, imports, comments, and what is indented under a line)
+
+/**
+ * Folding ranges of a Haskell module from its text alone, so they are
+ * there before (and without) a check: the import block, `{- -}` comments
+ * and runs of `--` lines, each top-level declaration with its signature
+ * and every equation of the same name, and every line with lines indented
+ * under it (a `do` block, a `where`, guards, a long expression). Monaco
+ * folds whole lines and cannot fold two ranges from one line, so for one
+ * start line only the longest range is kept.
+ */
+function foldingRanges(doc) {
+    const lines = [];
+    for (let i = 0; i < doc.lines.length; i++) lines.push(lineText(doc, i));
+    const blank = (t) => /^\s*$/.test(t);
+    const indentOf = (t) => /^\s*/.exec(t)[0].length;
+    const isLineComment = (t) => /^\s*--(?![!#$%&*+./<=>?@\\^|~:])/.test(t);
+    const ranges = new Map();
+    const add = (start, end, kind) => {
+        if (end <= start) return;
+        const had = ranges.get(start);
+        if (!had || had.endLine < end) ranges.set(start, { startLine: start, endLine: end, ...(kind && { kind }) });
+    };
+    /** The last line of what starts at `i`: the lines after it indented deeper, blank lines between them included but not after. */
+    const blockEnd = (i) => {
+        const indent = indentOf(lines[i]);
+        let end = i;
+        for (let j = i + 1; j < lines.length; j++) {
+            if (blank(lines[j])) continue;
+            if (indentOf(lines[j]) <= indent) break;
+            end = j;
+        }
+        return end;
+    };
+    const inComment = new Set();
+    for (let i = 0; i < lines.length; i++) {
+        const t = lines[i];
+        // A block comment (or pragma) from its `{-` to its `-}`.
+        if (/^\s*\{-/.test(t) && !/-\}/.test(t.slice(t.indexOf('{-') + 2))) {
+            let j = i + 1;
+            while (j < lines.length && !/-\}/.test(lines[j])) j++;
+            add(i, Math.min(j, lines.length - 1), 'comment');
+            for (let k = i; k <= j; k++) inComment.add(k);
+            i = j;
+            continue;
+        }
+        if (isLineComment(t)) {
+            let j = i;
+            while (j + 1 < lines.length && isLineComment(lines[j + 1])) j++;
+            add(i, j, 'comment');
+            for (let k = i; k <= j; k++) inComment.add(k);
+            i = j;
+        }
+    }
+    const code = (i) => !blank(lines[i]) && !inComment.has(i);
+    // The imports, from the first to the end of the last (an import list may go on over lines).
+    const imports = lines.map((t, i) => (/^import\b/.test(t) && code(i) ? i : -1)).filter((i) => i >= 0);
+    if (imports.length) add(imports[0], blockEnd(imports.at(-1)), 'imports');
+    // Top-level declarations: a binding's signature and equations are one group.
+    const nameOf = (t) => {
+        const m = /^(?:\(([^)\s]+)\)|([a-z_][\w']*))/.exec(t);
+        return m && !/^(?:import|module|data|newtype|type|class|instance|deriving|infix[lr]?|foreign|where|let|in|if|then|else|case|of|do)$/.test(m[2] ?? '') ? (m[1] ?? m[2]) : null;
+    };
+    let group = null;
+    const close = () => {
+        if (group) add(group.start, group.end);
+        group = null;
+    };
+    for (let i = 0; i < lines.length; i++) {
+        if (!code(i) || indentOf(lines[i]) > 0) continue;
+        if (/^(?:import|module)\b/.test(lines[i])) {
+            close();
+            continue;
+        }
+        const name = nameOf(lines[i]);
+        if (!group || name === null || group.name !== name) {
+            close();
+            group = { name, start: i, end: blockEnd(i) };
+        } else group.end = blockEnd(i);
+        if (name === null) close();
+    }
+    close();
+    // Whatever is indented under a line.
+    for (let i = 0; i < lines.length; i++) if (code(i)) add(i, blockEnd(i));
+    return [...ranges.values()].sort((a, b) => a.startLine - b.startLine);
+}
+
+/** The names a message or hint quotes, in GHC's ‘quotes’. */
+const quoted = (s) => [...s.matchAll(/‘([^’]+)’/g)].map((m) => m[1]);
+
+async function codeActions(doc, path, uri, diagnostics, range) {
+    const actions = [];
+    const edit = (title, d, edits, preferred = false) =>
+        actions.push({ title, kind: 'quickfix', diagnostics: [d], isPreferred: preferred, edit: { changes: { [uri]: edits } } });
+    for (const d of diagnostics) {
+        const data = d.data ?? {};
+        // hlint's: its replacement, as `hlint --refactor` applies it, and
+        // turning the hint off for the module, as HLS offers.
+        if (data.hlint) {
+            if (data.hlint.to !== null) edit(`Apply hint: ${data.hlint.hint}`, d, [{ range: d.range, newText: data.hlint.to }], true);
+            edit(`Ignore hint “${data.hlint.hint}” in this module`, d, [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: `{- HLINT ignore "${data.hlint.hint}" -}\n` }]);
+            continue;
+        }
+        const message = data.message ?? d.message ?? '';
+        const hints = data.hints ?? [];
+        const flags = data.flags ?? [];
+        const r = d.range;
+        const written = lineText(doc, r.start.line).slice(r.start.character, r.start.line === r.end.line ? r.end.character : undefined);
+        // "Perhaps use ‘x’" / "Perhaps use one of these: ‘a’ (...), ‘b’ (...)"
+        for (const h of hints) {
+            if (/^Perhaps use/.test(h) || /^Perhaps you meant/.test(h)) {
+                for (const name of quoted(h).filter((n) => n !== written).slice(0, 6)) edit(`Replace with ‘${name}’`, d, [{ range: r, newText: /^[A-Za-z_]/.test(name) || !/^[A-Za-z_(]/.test(written) ? name : `(${name})` }], true);
+            }
+            const ext = /(?:Perhaps you intended to use|Enable any of the following extensions:|Use)\s+([A-Z][A-Za-z]+(?:,\s*[A-Z][A-Za-z]+)*)/.exec(h);
+            if (ext && /extension|intended to use/.test(h)) {
+                for (const e of ext[1].split(/,\s*/)) edit(`Add {-# LANGUAGE ${e} #-}`, d, [{ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, newText: `{-# LANGUAGE ${e} #-}\n` }]);
+            }
+        }
+        // -Wmissing-signatures: "Top-level binding with no type signature: f :: Int -> Int"
+        const sig = missingSignature(doc, d);
+        if (sig) edit(`Add type signature: ${sig.signature}`, d, [sig.edit], true);
+        // -Wunused-matches / -Wunused-local-binds / -Wunused-top-binds: "Defined but not used: ‘x’"
+        if (/Defined but not used/.test(message) && flags.some((f) => /^unused-/.test(f))) {
+            const [name] = quoted(message);
+            if (name && /^[a-z]/.test(name) && written === name) edit(`Prefix ‘${name}’ with _`, d, [{ range: r, newText: `_${name}` }], true);
+        }
+        // -Wunused-imports: "The import of ‘M’ is redundant" (whole import), or "The import of ‘x, y’ from module ‘M’ is redundant"
+        if (flags.includes('unused-imports')) {
+            if (/^The (?:qualified )?import of ‘[^’]+’ is redundant/.test(message)) {
+                const end = Math.min(r.end.line + 1, doc.lines.length);
+                edit('Remove redundant import', d, [{ range: { start: { line: r.start.line, character: 0 }, end: { line: end, character: 0 } }, newText: '' }], true);
+            }
+        }
+        // -Wunused-imports: "The import of ‘sort, nub’ from module ‘Data.List’ is redundant": those names out of its list.
+        if (flags.includes('unused-imports')) {
+            const some = /^The (?:qualified )?import of ‘([^’]+)’\s+from module ‘([^’]+)’ is redundant/.exec(message);
+            const e = some ? removeFromImport(doc, r.start.line, some[2], some[1].split(/,\s*/)) : null;
+            if (e) edit(`Remove ‘${some[1]}’ from the import of ${some[2]}`, d, [e], true);
+        }
+        // -Wunused-top-binds in a module with an export list: export it (HLS's "Export ‘f’").
+        if (/Defined but not used/.test(message) && flags.includes('unused-top-binds')) {
+            const [name] = quoted(message);
+            const e = name && /^[a-z_]/.test(name) && written === name ? exportEdit(doc, name) : null;
+            if (e) edit(`Export ‘${name}’`, d, [e]);
+        }
+        // Not in scope: an import that brings it in.
+        const missing = notInScope(doc, d, written);
+        if (missing) await importActions(doc, missing, (title, edits) => edit(title, d, edits));
+        // Typed holes: "Valid hole fits include x :: Int (bound at ...)"
+        const fits = /Valid (?:hole fits|refinement hole fits) include\s*([\s\S]*)$/.exec(message);
+        if (fits && /^_/.test(written)) {
+            for (const m of fits[1].matchAll(/^\s+([a-z_][\w'.]*|\([^)]+\))\s*::/gm)) edit(`Replace ${written} with ${m[1]}`, d, [{ range: r, newText: m[1] }]);
+        }
+    }
+    // On an import without an import list: the list it needs (HLS's
+    // explicit-imports "Make this import explicit", and "Make all imports
+    // explicit" when there are more).
+    // Its positions are of the text the last check saw: only offered on that text.
+    if (range && importAt(doc, range.start.line) && analyses.get(path)?.text === doc.text) {
+        const all = (await explicitImports(path)).filter((i) => i.items.length);
+        const insert = (i) => insertAt(doc, doc.lines[Math.max(0, i.span.el - 1)] + characterOf(lineText(doc, i.span.el - 1), i.span.ec), ` (${i.items.join(', ')})`);
+        const here = all.find((i) => i.span.sl - 1 <= range.start.line && range.start.line <= i.span.el - 1);
+        if (here) actions.push({ title: 'Make this import explicit', kind: 'refactor.rewrite', edit: { changes: { [uri]: [insert(here)] } } });
+        if (all.length > 1) actions.push({ title: 'Make all imports explicit', kind: 'refactor.rewrite', edit: { changes: { [uri]: all.map(insert) } } });
+    }
+    return actions;
+}
+
+/** Whether a line is part of an import declaration (its first line, or a line its list continues on). */
+function importAt(doc, line) {
+    for (let l = line; l >= 0; l--) {
+        const t = lineText(doc, l);
+        if (/^import\b/.test(t)) return true;
+        if (!/^[ \t]+\S/.test(t)) return false;
+    }
+    return false;
+}
+
+// ---- Requests
+
+const requests = {
+    initialize: async (p) => {
+        clientRefreshesTokens = p?.capabilities?.workspace?.semanticTokens?.refreshSupport === true;
+        clientRefreshesLenses = p?.capabilities?.workspace?.codeLens?.refreshSupport === true;
+        clientRefreshesHints = p?.capabilities?.workspace?.inlayHint?.refreshSupport === true;
+        return {
+            capabilities: {
+                documentFormattingProvider: (await toolsReady).ormolu,
+                textDocumentSync: { openClose: true, change: 1 },
+                hoverProvider: true,
+                definitionProvider: true,
+                typeDefinitionProvider: false,
+                referencesProvider: true,
+                documentHighlightProvider: true,
+                documentSymbolProvider: true,
+                workspaceSymbolProvider: true,
+                inlayHintProvider: true,
+                renameProvider: { prepareProvider: true },
+                completionProvider: { triggerCharacters: ['.'] },
+                codeActionProvider: { codeActionKinds: ['quickfix', 'refactor.rewrite'] },
+                callHierarchyProvider: true,
+                foldingRangeProvider: true,
+                codeLensProvider: { resolveProvider: false },
+                executeCommandProvider: { commands: ['haskell.addSignature'] },
+                // HLS's: a space or a bracket starts an argument.
+                signatureHelpProvider: { triggerCharacters: [' ', '('], retriggerCharacters: [')', ','] },
+                semanticTokensProvider: { legend: { tokenTypes: TOKEN_TYPES, tokenModifiers: [] }, full: true },
+            },
+            serverInfo: { name: 'GHC', version: ghc?.versions?.ghc ?? '' },
+        };
+    },
+    shutdown: () => {
+        shutDown = true;
+        return null;
+    },
+    // ormolu's style, the whole module: as `ormolu --mode inplace` on a
+    // desktop (the editor's tab size and spaces do not change it).
+    'textDocument/formatting': async (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        if (!doc) throw new RequestError(InvalidParams, 'expected an open document in the workspace');
+        const text = doc.text;
+        let formatted;
+        try {
+            formatted = await ormolu(path, text);
+        } catch (e) {
+            throw new RequestError(-32803, `ormolu could not format ${path}: ${e.message}`);
+        }
+        if (formatted === text) return [];
+        const end = lineStarts(text).length - 1;
+        return [{ range: { start: { line: 0, character: 0 }, end: { line: end, character: text.length - lineStarts(text)[end] } }, newText: formatted }];
+    },
+    'textDocument/hover': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const info = await ask('info', here);
+        if (!info.found) return null;
+        return { contents: { kind: 'markdown', value: hoverOf(info) }, range: rangeOf(here.doc, info.span) };
+    },
+    'textDocument/definition': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const info = await ask('info', here);
+        const loc = info.found && info.def ? toLocation(info.def) : null;
+        return loc ? [loc] : [];
+    },
+    'textDocument/references': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const include = !!p.context?.includeDeclaration;
+        return (await referencesAt(here)).filter((r) => include || !r.isDef).map(({ uri, range }) => ({ uri, range }));
+    },
+    'textDocument/documentHighlight': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const uri = uriOf(here.path);
+        return (await referencesAt(here)).filter((r) => r.uri === uri).map((r) => ({ range: r.range, kind: r.isDef ? 3 : 2 }));
+    },
+    'textDocument/prepareRename': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const info = await renameTarget(here);
+        return { range: rangeOf(here.doc, info.span), placeholder: info.name };
+    },
+    'textDocument/rename': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const info = await renameTarget(here);
+        const old = info.name;
+        const newName = typeof p.newName === 'string' ? p.newName.trim() : '';
+        const ok = /^[A-Z]/.test(old) ? /^[A-Z][\w']*$/.test(newName) : /^[a-z_]/.test(old) ? /^[a-z_][\w']*$/.test(newName) && !KEYWORDS.includes(newName) : /^[!#$%&*+./<=>?@\\^|~:-]+$/.test(newName);
+        if (!ok) throw new RequestError(InvalidParams, `${JSON.stringify(newName)} cannot replace \`${old}\`: ${/^[A-Z]/.test(old) ? 'a constructor or type starts with a capital letter' : /^[a-z_]/.test(old) ? 'a variable starts with a lowercase letter or _ (and is not a keyword)' : 'an operator is made of symbols'}`);
+        const changes = {};
+        for (const r of await referencesAt(here)) {
+            // A qualified use (M.name) keeps its qualifier.
+            const doc = docs.get(pathOf(r.uri));
+            const written = doc ? lineText(doc, r.range.start.line).slice(r.range.start.character, r.range.end.character) : old;
+            const start = written.endsWith(old) ? r.range.end.character - old.length : r.range.start.character;
+            (changes[r.uri] ??= []).push({ range: { start: { line: r.range.start.line, character: start }, end: r.range.end }, newText: newName });
+        }
+        return { changes };
+    },
+    'textDocument/documentSymbol': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        return doc ? documentSymbols(doc, analyses.get(path)) : [];
+    },
+    // Every symbol of every Haskell file's outline whose name matches (Ctrl+T).
+    'workspace/symbol': (p) => {
+        const files = [];
+        for (const [path, doc] of docs) {
+            const analysis = analyses.get(path);
+            if (isHaskell(doc.uri) && analysis) files.push({ uri: doc.uri, symbols: documentSymbols(doc, analysis) });
+        }
+        return searchSymbols(files, typeof p?.query === 'string' ? p.query : '');
+    },
+    // HLS's: the types of local bindings without a signature.
+    'textDocument/inlayHint': async (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        const analysis = path !== null ? analyses.get(path) : null;
+        if (!doc || !analysis?.text) return [];
+        const binds = await bindsOf(path, analysis);
+        return bindingHints(binds, analysis.text, doc.text, p.range?.start?.line ?? 0, p.range?.end?.line ?? Infinity);
+    },
+    'textDocument/completion': async (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        if (!doc) return [];
+        return { isIncomplete: false, items: await completions(doc, path, p.position.line, p.position.character) };
+    },
+    'textDocument/signatureHelp': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        if (!doc || !p.position) return null;
+        return signatureHelp(doc, path, p.position);
+    },
+    'textDocument/semanticTokens/full': async (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        const analysis = path !== null ? analyses.get(path) : null;
+        if (!doc || !analysis?.text) return { data: [] };
+        analysis.tokens ??= await ghc.request(['tokens', `${ROOT}/${path}`]);
+        return { data: encodeTokens(doc, analysis) };
+    },
+    'textDocument/prepareCallHierarchy': async (p) => {
+        const here = at(p);
+        if (!here) return null;
+        const answer = await callsAt(here.path, here.line, here.col);
+        const item = answer.item ? callItem(answer.item) : null;
+        return item ? [item] : null;
+    },
+    'textDocument/foldingRange': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        return doc && isHaskell(doc.uri) ? foldingRanges(doc) : null;
+    },
+    'textDocument/codeLens': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        return doc ? typeLenses(doc, path) : [];
+    },
+    // The type lens's command: its argument is the edit, which the client applies.
+    'workspace/executeCommand': (p) => {
+        if (p?.command !== 'haskell.addSignature' || typeof p.arguments?.[0] !== 'object') throw new RequestError(InvalidParams, `unknown command ${p?.command}`);
+        send({ jsonrpc: '2.0', id: `edit-${++edits}`, method: 'workspace/applyEdit', params: { label: 'Add type signature', edit: p.arguments[0] } });
+        return null;
+    },
+    'callHierarchy/incomingCalls': (p) => callsOf(p?.item, 'incoming'),
+    'callHierarchy/outgoingCalls': (p) => callsOf(p?.item, 'outgoing'),
+    'textDocument/codeAction': (p) => {
+        const path = pathOf(p?.textDocument?.uri ?? '');
+        const doc = path !== null ? docs.get(path) : null;
+        if (!doc) return [];
+        return codeActions(doc, path, p.textDocument.uri, p.context?.diagnostics ?? [], p.range ?? null);
+    },
+};
+
+async function renameTarget(here) {
+    const info = await ask('info', here);
+    if (!info.found || info.kind === 'module') throw new RequestError(InvalidParams, 'Nothing to rename here: put the cursor on a name');
+    if (!info.def || !projectPath(info.def.file)) throw new RequestError(InvalidParams, `\`${info.name}\` is defined in a library${info.module ? ` (${info.module})` : ''}, not in this project, so it cannot be renamed`);
+    return info;
+}
+
+const notifications = {
+    initialized: () => {},
+    exit: () => close(),
+    'textDocument/didOpen': (p) => {
+        const { uri, version, text } = p.textDocument;
+        const path = pathOf(uri);
+        if (path === null) return;
+        docs.set(path, { uri, path, version, text, lines: lineStarts(text) });
+        ghc.write(path, text);
+        if (isHaskell(uri)) schedule();
+    },
+    'textDocument/didChange': (p) => {
+        const text = p.contentChanges.at(-1)?.text;
+        const path = pathOf(p.textDocument.uri);
+        if (text === undefined || path === null) return;
+        docs.set(path, { uri: p.textDocument.uri, path, version: p.textDocument.version, text, lines: lineStarts(text) });
+        ghc.write(path, text);
+        if (isHaskell(p.textDocument.uri)) schedule();
+    },
+    'textDocument/didClose': (p) => {
+        const path = pathOf(p.textDocument.uri);
+        if (path === null || !docs.has(path)) return;
+        docs.delete(path);
+        analyses.delete(path);
+        ghcDiagnostics.delete(path);
+        hlintDiagnostics.delete(path);
+        lastNames.delete(path);
+        ghc.remove(path);
+        published.delete(path);
+        send({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri: p.textDocument.uri, diagnostics: [] } });
+        schedule();
+    },
+    'workspace/didChangeWatchedFiles': () => {},
+};
+
+/** Numbers the edits the server asks the client to apply (workspace/applyEdit). */
+let edits = 0;
+let chain = Promise.resolve();
+let shutDown = false;
+self.onmessage = ({ data: msg }) => {
+    chain = chain.then(() => handle(msg));
+};
+
+async function handle(msg) {
+    if (msg.method === undefined) return;
+    const isRequest = msg.id !== undefined;
+    if (shutDown && msg.method !== 'exit') {
+        if (isRequest) send({ jsonrpc: '2.0', id: msg.id, error: { code: InvalidRequest, message: `${msg.method} after shutdown` } });
+        return;
+    }
+    try {
+        if (msg.method === 'initialize') await ready;
+        if (msg.method === 'initialize' || msg.method === 'shutdown' || msg.method === 'exit') {
+            const r = await (requests[msg.method] ?? notifications[msg.method])(msg.params);
+            if (isRequest) send({ jsonrpc: '2.0', id: msg.id, result: r });
+            return;
+        }
+        await ready;
+        if (isRequest) {
+            const fn = requests[msg.method];
+            if (!fn) {
+                send({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: `unhandled method ${msg.method}` } });
+                return;
+            }
+            send({ jsonrpc: '2.0', id: msg.id, result: (await fn(msg.params)) ?? null });
+        } else {
+            notifications[msg.method]?.(msg.params);
+        }
+    } catch (e) {
+        if (e instanceof RequestError) {
+            if (isRequest) send({ jsonrpc: '2.0', id: msg.id, error: { code: e.code, message: e.message } });
+            return;
+        }
+        log(`${msg.method}: ${e?.stack ?? e}`, 1);
+        if (isRequest) send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: String(e?.message ?? e) } });
+    }
+}

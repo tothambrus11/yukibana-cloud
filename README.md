@@ -12,6 +12,8 @@ starter while the project's window is open and submit their solution as a
 `docs/cli.md` is the CLI and the library the IDE extension uses,
 `docs/theia.md` is how to embed it in Theia or any frontend (`demo/electron`
 is a working desktop client), and `CLAUDE.md` is how the code is written.
+Yukibana Light, the browser IDE with its language packs and the wasm Swift
+toolchain, lives in `light/` with its own build: `light/README.md`.
 
 | | |
 | --- | --- |
@@ -42,6 +44,10 @@ npx supabase start && npm run storage:start
 npm run dev:vars                # .dev.vars from what the stack reports
 npm run dev                     # http://127.0.0.1:5173
 ```
+
+Open it as 127.0.0.1 or localhost, not a LAN address: the session cookies
+are `__Host-` cookies, which must be Secure, and browsers keep a Secure
+cookie over plain http only for those two hosts.
 
 Log in with GitHub, or by email code: every mail the local stack sends lands
 in its catcher at http://127.0.0.1:54324, so any address works, including the

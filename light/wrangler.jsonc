@@ -1,0 +1,23 @@
+{
+  // Yukibana Light at https://light.yukibana.dev: the built app (app/build,
+  // every pack in it) as the Worker's static assets, with deploy/worker.js in
+  // front for what a static host cannot do (deploy/README.md). Deployed by
+  // light-release.yml on a light-v* tag, or by hand:
+  //   deploy/deploy.sh
+  "name": "yukibana-light",
+  "main": "deploy/worker.js",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "binding": "ASSETS",
+    "directory": "app/build",
+    // Every request reaches the Worker first: it picks the .br copy of a
+    // file and adds the isolation headers to every response.
+    "run_worker_first": true
+  },
+  // The pack files too big to be an asset even as brotli, by the sha256 of
+  // their content (deploy/prepare.mjs). Create it once:
+  //   npx wrangler@4.151.2 r2 bucket create yukibana-light
+  "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "yukibana-light" }],
+  "routes": [{ "pattern": "light.yukibana.dev", "custom_domain": true }],
+  "observability": { "enabled": true }
+}

@@ -1,0 +1,10 @@
+# The pack files the tidy unit builds with, besides this directory: its
+# script, what it shares with the compilers' scripts (llvm-lib.sh: the
+# sources, the native table generators and clangd's cmake arguments), the
+# patch clangd is built with, and the check list's generator.
+build-lib.sh
+llvm-lib.sh
+build-clangd-tidy.sh
+tidy-checks.mjs
+compress.mjs
+patches/clangd-browser.patch

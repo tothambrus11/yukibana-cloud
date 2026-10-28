@@ -1,0 +1,373 @@
+# Checks Yukibana Light (light) on every push to a pull
+# request and to main, in a few minutes:
+#
+# - app: type-check (svelte-check, the service worker, the shared modules),
+#   the unit tests (the modules' import boundaries among them, and their
+#   tarballs installed and loaded as another site would), and
+#   the Download test for the languages whose tools the runner image has
+#   (Node: JavaScript, TypeScript, web, p5.js in both modes).
+# - javascript: the JavaScript/TypeScript pack built from npm (no toolchain
+#   to compile, so a cold build is a minute or two), its own tests, then the
+#   app built with that pack alone and driven in Chromium for the four
+#   languages it serves.
+# - pack-units: the packs' own tests that need no built pack (the C++
+#   pack's compiler output filters and initramfs writer, the Haskell
+#   language server's outline and hints) and the split packs' contract
+#   (light/packs/contract.test.mjs). A change to a pack's glue or scripts
+#   is otherwise first tested by a pack build, up to hours later. The pack
+#   and toolchain store scripts' tests and the workflows' rules
+#   (test-pack-store, test-pack-toolchain, test-workflows) are
+#   light-packs.yml's store job's alone, which runs them before anything
+#   uses the stores, a release included; they ran here too until both
+#   jobs ran the same suites on every change to them.
+# - hylo-example: light/examples/hylo, a docs page of Hylo snippets on
+#   Hylo's own compiler through one runner pool: type-check, its unit tests,
+#   a Vite build and the page driven in Chromium with the real compiler.
+#
+# Each job runs only when what it reads changed since it last passed
+# (.github/actions/once): its inputs are listed in the plan job.
+#
+# The other packs build compilers to Wasm and take from twenty minutes to
+# hours cold; light-release.yml builds all of them, by hand or on a light-v*
+# tag, and its packs' own tests are run there by their build scripts.
+name: Yukibana Light
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - light/**
+      - .github/workflows/light-ci.yml
+      - .github/workflows/light-packs.yml
+      - .github/workflows/light-toolchain-unit.yml
+      - .github/actions/once/**
+  pull_request:
+    paths:
+      - light/**
+      - .github/workflows/light-ci.yml
+      - .github/workflows/light-packs.yml
+      - .github/workflows/light-toolchain-unit.yml
+      - .github/actions/once/**
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PACK_CACHE: /home/runner/.cache/yukibana-packs
+
+jobs:
+  # Which jobs already passed on exactly these inputs. The app's tests also
+  # read the C++ pack's sources (its toolchain flags, target table and test
+  # fixtures), which are listed with it, and the app checks, tests and
+  # bundles the shared modules (light/modules).
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      app-done: ${{ steps.app.outputs.done }}
+      app-key: ${{ steps.app.outputs.key }}
+      javascript-done: ${{ steps.javascript.outputs.done }}
+      javascript-key: ${{ steps.javascript.outputs.key }}
+      pack-units-done: ${{ steps.pack-units.outputs.done }}
+      pack-units-key: ${{ steps.pack-units.outputs.key }}
+      hylo-example-done: ${{ steps.hylo-example.outputs.done }}
+      hylo-example-key: ${{ steps.hylo-example.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: app
+        uses: ./.github/actions/once
+        with:
+          name: light-app
+          paths: |
+            light/app
+            light/modules
+            light/packs/cpp/src
+            light/packs/cpp/tests/fixtures
+            .github/workflows/light-ci.yml
+      - id: javascript
+        uses: ./.github/actions/once
+        with:
+          name: light-javascript
+          paths: |
+            light/app
+            light/modules
+            light/packs/javascript
+            .github/workflows/light-ci.yml
+      # Every file the pack-units tests read, and the files that decide
+      # how a pack is built (a change there is a change those tests are
+      # about, even when they do not open it). The contract test and the C++
+      # units' test read the key's definition (light/scripts); the contract
+      # test also asks every split pack for its test.sh, and partitions
+      # every file of a split pack, which no pathspec short of the pack
+      # names: light-packs.yml's assemble job, whose inputs are the whole
+      # pack, runs it again on any change to one.
+      - id: pack-units
+        uses: ./.github/actions/once
+        with:
+          name: light-pack-units
+          paths: |
+            light/packs/cpp/src
+            light/packs/cpp/tests
+            light/packs/cpp/test-emit.mjs
+            light/packs/cpp/test-cpio.mjs
+            light/packs/cpp/test-build-lib.mjs
+            light/packs/cpp/test-units.mjs
+            light/packs/cpp/glue.paths
+            light/packs/cpp/*.sh
+            light/packs/cpp/build-test-libs-linux.mjs
+            light/packs/cpp/patches
+            light/packs/cpp/vm
+            light/packs/haskell/src
+            light/packs/haskell/test-symbols.mjs
+            light/packs/haskell/tests
+            light/packs/haskell/test-dumps.mjs
+            light/packs/swift/src
+            light/packs/swift/tests
+            light/packs/swift/test-emit.mjs
+            light/packs/rust/src
+            light/packs/rust/tests
+            light/packs/rust/test-mir.mjs
+            light/packs/python/runner/bytecode.py
+            light/packs/python/test-bytecode.py
+            light/packs/java/src/classfile.js
+            light/packs/java/tests
+            light/packs/java/test-classfile.mjs
+            light/packs/*/build.sh
+            light/packs/*/glue.sh
+            light/packs/*/requires.json
+            light/packs/*/pins.sh
+            light/packs/*/toolchain.*
+            light/packs/*/toolchains
+            light/packs/*/glue.paths
+            light/packs/*/test.sh
+            light/packs/stub
+            light/packs/contract.test.mjs
+            light/scripts
+            .github/workflows/light-ci.yml
+      # The example runs the shared modules as an outside host would.
+      - id: hylo-example
+        uses: ./.github/actions/once
+        with:
+          name: light-hylo-example
+          paths: |
+            light/examples/hylo
+            light/modules
+            .github/workflows/light-ci.yml
+
+  app:
+    name: App
+    needs: plan
+    if: needs.plan.outputs.app-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/app/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Download test (Node languages)
+        run: node tests/export.mjs javascript typescript web p5 p5-global
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.app-key }}
+
+  javascript:
+    name: JavaScript pack and e2e
+    needs: plan
+    if: needs.plan.outputs.javascript-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: light
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 22: the runner's test report is Node 22's, and test-run.mjs
+      # compares it line for line with this machine's `node --test` (Node 24
+      # reports a failing todo differently). No npm cache from setup-node:
+      # it asks npm at the repository root, whose package.json (the IDE)
+      # refuses Node 22; the pack caches its own npm downloads below.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The app's playwright-core installs the Chromium that the pack's tests
+      # and the e2e both launch (as $CHROMIUM).
+      - name: Install the app and Chromium
+        working-directory: light/app
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      # The pack's npm cache: its build.sh installs from it.
+      - uses: actions/cache@v5
+        with:
+          path: ${{ env.PACK_CACHE }}/javascript
+          key: ci-javascript-${{ hashFiles('light/packs/javascript/package-lock.json') }}
+          restore-keys: ci-javascript-
+
+      - name: Build the pack
+        working-directory: light/packs/javascript
+        run: ./build.sh
+
+      - name: Type-check the pack
+        working-directory: light/packs/javascript
+        run: npm run typecheck
+
+      - name: Pack tests
+        working-directory: light/packs/javascript
+        run: npm test
+
+      - name: Build the app
+        working-directory: light/app
+        run: npm run build
+
+      # The unit job has no build, so this one test is skipped there; here it
+      # runs on the build just made, and a missing build fails it.
+      - name: What the built app carries
+        working-directory: light/app
+        env:
+          BUNDLE_REQUIRED: '1'
+        run: node --test tests/unit/bundle.test.mjs
+
+      - name: End-to-end (JavaScript, TypeScript, web, p5.js in both modes)
+        working-directory: light/app
+        run: node tests/e2e.mjs javascript typescript web p5 p5-global
+
+      # Needs no pack; here because this job has a build and a Chromium.
+      - name: End-to-end (projects in links, Share)
+        working-directory: light/app
+        run: node tests/e2e-links.mjs
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.javascript-key }}
+
+  pack-units:
+    name: Pack unit tests
+    needs: plan
+    if: needs.plan.outputs.pack-units-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 22, the version these tests are run with locally. They import
+      # only the packs' own sources and node's built-ins: no npm install.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Pure functions over fixtures written out in the repository; the
+      # cpio test compares with GNU cpio, which the runner image has. The
+      # build-lib test decides, with fakes, when the build reuses a cached
+      # tree or step (git, tar, xz and patch, which the image has too).
+      - name: C++ pack (compiler output views, initramfs archives, reuse of build trees, its units' keys)
+        working-directory: light/packs/cpp
+        run: node --test test-emit.mjs test-cpio.mjs test-build-lib.mjs test-units.mjs
+
+      - name: Haskell pack (outline, symbol search, inlay hints, compiler output views)
+        working-directory: light/packs/haskell
+        run: node --test test-symbols.mjs test-dumps.mjs
+
+      - name: Swift pack (compiler output views)
+        working-directory: light/packs/swift
+        run: node --test test-emit.mjs
+
+      - name: Rust pack (the MIR view)
+        working-directory: light/packs/rust
+        run: node --test test-mir.mjs
+
+      # The runner image's CPython (3.12); the browser's is 3.14, and the
+      # tests check only what every version shows.
+      - name: Python pack (the bytecode view)
+        working-directory: light/packs/python
+        run: python3 -I test-bytecode.py
+
+      - name: Java pack (the bytecode view)
+        working-directory: light/packs/java
+        run: node --test test-classfile.mjs
+
+      - name: The split packs' contract
+        working-directory: light
+        run: node --test packs/contract.test.mjs
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.pack-units-key }}
+
+  hylo-example:
+    name: Hylo example
+    needs: plan
+    if: needs.plan.outputs.hylo-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/hylo
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: light/examples/hylo/package-lock.json
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Unit tests (the runner and the page, workers stood in for)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: End-to-end (Chromium, the real Hylo compiler)
+        run: npm run test:e2e
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.hylo-example-key }}

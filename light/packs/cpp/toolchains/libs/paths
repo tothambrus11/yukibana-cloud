@@ -1,0 +1,22 @@
+# The pack files the libs unit builds with, besides this directory: the
+# scripts it runs and what they share, the compile driver of the Linux
+# targets' frameworks and what it imports, the sanitizer runtime's sources
+# and patch, and the exception runtime's one source file. Nothing of the
+# compilers, the VM or the glue.
+build-lib.sh
+libs-lib.sh
+build-cxx-runtime.sh
+build-test-frameworks.sh
+build-sysroot.sh
+build-targets.sh
+pack-runner.sh
+build-test-frameworks-linux.sh
+build-test-libs-linux.mjs
+build-sanitizers.sh
+compress.mjs
+patches/compiler-rt-wasi.patch
+src/uncaught.cpp
+src/sanitizer-rt/
+src/toolchain.js
+src/targets.js
+src/targets.json

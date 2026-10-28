@@ -1,0 +1,77 @@
+<!doctype html>
+<!-- The host page: stands in for the cloud (or a docs site). serve.py
+     serves it at /coi/host.html (COOP/COEP, cross-origin isolated) and
+     /plain/host.html (no isolation headers), with a session cookie set on
+     path "/" as @supabase/ssr sets the cloud's. measure.mjs drives it. -->
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>runner isolation host</title>
+<script type="module">
+	import { inPageTransport } from './in-page.js';
+	import { framedTransport } from './framed.js';
+
+	/**
+	 * Runs one program through `transport` the way run.svelte.ts would:
+	 * answers stdin requests from `inputs` (a line, or null for end of
+	 * file), and records when the start was asked, when the first stdout
+	 * came and when the exit came (ms, performance.now()).
+	 */
+	function run(transport, type, files, entry, inputs = [], timeoutMs = 60000) {
+		return new Promise((done) => {
+			const out = { stdout: '', stderr: '', code: null, phases: [], error: null, t: { start: performance.now(), first: null, exit: null } };
+			const handle = transport.start('javascript');
+			const finish = () => {
+				clearTimeout(timer);
+				handle.terminate();
+				done(out);
+			};
+			const timer = setTimeout(() => {
+				out.error = 'timed out';
+				finish();
+			}, timeoutMs);
+			handle.onerror = (text) => {
+				out.error = text;
+				finish();
+			};
+			handle.onmessage = (m) => {
+				if (m.type === 'phase') out.phases.push(m.text);
+				else if (m.type === 'stdout') {
+					out.t.first ??= performance.now();
+					out.stdout += m.text;
+				} else if (m.type === 'stderr') out.stderr += m.text;
+				else if (m.type === 'stdin') setTimeout(() => handle.input(inputs.length ? inputs.shift() : null), 10);
+				else if (m.type === 'exit') {
+					out.t.exit = performance.now();
+					out.code = m.code;
+					finish();
+				}
+			};
+			handle.send({ type, files, entry });
+		});
+	}
+
+	const transports = new Map();
+	window.yk = {
+		isolated: crossOriginIsolated,
+		/** Opens a transport once and keeps it: 'in-page', or the packs origin's frame URL. */
+		async open(key, options) {
+			if (!transports.has(key)) transports.set(key, key === 'in-page' ? inPageTransport(document.baseURI) : await framedTransport(key, options));
+			return { name: transports.get(key).name, stdin: transports.get(key).stdin };
+		},
+		close(key) {
+			transports.get(key)?.close();
+			transports.delete(key);
+		},
+		run: (key, ...args) => run(transports.get(key), ...args),
+		/** A cold framed run: a new frame, one run, the frame removed; times from before the frame. */
+		async coldRun(frameUrl, ...args) {
+			const t0 = performance.now();
+			const transport = await framedTransport(frameUrl);
+			const out = await run(transport, ...args);
+			transport.close();
+			out.t.start = t0;
+			return out;
+		},
+	};
+	document.title = 'ready';
+</script>

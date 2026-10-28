@@ -46,6 +46,7 @@ jobs:
   database:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     # Secrets set on a GitHub Environment are a store of their own, and a job
     # reads them only if it names that environment. Naming it costs nothing
     # when there is none: GitHub creates it on first use, and repository

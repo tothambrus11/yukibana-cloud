@@ -2,14 +2,89 @@
 # devcontainer.json fails a PR rather than a teammate's morning.
 name: CI (devcontainer)
 
+# Only when something the container is built from or runs at start changes:
+# the stack job of ci.yml runs the same smoke test on every change.
 on:
   push:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - package.json
+      - package-lock.json
+      - app/package.json
+      - app/package-lock.json
+      - cli/package.json
+      - cli/package-lock.json
+      - demo/electron/package.json
+      - demo/electron/package-lock.json
+      - scripts/**
+      - supabase/config.toml
+      - dev/**
+      - .github/workflows/ci-devcontainer.yml
+      - .github/actions/once/**
   pull_request:
+    paths:
+      - .devcontainer/**
+      - package.json
+      - package-lock.json
+      - app/package.json
+      - app/package-lock.json
+      - cli/package.json
+      - cli/package-lock.json
+      - demo/electron/package.json
+      - demo/electron/package-lock.json
+      - scripts/**
+      - supabase/config.toml
+      - dev/**
+      - .github/workflows/ci-devcontainer.yml
+      - .github/actions/once/**
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
 jobs:
-  devcontainer:
+  # Whether the container already passed on exactly these inputs (the same
+  # list as the paths above; .github/actions/once): a push that changes
+  # one back, or a pull request that main already has, does not build again.
+  plan:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      done: ${{ steps.once.outputs.done }}
+      key: ${{ steps.once.outputs.key }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: once
+        uses: ./.github/actions/once
+        with:
+          name: devcontainer
+          paths: |
+            .devcontainer
+            package.json
+            package-lock.json
+            app/package.json
+            app/package-lock.json
+            cli/package.json
+            cli/package-lock.json
+            demo/electron/package.json
+            demo/electron/package-lock.json
+            scripts
+            supabase/config.toml
+            dev
+            .github/workflows/ci-devcontainer.yml
+
+  devcontainer:
+    needs: plan
+    if: needs.plan.outputs.done != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       # The stack publishes fixed host ports, 54320-54329 (supabase/config.toml),
       # which lie in Linux's ephemeral range: any outgoing connection, such as an
@@ -18,9 +93,14 @@ jobs:
       - name: Keep the stack's ports out of the ephemeral range
         run: sudo sysctl -w net.ipv4.ip_local_reserved_ports=54320-54329
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build devcontainer and run the smoke test inside it
-        uses: devcontainers/ci@v0.3
+        uses: devcontainers/ci@513af61f4de4f75d37e4438f184ba4358f0fc1ca # v0.3
         with:
           runCmd: |
             ./scripts/preflight.sh
             npm run smoke
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.key }}

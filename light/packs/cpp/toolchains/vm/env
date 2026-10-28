@@ -1,0 +1,6 @@
+# What reaches the vm unit's build from the caller's environment.
+USER_MODE variant  # 0 builds no user emulation: a pack without user/
+USER_INITIAL_MEMORY_MB variant  # user mode's initial linear memory: another qemu-<arch>.wasm
+CLANG variant  # the host clang that compiles strace and the test programs (vm/cc.sh)
+CC_HOST variant  # the host clang that compiles yk-init (vm/build-init.sh)
+KEEP_TREES source  # 0 deletes the build trees once their artifacts exist; the output is the same

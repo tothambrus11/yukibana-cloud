@@ -1,0 +1,24 @@
+{
+	"name": "@yukibana/protocol",
+	"version": "0.1.0",
+	"description": "What crosses a boundary in Yukibana Light: the messages between a page, its runners and its language servers, as TypeScript types and pure codecs.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tothambrus11/yukibana-cloud.git",
+		"directory": "light/modules/protocol"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@yukibana/source": "./index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"*.ts",
+		"README.md"
+	]
+}

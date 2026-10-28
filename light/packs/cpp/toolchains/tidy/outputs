@@ -1,0 +1,5 @@
+clangd-tidy.js
+clangd-tidy.wasm
+clangd-tidy.wasm.br
+tidy-checks.json
+versions-tidy.json

@@ -1,0 +1,15 @@
+clangd.js
+clangd.wasm
+clangd.wasm.br
+cc.js
+cc.wasm
+cc.wasm.br
+cc-cross.js
+cc-cross.wasm
+cc-cross.wasm.br
+demangle.js
+demangle.wasm
+LICENSE-llvm.txt
+versions-compilers.json
+build-only/pins.sh
+build-only/llvm-project-*.src.tar.xz

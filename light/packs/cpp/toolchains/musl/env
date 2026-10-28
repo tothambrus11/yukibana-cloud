@@ -1,0 +1,2 @@
+# What reaches the musl unit's build from the caller's environment.
+ALPINE_MIRROR source  # where Alpine's packages are taken from first; every .apk is checked against its pin

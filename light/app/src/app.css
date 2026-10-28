@@ -1,0 +1,1013 @@
+/*
+ * The palette follows the Hylo playground (Starlight "rapide"): warm greys
+ * from oklch, a green accent, a dark and a light set keyed on data-theme.
+ */
+:root {
+	--hue-base: 17;
+	--hue-accent: 164;
+	--font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--nav-height: 3.5rem;
+	--tab-bar-height: 2.35rem;
+	/* The edge of a control that must be seen against its background (WCAG's 3:1 for components). */
+	--control-border: var(--gray-4);
+	--focus-ring: 2px solid var(--accent-high);
+
+	--white: oklch(90% 0.008 var(--hue-base));
+	--gray-1: oklch(80% 0.018 var(--hue-base));
+	--gray-2: oklch(80% 0.018 var(--hue-base));
+	--gray-3: oklch(65% 0.013 var(--hue-base));
+	--gray-4: oklch(48% 0.009 var(--hue-base));
+	--gray-5: oklch(29% 0.005 var(--hue-base));
+	--gray-6: oklch(23% 0.004 var(--hue-base));
+	--gray-7: oklch(20.5% 0.002 var(--hue-base));
+	--black: oklch(18% 0.002 var(--hue-base));
+	--accent-low: oklch(26% 0.04 var(--hue-accent));
+	--accent: oklch(50% 0.085 var(--hue-accent));
+	--accent-high: oklch(61% 0.085 var(--hue-accent));
+	--red-low: oklch(22% 0.03 13);
+	--red-high: oklch(70% 0.14 13);
+	--orange-high: oklch(80% 0.12 84);
+	--blue-high: oklch(75% 0.1 274);
+	--header-bg: oklch(18% 0.002 var(--hue-base) / 0.8);
+	/*
+	 * The terminal's 16 ANSI colours (SGR 30–37, 90–97 and their
+	 * backgrounds; see lib/ansi.ts), tuned per theme so each reads on the
+	 * terminal's background: 0–7 normal, 8–15 bright. "Black" and "white"
+	 * are the dim and bright ends of the text greys, never the background.
+	 */
+	--ansi-0: oklch(48% 0.009 var(--hue-base));
+	--ansi-1: oklch(70% 0.15 22);
+	--ansi-2: oklch(74% 0.14 148);
+	--ansi-3: oklch(82% 0.13 88);
+	--ansi-4: oklch(70% 0.12 258);
+	--ansi-5: oklch(72% 0.13 330);
+	--ansi-6: oklch(76% 0.1 205);
+	--ansi-7: oklch(84% 0.008 var(--hue-base));
+	--ansi-8: oklch(62% 0.01 var(--hue-base));
+	--ansi-9: oklch(76% 0.15 22);
+	--ansi-10: oklch(82% 0.15 148);
+	--ansi-11: oklch(88% 0.13 95);
+	--ansi-12: oklch(78% 0.11 258);
+	--ansi-13: oklch(80% 0.12 330);
+	--ansi-14: oklch(84% 0.09 205);
+	--ansi-15: oklch(97% 0.004 var(--hue-base));
+	--ansi-default-fg: var(--white);
+	--ansi-default-bg: var(--black);
+	color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+	--white: oklch(30% 0.015 var(--hue-base));
+	--gray-1: oklch(36% 0.018 var(--hue-base));
+	--gray-2: oklch(36% 0.018 var(--hue-base));
+	--gray-3: oklch(44% 0.013 var(--hue-base));
+	--gray-4: oklch(66% 0.013 var(--hue-base));
+	--gray-5: oklch(88% 0.009 var(--hue-base));
+	--gray-6: oklch(93% 0.004 var(--hue-base));
+	--gray-7: oklch(96% 0.003 var(--hue-base));
+	--black: oklch(98.5% 0.002 var(--hue-base));
+	--hue-accent: 160;
+	--accent-low: oklch(94% 0.03 var(--hue-accent));
+	--accent: oklch(53% 0.1197 var(--hue-accent));
+	--accent-high: oklch(46% 0.104 var(--hue-accent));
+	--red-low: oklch(95% 0.02 13);
+	--red-high: oklch(50% 0.17 13);
+	--orange-high: oklch(55% 0.13 70);
+	--blue-high: oklch(45% 0.12 274);
+	--header-bg: oklch(98% 0.002 var(--hue-base) / 0.7);
+	--ansi-0: oklch(25% 0.01 var(--hue-base));
+	--ansi-1: oklch(52% 0.18 22);
+	--ansi-2: oklch(52% 0.14 148);
+	--ansi-3: oklch(58% 0.13 75);
+	--ansi-4: oklch(50% 0.15 260);
+	--ansi-5: oklch(52% 0.18 330);
+	--ansi-6: oklch(54% 0.1 210);
+	--ansi-7: oklch(62% 0.01 var(--hue-base));
+	--ansi-8: oklch(58% 0.01 var(--hue-base));
+	--ansi-9: oklch(58% 0.2 22);
+	--ansi-10: oklch(58% 0.15 148);
+	--ansi-11: oklch(64% 0.13 85);
+	--ansi-12: oklch(56% 0.16 260);
+	--ansi-13: oklch(58% 0.18 330);
+	--ansi-14: oklch(58% 0.1 205);
+	--ansi-15: oklch(72% 0.008 var(--hue-base));
+	--control-border: oklch(62% 0.013 var(--hue-base));
+	color-scheme: light;
+}
+
+@media (width >= 50em) {
+	:root {
+		--nav-height: 4rem;
+	}
+}
+
+/* A landscape phone: every row of chrome costs the editor a line or two. */
+@media (height < 30em) {
+	:root {
+		--nav-height: 3rem;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	height: 100%;
+	margin: 0;
+	/*
+	 * clip, not hidden: nothing can make the document wider than the window,
+	 * and neither focus nor scrollIntoView can scroll it sideways, which
+	 * `hidden` still allows (a focused control off the right edge of the top
+	 * bar used to shift the whole app left, with no way back).
+	 */
+	overflow: clip;
+}
+
+body {
+	display: flex;
+	flex-direction: column;
+	/* The visible area: viewport.ts sets --app-height from the visual viewport, for a phone's on-screen keyboard. */
+	height: var(--app-height, 100dvh);
+	background: var(--black);
+	color: var(--white);
+	/* In rem, so a larger default font in the browser makes the app larger. */
+	font: 0.9375rem/1.5 var(--font);
+}
+
+/*
+ * Shared controls. A control's text never wraps: a label that does not fit
+ * is shortened by a rule, or the control moves into a menu (the top bar's
+ * folding, +page.svelte), never squeezed onto two lines. Text that can be
+ * any length (a file name, a summary, a status) goes in a `.truncate`
+ * span, with its full text in the control's title and accessible name.
+ * Heights are minimums, so a larger font grows a control instead of
+ * spilling out of it.
+ */
+.btn {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 0.4rem;
+	min-width: 0;
+	min-height: 2rem;
+	padding: 0 0.8rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.35rem;
+	background: var(--gray-6);
+	color: var(--gray-2);
+	font: inherit;
+	font-size: 0.85rem;
+	line-height: 1.2;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.btn:hover,
+.btn:focus-visible {
+	border-color: var(--control-border);
+	color: var(--white);
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.btn svg {
+	flex: none;
+	width: 0.85rem;
+	height: 0.85rem;
+}
+.btn.primary {
+	border-color: var(--accent);
+	color: var(--white);
+	font-weight: 600;
+}
+/* A toggle that is on: a fill, not only a border colour, and no mark, so pressing it moves nothing. */
+.btn[aria-pressed='true'],
+.chip[aria-pressed='true'] {
+	border-color: var(--accent);
+	background: var(--accent-low);
+	color: var(--white);
+}
+.icon-btn {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	min-width: 2rem;
+	min-height: 2rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.35rem;
+	background: none;
+	color: var(--gray-2);
+	font: inherit;
+	cursor: pointer;
+}
+.icon-btn:hover,
+.icon-btn:focus-visible {
+	color: var(--accent-high);
+}
+.icon-btn svg {
+	width: 1.1rem;
+	height: 1.1rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+.chip {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	gap: 0.3rem;
+	min-height: 1.5rem;
+	padding: 0 0.5rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.35rem;
+	background: var(--gray-6);
+	color: var(--gray-3);
+	font: inherit;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.chip:hover {
+	color: var(--white);
+}
+.truncate {
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+}
+/* `hidden` hides, whatever display a class gives the element (a hidden .chip stayed visible). */
+[hidden] {
+	display: none !important;
+}
+
+/* Read by screen readers, not shown. */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
+}
+:where(button, select, input, a, [tabindex]):focus-visible,
+.dv-tab:focus-visible {
+	outline: var(--focus-ring);
+	outline-offset: 1px;
+}
+
+/*
+ * Popovers (Popover.svelte, anchor.ts): in the top layer, beside their
+ * toggle, never larger than the window; a bottom sheet on a phone.
+ *
+ * A popover that wants a width sets `--popover-width`, never `width`: a
+ * `width` of its own came after these rules with the same specificity, so
+ * it beat the phone sheet's 100% and the sheet ran off the screen (Build
+ * settings was 480 px wide in a 390 px window, the view Options 384 px in
+ * a 360 px one). Read through the variable, the sheet's 100% always wins.
+ */
+.yk-popover {
+	position: fixed;
+	inset: auto;
+	margin: 0;
+	width: var(--popover-width, auto);
+	max-width: calc(100vw - 1rem);
+	max-height: calc(var(--app-height, 100dvh) - var(--nav-height) - 1rem);
+	overflow: auto;
+	padding: 0.4rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.5rem;
+	background: var(--gray-6);
+	box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.3);
+	color: var(--white);
+	font-size: 0.85rem;
+}
+.yk-popover.anchored {
+	position-area: block-end span-inline-end;
+	position-try-fallbacks: flip-inline, flip-block;
+	margin-block: 4px;
+	max-height: min(calc(var(--app-height, 100dvh) - var(--nav-height) - 1rem), 100%);
+}
+@media (width < 40em) {
+	.yk-popover,
+	.yk-popover.anchored {
+		position-area: none;
+		inset: auto 0 0 0;
+		width: 100%;
+		max-width: 100%;
+		margin: 0;
+		border-radius: 0.75rem 0.75rem 0 0;
+		padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+	}
+}
+/* A menu (the ⋯ menu, a view's Options): rows of actions, dividers between sections. */
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	width: 100%;
+	min-height: 2rem;
+	padding: 0 0.6rem;
+	border: 0;
+	border-radius: 0.3rem;
+	background: none;
+	color: var(--white);
+	font: inherit;
+	text-align: start;
+	white-space: nowrap;
+	cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+	background: var(--gray-5);
+	outline: none;
+}
+.menu-item .check {
+	flex: none;
+	width: 1rem;
+	color: var(--accent-high);
+	text-align: center;
+}
+.menu-item .hint {
+	margin-left: auto;
+	padding-left: 1rem;
+	color: var(--gray-3);
+	font-size: 0.75rem;
+}
+.menu-item.danger {
+	color: var(--red-high);
+}
+.menu-divider {
+	height: 1px;
+	margin: 0.3rem 0.2rem;
+	background: var(--gray-5);
+}
+.menu-heading {
+	padding: 0.3rem 0.6rem 0.1rem;
+	color: var(--gray-3);
+	font-size: 0.72rem;
+	font-weight: 600;
+	letter-spacing: 0.03em;
+	text-transform: uppercase;
+}
+
+/*
+ * The top bar's folding (+page.svelte, MoreMenu.svelte). The header is a
+ * container; below each tier, in rem of its own width, labels shorten and
+ * the controls marked `data-fold="<tier>"` leave the bar while their twins
+ * in the ⋯ menu appear:
+ *
+ *   < 70rem  Mutate into ⋯; LLVM IR and Assembly read IR and Asm; the Build
+ *            chip's summary is capped
+ *   < 56rem  the brand is its icon; the Build chip reads "Build"; Share is
+ *            its icon
+ *   < 44rem  LLVM IR, Assembly, Offline and Theme into ⋯; the language's
+ *            short name
+ *   < 30rem  the Build chip and Share into ⋯; the language capped at 6rem
+ *   < 22rem  no brand
+ *
+ * Every rule is written twice: once in a container query (`.cq`, set when
+ * the queries reach the menu in the top layer) and once for `data-tier`,
+ * which a ResizeObserver writes otherwise. Keep the two in step: the
+ * layout test's `fallback` scenario fails where they disagree.
+ */
+header.bar-host {
+	container: bar / inline-size;
+}
+.more-menu [data-fold] {
+	display: none;
+}
+.cq-probe {
+	opacity: 0;
+	pointer-events: none;
+}
+@container bar (width >= 0px) {
+	.cq-probe span {
+		--cq-probe: 1;
+	}
+}
+
+@container bar (width < 70rem) {
+	.bar-host.cq .bar [data-fold~='70']:not(.more-menu *) {
+		display: none;
+	}
+	.bar-host.cq .more-menu [data-fold~='70'] {
+		display: flex;
+	}
+	.bar-host.cq .view-group .long {
+		display: none;
+	}
+	.bar-host.cq .view-group .short {
+		display: inline;
+	}
+	.bar-host.cq .build-summary {
+		max-width: 11rem;
+	}
+}
+.bar-host:not(.cq)[data-tier~='70'] .bar [data-fold~='70']:not(.more-menu *) {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='70'] .more-menu [data-fold~='70'] {
+	display: flex;
+}
+.bar-host:not(.cq)[data-tier~='70'] .view-group .long {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='70'] .view-group .short {
+	display: inline;
+}
+.bar-host:not(.cq)[data-tier~='70'] .build-summary {
+	max-width: 11rem;
+}
+
+@container bar (width < 56rem) {
+	.bar-host.cq .brand .name,
+	.bar-host.cq .brand .product,
+	.bar-host.cq .share-word,
+	.bar-host.cq .build-summary {
+		display: none;
+	}
+	.bar-host.cq .build-word {
+		display: inline;
+	}
+}
+.bar-host:not(.cq)[data-tier~='56'] .brand .name,
+.bar-host:not(.cq)[data-tier~='56'] .share-word,
+.bar-host:not(.cq)[data-tier~='56'] .brand .product,
+.bar-host:not(.cq)[data-tier~='56'] .build-summary {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='56'] .build-word {
+	display: inline;
+}
+
+@container bar (width < 44rem) {
+	.bar-host.cq .bar [data-fold~='44']:not(.more-menu *) {
+		display: none;
+	}
+	.bar-host.cq .more-menu [data-fold~='44'] {
+		display: flex;
+	}
+	.bar-host.cq .lang-label .full {
+		display: none;
+	}
+	.bar-host.cq .lang-label .short {
+		display: inline;
+	}
+}
+.bar-host:not(.cq)[data-tier~='44'] .bar [data-fold~='44']:not(.more-menu *) {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='44'] .more-menu [data-fold~='44'] {
+	display: flex;
+}
+.bar-host:not(.cq)[data-tier~='44'] .lang-label .full {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='44'] .lang-label .short {
+	display: inline;
+}
+
+@container bar (width < 30rem) {
+	.bar-host.cq .bar [data-fold~='30']:not(.more-menu *) {
+		display: none;
+	}
+	.bar-host.cq .more-menu [data-fold~='30'] {
+		display: flex;
+	}
+	.bar-host.cq .lang {
+		max-width: 6rem;
+	}
+}
+.bar-host:not(.cq)[data-tier~='30'] .bar [data-fold~='30']:not(.more-menu *) {
+	display: none;
+}
+.bar-host:not(.cq)[data-tier~='30'] .more-menu [data-fold~='30'] {
+	display: flex;
+}
+.bar-host:not(.cq)[data-tier~='30'] .lang {
+	max-width: 6rem;
+}
+
+@container bar (width < 22rem) {
+	.bar-host.cq .brand {
+		display: none;
+	}
+}
+.bar-host:not(.cq)[data-tier~='22'] .brand {
+	display: none;
+}
+
+/* A finger needs a bigger target than a pointer: 44 px for controls, 32 px for a tab's close. */
+@media (pointer: coarse) {
+	.btn,
+	.icon-btn,
+	.menu-item {
+		min-height: 2.75rem;
+	}
+	.icon-btn {
+		min-width: 2.75rem;
+	}
+	.dock-tab-close {
+		width: 2rem !important;
+		height: 2rem !important;
+	}
+	:root {
+		--tab-bar-height: 2.75rem;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+.monaco-editor {
+	font-variant-ligatures: none;
+}
+
+/* dockview, themed like the playground's "dockview-theme-hylo". */
+.dockview-theme-yukibana {
+	--dv-overlay-z-index: 999;
+	--dv-tab-font-size: inherit;
+	--dv-border-radius: 0px;
+	--dv-tab-margin: 0;
+	--dv-spacing-padding: 0px;
+	--dv-tab-border-radius: 0px;
+	--dv-sash-border-radius: 0px;
+	--dv-dropdown-border-radius: 0.35rem;
+	--dv-tab-close-icon-size: inherit;
+	--dv-floating-group-border: none;
+	--dv-active-sash-transition-duration: 0.1s;
+	--dv-active-sash-transition-delay: 0.3s;
+	--dv-group-view-background-color: var(--black);
+	--dv-tabs-and-actions-container-background-color: var(--gray-7);
+	--dv-tabs-and-actions-container-height: var(--tab-bar-height);
+	--dv-tabs-and-actions-container-font-size: 0.8rem;
+	--dv-activegroup-visiblepanel-tab-background-color: transparent;
+	--dv-activegroup-hiddenpanel-tab-background-color: transparent;
+	--dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+	--dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+	--dv-activegroup-visiblepanel-tab-color: var(--white);
+	--dv-activegroup-hiddenpanel-tab-color: var(--gray-3);
+	--dv-inactivegroup-visiblepanel-tab-color: var(--gray-2);
+	--dv-inactivegroup-hiddenpanel-tab-color: var(--gray-3);
+	--dv-tab-divider-color: transparent;
+	--dv-separator-border: var(--gray-5);
+	--dv-paneview-header-border-color: var(--gray-5);
+	--dv-sash-color: transparent;
+	--dv-active-sash-color: var(--accent);
+	--dv-drag-over-background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+	--dv-drag-over-border-color: var(--accent);
+	--dv-drag-over-border: 1px solid var(--accent);
+	--dv-icon-hover-background-color: var(--gray-5);
+	--dv-tabs-container-scrollbar-color: var(--gray-4);
+	--dv-scrollbar-background-color: var(--gray-4);
+	--dv-context-menu-background-color: var(--gray-6);
+	--dv-context-menu-color: var(--white);
+	--dv-dnd-compass-color: var(--accent);
+	--dv-edge-dock-indicator-color: var(--accent);
+	height: 100%;
+}
+
+.dockview-theme-yukibana .dv-tabs-and-actions-container {
+	border-bottom: 1px solid var(--gray-5);
+}
+
+.dockview-theme-yukibana .dv-tab {
+	padding-block: 0.25rem 0;
+}
+
+.dockview-theme-yukibana .dv-groupview {
+	border-left: 1px solid var(--gray-5);
+}
+
+/*
+ * Tabs (dock.ts TabRenderer): an icon or a short name, the label (its end
+ * ellipsised past 16rem), a badge, and a close button.
+ */
+.dock-tab {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	min-width: 0;
+	max-width: 16rem;
+	height: 100%;
+	padding: 0 0.75rem;
+	border-bottom: 2px solid transparent;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.dock-tab:has(.dock-tab-close) {
+	padding-right: 0.35rem;
+}
+
+/* Editor and view tabs name files and outputs: monospace, as the editors are. */
+.dock-tab:has(.dock-tab-close):not(:has(.dock-tab-icon)) {
+	font-family: var(--font-mono);
+	font-size: 0.78rem;
+}
+
+.dock-tab-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.dock-tab-icon {
+	display: none;
+	flex: none;
+}
+
+.dock-tab-icon svg {
+	width: 1rem;
+	height: 1rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.dock-tab-badge {
+	display: inline-grid;
+	flex: none;
+	place-items: center;
+	min-width: 1.1rem;
+	height: 1.1rem;
+	padding: 0 0.3rem;
+	border-radius: 0.55rem;
+	background: var(--gray-5);
+	color: var(--white);
+	font-family: var(--font);
+	font-size: 0.68rem;
+	font-weight: 600;
+	line-height: 1;
+}
+
+.dock-tab-badge::before {
+	content: attr(data-text);
+}
+
+/*
+ * Icon-only tabs. Each group is a container, and its element carries its
+ * tab count (dock.ts markGroups): when the group is narrower than the
+ * count × 6.5rem, the tabs that have an icon (or, for a view, a short name)
+ * show it instead of their label, which stays in the tab's title and its
+ * accessible name; only the tab in front keeps its close button. The phone's
+ * bottom group (data-bottom) is always icon-only below 40rem: it holds up
+ * to eight tabs and is the only way between the panes. Editor tabs keep
+ * their file names, ellipsised.
+ */
+.dockview-theme-yukibana .dv-groupview {
+	container: group / inline-size;
+}
+
+.dock-tab.has-icon[data-short]::before {
+	content: none;
+}
+@container group (width < 13rem) {
+	[data-tab-count='2'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='2'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='2'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='2'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 19.5rem) {
+	[data-tab-count='3'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='3'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='3'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='3'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 26rem) {
+	[data-tab-count='4'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='4'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='4'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='4'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 32.5rem) {
+	[data-tab-count='5'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='5'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='5'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='5'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 39rem) {
+	[data-tab-count='6'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='6'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='6'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='6'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 45.5rem) {
+	[data-tab-count='7'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='7'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='7'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='7'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 52rem) {
+	[data-tab-count='8'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='8'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='8'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='8'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 58.5rem) {
+	[data-tab-count='9'] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-tab-count='9'] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-tab-count='9'] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-tab-count='9'] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+}
+@container group (width < 40rem) {
+	[data-bottom] .dock-tab.has-icon .dock-tab-icon {
+		display: inline;
+	}
+	[data-bottom] .dock-tab.has-icon[data-short]::before {
+		content: attr(data-short);
+	}
+	[data-bottom] .dock-tab.has-icon .dock-tab-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+	}
+	[data-bottom] .dv-inactive-tab .dock-tab.has-icon .dock-tab-close {
+		display: none;
+	}
+	/* Room for eight tabs on a phone: closer icons. */
+	[data-bottom] .dock-tab.has-icon {
+		padding-inline: 0.6rem;
+	}
+}
+.dock-tab.has-icon[data-short]::before {
+	font-family: var(--font-mono);
+	font-size: 0.78rem;
+	font-weight: 600;
+}
+/* Icon-only tabs are narrow, so each takes no more than its icon and badge. */
+.dock-tab.has-icon {
+	padding-inline: 0.6rem;
+}
+/* The phone's bottom group, shrunk to its tab strip while typing (dock.ts collapse): its tabs say so. */
+[data-collapsed] .dv-active-tab .dock-tab {
+	border-bottom-color: transparent;
+}
+
+.dv-active-tab .dock-tab {
+	border-bottom-color: var(--accent-high);
+}
+
+.dv-inactive-group .dv-active-tab .dock-tab {
+	border-bottom-color: var(--gray-4);
+}
+
+.dock-tab-close {
+	display: inline-grid;
+	place-items: center;
+	width: 1.2rem;
+	height: 1.2rem;
+	padding: 0;
+	border: 0;
+	border-radius: 0.25rem;
+	background: none;
+	color: inherit;
+	cursor: pointer;
+	opacity: 0.6;
+}
+
+.dock-tab-close:hover,
+.dock-tab-close:focus-visible {
+	background: var(--gray-5);
+	color: var(--white);
+	opacity: 1;
+}
+
+.dock-tab-close svg {
+	width: 0.75rem;
+	height: 0.75rem;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2px;
+	stroke-linecap: round;
+}
+
+.dock-panel,
+.dock-editor {
+	height: 100%;
+	overflow: hidden;
+}
+
+/* The Preview panel (preview.ts): the page on white, as a browser shows it. */
+.dock-preview {
+	display: flex;
+	flex-direction: column;
+}
+/*
+ * The page is shown as a browser tab would show it, whatever the app's
+ * theme: inside the frame, prefers-color-scheme is the system's, so a page
+ * with `color-scheme: light dark` (the sample's) picks the system's scheme,
+ * and the frame's background is that scheme's Canvas. A page without
+ * `color-scheme` is light, and the browser paints its canvas white itself.
+ * The frame used to be white: in the dark theme on a dark system, the
+ * sample's text was white on white.
+ */
+.preview-frame {
+	flex: 1;
+	width: 100%;
+	border: 0;
+	color-scheme: light dark;
+	background: Canvas;
+}
+/* Above the page: Auto reload, Reload, and why the page is not up to date. */
+.preview-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	min-height: 1.9rem;
+	padding: 0 0.5rem;
+	border-bottom: 1px solid var(--gray-5);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+.preview-auto {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3rem;
+	cursor: pointer;
+}
+.preview-status {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--gray-3);
+}
+.preview-empty {
+	margin: 1rem;
+	color: var(--gray-3);
+	font-size: 0.85rem;
+}
+
+/*
+ * The dialog Monaco's services ask through (workspace-edits.ts), such as
+ * whether to undo a rename across all files; styled as the Offline dialog.
+ */
+.app-dialog {
+	width: min(30rem, calc(100vw - 2rem));
+	padding: 0;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.5rem;
+	background: var(--gray-7);
+	color: var(--white);
+	font-size: 0.9rem;
+}
+.app-dialog::backdrop {
+	background: rgb(0 0 0 / 0.45);
+}
+.app-dialog-body {
+	padding: 1rem;
+}
+.app-dialog-message {
+	margin: 0;
+	line-height: 1.4;
+	overflow-wrap: anywhere;
+}
+.app-dialog-detail {
+	margin: 0.5rem 0 0;
+	color: var(--gray-2);
+	line-height: 1.4;
+}
+.app-dialog footer {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 0.5rem;
+	margin-top: 1rem;
+}
+.app-dialog-button {
+	height: 1.9rem;
+	padding: 0 0.7rem;
+	border: 1px solid var(--gray-5);
+	border-radius: 0.35rem;
+	background: var(--gray-6);
+	color: var(--gray-2);
+	font: inherit;
+	font-size: 0.8rem;
+	cursor: pointer;
+}
+.app-dialog-button:hover,
+.app-dialog-button:focus-visible {
+	border-color: var(--gray-4);
+	color: var(--white);
+}
+.app-dialog-button.primary {
+	border-color: var(--accent);
+	color: var(--white);
+	font-weight: 600;
+}

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Hylo snippets</title>
+		<link rel="stylesheet" href="./src/page.css" />
+	</head>
+	<body>
+		<main>
+			<h1>Hylo snippets</h1>
+			<p>
+				Ten snippets on one page, as a documentation site has them. Each runs on its own, with its own output, and all of them
+				share one runner, so the Hylo compiler is downloaded and loaded once, on the first Run. A snippet run while another
+				runs waits, and says which one it waits for.
+			</p>
+			<p class="meta">Runners started on this page: <span class="runners">0</span>.</p>
+			<section class="snippet" data-snippet="answer" data-title="The answer">
+				<h2>The answer</h2>
+				<p>A program says what it did by its exit code: this one exits with 42.</p>
+				<textarea class="code" rows="3" spellcheck="false" aria-label="The answer: main.hylo">public fun main() -&gt; Int32 {
+  (40 as Int32) + (2 as Int32)
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="mistake" data-title="A type mistake">
+				<h2>A type mistake</h2>
+				<p>This one does not compile, and the compiler&rsquo;s diagnostic shows here, in this snippet&rsquo;s panel only.</p>
+				<textarea class="code" rows="3" spellcheck="false" aria-label="A type mistake: main.hylo">public fun main() -&gt; Int32 {
+  true
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="sum" data-title="Adding up to ten">
+				<h2>Adding up to ten</h2>
+				<p>A loop that ends: 55.</p>
+				<textarea class="code" rows="11" spellcheck="false" aria-label="Adding up to ten: main.hylo">public fun main() -&gt; Int32 {
+  let one: Int32 = 1
+  let ten: Int32 = 10
+  var total: Int32 = 0
+  var i: Int32 = 1
+  while i &lt;= ten {
+    &amp;total = total + i
+    &amp;i = i + one
+  }
+  return total
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="forever" data-title="A loop that never ends">
+				<h2>A loop that never ends</h2>
+				<p>Stop it: the program&rsquo;s worker is ended, and the compiler is kept for the next run.</p>
+				<textarea class="code" rows="3" spellcheck="false" aria-label="A loop that never ends: main.hylo">public fun main() {
+  while true {}
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="overflow" data-title="An overflow">
+				<h2>An overflow</h2>
+				<p>Arithmetic that overflows traps, and the run says so.</p>
+				<textarea class="code" rows="5" spellcheck="false" aria-label="An overflow: main.hylo">public fun main() -&gt; Int32 {
+  let largest: Int32 = 2147483647
+  let one: Int32 = 1
+  return largest + one
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="prelude" data-title="A hidden prelude">
+				<h2>A hidden prelude</h2>
+				<p><code>seven</code> is declared in a hidden file that is compiled with the snippet.</p>
+				<textarea class="code" rows="3" spellcheck="false" aria-label="A hidden prelude: main.hylo">public fun main() -&gt; Int32 {
+  seven()
+}</textarea>
+				<template data-file="prelude.hylo">fun seven() -&gt; Int32 { 7 }</template>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="square" data-title="A function">
+				<h2>A function</h2>
+				<p>49.</p>
+				<textarea class="code" rows="8" spellcheck="false" aria-label="A function: main.hylo">fun square(x: Int32) -&gt; Int32 {
+  x * x
+}
+
+public fun main() -&gt; Int32 {
+  let seven: Int32 = 7
+  return square(seven)
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="smaller" data-title="The smaller of two">
+				<h2>The smaller of two</h2>
+				<p>3.</p>
+				<textarea class="code" rows="6" spellcheck="false" aria-label="The smaller of two: main.hylo">public fun main() -&gt; Int32 {
+  var smaller: Int32 = 4
+  let three: Int32 = 3
+  if three &lt; smaller { &amp;smaller = three.copy() }
+  return smaller
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="nothing" data-title="Nothing to say">
+				<h2>Nothing to say</h2>
+				<p>A program that returns nothing exits with 0.</p>
+				<textarea class="code" rows="1" spellcheck="false" aria-label="Nothing to say: main.hylo">public fun main() {}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" data-snippet="factorial" data-title="Five factorial">
+				<h2>Five factorial</h2>
+				<p>120.</p>
+				<textarea class="code" rows="11" spellcheck="false" aria-label="Five factorial: main.hylo">public fun main() -&gt; Int32 {
+  let one: Int32 = 1
+  let five: Int32 = 5
+  var product: Int32 = 1
+  var n: Int32 = 1
+  while n &lt;= five {
+    &amp;product = product * n
+    &amp;n = n + one
+  }
+  return product
+}</textarea>
+				<div class="controls"><button class="run">Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+		</main>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

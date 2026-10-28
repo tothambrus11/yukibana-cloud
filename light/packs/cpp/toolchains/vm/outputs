@@ -1,0 +1,15 @@
+vm/x86_64/qemu-system-x86_64.wasm
+vm/aarch64/qemu-system-aarch64.wasm
+vm/riscv64/qemu-system-riscv64.wasm
+vm/*/qemu-system-*.mjs
+vm/*/kernel
+vm/*/initrd
+vm/*/strace.cpio
+vm/x86_64/qboot.rom
+vm/riscv64/opensbi-riscv64-generic-fw_dynamic.bin
+LICENSE-qemu.txt
+LICENSE-linux.txt
+LICENSE-strace.txt
+LICENSE-opensbi.txt
+LICENSE-qboot.txt
+versions-vm.json
