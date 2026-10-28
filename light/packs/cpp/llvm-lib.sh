@@ -1,9 +1,10 @@
 # shellcheck shell=bash
-# What the compilers unit's scripts (build-clangd.sh, build-runner.sh,
-# build-cross.sh) share about building LLVM with the pack's Emscripten:
-# sourced after build-lib.sh, and named in toolchains/compilers/paths only,
-# so an edit here rebuilds the compilers and the units built with them
-# (libs), never the VM. Defines functions only.
+# What the scripts that build LLVM with the pack's Emscripten share: the
+# compilers unit's (build-clangd.sh, build-runner.sh, build-cross.sh) and
+# the tidy unit's (build-clangd-tidy.sh). Sourced after build-lib.sh, and
+# named in toolchains/compilers/paths and toolchains/tidy/paths, so an edit
+# here rebuilds the compilers, clangd with clang-tidy and the units built
+# with them (libs), never the VM. Defines functions only.
 
 # llvm_made_by: prints what made a build tree of the LLVM source with the
 # pack's Emscripten (clangd's, cc's and cc-cross's: the same lines, so that
@@ -83,4 +84,93 @@ llvm_wasm_common_args() {
     -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_UTILS=OFF -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_DOCS=OFF
     -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_OBJC_REWRITER=OFF -DCLANG_PLUGIN_SUPPORT=OFF
     -DCLANG_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_DOCS=OFF)
+}
+
+# llvm_clangd_sources <tarball>: makes $CACHE/llvm-project-$LLVM_VERSION.src
+# the parts of the release that clang, clangd and clang-tidy are made of,
+# with patches/clangd-browser.patch applied, from <tarball>, checked
+# against LLVM_SHA256 first. .patched holds a SHA-256 of the tarball's pin
+# and the patch: another tarball or patch means a fresh tree. tar keeps the
+# release's timestamps, so each build tree that compiles it recompiles what
+# the old or the new patch touched, and nothing else (follow_patch,
+# build-lib.sh). Prints the tree's path.
+llvm_clangd_sources() {
+  local tarball=$1 src="$CACHE/llvm-project-$LLVM_VERSION.src" want
+  want=$({ echo "$LLVM_SHA256"; cat "$BUILD_LIB_DIR/patches/clangd-browser.patch"; } | sha256sum | cut -d' ' -f1)
+  if [ "$(cat "$src/.patched" 2>/dev/null)" != "$want" ]; then
+    echo "$LLVM_SHA256  $tarball" | sha256sum -c --quiet - >&2 || die "$tarball is not the LLVM tarball pinned"
+    rm -rf "$src"
+    # Only the parts the compilers are made of. The runtimes and the headers
+    # the libs unit needs, it extracts from the same tarball itself.
+    tar xJf "$tarball" -C "$CACHE" \
+      "llvm-project-$LLVM_VERSION.src"/{llvm,clang,clang-tools-extra,cmake,third-party}
+    # Input from the embedding Worker, and config files never cached; see the patch.
+    patch -s -d "$src" -p1 < "$BUILD_LIB_DIR/patches/clangd-browser.patch" >&2
+    echo "$want" > "$src/.patched"
+  fi
+  echo "$src"
+}
+
+# llvm_native_tools <src>: builds the native table generators the wasm
+# builds run on the host (they cannot run their own) in $CACHE/build-native,
+# from the source tree <src>. Configured once, so its arguments are in what
+# made it, and so is the host's clang, which ninja sees only by path. ninja
+# runs every time: with nothing changed it only checks (it used to be
+# skipped while the last tool existed, whatever source or compiler had made
+# it). clang-tidy-confusable-chars-gen is clang-tidy's (misc-confusable-
+# identifiers), which only the tidy unit's clangd links.
+llvm_native_tools() {
+  local src=$1
+  local tools="llvm-tblgen llvm-min-tblgen clang-tblgen clang-tidy-confusable-chars-gen"
+  local native_args=(-G Ninja -DCMAKE_BUILD_TYPE=Release
+    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DLLVM_TARGETS_TO_BUILD=X86
+    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld
+    -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF)
+  keep_tree "$CACHE/build-native" "$(printf 'llvm %s %s\nhost %s\n' "$LLVM_VERSION" "$LLVM_SHA256" "$(clang --version | head -1)"
+    printf '%s\n' "${native_args[@]}")"
+  follow_patch "$CACHE/build-native" "$BUILD_LIB_DIR/patches/clangd-browser.patch" "$src"
+  [ -f "$CACHE/build-native/build.ninja" ] || cmake -S "$src/llvm" -B "$CACHE/build-native" "${native_args[@]}" >/dev/null
+  # shellcheck disable=SC2086
+  $NICE ninja -C "$CACHE/build-native" -j"$JOBS" $tools
+}
+
+# llvm_clangd_args <array> <tidy>: sets the array named <array> to the cmake
+# arguments of clangd for WebAssembly, with clang-tidy's checks linked in
+# when <tidy> is ON (the tidy unit's clangd-tidy.wasm) and without them when
+# it is OFF (the compilers unit's clangd.wasm, the one the editor starts
+# with). Everything else is the same, so the two parse alike.
+#
+# Threads are Web Workers sharing one memory, so the page must be
+# cross-origin isolated (SharedArrayBuffer). main() runs on a thread of its
+# own (PROXY_TO_PTHREAD), which leaves the Worker that loaded clangd free to
+# receive the client's messages and hand them to it (clangd_input, in the
+# patch). Stacks: clang's parser recurses deeply, and Emscripten's default
+# 64 KiB overflows on ordinary code. The static analyzer is off in both:
+# clangd runs none of its checks (ParsedAST.cpp), so clang-analyzer-* are
+# not linked either.
+llvm_clangd_args() {
+  local -n args=$1
+  local ldflags="-pthread -sPROXY_TO_PTHREAD -sPTHREAD_POOL_SIZE=4 -sMODULARIZE -sEXPORT_ES6 \
+  -sEXPORT_NAME=createClangd -sENVIRONMENT=worker -sINVOKE_RUN=0 -sEXIT_RUNTIME=1 -sFORCE_FILESYSTEM=1 \
+  -sEXPORTED_RUNTIME_METHODS=FS,callMain,stringToUTF8,lengthBytesUTF8 -sEXPORTED_FUNCTIONS=_main,_malloc,_free \
+  -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=128MB -sMAXIMUM_MEMORY=2GB \
+  -sSTACK_SIZE=8MB -sDEFAULT_PTHREAD_STACK_SIZE=8MB"
+  # shellcheck disable=SC2034 # args is a nameref to the caller's array
+  args=(-G Ninja
+    -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_EXE_LINKER_FLAGS="$ldflags"
+    -DCMAKE_C_FLAGS=-pthread -DCMAKE_CXX_FLAGS=-pthread
+    -DCMAKE_EXE_LINKER_FLAGS_MINSIZEREL="-Oz"
+    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DLLVM_TARGETS_TO_BUILD=X86
+    -DLLVM_HOST_TRIPLE=wasm32-unknown-emscripten -DLLVM_DEFAULT_TARGET_TRIPLE=x86_64-linux-musl
+    -DCLANG_DEFAULT_CXX_STDLIB=libc++ -DLLVM_NATIVE_TOOL_DIR="$CACHE/build-native/bin"
+    -DLLVM_TABLEGEN="$CACHE/build-native/bin/llvm-tblgen" -DCLANG_TABLEGEN="$CACHE/build-native/bin/clang-tblgen"
+    -DLLVM_ENABLE_THREADS=ON -DLLVM_ENABLE_PIC=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF
+    -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_LIBEDIT=OFF -DLLVM_ENABLE_LIBPFM=OFF
+    -DLLVM_ENABLE_BACKTRACES=OFF -DLLVM_ENABLE_CRASH_OVERRIDES=OFF -DLLVM_ENABLE_UNWIND_TABLES=OFF
+    -DLLVM_ENABLE_PLUGINS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF
+    -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_UTILS=OFF -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_DOCS=OFF
+    -DCLANG_ENABLE_CLANGD=ON -DCLANG_ENABLE_STATIC_ANALYZER=OFF -DCLANG_ENABLE_OBJC_REWRITER=OFF
+    -DCLANG_PLUGIN_SUPPORT=OFF -DCLANG_INCLUDE_TESTS=OFF -DCLANG_INCLUDE_DOCS=OFF
+    -DCLANG_TIDY_ENABLE_STATIC_ANALYZER=OFF -DCLANGD_TIDY_CHECKS="$2" -DCLANGD_BUILD_DEXP=OFF
+    -DCLANGD_BUILD_XPC=OFF -DCLANGD_ENABLE_REMOTE=OFF -DCLANGD_MALLOC_TRIM=OFF)
 }

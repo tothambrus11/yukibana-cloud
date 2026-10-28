@@ -6,7 +6,9 @@
 # besides them is what glue.paths names.
 #
 #   server.js       clangd's module Worker (src/server.js), with the sizes of
-#                   clangd.wasm (compilers) and sysroot.tar.gz (libs)
+#                   clangd.wasm (compilers), clangd-tidy.wasm (tidy),
+#                   sysroot.tar.gz (libs) and the toolchain files it fetches
+#                   ahead of Run (compilers, libs: TOOLCHAIN_SIZES)
 #   runner.js, runner-linux.js, explorer.js, sanitizer.js
 #                   the run and the views' workers, with the size of every
 #                   file they fetch (compilers, libs: CC_WASM_SIZE ...
@@ -29,7 +31,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR source=glue-lib.sh
 source "$HERE/glue-lib.sh"
-UNITS=(emsdk musl compilers libs vm)
+UNITS=(emsdk musl compilers libs vm tidy)
 
 if [ "${1:-}" = --check-versions ]; then
   bad=0
@@ -47,14 +49,16 @@ fi
 : "${OUT:?OUT is the pack being assembled, every unit already linked into it}"
 npm_deps "$HERE"
 esbuild() { "$HERE/node_modules/.bin/esbuild" "$@" --format=esm --minify --target=es2022 --log-level=warning; }
-for f in clangd.wasm sysroot.tar.gz cc.wasm cc-cross.wasm wasi-sysroot.tar.gz demangle.wasm; do
+for f in clangd.wasm clangd-tidy.wasm tidy-checks.json sysroot.tar.gz cc.wasm cc-cross.wasm wasi-sysroot.tar.gz demangle.wasm; do
   [ -f "$OUT/$f" ] || { echo "glue.sh: $OUT/$f is missing: a unit did not build it" >&2; exit 1; }
 done
 
 # server.js imports src/targets.js (and its targets.json), for the Linux
-# targets' headers; clangd.js stays a file of its own.
-esbuild "$HERE/src/server.js" --bundle --external:./clangd.js --outfile="$OUT/server.js" \
-  --define:CLANGD_WASM_SIZE="$(raw_size "$OUT/clangd.wasm")" --define:SYSROOT_SIZE="$(raw_size "$OUT/sysroot.tar.gz")"
+# targets' headers; clangd.js and clangd-tidy.js stay files of their own.
+esbuild "$HERE/src/server.js" --bundle --external:./clangd.js --external:./clangd-tidy.js --outfile="$OUT/server.js" \
+  --define:CLANGD_WASM_SIZE="$(raw_size "$OUT/clangd.wasm")" --define:CLANGD_TIDY_WASM_SIZE="$(raw_size "$OUT/clangd-tidy.wasm")" \
+  --define:SYSROOT_SIZE="$(raw_size "$OUT/sysroot.tar.gz")" \
+  --define:TOOLCHAIN_SIZES="$(sizes_json "$OUT" cc.js cc.wasm wasi-sysroot.tar.gz cc-cross.js cc-cross.wasm targets)"
 
 # runner-linux.js (linking and running for a Linux target) and vm.js are
 # imported by runner.js only for a Linux target, and sanitizer.js (a

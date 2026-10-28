@@ -68,6 +68,40 @@ symbols, rename, formatting, code actions (quick fixes with `edit`), semantic
 tokens (full) when offered. Capabilities a server does not advertise are
 simply not used. Positions are UTF-16 (the LSP default).
 
+## Optional parts and settings
+
+A server may load a part of itself after `initialize` (the C++ pack loads
+clang-tidy once the compiler is in the cache, so the editor works before
+either arrives). It reports where each part is with a notification the
+client shows next to its settings, the latest for an `id` replacing the one
+before:
+
+```json
+{ "jsonrpc": "2.0", "method": "yukibana/status",
+  "params": { "id": "clang-tidy", "label": "clang-tidy", "state": "ready" } }
+```
+
+`state` is `off` (the project turned it off), `pending` (waiting for
+something else to load first), `loading`, `ready` or `failed`, with an
+optional `detail` sentence for the user (the reason, with `failed`; the
+server carries on without the part). `isPartStatus` in
+`@yukibana/protocol` checks one; a malformed one is logged and ignored.
+
+The app tells a server about the project's settings in `initialize`'s
+`initializationOptions`, and about a later change with a notification
+whose params have the same shape, which the server applies without a
+restart:
+
+```json
+{ "jsonrpc": "2.0", "method": "yukibana/configure",
+  "params": { "yukibana": { "language": "c", "clangTidy": false } } }
+```
+
+Both are the pack's own: the C++ pack reads `yukibana.language` (`c` or
+`cpp`, how it parses headers) and `yukibana.clangTidy`, and strips
+`yukibana` before clangd sees its options. A server that knows neither
+ignores them.
+
 ## Requirements
 
 * Fully in the browser. No backend, no third-party CDN at run time: every

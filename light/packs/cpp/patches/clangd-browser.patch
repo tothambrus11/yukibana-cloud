@@ -96,3 +96,23 @@
        llvm::SmallString<256> PosixPath;
        if (!File.empty()) {
          assert(llvm::sys::path::is_absolute(File));
+--- a/clang-tools-extra/clangd/TidyProvider.cpp
++++ b/clang-tools-extra/clangd/TidyProvider.cpp
+@@ -95,7 +95,16 @@
+ 
+ public:
+   DotClangTidyTree(const ThreadsafeFS &FS)
+-      : FS(FS), RelPath(".clang-tidy"), MaxStaleness(std::chrono::seconds(5)) {}
++      : FS(FS), RelPath(".clang-tidy"),
++#ifdef __EMSCRIPTEN__
++        // An in-memory file system, as for .clangd (ClangdServer.cpp): the
++        // rule editor rewrites .clang-tidy, and the next parse must use it.
++        MaxStaleness(std::chrono::steady_clock::duration::zero()) {
++  }
++#else
++        MaxStaleness(std::chrono::seconds(5)) {
++  }
++#endif
+ 
+   void apply(tidy::ClangTidyOptions &Result, PathRef AbsPath) {
+     namespace path = llvm::sys::path;

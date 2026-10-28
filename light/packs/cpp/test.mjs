@@ -22,6 +22,13 @@
 //    server.js fetches once (targets/<arch>/include.tar) before clangd
 //    sees the flag; a change of target to riscv64 fetches that arch's.
 //    Sessions 1 and 2 must have fetched no targets/ file at all.
+// 4. clang-tidy (README, "clang-tidy"): the editor works before it loads;
+//    the toolchain is fetched before clangd-tidy.wasm; once it takes over,
+//    the project's .clang-tidy checks are diagnosed with their fixes; a
+//    change of the rules, and turning it off and on (yukibana/configure),
+//    apply without a restart, and yukibana/status says where it is.
+// 5. A C project (initializationOptions.yukibana.language 'c'): its
+//    header is parsed as C, where the same header is an error in C++.
 //
 //   node test.mjs            (after ./build.sh; needs playwright-core)
 //
@@ -197,7 +204,7 @@ const show = (diags) => JSON.stringify((diags ?? []).map((d) => `${d.range.start
 /** A page on `origin` with a worker started as the app starts it, a
  * minimal LSP client in the page of the shape the app's client has, and
  * `initialize` sent. */
-async function session(origin) {
+async function session(origin, initializationOptions) {
     const page = await browser.newPage();
     page.on('console', (m) => m.type() === 'error' && console.log(`[page] ${m.text()}`));
     page.on('pageerror', (e) => console.log(`[page error] ${e.message}`));
@@ -276,6 +283,7 @@ async function session(origin) {
         processId: null,
         rootUri: 'file:///workspace/',
         workspaceFolders: [{ uri: 'file:///workspace/', name: 'workspace' }],
+        ...(initializationOptions ? { initializationOptions } : {}),
         capabilities: {
             workspace: { configuration: true, didChangeWatchedFiles: { dynamicRegistration: false } },
             textDocument: {
@@ -551,7 +559,7 @@ try {
     const fetchedTargets = [...plain.requested, ...encoded.requested].filter((p) => p.includes('/targets/'));
     check('sessions 1 and 2 (the default target) fetched no targets/ file', fetchedTargets.length === 0, JSON.stringify(fetchedTargets));
     const before = plain.requested.length;
-    const { lsp } = await session(plain.origin);
+    const { page, lsp } = await session(plain.origin);
     const diagnostics = lsp.diagnostics;
     const ARCH_CPP = `#include <cstdio>
 #include <vector>
@@ -573,8 +581,11 @@ int main() {
     const aarch64 = await diagnostics('main.cpp', (d) => errors(d).length === 0, 0, 90000);
     check('an aarch64 project parses with the aarch64 headers (__aarch64__, LP64, no error)', aarch64 && errors(aarch64).length === 0, show(aarch64));
     const includeTars = () => plain.requested.slice(before).filter((p) => /\/targets\/[^/]+\/include\.tar$/.test(p));
-    check('targets/aarch64/include.tar is fetched once, and no library', JSON.stringify(includeTars()) === JSON.stringify(['/packs/cpp/targets/aarch64/include.tar'])
-        && !plain.requested.slice(before).some((p) => p.endsWith('lib.tar')), JSON.stringify(plain.requested.slice(before).filter((p) => p.includes('targets'))));
+    // lib.tar is what Run links with: fetched once, after the editor's headers, ahead of Run.
+    await page.waitForTimeout(3000);
+    const libTars = () => plain.requested.slice(before).filter((p) => p.endsWith('lib.tar'));
+    check('targets/aarch64/include.tar is fetched once, and its lib.tar once, ahead of Run', JSON.stringify(includeTars()) === JSON.stringify(['/packs/cpp/targets/aarch64/include.tar'])
+        && JSON.stringify(libTars()) === JSON.stringify(['/packs/cpp/targets/aarch64/lib.tar']), JSON.stringify(plain.requested.slice(before).filter((p) => p.includes('targets'))));
     const riscv = ARCH_CPP.replace('#ifndef __aarch64__\n#error "not compiled for aarch64"', '#if !defined(__riscv) || __riscv_xlen != 64\n#error "not compiled for riscv64"');
     let since = (await lsp.log()).length;
     lsp.notify('textDocument/didChange', { textDocument: { uri: uri('compile_flags.txt'), version: 2 }, contentChanges: [{ text: flags('riscv64-linux-musl') }] });
@@ -592,6 +603,86 @@ int main() {
     const other = await diagnostics('main.cpp', (d) => errors(d).some((e) => /riscv64/.test(e.message)), since, 60000);
     check('and without a target flag the same file does not compile', errors(other).some((e) => /riscv64/.test(e.message)), show(other));
     await lsp.finish('session 3');
+}
+{
+    // ---- 4. clang-tidy
+    console.log('-- session 4: clang-tidy, loaded after the toolchain');
+    const before = plain.requested.length;
+    const { page, lsp } = await session(plain.origin, { yukibana: { language: 'cpp', clangTidy: true } });
+    const diagnostics = lsp.diagnostics;
+    const TIDY_MAIN = SAMPLE['main.cpp'].replace('    return 0;', '    int *nothing = 0;\n    std::printf("%p\\n", static_cast<void *>(nothing));\n    return 0;');
+    const rules = (checks) => `# The project's rules.\nChecks: '${checks}'\nWarningsAsErrors: ''\n`;
+    const open = (name, text) => ['textDocument/didOpen', { textDocument: { uri: uri(name), languageId: name.endsWith('.cpp') || name.endsWith('.h') ? 'cpp' : 'plaintext', version: 1, text } }];
+    const statuses = async () => (await lsp.log()).filter((m) => m.method === 'yukibana/status').map((m) => m.params.state);
+    const tidy = (d) => (d ?? []).filter((x) => x.source === 'clang-tidy');
+    await lsp.notifyAll([
+        ['initialized', {}],
+        open('main.cpp', TIDY_MAIN),
+        open('geometry.h', SAMPLE['geometry.h']),
+        open('geometry.cpp', SAMPLE['geometry.cpp']),
+        open('.clang-tidy', rules('-*,modernize-use-nullptr')),
+        open('compile_flags.txt', SAMPLE['compile_flags.txt']),
+    ]);
+    // The editor first: plain clangd's diagnostics, before clangd-tidy.wasm is even requested.
+    const first = await diagnostics('main.cpp', (d) => errors(d).length === 0, 0, 60000);
+    check('the editor answers before clang-tidy has loaded', first !== undefined && errors(first).length === 0 && tidy(first).length === 0, show(first));
+    const withTidy = await diagnostics('main.cpp', (d) => tidy(d).some((x) => x.code === 'modernize-use-nullptr'), 0, 240000);
+    const requested = plain.requested.slice(before);
+    const order = ['/packs/cpp/clangd.wasm', '/packs/cpp/cc.wasm', '/packs/cpp/clangd-tidy.wasm'].map((p) => requested.indexOf(p));
+    check('clangd.wasm, then the toolchain (cc.wasm), then clangd-tidy.wasm', order.every((i) => i >= 0) && order[0] < order[1] && order[1] < order[2], JSON.stringify(requested));
+    check('once loaded, the project\'s .clang-tidy check is diagnosed', tidy(withTidy).some((x) => x.code === 'modernize-use-nullptr'), show(withTidy));
+    check('yukibana/status went pending, loading, ready', JSON.stringify((await statuses()).filter((s, i, a) => s !== a[i - 1])) === JSON.stringify(['pending', 'loading', 'ready']), JSON.stringify(await statuses()));
+    const warning = tidy(withTidy).find((x) => x.code === 'modernize-use-nullptr');
+    const actions = warning && (await lsp.request('textDocument/codeAction', { textDocument: { uri: uri('main.cpp') }, range: warning.range, context: { diagnostics: [warning] } }));
+    const fix = actions?.result?.find((a) => a.edit);
+    check('its fix is a quick fix', JSON.stringify(fix?.edit ?? {}).includes('nullptr'), JSON.stringify(actions?.result?.map((a) => a.title)));
+    const hover = await lsp.request('textDocument/hover', { textDocument: { uri: uri('main.cpp') }, position: position(TIDY_MAIN, 'distance(points', 1) });
+    check('after the takeover, requests are answered by the new clangd', /distance/.test(JSON.stringify(hover.result ?? '')), JSON.stringify(hover.result).slice(0, 200));
+    // A change of the rules: no restart, no edit of the source.
+    let since = (await lsp.log()).length;
+    lsp.notify('textDocument/didChange', { textDocument: { uri: uri('.clang-tidy'), version: 2 }, contentChanges: [{ text: rules('-*,readability-isolate-declaration,misc-const-correctness') }] });
+    const changed = await diagnostics('main.cpp', (d) => tidy(d).some((x) => x.code === 'misc-const-correctness') && !tidy(d).some((x) => x.code === 'modernize-use-nullptr'), since, 60000);
+    check('a change of .clang-tidy applies at once, slow checks included', tidy(changed).some((x) => x.code === 'misc-const-correctness') && !tidy(changed).some((x) => x.code === 'modernize-use-nullptr'), show(changed));
+    since = (await lsp.log()).length;
+    lsp.notify('yukibana/configure', { yukibana: { clangTidy: false } });
+    const off = await diagnostics('main.cpp', (d) => tidy(d).length === 0, since, 60000);
+    check('turned off, its warnings go', off !== undefined && tidy(off).length === 0 && errors(off).length === 0, show(off));
+    check('and the status says off', (await statuses()).at(-1) === 'off', JSON.stringify(await statuses()));
+    since = (await lsp.log()).length;
+    lsp.notify('yukibana/configure', { yukibana: { clangTidy: true } });
+    const on = await diagnostics('main.cpp', (d) => tidy(d).some((x) => x.code === 'misc-const-correctness'), since, 60000);
+    check('turned on again, they come back without a download', tidy(on).length > 0 && plain.requested.slice(before).filter((p) => p.endsWith('clangd-tidy.wasm')).length === 1, show(on));
+    check('and the status says ready', (await statuses()).at(-1) === 'ready', JSON.stringify(await statuses()));
+    await page.waitForTimeout(500);
+    await lsp.finish('session 4');
+}
+{
+    // ---- 5. a C project
+    console.log('-- session 5: a C project');
+    const before = plain.requested.length;
+    const { lsp } = await session(plain.origin, { yukibana: { language: 'c', clangTidy: false } });
+    const HEADER = `#pragma once
+#include <stdlib.h>
+
+/* C converts void * to any object pointer; C++ does not. */
+static inline int *make_int(void) { return malloc(sizeof(int)); }
+`;
+    const MAIN = `#include "make.h"
+
+int main(void) {
+    int *p = make_int();
+    free(p);
+    return 0;
+}
+`;
+    const open = (name, text, languageId) => ['textDocument/didOpen', { textDocument: { uri: uri(name), languageId, version: 1, text } }];
+    await lsp.notifyAll([['initialized', {}], open('main.c', MAIN, 'c'), open('make.h', HEADER, 'c'), open('compile_flags.txt', '-std=c17\n-Wall\n', 'plaintext')]);
+    const header = await lsp.diagnostics('make.h', () => true, 0, 60000);
+    const main = await lsp.diagnostics('main.c', () => true, 0, 60000);
+    check('a C project\'s header is parsed as C', header !== undefined && errors(header).length === 0 && main !== undefined && errors(main).length === 0, `${show(header)} ${show(main)}`);
+    const statuses = (await lsp.log()).filter((m) => m.method === 'yukibana/status').map((m) => m.params.state);
+    check('with clang-tidy off, it is not loaded', !plain.requested.slice(before).some((p) => p.endsWith('clangd-tidy.wasm')) && statuses.every((s) => s === 'off'), JSON.stringify(statuses));
+    await lsp.finish('session 5');
 }
 } finally {
     await browser.close();

@@ -8,6 +8,7 @@
  * - stdin.ts: the standard input buffer, both sides of it.
  * - runner.ts: the messages to and from a runner, and a previewed page.
  * - loading.ts: download progress, from any kind of pack worker.
+ * - status.ts: a language server's optional parts, and the app's settings for them.
  * - lsp.ts: the Language Server Protocol's values that the editor
  *   integration converts (types only).
  * - requirements.ts: what a pack's workers need from the page, and why a
@@ -22,4 +23,5 @@ export * from './loading.ts';
 export type * from './lsp.ts';
 export * from './requirements.ts';
 export * from './runner.ts';
+export * from './status.ts';
 export * from './stdin.ts';

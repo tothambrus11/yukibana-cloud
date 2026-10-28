@@ -106,9 +106,94 @@ system and then answers `initialize`.
 * Command line: `--background-index=false --use-dirty-headers
   --pch-storage=memory --resource-dir=/usr/lib/clang/21 --log=error`.
 
+## C projects
+
+The app's C language is this pack too: the same server, compilers, headers
+and runner, so a C project downloads nothing a C++ project has not, and
+the other way round. What differs is said to the server in `initialize`
+(`initializationOptions.yukibana.language`, CONTRACT.md "Optional parts"):
+in a C project a header (`.h`) is parsed as C (`-xc-header` in the root
+`.clangd`), in a C++ project as C++. The runner, the views and the
+compilers tell C from C++ by each file's extension, as before, and
+`compile_flags.txt` serves both (a `-std=` with `++` is C++'s, any other
+C's: `src/toolchain.js`, `flagsFor`). The sample project has its own
+`.clang-tidy` (no C++ modules, the CERT C checks) and the app offers C's
+standards in its Standard picker.
+
+## clang-tidy
+
+clang-tidy needs no server of its own: clangd has it built in (the
+`CLANGD_TIDY_CHECKS` CMake option links its checks into clangd, and clangd
+runs the checks a `.clang-tidy` turns on as part of every file's
+diagnostics, with their fixes as quick fixes). There is no separate
+clang-tidy language server, and none is needed. Built with the checks,
+clangd is a larger wasm, so the pack ships it twice:
+
+* `clangd.wasm` (the compilers unit): clangd without the checks, what the
+  editor needs first;
+* `clangd-tidy.wasm` (the tidy unit, `build-clangd-tidy.sh`): the same
+  clangd, the same LLVM tree and patch, with `CLANGD_TIDY_CHECKS=ON`.
+
+`server.js` loads them in the order a person needs them: `clangd.wasm` and
+the headers, before `initialize` is answered, so completion, hover and
+diagnostics work while nothing else has arrived; then the toolchain Run
+needs for the project's target (fetched and dropped, so Run finds it in
+the cache); then, unless the project turned clang-tidy off,
+`clangd-tidy.wasm`. That one is started beside the running clangd, on a
+copy of its file system and the same documents; once it has diagnosed
+every open file (or after a minute), it takes over: the client's requests
+go to it, its diagnostics replace the old ones, and the old clangd answers
+what it already had and exits. The editor never loses its server, and no
+request is lost: answers to a clangd's requests to the client find their
+way back by a tag on the id (`clangd:` or `tidy:`). The server reports
+where clang-tidy is with `yukibana/status` (`pending`, `loading`, `ready`,
+`failed`, `off`), which Build settings shows.
+
+The rules are the project's `.clang-tidy`, read by clangd as clang-tidy
+reads it (its `Checks`, `CheckOptions`, `WarningsAsErrors`); the app's
+rule editor rewrites its `Checks` key and nothing else. Turning clang-tidy
+off is the app's `clangTidy: false` (saved with the project and its link),
+sent with `yukibana/configure`; the server then writes
+`Diagnostics: ClangTidy: Remove: '*'` into the root `.clangd`, which
+clangd applies after `.clang-tidy`, so the rules stay for when it is
+turned on. On, the root `.clangd` says `FastCheckFilter: None`: clangd by
+default skips the checks it measured as slow (`misc-const-correctness`,
+`readability-container-size-empty`, …), and the first of those is the one
+a course about `const` wants. clangd never runs a few checks, whatever the
+file says, because they misreport code being typed
+(`TidyProvider.cpp`, `disableUnusableChecks`: `misc-include-cleaner`,
+`bugprone-use-after-move`, `bugprone-unchecked-optional-access`, …); the
+rule editor marks them "not in the editor".
+
+clangd rebuilds a file's diagnostics only when its text or its compile
+command changes, and a change of the rules is neither. So after a change
+to `.clang-tidy` or `.clangd`, `server.js` sends each open document twice
+(with a newline more at its end, then as it is), which rebuilds its AST
+and checks and keeps its preamble. clangd rereads `.clang-tidy` on every
+parse here (patch 4); upstream caches it for 5 s.
+
+`tidy-checks.json`, beside the wasm, is the list the rule editor shows:
+every check of this clang-tidy, with the first paragraph of its
+documentation, whether it has fixes, its alias, clangd's speed measurement
+(`clangd/TidyFastChecks.inc`) and whether clangd never runs it.
+`tidy-checks.mjs` makes it from the LLVM source tree the unit builds from,
+so it is never out of step with the wasm.
+
+The defaults, in the app's samples (`app/src/lib/languages.ts`,
+`CPP_TIDY` and `C_TIDY`), follow the C++ Core Guidelines and what Jason
+Turner (cppbestpractices, his starter project) and Klaus Iglberger teach:
+`bugprone-*`, `cppcoreguidelines-*`, `misc-*`, `modernize-*`,
+`performance-*`, `portability-*`, `readability-*` and `concurrency-*` on,
+less the checks that are noise in teaching code: magic numbers,
+identifier length, trailing return types everywhere,
+`easily-swappable-parameters`, `[[nodiscard]]` on every function,
+uppercase literal suffixes, recursion. C's are the same less the C++
+modules, plus `cert-*`. Both were checked with clang-tidy on the samples
+(clean) and on code that should be flagged.
+
 ## Patches (`patches/clangd-browser.patch`)
 
-Three small changes, all under `__EMSCRIPTEN__`:
+Four small changes, all under `__EMSCRIPTEN__`:
 
 1. `ClangdMain.cpp`: stdin is a queue that `server.js` fills through the
    exported `clangd_input(const char *, size_t)`, read by the transport
@@ -120,13 +205,17 @@ Three small changes, all under `__EMSCRIPTEN__`:
    and 30 s). The file system is in memory, so a lookup is a few map reads.
 3. `ClangdServer.cpp`: the same for `.clangd` (config `FreshTime` now
    instead of 5 s ago).
+4. `TidyProvider.cpp`: the same for `.clang-tidy` (`MaxStaleness` zero
+   instead of 5 s), so a rule changed in the app's rule editor applies at
+   the next parse. Only `clangd-tidy.wasm` reads `.clang-tidy`, but the
+   patch is one file for both builds.
 
 An earlier version had no threads and ran with `--sync`, which took six
 more patches (configuring clangd without threads, the shutdown watchdog,
 detached fallback threads, the compile-database broadcast, a missing
 `llvm::set_thread_priority`) and JSPI to suspend clangd while it waited
 for stdin, limiting it to Chrome 137+. With threads, upstream needs only
-the three above.
+the four above.
 
 ### Emscripten's proxying
 
@@ -274,6 +363,7 @@ units' build trees, which an assembly over stored units does not have.
 | `cpp/musl` | | musl **1.2.5**'s tarball and Alpine v3.23's packages per arch, checked (`build-only/`): nothing served | `build-lib.sh` |
 | `cpp/compilers` | emsdk | `clangd.*`, `cc.*`, `cc-cross.*`, `demangle.*`, `LICENSE-llvm.txt`; and for libs, the checked LLVM tarball and its pins (`build-only/`) | `build-clangd.sh`, `build-runner.sh`, `build-cross.sh`, `build-demangle.sh`, `llvm-lib.sh`, the three LLVM patches, `src/demangle/` |
 | `cpp/libs` | compilers, emsdk, musl | `sysroot.tar.gz`, `wasi-sysroot.tar.gz`, `{gtest,catch2,doctest,rapidcheck}.tar`, `{asan,ubsan}.tar`, `targets/<arch>/*.tar`, their licences | `build-cxx-runtime.sh`, `build-test-frameworks*.sh`, `build-test-libs-linux.mjs`, `build-sysroot.sh`, `build-targets.sh`, `build-sanitizers.sh`, `pack-runner.sh`, `libs-lib.sh`, `compiler-rt-wasi.patch`, `src/sanitizer-rt/`, `src/uncaught.cpp`, `src/toolchain.js`, `src/targets.js(on)` |
+| `cpp/tidy` | compilers, emsdk | `clangd-tidy.{js,wasm}` (clangd with clang-tidy's checks) and `tidy-checks.json`, from the compilers unit's checked LLVM tarball | `build-clangd-tidy.sh`, `llvm-lib.sh`, `tidy-checks.mjs`, the clangd patch |
 | `cpp/vm` | emsdk, musl | `vm/<arch>/`, `user/<arch>/`, their licences | `build-vm.sh`, `vm/build-*.sh`, `vm/cc.sh`, `vm/stage.sh`, `vm/{devices,guest,kconfig,patches}/`, `src/vm/cpio.js` |
 
 Every unit also takes `build-lib.sh` (what all the scripts share) and,

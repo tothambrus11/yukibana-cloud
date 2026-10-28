@@ -17,7 +17,7 @@ declares it needs from its host.
   caller gives it (it never creates one), and the stdin functions read
   and write the buffer they are given.
 * What is received is read through a guard (`readFromRunner`,
-  `isFromRunner`, `isPage`, `isFromPage`, `isLoadingProgress`), never
+  `isFromRunner`, `isPage`, `isFromPage`, `isLoadingProgress`, `isPartStatus`), never
   cast: a runner's messages come from the worker a user's program runs in.
 * A message's shape changes only together with every side that sends or
   receives it; a field a receiver might not know is optional.
@@ -30,6 +30,7 @@ declares it needs from its host.
 | `stdin.ts` | the standard input buffer: layout, `writeStdin`, `readStdin` (end of file answers one read, as at a terminal) |
 | `runner.ts` | to and from a runner (the optional `cancel`, reserved `test-report`, the headless contract, options a pack defines and the protocol never reads), and a previewed page |
 | `loading.ts` | download progress from any pack worker |
+| `status.ts` | a language server's optional parts (`yukibana/status`, `isPartStatus`) and the app's settings for them (`yukibana/configure`) |
 | `lsp.ts` | the Language Server Protocol's values (positions, diagnostics, edits, completions, symbols, …) that the editor integration converts, as types only, under the specification's names, so no module depends on `vscode-languageserver-protocol` |
 | `requirements.ts` | what a pack's workers need from the page (`Need`, `Requires`, `parseRequires`, `needFor`), and why a page that lacks it refuses them (`protocolProblem`, `requirementProblem`, `requirementLimitation`, `PROTOCOL_MAJOR`); a session asks `protocolProblem`, then `parseRequires`, `needFor` and `requirementProblem`, so a newer pack is refused for its protocol before its needs are read |
 | `platform.d.ts` | the platform types every host has under one name, the only ones protocol's own check knows |

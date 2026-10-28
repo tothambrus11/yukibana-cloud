@@ -1,0 +1,4 @@
+# clangd with clang-tidy is the compilers unit's clangd, from its LLVM
+# tarball and pins (build-only/), compiled with the pack's one Emscripten.
+cpp/compilers
+cpp/emsdk

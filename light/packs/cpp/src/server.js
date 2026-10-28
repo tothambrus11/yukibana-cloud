@@ -2,7 +2,9 @@
 // the pack transport of ../../CONTRACT.md. One JSON-RPC object per
 // postMessage in each direction; clangd itself speaks Content-Length framed
 // JSON on stdin/stdout, and this file is the translation between the two,
-// plus the file system clangd reads headers from.
+// plus the file system clangd reads headers from. It serves C and C++
+// projects alike: the app says which (initializationOptions.yukibana), and
+// only the language of a header (.h) depends on it.
 //
 // What clangd needs from its host, and where it gets it here:
 //   * its wasm, and the headers <stdio.h> and <vector> come from: fetched
@@ -13,18 +15,20 @@
 //   * its input: each message is handed to clangd with clangd_input
 //     (patches/clangd-browser.patch), and clangd's main thread waits for
 //     the next one;
-//   * the project's files on disk, for #include "x.h", compile_flags.txt and
-//     .clangd: every didOpen/didChange/didClose is mirrored into the module's
-//     in-memory file system when it arrives, before clangd reads the message;
+//   * the project's files on disk, for #include "x.h", compile_flags.txt,
+//     .clangd and .clang-tidy: every didOpen/didChange/didClose is mirrored
+//     into the module's in-memory file system when it arrives, before clangd
+//     reads the message;
 //   * only C-family documents as documents: the app opens every project file,
 //     and clangd would compile compile_flags.txt or README.md as a
 //     translation unit and publish an error on it. Those files are mirrored
 //     but not forwarded;
 //   * a reparse when the build configuration changes: clangd rereads
-//     compile_flags.txt and .clangd on every parse (patched; upstream caches
-//     them for 5 to 30 s), but only reparses open files when told to, so a
-//     change to one of them is followed by a didSave, which reparses every
-//     open file whose command changed;
+//     compile_flags.txt, .clangd and .clang-tidy on every parse (patched;
+//     upstream caches them for 5 to 30 s), but only reparses open files when
+//     told to, so a change to one of them is followed by a didSave, which
+//     reparses every open file whose command changed, and for the files
+//     that only change diagnostics (.clang-tidy, .clangd) by `refresh`;
 //   * a Linux target's headers: when compile_flags.txt names a target
 //     (`--target=aarch64-linux-musl`, src/targets.js), that arch's musl
 //     bits/ headers, targets/<arch>/include.tar, are fetched once and laid
@@ -32,15 +36,34 @@
 //     before /usr/include (whose bits/ are x86_64's). Messages that arrive
 //     meanwhile wait, in order; then the didSave reparse above applies the
 //     target. The default target fetches nothing more.
+//
+// Downloads come in the order a person needs them (README, "clang-tidy"):
+//   1. clangd.wasm and sysroot.tar.gz: the editor's language features. Only
+//      these are waited for before `initialize` is answered.
+//   2. then the toolchain Run needs for the project's target (cc.wasm and
+//      wasi-sysroot.tar.gz, or cc-cross.wasm and the target's libraries),
+//      fetched and dropped, so the runner later finds them in the cache. It
+//      starts once the client has opened the project's files after
+//      `initialized`, since compile_flags.txt says which target;
+//   3. then, unless the project turned it off, clangd-tidy.wasm: the same
+//      clangd with clang-tidy's checks, the tidy unit's. It is started beside
+//      the running clangd on a copy of its file system and the same
+//      documents, and once it has diagnosed every open file it takes over,
+//      without a restart: the editor never loses its server, and clang-tidy's
+//      warnings appear. The clangd it replaces answers the requests it
+//      already had, and is then shut down.
 
 import { targetOf } from './targets.js';
 
-/* global CLANGD_WASM_SIZE, SYSROOT_SIZE */
-// Replaced by build.sh with the byte sizes it shipped: a host that serves the
+/* global CLANGD_WASM_SIZE, CLANGD_TIDY_WASM_SIZE, SYSROOT_SIZE, TOOLCHAIN_SIZES */
+// Replaced by glue.sh with the byte sizes it shipped: a host that serves the
 // .br sibling sends a compressed Content-Length, but progress counts bytes
 // after decoding.
 const WASM_TOTAL = typeof CLANGD_WASM_SIZE === 'number' ? CLANGD_WASM_SIZE : 0;
+const TIDY_WASM_TOTAL = typeof CLANGD_TIDY_WASM_SIZE === 'number' ? CLANGD_TIDY_WASM_SIZE : 0;
 const SYSROOT_TOTAL = typeof SYSROOT_SIZE === 'number' ? SYSROOT_SIZE : 0;
+/** The raw size of each file of the toolchain step 2 fetches, by its path in the pack. */
+const TOOLCHAIN = typeof TOOLCHAIN_SIZES === 'object' && TOOLCHAIN_SIZES ? TOOLCHAIN_SIZES : {};
 
 /** clangd's command line. --use-dirty-headers: an edited, unsaved header is
  * seen by the files including it. The resource dir is where sysroot.tar.gz
@@ -53,69 +76,149 @@ const ARGS = [
     '--log=error',
 ];
 
-/** Configuration for the whole file system, below the project's own
- * .clangd (clangd reads every ancestor's, the nearest winning): headers are
- * C++. With compile_flags.txt every file gets the same flags, and the driver
- * takes a .h for a C header, so `-std=c++20` there is "not allowed with 'C'"
- * and the header's C++ is reported as errors. A C project overrides it in its
- * own .clangd. */
-const HEADERS_ARE_CXX = `If:
+/** The status this server reports as `yukibana/status` for clang-tidy (CONTRACT.md). */
+const TIDY_STATUS = { id: 'clang-tidy', label: 'clang-tidy' };
+
+/** What the app said about the project: its language, and whether clang-tidy is wanted. */
+const settings = { language: 'cpp', clangTidy: true };
+
+/**
+ * The root configuration, below the project's own .clangd (clangd reads
+ * every ancestor's, the nearest winning). Headers: with compile_flags.txt
+ * every file gets the same flags, and the driver takes a .h for a C header,
+ * so in a C++ project `-std=c++20` there is "not allowed with 'C'" and the
+ * header's C++ is reported as errors; in a C project a header is C.
+ *
+ * clang-tidy: on, every check the project's .clang-tidy turns on runs.
+ * clangd's default (FastCheckFilter: Strict) skips the checks it measured
+ * as slow, misc-const-correctness among them, which the defaults turn on
+ * and which a course about const wants most; a project here is a few
+ * files, and the rule editor marks those checks "slow" (README,
+ * "clang-tidy"). Off, its checks are removed after the project's
+ * .clang-tidy has added them (clangd applies .clangd's after
+ * .clang-tidy's), so the file and its rules stay as they are for when it
+ * is turned on.
+ */
+function rootConfig() {
+    const headers = `If:
   PathMatch: .*\\.(h|hh|hpp|hxx|inc)
 CompileFlags:
-  Add: [-xc++-header]
+  Add: [${settings.language === 'c' ? '-xc-header' : '-xc++-header'}]
 `;
+    const tidy = settings.clangTidy ? 'FastCheckFilter: None' : "Remove: '*'";
+    return `${headers}---
+Diagnostics:
+  ClangTidy:
+    ${tidy}
+`;
+}
 
 const post = (msg) => self.postMessage(msg);
 /** LSP MessageType: 1 error, 2 warning, 3 info, 4 log. */
 const logMessage = (type, message) => post({ jsonrpc: '2.0', method: 'window/logMessage', params: { type, message } });
 const progress = (label, loaded, total) =>
     post({ jsonrpc: '2.0', method: 'yukibana/loading', params: { label, loaded, total } });
-
-// ---- stdin: each message framed and handed to clangd's input queue.
-
-/** @type {any} the Emscripten module, once loaded */
-let clangd = null;
-
-function writeStdin(message) {
-    const body = JSON.stringify(message);
-    const framed = `Content-Length: ${clangd.lengthBytesUTF8(body)}\r\n\r\n${body}`;
-    const size = clangd.lengthBytesUTF8(framed);
-    const ptr = clangd._malloc(size + 1);
-    clangd.stringToUTF8(framed, ptr, size + 1);
-    clangd._clangd_input(ptr, size); // copies
-    clangd._free(ptr);
-}
-
-// ---- stdout: Content-Length framed JSON, one object per postMessage.
+const status = (state, detail) =>
+    post({ jsonrpc: '2.0', method: 'yukibana/status', params: { ...TIDY_STATUS, state, ...(detail ? { detail } : {}) } });
 
 const decoder = new TextDecoder();
-let outBuf = new Uint8Array(1 << 16);
-let outLen = 0;
-let bodyLength = -1; // -1 while reading headers
 
-function writeStdoutByte(byte) {
-    if (outLen === outBuf.length) {
-        const bigger = new Uint8Array(outBuf.length * 2);
-        bigger.set(outBuf);
-        outBuf = bigger;
+// ---- one clangd: its module, its stdin, and its stdout and stderr parsed.
+
+/** Ids of the requests this file sends a clangd itself, whose answers go nowhere else. */
+const OWN = 'yukibana:';
+
+class Clangd {
+    /**
+     * `name`: the program, `clangd` or `clangd-tidy`, for the log. `tag`:
+     * what this instance's requests to the client carry before their id, so
+     * an answer finds its way back to it after another instance took over.
+     */
+    constructor(name, tag) {
+        this.name = name;
+        this.tag = tag;
+        /** @type {any} the Emscripten module */
+        this.module = null;
+        /** The client's requests it has not answered yet, by id. */
+        this.pending = new Set();
+        /** Answers to this file's own requests, by id. */
+        this.own = new Map();
+        /** Whether it is answering the requests it had before another took over, and then stops. */
+        this.draining = false;
+        this.outBuf = new Uint8Array(1 << 16);
+        this.outLen = 0;
+        this.bodyLength = -1; // -1 while reading headers
+        this.errLine = [];
+        this.ownId = 0;
     }
-    outBuf[outLen++] = byte & 0xff;
-    if (bodyLength < 0) {
-        // Headers end at the first empty line.
-        if (byte !== 10 || outLen < 4 || outBuf[outLen - 2] !== 13 || outBuf[outLen - 3] !== 10) return;
-        const headers = decoder.decode(outBuf.subarray(0, outLen));
-        const match = /^content-length:\s*(\d+)/im.exec(headers);
-        outLen = 0;
-        bodyLength = match ? Number(match[1]) : -1;
-        if (!match) logMessage(1, `clangd wrote a message without Content-Length: ${headers.trim()}`);
-        return;
+
+    get FS() {
+        return this.module.FS;
     }
-    if (outLen < bodyLength) return;
-    const text = decoder.decode(outBuf.subarray(0, outLen));
-    outLen = 0;
-    bodyLength = -1;
-    post(withoutDefaultTarget(JSON.parse(text)));
+
+    write(message) {
+        const m = this.module;
+        const body = JSON.stringify(message);
+        const framed = `Content-Length: ${m.lengthBytesUTF8(body)}\r\n\r\n${body}`;
+        const size = m.lengthBytesUTF8(framed);
+        const ptr = m._malloc(size + 1);
+        m.stringToUTF8(framed, ptr, size + 1);
+        m._clangd_input(ptr, size); // copies
+        m._free(ptr);
+    }
+
+    /** Sends a request of this file's own; `then` gets its answer. */
+    request(method, params, then = () => {}) {
+        const id = `${OWN}${this.ownId++}`;
+        this.own.set(id, then);
+        this.write({ jsonrpc: '2.0', id, method, params });
+    }
+
+    stdoutByte(byte) {
+        if (this.outLen === this.outBuf.length) {
+            const bigger = new Uint8Array(this.outBuf.length * 2);
+            bigger.set(this.outBuf);
+            this.outBuf = bigger;
+        }
+        this.outBuf[this.outLen++] = byte & 0xff;
+        if (this.bodyLength < 0) {
+            // Headers end at the first empty line.
+            const b = this.outBuf;
+            if (byte !== 10 || this.outLen < 4 || b[this.outLen - 2] !== 13 || b[this.outLen - 3] !== 10) return;
+            const headers = decoder.decode(b.subarray(0, this.outLen));
+            const match = /^content-length:\s*(\d+)/im.exec(headers);
+            this.outLen = 0;
+            this.bodyLength = match ? Number(match[1]) : -1;
+            if (!match) logMessage(1, `${this.name} wrote a message without Content-Length: ${headers.trim()}`);
+            return;
+        }
+        if (this.outLen < this.bodyLength) return;
+        const text = decoder.decode(this.outBuf.subarray(0, this.outLen));
+        this.outLen = 0;
+        this.bodyLength = -1;
+        fromClangd(this, JSON.parse(text));
+    }
+
+    /** clangd's log, one line per window/logMessage; clangd prefixes its lines with E[, I[ or V[ and a time. */
+    stderrByte(byte) {
+        if (byte !== 10) {
+            this.errLine.push(byte & 0xff);
+            return;
+        }
+        const line = decoder.decode(new Uint8Array(this.errLine));
+        this.errLine = [];
+        const type = line.startsWith('E[') ? 1 : line.startsWith('I[') ? 3 : 4;
+        // The log of the clangd the client is not talking to is of interest only when it fails.
+        if (this === active || type === 1) logMessage(type, this === active ? line : `${this.name}: ${line}`);
+    }
 }
+
+/** The clangd the client talks to. */
+let active = null;
+/** clangd with clang-tidy, while it catches up with the documents before it takes over. */
+let incoming = null;
+/** Every clangd running: the active one, the incoming one, and one still answering its last requests. */
+const running = new Set();
 
 // clangd's version string ends in "; target=<its LLVM_DEFAULT_TARGET_TRIPLE>",
 // the triple it was configured with (x86_64-linux-musl, see build.sh), which
@@ -128,56 +231,72 @@ function withoutDefaultTarget(message) {
     return message;
 }
 
-// ---- stderr: clangd's log, one line per window/logMessage.
-
-let errLine = [];
-function writeStderrByte(byte) {
-    if (byte !== 10) {
-        errLine.push(byte & 0xff);
+/** What a clangd wrote, routed: to the client, to this file, or nowhere. */
+function fromClangd(instance, message) {
+    const isResponse = message.method === undefined;
+    if (isResponse) {
+        const own = instance.own.get(message.id);
+        if (own) {
+            instance.own.delete(message.id);
+            own(message);
+            return;
+        }
+        if (instance.pending.delete(message.id)) post(withoutDefaultTarget(message));
+        if (instance.draining && instance.pending.size === 0) stop(instance);
         return;
     }
-    const line = decoder.decode(new Uint8Array(errLine));
-    errLine = [];
-    // clangd prefixes its lines with E[, I[ or V[ and a time.
-    const type = line.startsWith('E[') ? 1 : line.startsWith('I[') ? 3 : 4;
-    logMessage(type, line);
+    if (message.id !== undefined) {
+        // A request to the client: only the active clangd's reach it. The
+        // others are answered here, as a client that has nothing to say would.
+        if (instance === active) post({ ...message, id: `${instance.tag}${message.id}` });
+        else instance.write({ jsonrpc: '2.0', id: message.id, result: null });
+        return;
+    }
+    if (message.method === 'textDocument/publishDiagnostics' && instance === incoming) {
+        incoming.diagnostics.set(message.params.uri, message);
+        if (incomingReady()) promote();
+        return;
+    }
+    if (instance === active) post(message);
 }
 
-// ---- the project's files, mirrored into the module's file system.
+// ---- the project's files, mirrored into every clangd's file system.
 
 /** @type {Map<string, string>} uri -> text, as the client last sent it */
 const documents = new Map();
-/** @type {Set<string>} the uris forwarded to clangd as documents */
-const forwarded = new Set();
+/** @type {Map<string, { languageId: string, version: number }>} the uris forwarded to clangd as documents */
+const forwarded = new Map();
 
 const C_FAMILY_LANGUAGES = new Set(['c', 'cpp', 'objective-c', 'objective-cpp', 'cuda-cpp']);
 const C_FAMILY_EXTENSION = /\.(c|cc|cpp|cxx|c\+\+|h|hh|hpp|hxx|h\+\+|inc|inl|ipp|tcc|ixx|cppm|m|mm|cu|cuh)$/i;
 /** Files that change how clangd compiles the project. */
 const BUILD_CONFIG = /\/(compile_flags\.txt|compile_commands\.json|\.clangd)$/;
+/** Files that change only which warnings clangd gives: clang-tidy's (.clangd has a part of them too). */
+const TIDY_CONFIG = /\/(\.clang-tidy|\.clangd)$/;
 
 /** Whether clangd should see a didOpen as a document: a C-family language
  * or a C-family file name (a header Monaco calls plaintext). */
 const isCFamily = ({ uri, languageId }) => C_FAMILY_LANGUAGES.has(languageId) || C_FAMILY_EXTENSION.test(new URL(uri).pathname);
-let FS = null;
 
 function pathOf(uri) {
     const url = new URL(uri);
     return url.protocol === 'file:' ? decodeURIComponent(url.pathname) : null;
 }
 
-function writeFile(uri, text) {
-    const path = pathOf(uri);
-    if (!path) return;
-    FS.mkdirTree(path.slice(0, path.lastIndexOf('/')) || '/');
-    FS.writeFile(path, text);
+/** Writes a file into every running clangd's file system. */
+function writeFile(path, data) {
+    for (const { FS } of running) {
+        FS.mkdirTree(path.slice(0, path.lastIndexOf('/')) || '/');
+        FS.writeFile(path, data);
+    }
 }
 
 /**
- * Whether the mirror holds a file or directory at `path`: FS.stat throws
+ * Whether a file system holds a file or directory at `path`: FS.stat throws
  * only when nothing is there, which is the answer false. (FS.analyzePath,
  * which said the same, is deprecated since Emscripten 6.0.11.)
  */
-function exists(path) {
+function exists(FS, path) {
     try {
         FS.stat(path);
         return true;
@@ -213,22 +332,24 @@ function mirror(message) {
     const params = message.params;
     try {
         switch (message.method) {
-            case 'textDocument/didOpen':
-                documents.set(params.textDocument.uri, params.textDocument.text);
-                writeFile(params.textDocument.uri, params.textDocument.text);
+            case 'textDocument/didOpen': {
+                const { uri, text } = params.textDocument;
+                documents.set(uri, text);
+                if (pathOf(uri)) writeFile(pathOf(uri), text);
                 break;
+            }
             case 'textDocument/didChange': {
                 const uri = params.textDocument.uri;
                 const text = applyChanges(documents.get(uri) ?? '', params.contentChanges);
                 documents.set(uri, text);
-                writeFile(uri, text);
+                if (pathOf(uri)) writeFile(pathOf(uri), text);
                 break;
             }
             case 'textDocument/didClose': {
                 // The app closes a document only when its file is deleted.
                 documents.delete(params.textDocument.uri);
                 const path = pathOf(params.textDocument.uri);
-                if (path && exists(path)) FS.unlink(path);
+                for (const { FS } of running) if (path && exists(FS, path)) FS.unlink(path);
                 break;
             }
         }
@@ -250,6 +371,8 @@ const targetHeaders = new Set();
 /** How long a target's include.tar may take before clangd goes on without it:
  * every LSP message waits while it loads. */
 const TARGET_HEADERS_TIMEOUT_MS = 30_000;
+/** The client's `initialize` params, for clangd-tidy's. */
+let initializeParams = null;
 
 /** The arch of the Linux target a didOpen/didChange of compile_flags.txt
  * names, when its headers are not loaded yet; otherwise null. */
@@ -273,7 +396,7 @@ async function loadTargetHeaders(arch) {
     const name = `targets/${arch}/include.tar`;
     try {
         const body = await download(name, 0, AbortSignal.timeout(TARGET_HEADERS_TIMEOUT_MS));
-        const headers = await unpackSysroot(new Uint8Array(await new Response(body).arrayBuffer()));
+        const headers = await unpack(new Uint8Array(await new Response(body).arrayBuffer()));
         logMessage(3, `${name}: ${headers} headers`);
         targetHeaders.add(arch);
     } catch (error) {
@@ -290,6 +413,7 @@ function receive(message, retried = false) {
             post({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: failure } });
         return;
     }
+    if (message.method === 'yukibana/configure') return configure(message.params ?? {});
     if (early || waiting) {
         (early ?? waiting).push(message);
         return;
@@ -309,30 +433,239 @@ function receive(message, retried = false) {
     mirror(message);
     const uri = message.params?.textDocument?.uri;
     switch (message.method) {
-        case 'textDocument/didOpen':
-            if (!isCFamily(message.params.textDocument)) return reconfigure(uri);
-            forwarded.add(uri);
-            return writeStdin(message);
-        case 'textDocument/didChange':
-            if (!forwarded.has(uri)) return reconfigure(uri);
-            return writeStdin(message);
+        case 'textDocument/didOpen': {
+            const doc = message.params.textDocument;
+            if (!isCFamily(doc)) return reconfigure(uri);
+            forwarded.set(uri, { languageId: doc.languageId, version: doc.version });
+            return toDocuments(message);
+        }
+        case 'textDocument/didChange': {
+            const doc = forwarded.get(uri);
+            if (!doc) return reconfigure(uri);
+            doc.version = message.params.textDocument.version;
+            return toDocuments(message);
+        }
         case 'textDocument/didClose':
             if (!forwarded.delete(uri)) return reconfigure(uri);
-            return writeStdin(message);
+            return toDocuments(message);
+        case 'textDocument/didSave':
+        case 'workspace/didChangeWatchedFiles':
+        case 'workspace/didChangeConfiguration':
+            return toDocuments(message);
         default:
-            writeStdin(message);
+            return toActive(message);
     }
+}
+
+/** A message about the documents: every clangd that keeps them gets it. */
+function toDocuments(message) {
+    active.write(message);
+    if (incoming?.initialized) incoming.write(message);
+}
+
+/** A request, an answer or a notification for the clangd the client talks to. */
+function toActive(message) {
+    if (message.method === undefined) {
+        // An answer to a clangd's request: back to the clangd that asked (`tag`).
+        const tagged = typeof message.id === 'string' && [...running].find((c) => message.id.startsWith(c.tag));
+        if (tagged) {
+            const id = message.id.slice(tagged.tag.length);
+            return tagged.write({ ...message, id: /^\d+$/.test(id) ? Number(id) : id });
+        }
+        return; // a clangd that has stopped
+    }
+    if (message.method === '$/cancelRequest') {
+        const owner = [...running].find((c) => c.pending.has(message.params?.id)) ?? active;
+        return owner.write(message);
+    }
+    if (message.method === 'initialize') {
+        const { yukibana, ...options } = message.params?.initializationOptions ?? {};
+        configure(yukibana ?? {}, { quiet: true });
+        initializeParams = { ...message.params, initializationOptions: options };
+        message = { ...message, params: initializeParams };
+    }
+    if (message.method === 'initialized') setTimeout(ready, OPENED_MS);
+    if (message.method === 'shutdown') for (const c of running) if (c !== active) stop(c);
+    if (message.id !== undefined) active.pending.add(message.id);
+    active.write(message);
 }
 
 /** After a file that is not a document changed on disk: when it is a build
  * configuration file, ask clangd to reparse the open files. didSave does that for every
  * open file (ClangdLSPServer::onDocumentDidSave); a file whose compile
- * command came out the same is not rebuilt. */
+ * command came out the same is not rebuilt, so a file that changes only the
+ * warnings (clang-tidy's rules) is followed by a `refresh`. */
 function reconfigure(uri) {
-    if (!BUILD_CONFIG.test(new URL(uri).pathname)) return;
-    writeStdin({ jsonrpc: '2.0', method: 'textDocument/didSave', params: { textDocument: { uri } } });
+    const path = new URL(uri).pathname;
+    if (BUILD_CONFIG.test(path)) toDocuments({ jsonrpc: '2.0', method: 'textDocument/didSave', params: { textDocument: { uri } } });
+    if (TIDY_CONFIG.test(path)) refreshSoon();
 }
-self.onmessage = ({ data }) => receive(data);
+
+let refreshTimer;
+/** `refresh`, once a burst of rule changes (the app's rule editor, typing in .clang-tidy) is over. */
+function refreshSoon() {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refresh, 300);
+}
+
+/**
+ * Has every clangd diagnose its open files again with the configuration as
+ * it is now. clangd rebuilds a file's diagnostics only when its text or its
+ * compile command changed (TUScheduler: "inputs are the same"), and a
+ * change of clang-tidy's rules is neither. So each document's text is sent
+ * once with a newline more at its end and then as it is: two changes,
+ * after the leading #includes, so the preamble (the slow part) is kept and
+ * only the file's own AST, and its checks, are built again.
+ */
+function refresh() {
+    for (const [uri, doc] of forwarded) {
+        const text = documents.get(uri) ?? '';
+        for (const changed of [`${text}\n`, text])
+            toDocuments({ jsonrpc: '2.0', method: 'textDocument/didChange', params: { textDocument: { uri, version: doc.version }, contentChanges: [{ text: changed }] } });
+    }
+}
+
+/**
+ * The app's settings for this project (`yukibana/configure`, and
+ * initializationOptions.yukibana): `language` ('c' or 'cpp') and
+ * `clangTidy` (whether its checks run). Turning clang-tidy on loads
+ * clangd-tidy.wasm when it is not loaded yet, after the toolchain; off
+ * removes its checks from the root configuration and keeps it loaded.
+ */
+function configure(options, { quiet = false } = {}) {
+    if (options.language === 'c' || options.language === 'cpp') settings.language = options.language;
+    if (typeof options.clangTidy === 'boolean') settings.clangTidy = options.clangTidy;
+    if (running.size === 0) return; // before start: rootConfig is written then
+    writeFile('/.clangd', rootConfig());
+    if (!quiet) refreshSoon();
+    if (!settings.clangTidy) status('off');
+    else if (active.name === 'clangd-tidy') status('ready');
+    else if (afterToolchain) loadTidySoon();
+    // In `initialize`, so the client knows before its answer that this server has clang-tidy.
+    else status('pending');
+}
+
+// ---- after `initialize`: the toolchain, then clangd with clang-tidy.
+
+/** Set once the project is open: the toolchain's download, which clang-tidy comes after. */
+let afterToolchain = null;
+
+/**
+ * How long after `initialized` the project's files are taken to be open:
+ * the client sends their didOpens right after it (CONTRACT.md, "Files"),
+ * and compile_flags.txt among them names the target whose toolchain to
+ * fetch. They arrive within milliseconds; a second is ample and costs the
+ * editor nothing, which has its server already.
+ */
+const OPENED_MS = 1000;
+
+function ready() {
+    if (failure || afterToolchain) return;
+    afterToolchain = prefetchToolchain();
+    if (settings.clangTidy) loadTidySoon();
+    else status('off');
+}
+
+/**
+ * Downloads the files Run needs for the project's target, as the runner
+ * will fetch them, and keeps nothing: the service worker (or the browser's
+ * cache) has them then, and the runner does not wait for a download when
+ * Run is pressed. Never rejects; a failure only means Run downloads them.
+ */
+async function prefetchToolchain() {
+    const flags = documents.get('file:///workspace/compile_flags.txt');
+    const target = targetOf(flags === undefined ? {} : { 'compile_flags.txt': flags }).target;
+    // A Linux target's include.tar is this file's own (loadTargetHeaders), fetched when the target is named.
+    const names = target?.runtime === 'linux'
+        ? ['cc-cross.js', 'cc-cross.wasm', `targets/${target.arch}/lib.tar`]
+        : ['cc.js', 'cc.wasm', 'wasi-sysroot.tar.gz'];
+    try {
+        await Promise.all(names.map(async (name) => {
+            const body = await download(name, TOOLCHAIN[name] ?? 0);
+            for (const reader = body.getReader(); !(await reader.read()).done; );
+        }));
+    } catch (error) {
+        logMessage(2, `Could not download the toolchain ahead of Run (${error?.message ?? error}); Run downloads it.`);
+    }
+}
+
+let tidyLoad = null;
+/** Loads clangd-tidy.wasm after the toolchain, once. */
+function loadTidySoon() {
+    if (tidyLoad || active?.name === 'clangd-tidy') return;
+    status('pending');
+    tidyLoad = afterToolchain.then(loadTidy).catch((error) => {
+        tidyLoad = null; // the next time it is turned on, it is tried again
+        const detail = `clang-tidy could not be loaded: ${error?.message ?? error}`;
+        logMessage(2, detail);
+        status('failed', detail);
+        if (incoming) stop(incoming);
+        incoming = null;
+    });
+}
+
+/** How long clangd-tidy may take to diagnose the open files before it takes over anyway. */
+const CATCH_UP_MS = 60_000;
+
+async function loadTidy() {
+    if (failure || !settings.clangTidy) {
+        tidyLoad = null; // turned off while the toolchain downloaded: loaded when it is turned on
+        return;
+    }
+    status('loading');
+    const [{ default: create }, wasm] = await Promise.all([import('./clangd-tidy.js'), download('clangd-tidy.wasm', TIDY_WASM_TOTAL)]);
+    const module = await WebAssembly.compileStreaming(new Response(wasm, { headers: { 'content-type': 'application/wasm' } }));
+    if (failure || !active) return;
+    const tidy = await instantiate('clangd-tidy', 'tidy:', create, Promise.resolve(module));
+    // From here to the end, nothing awaits: what the client sends after the
+    // copy reaches clangd-tidy through toDocuments, and nothing before it is
+    // missed.
+    copyFiles(active.FS, tidy.FS, ['/usr', '/workspace']);
+    tidy.FS.writeFile('/.clangd', rootConfig());
+    tidy.diagnostics = new Map();
+    incoming = tidy;
+    tidy.module.callMain(ARGS);
+    tidy.request('initialize', initializeParams, () => {
+        if (incoming !== tidy) return;
+        if (incomingReady()) promote();
+    });
+    tidy.write({ jsonrpc: '2.0', method: 'initialized', params: {} });
+    for (const [uri, { languageId, version }] of forwarded)
+        tidy.write({ jsonrpc: '2.0', method: 'textDocument/didOpen', params: { textDocument: { uri, languageId, version, text: documents.get(uri) ?? '' } } });
+    tidy.initialized = true;
+    setTimeout(() => {
+        if (incoming === tidy) promote();
+    }, CATCH_UP_MS);
+}
+
+/** Whether clangd-tidy has diagnosed every open document, and may take over. */
+function incomingReady() {
+    return [...forwarded.keys()].every((uri) => incoming.diagnostics.has(uri));
+}
+
+/**
+ * clangd-tidy takes over: the client's requests go to it from now on, its
+ * diagnostics replace the old clangd's, and the old one answers what it
+ * already had and stops.
+ */
+function promote() {
+    const old = active;
+    active = incoming;
+    incoming = null;
+    for (const message of active.diagnostics.values()) post(message);
+    active.diagnostics = null;
+    old.draining = true;
+    if (old.pending.size === 0) stop(old);
+    logMessage(3, `clang-tidy is on: clangd-tidy took over from clangd`);
+    status(settings.clangTidy ? 'ready' : 'off');
+}
+
+/** Shuts a clangd down that the client no longer talks to; its exit does not end this Worker. */
+function stop(instance) {
+    if (instance.stopping) return;
+    instance.stopping = true;
+    instance.request('shutdown', null, () => instance.write({ jsonrpc: '2.0', method: 'exit' }));
+}
 
 // ---- loading.
 
@@ -355,8 +688,8 @@ async function download(name, total, signal) {
 }
 
 /** Unpacks a ustar archive (sysroot.tar.gz, gzip or already decoded by the
- * host) into the module's file system. */
-async function unpackSysroot(bytes) {
+ * host) into every running clangd's file system. */
+async function unpack(bytes) {
     const tar =
         bytes[0] === 0x1f && bytes[1] === 0x8b
             ? new Uint8Array(await new Response(new Response(bytes).body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer())
@@ -373,15 +706,66 @@ async function unpackSysroot(bytes) {
         const type = String.fromCharCode(tar[at + 156] || 48);
         const path = '/' + (prefix ? `${prefix}/${name}` : name).replace(/\/$/, '');
         at += 512;
-        if (type === '5') FS.mkdirTree(path);
+        if (type === '5') for (const { FS } of running) FS.mkdirTree(path);
         else if (type === '0') {
-            FS.mkdirTree(path.slice(0, path.lastIndexOf('/')));
-            FS.writeFile(path, tar.subarray(at, at + size));
+            writeFile(path, tar.subarray(at, at + size));
             files++;
         }
         at += Math.ceil(size / 512) * 512;
     }
     return files;
+}
+
+/** Copies the trees under `roots` from one module's file system to another's. */
+function copyFiles(from, to, roots) {
+    const walk = (path) => {
+        const { mode } = from.stat(path);
+        if (from.isDir(mode)) {
+            to.mkdirTree(path);
+            for (const name of from.readdir(path)) if (name !== '.' && name !== '..') walk(`${path}/${name}`);
+        } else if (from.isFile(mode)) to.writeFile(path, from.readFile(path));
+    };
+    for (const root of roots) if (exists(from, root)) walk(root);
+}
+
+/**
+ * A clangd's module, instantiated from its compiled wasm, its output routed
+ * through `fromClangd`. It is running (its file system written to) from
+ * here on; its main is the caller's to call.
+ */
+async function instantiate(name, tag, create, compiled) {
+    const instance = new Clangd(name, tag);
+    instance.module = await create({
+        thisProgram: '/usr/bin/clangd',
+        instantiateWasm(imports, done) {
+            compiled
+                .then((module) => WebAssembly.instantiate(module, imports).then((wasm) => done(wasm, module)))
+                .catch((error) => (instance === active || !active ? fail(`${name}.wasm: ${error}`) : logMessage(1, `${name}.wasm: ${error}`)));
+            return {};
+        },
+        stdout: (byte) => instance.stdoutByte(byte),
+        stderr: (byte) => instance.stderrByte(byte),
+        onExit(code) {
+            running.delete(instance);
+            if (instance === incoming) incoming = null;
+            if (instance === active) {
+                logMessage(code === 0 ? 3 : 1, `${name} exited with status ${code}`);
+                self.close();
+            } else if (code !== 0) logMessage(1, `${name} exited with status ${code}`);
+        },
+        onAbort(reason) {
+            if (instance === active) fail(`${name} aborted: ${reason}`);
+            else {
+                running.delete(instance);
+                if (instance === incoming) incoming = null;
+                const detail = `${name} aborted: ${reason}`;
+                logMessage(1, detail);
+                status('failed', detail);
+            }
+        },
+    });
+    running.add(instance);
+    return instance;
 }
 
 async function start() {
@@ -398,34 +782,17 @@ async function start() {
     const compiled = WebAssembly.compileStreaming(new Response(wasm, { headers: { 'content-type': 'application/wasm' } }));
     const sysrootBytes = new Response(sysroot).arrayBuffer();
 
-    clangd = await createClangd({
-        thisProgram: '/usr/bin/clangd',
-        instantiateWasm(imports, done) {
-            compiled
-                .then((module) => WebAssembly.instantiate(module, imports).then((instance) => done(instance, module)))
-                .catch((error) => fail(`clangd.wasm: ${error}`));
-            return {};
-        },
-        stdout: writeStdoutByte,
-        stderr: writeStderrByte,
-        onExit(code) {
-            logMessage(code === 0 ? 3 : 1, `clangd exited with status ${code}`);
-            self.close();
-        },
-        onAbort(reason) {
-            fail(`clangd aborted: ${reason}`);
-        },
-    });
-    FS = clangd.FS;
-    const headers = await unpackSysroot(new Uint8Array(await sysrootBytes));
-    FS.mkdirTree('/workspace');
-    FS.writeFile('/.clangd', HEADERS_ARE_CXX);
+    active = await instantiate('clangd', 'clangd:', createClangd, compiled);
+    const headers = await unpack(new Uint8Array(await sysrootBytes));
+    active.FS.mkdirTree('/workspace');
     logMessage(3, `clangd loaded in ${Math.round(performance.now() - started)} ms, ${headers} headers`);
 
     const queued = early;
     early = null;
+    // `initialize` comes first, and with it the project's language, which the root configuration needs.
     for (const message of queued) receive(message);
-    clangd.callMain(ARGS);
+    writeFile('/.clangd', rootConfig());
+    active.module.callMain(ARGS);
 }
 
 function fail(reason) {
