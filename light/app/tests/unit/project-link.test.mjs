@@ -1,7 +1,7 @@
 // Unit tests of a project as a link (src/lib/project-link.ts): that a
 // project survives the trip through the URL, that a damaged or foreign link
 // is refused saying why, and that a project saved before links (version 0)
-// is read as the current version.
+// or in an older version of the schema is read as the current version.
 //
 //   node --test tests/unit/project-link.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
@@ -9,13 +9,14 @@ import { test } from 'node:test';
 import { base64url, CURRENT, decodeProject, encodeProject, fromBase64url, holdsProject, readDocument } from '../../src/lib/project-link.ts';
 
 const project = {
-	v: 1,
+	v: 2,
 	language: 'cpp',
 	files: { 'main.cpp': '#include <iostream>\nint main() { std::cout << "héllo, 世界 🌸\\n"; }\n', 'src/a b#c?.h': '' },
 	folders: ['empty'],
 	open: ['main.cpp'],
 	active: 'main.cpp',
 	runOptions: { emulation: 'user', cpus: 4, strace: true },
+	clangTidy: false,
 };
 const jsonLink = (value) => `#project=j.${base64url(new TextEncoder().encode(JSON.stringify(value)))}`;
 
@@ -26,14 +27,14 @@ test('a project comes back from its link exactly as it went in, unicode and odd 
 });
 
 test('a large project is compressed: a link is a fraction of the text it holds', async () => {
-	const big = { v: 1, language: 'python', files: { 'main.py': 'print("hello")\n'.repeat(2000) } };
+	const big = { v: 2, language: 'python', files: { 'main.py': 'print("hello")\n'.repeat(2000) } };
 	const hash = await encodeProject(big);
 	assert.ok(hash.length < JSON.stringify(big).length / 10, `${hash.length} characters`);
 	assert.deepEqual(await decodeProject(hash), big);
 });
 
 test('a link written by hand as plain JSON opens, with everything but the language and files left out', async () => {
-	assert.deepEqual(await decodeProject(jsonLink({ v: 1, language: 'python', files: { 'main.py': 'print(1)' } })), { v: 1, language: 'python', files: { 'main.py': 'print(1)' } });
+	assert.deepEqual(await decodeProject(jsonLink({ v: 2, language: 'python', files: { 'main.py': 'print(1)' } })), { v: 2, language: 'python', files: { 'main.py': 'print(1)' } });
 });
 
 test('only a fragment that starts with project= is a project link; any other is left to the page', () => {
@@ -68,13 +69,26 @@ test('a link has no version 0: without its version a link does not say its langu
 });
 
 test('a key the schema does not have is dropped, not carried into the project', async () => {
-	assert.deepEqual(await decodeProject(jsonLink({ v: 1, language: 'go', files: {}, secret: 1 })), { v: 1, language: 'go', files: {} });
+	assert.deepEqual(await decodeProject(jsonLink({ v: 2, language: 'go', files: {}, secret: 1 })), { v: 2, language: 'go', files: {} });
 });
 
 test('a project saved in the browser before links (version 0) is read as the current version, its bad tabs and settings dropped', () => {
 	const saved = { files: { 'main.py': 'x' }, folders: ['a', 3], open: ['main.py', null], active: 'main.py', runOptions: { emulation: 'bogus' }, optimization: '-O' };
-	assert.deepEqual(readDocument(saved, { language: 'python' }), { v: 1, language: 'python', files: { 'main.py': 'x' }, folders: ['a'], open: ['main.py'], active: 'main.py', optimization: '-O' });
+	assert.deepEqual(readDocument(saved, { language: 'python' }), { v: 2, language: 'python', files: { 'main.py': 'x' }, folders: ['a'], open: ['main.py'], active: 'main.py', optimization: '-O' });
 	assert.throws(() => readDocument({ files: { 'main.py': 1 } }, { language: 'python' }), /files\["main\.py"\] must be a string/);
+});
+
+test('a link made before clang-tidy (version 1) opens with clang-tidy on, everything else as it was', async () => {
+	const v1 = { v: 1, language: 'cpp', files: { 'main.cpp': 'int main() {}\n' }, open: ['main.cpp'], active: 'main.cpp', optimization: '-O2' };
+	assert.deepEqual(await decodeProject(jsonLink(v1)), { ...v1, v: 2 });
+	assert.equal(readDocument(v1).clangTidy, undefined, 'absent: it runs');
+});
+
+test('clang-tidy turned off is kept in the link, and only a boolean says so', async () => {
+	const off = { v: 2, language: 'c', files: { 'main.c': '' }, clangTidy: false };
+	assert.deepEqual(await decodeProject(await encodeProject(off)), off);
+	await assert.rejects(decodeProject(jsonLink({ ...off, clangTidy: 'no' })), /clangTidy must be boolean/);
+	assert.equal((await decodeProject(jsonLink({ v: 1, language: 'c', files: {}, clangTidy: 'no' }))).clangTidy, undefined, 'version 1 has no such key: it is dropped');
 });
 
 test('base64url round-trips every byte, and takes padded and plain base64 as well', () => {

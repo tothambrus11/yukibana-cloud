@@ -2,11 +2,19 @@
   The folder browser: the project's files and folders as a tree, with
   creating, renaming and deleting in place. Folders are expanded unless the
   user collapsed them.
+
+  A language's configuration files (`configFiles`, languages.ts: a C or C++
+  project's compile_flags.txt, .clang-tidy, …) are hidden until "Show
+  configuration files" is on, a choice this browser remembers: the app's
+  own controls edit them, and a beginner's project is its sources. The
+  open file is listed even when it is one, and a line at the bottom says
+  how many are hidden, so nothing is out of reach.
 -->
 <script lang="ts">
 	import { baseName, parentOf } from '@yukibana/runtime';
 	import { worst, type Severity } from '../severity';
 	import type { Workspace } from '../workspace.svelte';
+	import { languageOf } from '../languages';
 
 	let { workspace }: { workspace: Workspace } = $props();
 
@@ -26,6 +34,35 @@
 	let error = $state<string | null>(null);
 	let selectedFolder = $state('');
 
+	/** Where "Show configuration files" is remembered, for every project in this browser. */
+	const SHOW_CONFIG_KEY = 'yukibana.code.v1.showConfig';
+	let showConfig = $state(loadShowConfig());
+
+	function loadShowConfig(): boolean {
+		try {
+			return localStorage.getItem(SHOW_CONFIG_KEY) === 'on';
+		} catch {
+			return false;
+		}
+	}
+
+	function setShowConfig(on: boolean) {
+		showConfig = on;
+		try {
+			localStorage.setItem(SHOW_CONFIG_KEY, on ? 'on' : 'off');
+		} catch {
+			// Storage refused (a private window, say): the choice lasts until the page is reloaded.
+		}
+	}
+
+	/** The project's configuration files, which only "Show configuration files" lists (the open one aside). */
+	const configFiles = $derived.by(() => {
+		const names = languageOf(workspace.language).configFiles ?? [];
+		return workspace.files.filter((f) => names.includes(baseName(f)));
+	});
+	const hidden = $derived(showConfig ? [] : configFiles.filter((f) => f !== workspace.active));
+	const files = $derived(hidden.length ? workspace.files.filter((f) => !hidden.includes(f)) : workspace.files);
+
 	const folders = $derived(workspace.allFolders());
 
 	/** Folders first, then files, each alphabetically, skipping collapsed subtrees. */
@@ -33,7 +70,7 @@
 		const out: Node[] = [];
 		const walk = (parent: string, depth: number) => {
 			const childFolders = folders.filter((f) => parentOf(f) === parent);
-			const childFiles = workspace.files.filter((f) => parentOf(f) === parent);
+			const childFiles = files.filter((f) => parentOf(f) === parent);
 			for (const f of childFolders) {
 				out.push({ path: f, name: baseName(f), depth, folder: true });
 				if (!collapsed.has(f)) walk(f, depth + 1);
@@ -166,6 +203,17 @@
 		<button title="Collapse folders" aria-label="Collapse folders" onclick={() => (collapsed = new Set(folders))}>
 			<svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4" transform="rotate(180 8 8)" /></svg>
 		</button>
+		{#if configFiles.length}
+			<button
+				title={showConfig ? 'Hide configuration files' : 'Show configuration files'}
+				aria-label="Show configuration files"
+				aria-pressed={showConfig}
+				class:pressed={showConfig}
+				onclick={() => setShowConfig(!showConfig)}
+			>
+				<svg viewBox="0 0 16 16"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" /><circle cx="8" cy="8" r="2" />{#if !showConfig}<path d="M2.5 13.5l11-11" />{/if}</svg>
+			</button>
+		{/if}
 	</div>
 
 	<div class="tree" role="tree">
@@ -217,6 +265,11 @@
 			{/if}
 		{/each}
 	</div>
+	{#if hidden.length}
+		<button class="hidden-note" onclick={() => setShowConfig(true)} title={hidden.join(', ')}>
+			{hidden.length} configuration {hidden.length === 1 ? 'file' : 'files'} hidden · Show
+		</button>
+	{/if}
 	<!-- Clicking empty space selects the root, so "new file" goes there. -->
 	<div class="rest" role="presentation" onclick={() => (selectedFolder = '')}></div>
 </div>
@@ -264,6 +317,20 @@
 		stroke-width: 1.3;
 		stroke-linecap: round;
 		stroke-linejoin: round;
+	}
+	.pressed {
+		color: var(--white);
+	}
+	.hidden-note {
+		display: block;
+		width: auto;
+		height: auto;
+		margin: 0.15rem 0.6rem 0;
+		padding: 0.2rem 0.35rem;
+		color: var(--gray-3);
+		font: inherit;
+		font-size: 0.75rem;
+		text-align: left;
 	}
 	.tree {
 		overflow: auto;

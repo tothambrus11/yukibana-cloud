@@ -1,9 +1,10 @@
 <!--
   How the project is built, in one place: a chip in the top bar that says
   what is chosen (`WASI · -O2`, `x86-64 · -O0 · ASan`) and opens a panel of
-  labelled rows, each with a line saying what it does: the C++ target, the
-  optimisation level (C++, Swift, Scala), the sanitizers, a Linux target's
-  run options, and the C++ test framework.
+  labelled rows, each with a line saying what it does: the C or C++ target
+  and language standard, the optimisation level (C, C++, Swift, Scala), the
+  sanitizers, a Linux target's run options, the C++ test framework, and
+  clang-tidy (on or off, and its rules, in their own dialog, TidyRules).
 
   These were five controls side by side in the top bar, explained only by
   their tooltips, and they pushed Download, Reset and the theme off the
@@ -16,7 +17,7 @@
   its detail.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick, type Component } from 'svelte';
 	import Popover from './Popover.svelte';
 	import { BUILD_SETTINGS_EVENT, buildSummary } from '../build-settings';
 	import type { Workspace } from '../workspace.svelte';
@@ -24,6 +25,9 @@
 	import { TARGETS, type CppTargetId } from '../cpp-targets';
 	import { TEST_FRAMEWORKS, type TestFramework } from '../cpp-tests';
 	import { levelsOf } from '../optimization';
+	import { isCFamily } from '../languages';
+	import { CPP_STANDARDS, C_STANDARDS, describeStandard, defaultStandard } from '../cpp-standards';
+	import { describeTidy } from '../tidy-config';
 
 	let { workspace }: { workspace: Workspace } = $props();
 
@@ -31,6 +35,20 @@
 	let open = $state(false);
 
 	const cpp = $derived(workspace.language === 'cpp');
+	const cFamily = $derived(isCFamily(workspace.language));
+	const standards = $derived(workspace.language === 'c' ? C_STANDARDS : CPP_STANDARDS);
+	const standardValue = $derived(!workspace.standard ? '' : workspace.standard.kind === 'standard' ? workspace.standard.standard.iso : workspace.standard.kind);
+	/** Whether the standard is spelt with GNU extensions; the default is clang's, which has them. */
+	const gnu = $derived(workspace.standard?.kind === 'standard' || workspace.standard?.kind === 'default' ? workspace.standard.gnu : false);
+
+	/** The clang-tidy rule editor, loaded the first time it is opened. */
+	let Rules = $state<Component<{ workspace: Workspace }, { show(): void }>>();
+	let rules = $state<{ show(): void }>();
+	async function openRules(): Promise<void> {
+		Rules ??= (await import('./TidyRules.svelte')).default;
+		await tick();
+		rules?.show();
+	}
 	const summary = $derived(buildSummary(workspace));
 	/** A C++ project on a Linux target: Run options apply (to Run and Test). */
 	const linuxTarget = $derived(workspace.target?.kind === 'target' && workspace.target.target.runtime === 'linux');
@@ -39,7 +57,7 @@
 	const levels = $derived(workspace.optimization ? levelsOf(workspace.language) : null);
 	const levelValue = $derived(!workspace.optimization ? '' : workspace.optimization.kind === 'other' ? 'other' : workspace.optimization.level.flag);
 	const levelHelp = $derived(
-		workspace.language === 'cpp'
+		cFamily
 			? 'The level Run, Test and the IR and assembly views compile at. Rewrites the -O line of compile_flags.txt.'
 			: workspace.language === 'scala'
 				? 'Whether Run links with the Scala.js optimizer, as sbt fastLinkJS does. It adds about a second to each Run.'
@@ -66,7 +84,7 @@
 <Popover bind:this={popover} id="build-settings" label="Build settings" class="build-settings" ontoggle={(o) => (open = o)}>
 	<h2>Build settings</h2>
 	<div class="rows">
-		{#if cpp}
+		{#if cFamily}
 			<!-- The target is compile_flags.txt's --target line (cpp-targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
 			<label class="row target">
 				<span class="name">Target</span>
@@ -88,6 +106,48 @@
 					<small>What the code is compiled for and runs on. Rewrites <code>--target</code> in compile_flags.txt.</small>
 				</span>
 			</label>
+			{#if workspace.standard}
+				<!-- compile_flags.txt's -std= line for the project's language (cpp-standards.ts): choosing one rewrites it; a hand-written one is shown as it is. -->
+				<div class="row standard" role="group" aria-label="Standard">
+					<span class="name">Standard</span>
+					<span class="field">
+						<span class="inline">
+							<select
+								aria-label="Language standard"
+								value={standardValue}
+								onchange={(e) => {
+									const value = e.currentTarget.value;
+									const standard = standards.find((s) => s.iso === value);
+									if (value === 'default') workspace.chooseStandard('default');
+									else if (standard) workspace.chooseStandard({ standard, gnu: workspace.standard?.kind === 'standard' && workspace.standard.gnu });
+									e.currentTarget.value = standardValue;
+								}}
+							>
+								<option value="default">Default ({describeStandard({ kind: 'standard', ...defaultStandard(workspace.language === 'c' ? 'c' : 'cpp') })})</option>
+								{#each standards as s (s.iso)}
+									<option value={s.iso}>{s.label}{s.draft ? ' (draft)' : ''}</option>
+								{/each}
+								{#if workspace.standard.kind === 'other'}
+									<option value="other" disabled>-std={workspace.standard.value}</option>
+								{/if}
+							</select>
+							<label class="check" title="The GNU dialect (-std=gnu++20 rather than -std=c++20): GNU's extensions to the language, on by default in clang">
+								<input
+									type="checkbox"
+									checked={gnu}
+									disabled={workspace.standard.kind !== 'standard'}
+									onchange={(e) => {
+										const s = workspace.standard;
+										if (s?.kind === 'standard') workspace.chooseStandard({ standard: s.standard, gnu: e.currentTarget.checked });
+									}}
+								/>
+								GNU extensions
+							</label>
+						</span>
+						<small>The language version clangd, Run and the views compile with. Rewrites <code>-std=</code> in compile_flags.txt.</small>
+					</span>
+				</div>
+			{/if}
 		{/if}
 		{#if levels && workspace.optimization}
 			<!-- C and C++: compile_flags.txt's -O line (optimization.ts), shown as it is when hand-edited; Swift and Scala: saved with the project. -->
@@ -112,7 +172,7 @@
 				</span>
 			</label>
 		{/if}
-		{#if cpp}
+		{#if cFamily}
 			<!-- The -fsanitize= line of compile_flags.txt (cpp-sanitizers.ts): ticking one rewrites it; a hand-written one is honoured. -->
 			<div class="row" role="group" aria-label="Sanitizers">
 				<span class="name">Sanitizers</span>
@@ -130,6 +190,20 @@
 				</div>
 			{/if}
 			<hr />
+			<!-- On or off is saved with the project; the rules are its .clang-tidy, which the dialog edits. -->
+			<div class="row tidy" role="group" aria-label="clang-tidy">
+				<span class="name">clang-tidy</span>
+				<span class="field">
+					<label class="check">
+						<input type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
+						Check the code as you type
+					</label>
+					<small>{describeTidy(workspace.clangTidy, workspace.tidyStatus)} Its rules are the project's .clang-tidy.</small>
+					<button class="btn rules-button" onclick={() => void openRules()}>Edit rules…</button>
+				</span>
+			</div>
+		{/if}
+		{#if cpp}
 			<!-- What tests/ includes is the framework; choosing one converts the sample's tests or adds a sample test. -->
 			<label class="row framework">
 				<span class="name">Test framework</span>
@@ -154,6 +228,10 @@
 		{/if}
 	</div>
 </Popover>
+
+{#if Rules}
+	<Rules bind:this={rules} {workspace} />
+{/if}
 
 <style>
 	.build-chip {
@@ -207,6 +285,13 @@
 		gap: 0.3rem;
 		min-width: 0;
 	}
+	.inline {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem 0.9rem;
+	}
+	.inline > select,
 	.field > select {
 		justify-self: start;
 		max-width: 100%;
@@ -217,6 +302,18 @@
 		background: var(--gray-7);
 		color: var(--white);
 		font: inherit;
+	}
+	.check {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.45rem;
+		cursor: pointer;
+	}
+	.tidy .check {
+		padding-top: 0.3rem;
+	}
+	.rules-button {
+		justify-self: start;
 	}
 	small {
 		color: var(--gray-3);

@@ -186,7 +186,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	const spec: ExploreView = viewOf(language, kind) ?? { kind, monaco: 'plaintext', toggles: [] };
 	const compiler = views?.compiler ?? 'The compiler';
 	/** The flags the person chose, as the details list them: clang's without what every view adds (explorer-map.ts), the others' as the pack sent them. */
-	const chosenFlags = (flags: readonly string[]) => (language === 'cpp' ? userFlags(flags) : [...flags]);
+	const chosenFlags = (flags: readonly string[]) => (language === 'cpp' || language === 'c' ? userFlags(flags) : [...flags]);
 
 	// Row 1, built once.
 	const head = el('div', 'yk-view-head');

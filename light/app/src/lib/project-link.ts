@@ -67,14 +67,35 @@ const V1 = type({
 	'optimization?': 'string',
 });
 
+/**
+ * Version 2: version 1 and whether clang-tidy runs on a C or C++ project
+ * (packs/cpp README, "clang-tidy"). Its rules are the project's
+ * .clang-tidy, a file like any other; this says only whether they run, so
+ * turning it off keeps them. Absent: it runs, as in every project of
+ * version 1, which had no such field; only `false` is ever written.
+ */
+const V2 = type({
+	'+': 'delete',
+	v: '2',
+	language: 'string',
+	files: 'Record<string, string>',
+	'folders?': 'string[]',
+	'open?': 'string[]',
+	'active?': 'string | null',
+	'runOptions?': RUN_OPTIONS,
+	'optimization?': 'string',
+	/** false: clang-tidy's checks do not run (and clangd-tidy.wasm is not downloaded). */
+	'clangTidy?': 'boolean',
+});
+
 /** The current version of the document, which `encodeProject` writes and `readDocument` returns. */
-export const CURRENT = 1;
+export const CURRENT = 2;
 
 /** A project, in the current schema. */
-export type ProjectDocument = typeof V1.infer;
+export type ProjectDocument = typeof V2.infer;
 
 /** Every version's schema; `v` absent is version 0. */
-const SCHEMAS = { 0: V0, 1: V1 } as const;
+const SCHEMAS = { 0: V0, 1: V1, 2: V2 } as const;
 
 /** What a migration may need that its document does not say. */
 export interface MigrationContext {
@@ -100,6 +121,8 @@ const MIGRATIONS: { readonly [from: number]: (document: never, context: Migratio
 			...(typeof d.optimization === 'string' ? { optimization: d.optimization } : {}),
 		};
 	},
+	// Nothing to change: clang-tidy was not a setting, and runs.
+	1: (d: typeof V1.infer) => ({ ...d, v: 2 }),
 };
 
 /**

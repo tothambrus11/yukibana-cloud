@@ -184,7 +184,8 @@ export const LANGUAGE_VIEWS: Readonly<Record<string, LanguageViews>> = {
 
 /** The views of language `id`, or null when it has none. */
 export function viewsOf(id: string): LanguageViews | null {
-	return LANGUAGE_VIEWS[id] ?? null;
+	// A C project's are C++'s: the same pack, compiler and sources.
+	return LANGUAGE_VIEWS[id === 'c' ? 'cpp' : id] ?? null;
 }
 
 /** View `kind` of language `id`, or null when the language has no such view. */

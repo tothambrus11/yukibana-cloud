@@ -34,6 +34,8 @@ const CASES = {
 	// One file, and p5.js's declarations, whose definitions are dropped as a lib's are: no definition to go to.
 	p5: { pack: 'javascript', file: 'main.ts', error: '\nconst wrong: number = "no";\n', access: '\nnew p5((q) => q.circ', member: 'circle', hover: 'createCanvas' },
 	'p5-global': { pack: 'javascript', file: 'sketch.ts', error: '\nconst wrong: number = "no";\n', access: '\ncirc', member: 'circle', hover: 'createCanvas' },
+	// C is the C++ pack (packs/cpp/README.md, "C projects"): the same server, compilers and runner.
+	c: { pack: 'cpp', output: '5.000000', file: 'main.c', error: '\nint broken = undeclared_xyz;\n', access: '\nvoid f(struct point p) { p.', member: 'y', definition: 'point_distance', definitionFile: 'geometry', hover: 'point' },
 	cpp: { output: '5.000000', testOutput: '[  PASSED  ] 3 tests.', file: 'main.cpp', error: '\nint broken = undeclared_xyz;\n', access: '\nvoid f(Point p) { p.', member: 'norm', definition: 'distance', definitionFile: 'geometry', hover: 'Point' },
 	swift: { output: 'to', testOutput: 'Executed 2 tests, with 0 failures', plainTests: true, file: 'main.swift', error: '\nlet x: Int = "no"\n', access: '\nb.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.swift', hover: 'Point' },
 	scala: { output: 'to', file: 'Main.scala', error: '\nval broken: Int = "no"\n', access: '\nval q = Point(1, 2)\nval r = q.', member: 'norm', definition: 'distance', definitionFile: 'Geometry.scala', hover: 'Point' },
@@ -277,6 +279,7 @@ async function run(language, c) {
 	if (c.outline) await nestedOutline(page, check, c.outline);
 	if (c.inlayHint) await inlayHints(page, check, c.inlayHint);
 	if (language === 'cpp') await cppBridge(page, check, lspLog);
+	if (language === 'c' || language === 'cpp') await cFamilySettings(page, check, language, requests);
 	if (language === 'typescript') await renameFromUse(page, check);
 	if (language === 'python') await undoRename(page, check, { file: 'main.py', needle: 'distance(a, b)', from: 'distance', name: 'dist3', declarationFile: 'geometry.py', declaration: 'def dist3(', edit: '\n# edited\n' });
 	if (language === 'swift' && existsSync(join(build, 'packs', 'swift', 'runner.js'))) await swiftMacros(page, check, requests);
@@ -389,6 +392,65 @@ async function testFrameworks(page, check) {
 /** The pack files of the C++ pack among `urls`, as paths under packs/cpp/. */
 function cppPackFiles(urls) {
 	return [...new Set(urls.map((u) => /\/packs\/cpp\/([^?#]*)/.exec(u)?.[1]).filter(Boolean))].sort();
+}
+
+/**
+ * What a C or C++ project keeps out of a beginner's way and edits for them:
+ * its configuration files are hidden in the explorer until shown; the
+ * Standard picker rewrites compile_flags.txt's -std= line; clang-tidy is
+ * on, loads after the toolchain, and its rule editor turns a check off in
+ * .clang-tidy, after which its warning goes; turned off, every warning of
+ * it goes.
+ */
+async function cFamilySettings(page, check, language, requests) {
+	const names = async () => (await page.locator('.explorer .row .name').allTextContents()).map((n) => n.trim());
+	const config = ['compile_flags.txt', '.clang-tidy', '.clang-format'];
+	const shownConfig = async () => (await names()).filter((n) => config.includes(n));
+	await openFile(page, language === 'c' ? 'main.c' : 'main.cpp');
+	check((await shownConfig()).length === 0, `the configuration files are hidden (${(await names()).join(', ')})`);
+	await page.locator('.explorer .hidden-note').click();
+	check((await shownConfig()).length === config.length, `"Show" lists them (${(await names()).join(', ')})`);
+	await page.locator('.explorer button[aria-label="Show configuration files"]').click();
+	check((await shownConfig()).length === 0, 'and the toggle hides them again');
+
+	// The standard.
+	const flags = (await modelText(page, 'compile_flags.txt')) ?? '';
+	const [from, to] = language === 'c' ? ['c17', 'c23'] : ['c++20', 'c++23'];
+	const standard = page.locator('#build-settings .row.standard select');
+	await chooseSetting(page, standard, to);
+	check((await modelText(page, 'compile_flags.txt')) === flags.replace(`-std=${from}`, `-std=${to}`), `choosing ${to} rewrites the -std= line (${JSON.stringify(await modelText(page, 'compile_flags.txt'))})`);
+	await chooseSetting(page, standard, from);
+	check((await modelText(page, 'compile_flags.txt')) === flags, 'and choosing the old one puts it back');
+
+	// clang-tidy: a check the defaults have on, its warning, then the rule editor.
+	const CHECK = 'readability-else-after-return';
+	const source = language === 'c' ? 'geometry.c' : 'geometry.cpp';
+	const sample = (await modelText(page, source)) ?? '';
+	const warns = (code) => globalThis.monaco.editor.getModelMarkers({}).some((m) => (typeof m.code === 'object' ? m.code.value : m.code) === code);
+	await setText(page, source, `${sample}\nint sign(int v) {\n    if (v < 0) {\n        return -1;\n    } else {\n        return 1;\n    }\n}\n`);
+	const warned = await page.waitForFunction(warns, CHECK, { timeout: 300_000 }).then(() => true, () => false);
+	check(warned, `clang-tidy loads and warns: ${CHECK}`);
+	const at = (file) => requests.findIndex((u) => u.endsWith(`/packs/cpp/${file}`));
+	check(at('clangd.wasm') >= 0 && at('clangd.wasm') < at('cc.wasm') && at('cc.wasm') < at('clangd-tidy.wasm'), 'clangd.wasm, then the toolchain (cc.wasm), then clangd-tidy.wasm');
+	await openBuildSettings(page);
+	await page.locator('#build-settings .row.tidy button', { hasText: 'Edit rules' }).click();
+	const dialog = page.locator('dialog.tidy-rules');
+	await dialog.locator('input[type=search]').fill(CHECK);
+	await dialog.locator('.check .name', { hasText: CHECK }).first().waitFor({ timeout: 30_000 });
+	await dialog.locator('button', { hasText: 'Turn off' }).click();
+	const tidy = (await modelText(page, '.clang-tidy')) ?? '';
+	check(tidy.includes(`-${CHECK}`), `turning it off writes -${CHECK} into .clang-tidy`);
+	const gone = await page.waitForFunction((code) => !globalThis.monaco.editor.getModelMarkers({}).some((m) => (typeof m.code === 'object' ? m.code.value : m.code) === code), CHECK, { timeout: 60_000 }).then(() => true, () => false);
+	check(gone, 'and its warning goes, without an edit of the source');
+	await dialog.locator('button', { hasText: 'Turn on' }).click();
+	const back = await page.waitForFunction(warns, CHECK, { timeout: 60_000 }).then(() => true, () => false);
+	check(back && !((await modelText(page, '.clang-tidy')) ?? '').includes(`-${CHECK}`), 'turning it on again brings it back, and the line goes');
+	await dialog.locator('.state input[type=checkbox]').uncheck();
+	const off = await page.waitForFunction(() => !globalThis.monaco.editor.getModelMarkers({}).some((m) => m.source === 'clang-tidy'), null, { timeout: 60_000 }).then(() => true, () => false);
+	check(off, 'turning clang-tidy off removes every warning of it');
+	await dialog.locator('.state input[type=checkbox]').check();
+	await dialog.locator('button.close').click();
+	await setText(page, source, sample);
 }
 
 /**
@@ -1423,7 +1485,7 @@ async function downloading() {
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
 	await page.selectOption('header select', 'cpp');
-	await page.locator('.explorer .row .name', { hasText: 'compile_flags.txt' }).waitFor({ timeout: 30_000 });
+	await page.locator('.explorer .row .name', { hasText: 'geometry.h' }).waitFor({ timeout: 30_000 });
 	const [download] = await Promise.all([page.waitForEvent('download'), menuItem(page, 'Download project').then((item) => item.click())]);
 	const dir = mkdtempSync(join(tmpdir(), 'yukibana-download-'));
 	const path = join(dir, download.suggestedFilename());

@@ -59,6 +59,7 @@ interface BuildFiles {
 const CPP_DEFAULT_LEVEL = defaultLevel(CPP_LEVELS).flag;
 
 const BUILD: Record<LanguageId, BuildFiles> = {
+	c: { paths: ['CMakeLists.txt'], generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry) }) },
 	cpp: { paths: ['CMakeLists.txt'], generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry) }) },
 	swift: { paths: ['Package.swift'], generate: (p) => ({ 'Package.swift': packageSwift(p.files, p.paths, p.optimization) }) },
 	python: { paths: ['pyproject.toml'], generate: (p) => ({ 'pyproject.toml': pyprojectToml(p.files) }) },
@@ -1412,10 +1413,11 @@ function goTargetSection(env: string): string[] {
 function instructions(language: Language, files: Files): string[] {
 	const paths = Object.keys(files);
 	switch (language.id) {
+		case 'c':
 		case 'cpp': {
 			const tests = paths.some((p) => TESTS.test(p) && (CXX.test(p) || C.test(p)));
 			return [
-				'## Build and run\n\nWith CMake 3.16 or later and a C++ compiler:\n\n```sh\ncmake -S . -B build\ncmake --build build\n./build/app\n```',
+				`## Build and run\n\nWith CMake 3.16 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake -S . -B build\ncmake --build build\n./build/app\n\`\`\``,
 				...(tests ? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFrameworkOf(files)]}, which CMake downloads the first time it configures the build:\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``] : []),
 				...crossSection(linuxTarget(files)),
 				'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
@@ -1553,6 +1555,7 @@ function readme(language: Language, files: Files, generated: readonly string[]):
 
 /** What each language's tools write into the project folder, and editors' own files. */
 const IGNORED: Record<LanguageId, readonly string[]> = {
+	c: ['build/', 'cmake-build-*/', 'out/', '.cache/'],
 	cpp: ['build/', 'cmake-build-*/', 'out/', '.cache/'],
 	swift: ['.build/', '.swiftpm/', 'xcuserdata/', 'DerivedData/'],
 	python: ['__pycache__/', '*.py[cod]', '.venv/', '.pytest_cache/'],

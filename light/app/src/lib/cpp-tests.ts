@@ -82,19 +82,19 @@ const GEOMETRY_TESTS: Record<TestFramework, (sample: Files) => string> = {
 #include "geometry.h"
 
 TEST_CASE("the norm of (3, 4) is 5") {
-    Point p{3, 4};
+    const Point p{3, 4};
     CHECK(p.norm() == doctest::Approx(5.0));
 }
 
 TEST_CASE("distance is symmetric") {
-    Point a{1, 2};
-    Point b{-2, 6};
+    const Point a{1, 2};
+    const Point b{-2, 6};
     CHECK(distance(a, b) == doctest::Approx(distance(b, a)));
     CHECK(distance(a, b) == doctest::Approx(5.0));
 }
 
 TEST_CASE("the distance to itself is zero") {
-    Point a{1.5, -2.5};
+    const Point a{1.5, -2.5};
     CHECK(distance(a, a) == 0.0);
 }
 `,
@@ -106,19 +106,19 @@ TEST_CASE("the distance to itself is zero") {
 using Catch::Matchers::WithinULP;
 
 TEST_CASE("the norm of (3, 4) is 5", "[geometry]") {
-    Point p{3, 4};
+    const Point p{3, 4};
     REQUIRE_THAT(p.norm(), WithinULP(5.0, 4));
 }
 
 TEST_CASE("distance is symmetric", "[geometry]") {
-    Point a{1, 2};
-    Point b{-2, 6};
+    const Point a{1, 2};
+    const Point b{-2, 6};
     REQUIRE_THAT(distance(a, b), WithinULP(distance(b, a), 4));
     REQUIRE_THAT(distance(a, b), WithinULP(5.0, 4));
 }
 
 TEST_CASE("the distance to itself is zero", "[geometry]") {
-    Point a{1.5, -2.5};
+    const Point a{1.5, -2.5};
     REQUIRE(distance(a, a) == 0.0);
 }
 `,
@@ -131,7 +131,7 @@ const EXAMPLE_TESTS: Record<TestFramework, string> = {
 #include <string>
 
 TEST(Example, StringsConcatenate) {
-    std::string greeting = "Hello, ";
+    const std::string greeting = "Hello, ";
     EXPECT_EQ(greeting + "world", "Hello, world");
 }
 `,
@@ -140,7 +140,7 @@ TEST(Example, StringsConcatenate) {
 #include <string>
 
 TEST_CASE("strings concatenate") {
-    std::string greeting = "Hello, ";
+    const std::string greeting = "Hello, ";
     CHECK(greeting + "world" == "Hello, world");
 }
 `,
@@ -149,7 +149,7 @@ TEST_CASE("strings concatenate") {
 #include <string>
 
 TEST_CASE("strings concatenate", "[example]") {
-    std::string greeting = "Hello, ";
+    const std::string greeting = "Hello, ";
     REQUIRE(greeting + "world" == "Hello, world");
 }
 `,

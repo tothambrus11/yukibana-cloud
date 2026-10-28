@@ -44,7 +44,7 @@ export interface OptimizationLevel {
 }
 
 /** The languages with levels. */
-export type OptimizingLanguage = 'cpp' | 'swift' | 'scala';
+export type OptimizingLanguage = 'c' | 'cpp' | 'swift' | 'scala';
 
 /**
  * Clang's levels. `-O2` is the default because it is what Run used before
@@ -87,7 +87,7 @@ export const SCALA_LEVELS: readonly OptimizationLevel[] = [
 
 /** The levels of `language`, or null for a language without them. */
 export function levelsOf(language: string): readonly OptimizationLevel[] | null {
-	return language === 'cpp' ? CPP_LEVELS : language === 'swift' ? SWIFT_LEVELS : language === 'scala' ? SCALA_LEVELS : null;
+	return language === 'cpp' || language === 'c' ? CPP_LEVELS : language === 'swift' ? SWIFT_LEVELS : language === 'scala' ? SCALA_LEVELS : null;
 }
 
 /** The default level of a language with levels. */

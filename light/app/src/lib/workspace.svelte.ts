@@ -6,9 +6,9 @@
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
-import type { LoadingProgress, RunMode } from '@yukibana/protocol';
+import type { LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
 import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
-import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
+import { isCFamily, isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
 import { viewOf, viewsOf, type ExploreKind } from './explore-views';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
@@ -19,6 +19,8 @@ import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework
 import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
 import { describeSanitizers, sanitizersOf, withSanitizers, type SanitizerChoice } from './cpp-sanitizers';
 import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } from './optimization';
+import { describeStandard, standardOf, withStandard, type Standard, type StandardChoice } from './cpp-standards';
+import { checksOf, TIDY_FILE, withChecks, type CheckGlob } from './tidy-config';
 import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
@@ -86,7 +88,7 @@ export interface EditorHost {
 	showCallHierarchy(): void;
 }
 
-/** The file that holds a C++ project's flags, its target among them (cpp-targets.ts). */
+/** The file that holds a C or C++ project's flags: its target, standard, level and sanitizers among them. */
 const COMPILE_FLAGS = 'compile_flags.txt';
 
 const SAVE_DELAY_MS = 400;
@@ -116,8 +118,8 @@ export class Workspace {
 	 */
 	testFramework = $state<TestFramework | 'mixed' | null>(null);
 	/**
-	 * A C++ project's target, as its compile_flags.txt says (cpp-targets.ts);
-	 * null when the project is not C++.
+	 * A C or C++ project's target, as its compile_flags.txt says
+	 * (cpp-targets.ts); null when the project is neither.
 	 */
 	target = $state<TargetChoice | null>(null);
 	/**
@@ -136,6 +138,29 @@ export class Workspace {
 	 * with the project; null for a language without levels.
 	 */
 	optimization = $state<LevelChoice | null>(null);
+	/**
+	 * A C or C++ project's language standard, as its compile_flags.txt says
+	 * (cpp-standards.ts); null when the project is neither.
+	 */
+	standard = $state<StandardChoice | null>(null);
+	/**
+	 * Whether clang-tidy runs on a C or C++ project, as it was set with the
+	 * project (Project.clangTidy): on unless turned off. Its rules are the
+	 * project's .clang-tidy (`tidyChecks`) either way.
+	 */
+	clangTidy = $state(true);
+	/**
+	 * A C or C++ project's clang-tidy rules: the `Checks` of its .clang-tidy
+	 * (tidy-config.ts), null when the file has no such key or there is no
+	 * file (clangd's own few checks then), and for any other project.
+	 */
+	tidyChecks = $state<CheckGlob[] | null>(null);
+	/**
+	 * Where the language server's clang-tidy is, as it last reported it
+	 * (`yukibana/status`): null before the first report, and for a server
+	 * without one.
+	 */
+	tidyStatus = $state<PartStatus | null>(null);
 	/**
 	 * The program run from this project, if any, and the terminal's
 	 * contents. The guest kernel's log and the run's timings go to the
@@ -344,9 +369,10 @@ export class Workspace {
 		// under QEMU, and refuses Catch2 and doctest by name (packs/cpp README).
 		const files = this.currentFiles();
 		this.host?.showTerminal();
-		// A C++ runner reads its level from compile_flags.txt; Swift's is sent.
-		const level = this.language !== 'cpp' && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
-		this.runner.start(runnerSourceOf(language), files, entry, mode, this.language === 'cpp' ? { ...this.runOptions } : level ? { optimization: level } : undefined);
+		// A C or C++ runner reads its level from compile_flags.txt; Swift's is sent.
+		const cFamily = isCFamily(this.language);
+		const level = !cFamily && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
+		this.runner.start(runnerSourceOf(language), files, entry, mode, cFamily ? { ...this.runOptions } : level ? { optimization: level } : undefined);
 	}
 
 	/**
@@ -392,10 +418,10 @@ export class Workspace {
 				language: () => this.language,
 				pack: () => (viewsOf(this.language) ? packOf(languageOf(this.language)) : null),
 				files: () => this.currentFiles(),
-				// C++ views read the level from compile_flags.txt, as its runner does; Swift's is sent, as with Run.
+				// C and C++ views read the level from compile_flags.txt, as their runner does; Swift's is sent, as with Run.
 				options: () => {
 					const o = this.optimization;
-					return this.language !== 'cpp' && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
+					return !isCFamily(this.language) && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
 				},
 			});
 			explorer.activeChanged(this.active);
@@ -408,13 +434,13 @@ export class Workspace {
 	}
 
 	/**
-	 * Puts a C++ project on target `id` (cpp-targets.ts): compile_flags.txt
+	 * Puts a C or C++ project on target `id` (cpp-targets.ts): compile_flags.txt
 	 * is rewritten (or created) as one edit, which Undo takes back, then
 	 * saved; clangd, Run and the views follow the file. The output panel
 	 * says what changed.
 	 */
 	chooseTarget(id: CppTargetId): void {
-		if (this.language !== 'cpp') return;
+		if (!isCFamily(this.language)) return;
 		const target = targetById(id);
 		this.replaceFile(COMPILE_FLAGS, withTarget(this.models.get(COMPILE_FLAGS)?.getValue(), id));
 		this.refreshTarget();
@@ -431,7 +457,7 @@ export class Workspace {
 	 * The output panel says what changed.
 	 */
 	chooseSanitizers(choice: SanitizerChoice): void {
-		if (this.language !== 'cpp') return;
+		if (!isCFamily(this.language)) return;
 		this.replaceFile(COMPILE_FLAGS, withSanitizers(this.models.get(COMPILE_FLAGS)?.getValue(), choice));
 		this.refreshTarget();
 		this.write('info', describeSanitizers(choice));
@@ -449,7 +475,7 @@ export class Workspace {
 		const levels = levelsOf(this.language);
 		const level = levels?.find((l) => l.flag === flag);
 		if (!levels || !level) return;
-		if (this.language === 'cpp') {
+		if (isCFamily(this.language)) {
 			this.replaceFile(COMPILE_FLAGS, withCppLevel(this.models.get(COMPILE_FLAGS)?.getValue(), flag));
 			const how = level.default ? `no -O line in ${COMPILE_FLAGS}: Run and the views add ${flag}` : `${flag} in ${COMPILE_FLAGS}`;
 			this.write('info', `Optimization: ${flag} (${how}).`);
@@ -461,6 +487,56 @@ export class Workspace {
 		this.refreshOptimization();
 		this.explorer?.settingsChanged();
 		this.scheduleSave();
+	}
+
+	/**
+	 * Puts a C or C++ project on a language standard (cpp-standards.ts):
+	 * compile_flags.txt's `-std=` line for the project's language is
+	 * rewritten (removed for `'default'`, or the file created) as one edit,
+	 * which Undo takes back, then saved; clangd, Run, the views and Download
+	 * follow the file. The output panel says what changed.
+	 */
+	chooseStandard(choice: { standard: Standard; gnu: boolean } | 'default'): void {
+		const language = this.language;
+		if (language !== 'c' && language !== 'cpp') return;
+		this.replaceFile(COMPILE_FLAGS, withStandard(this.models.get(COMPILE_FLAGS)?.getValue(), language, choice));
+		this.refreshTarget();
+		const now = standardOf(this.models.get(COMPILE_FLAGS)?.getValue(), language);
+		this.write('info', `Standard: ${describeStandard(now)}${choice === 'default' ? ` (no -std= line in ${COMPILE_FLAGS})` : ` (-std=${choice.gnu ? choice.standard.gnu : choice.standard.iso} in ${COMPILE_FLAGS})`}.`);
+		this.explorer?.settingsChanged();
+		this.scheduleSave();
+	}
+
+	/**
+	 * Turns clang-tidy on or off for a C or C++ project: saved with the
+	 * project (and its link), and sent to the running server, which adds or
+	 * removes its diagnostics without a restart. The rules in .clang-tidy
+	 * stay as they are, for when it is turned on again.
+	 */
+	setClangTidy(on: boolean): void {
+		if (!isCFamily(this.language) || on === this.clangTidy) return;
+		this.clangTidy = on;
+		this.client?.configure(this.serverOptions());
+		this.write('info', on ? `clang-tidy is on: its rules are in ${TIDY_FILE}.` : `clang-tidy is off; ${TIDY_FILE} is kept for when it is turned on.`);
+		this.scheduleSave();
+	}
+
+	/**
+	 * Sets a C or C++ project's clang-tidy rules: .clang-tidy's `Checks`
+	 * rewritten (tidy-config.ts `withChecks`; every other line kept, the file
+	 * created if missing) as one edit, which Undo takes back, then saved.
+	 * clangd reads the file again and diagnoses with the new rules.
+	 */
+	setTidyChecks(globs: readonly CheckGlob[]): void {
+		if (!isCFamily(this.language)) return;
+		this.replaceFile(TIDY_FILE, withChecks(this.models.get(TIDY_FILE)?.getValue(), globs));
+		this.refreshTidy();
+		this.scheduleSave();
+	}
+
+	/** What a C or C++ pack's server is told about the project: `initializationOptions`, and `configure` later. */
+	private serverOptions(): { yukibana: { language: LanguageId; clangTidy: boolean } } {
+		return { yukibana: { language: this.language, clangTidy: this.clangTidy } };
 	}
 
 	/** Changes how Run runs a program built for a Linux target; saved with the project. */
@@ -479,7 +555,7 @@ export class Workspace {
 	async download(): Promise<void> {
 		const language = languageOf(this.language);
 		const files = this.currentFiles();
-		const exported = exportProject(language, files, this.language === 'cpp' ? null : this.chosenLevel);
+		const exported = exportProject(language, files, isCFamily(this.language) ? null : this.chosenLevel);
 		const paths = Object.keys(exported.files).sort();
 		const empty = this.allFolders().filter((f) => !paths.some((p) => p.startsWith(f + '/')) && !this.folders.some((g) => g.startsWith(f + '/')));
 		const name = `${language.id}-project`;
@@ -656,6 +732,7 @@ export class Workspace {
 		this.runOptions = { ...(project.runOptions ?? DEFAULT_RUN_OPTIONS) };
 		this.runOptionsChosen = project.runOptions !== undefined;
 		this.chosenLevel = project.optimization ?? null;
+		this.clangTidy = project.clangTidy !== false;
 		this.host?.closeAll();
 		const entry = languageOf(this.language).entry;
 		const open = project.open.length ? project.open : this.models.has(entry) ? [entry] : this.files.slice(0, 1);
@@ -665,6 +742,7 @@ export class Workspace {
 		this.refreshTestFramework();
 		this.refreshTarget();
 		this.refreshOptimization();
+		this.refreshTidy();
 		// The tab holds its project from the start, before any edit: reopened or shared now, it is this one.
 		clearTimeout(this.saveTimer);
 		this.changed = false;
@@ -768,9 +846,14 @@ export class Workspace {
 			languages: language.monacoLanguages,
 			rootUri: WORKSPACE.uri,
 			settings: language.settings,
+			...(isCFamily(language.id) ? { initializationOptions: this.serverOptions() } : {}),
 			events: {
 				state: (s) => {
-					if (this.client === client) this.clientState = s;
+					if (this.client !== client) return;
+					this.clientState = s;
+					// A C++ pack with clang-tidy reports it before it answers `initialize`; an older one never does.
+					if (s.kind === 'running' && isCFamily(language.id) && this.tidyStatus === null)
+						this.tidyStatus = { id: 'clang-tidy', label: 'clang-tidy', state: 'failed', detail: 'this build of the C and C++ language server has no clang-tidy yet' };
 				},
 				loading: (p) => {
 					if (this.client === client) this.progress = p;
@@ -785,6 +868,9 @@ export class Workspace {
 					// In the direction chosen last, as VS Code's view keeps it.
 					this.callHierarchy = new CallHierarchy(item, (direction, it) => client.calls(direction, it), this.callHierarchy?.direction);
 					this.host?.showCallHierarchy();
+				},
+				status: (part) => {
+					if (this.client === client && part.id === 'clang-tidy') this.tidyStatus = part;
 				},
 			},
 		});
@@ -812,6 +898,7 @@ export class Workspace {
 		this.client = null;
 		this.progress = null;
 		this.callHierarchy = null;
+		this.tidyStatus = null;
 		this.clientState = { kind: 'stopped' };
 		await client?.stop();
 	}
@@ -867,17 +954,25 @@ export class Workspace {
 		this.testFramework = detected.mixed ? 'mixed' : detected.framework;
 	}
 
-	/** The target and the sanitizers, which compile_flags.txt says. */
+	/** The target, the sanitizers and the standard, which compile_flags.txt says. */
 	private refreshTarget(): void {
 		const flags = this.models.get(COMPILE_FLAGS)?.getValue();
-		this.target = this.language === 'cpp' ? targetOf(flags) : null;
-		this.sanitizers = this.language === 'cpp' ? sanitizersOf(flags) : null;
+		const language = this.language;
+		const cFamily = language === 'c' || language === 'cpp';
+		this.target = cFamily ? targetOf(flags) : null;
+		this.sanitizers = cFamily ? sanitizersOf(flags) : null;
+		this.standard = cFamily ? standardOf(flags, language) : null;
+	}
+
+	/** The clang-tidy rules, which .clang-tidy says. */
+	private refreshTidy(): void {
+		this.tidyChecks = isCFamily(this.language) ? checksOf(this.models.get(TIDY_FILE)?.getValue()) : null;
 	}
 
 	private refreshOptimization(): void {
 		const levels = levelsOf(this.language);
 		if (!levels) this.optimization = null;
-		else if (this.language === 'cpp') this.optimization = cppLevelOf(this.models.get(COMPILE_FLAGS)?.getValue());
+		else if (isCFamily(this.language)) this.optimization = cppLevelOf(this.models.get(COMPILE_FLAGS)?.getValue());
 		else {
 			const level = levels.find((l) => l.flag === this.chosenLevel);
 			this.optimization = level ? { kind: 'level', level } : { kind: 'default', level: defaultLevel(levels) };
@@ -887,7 +982,8 @@ export class Workspace {
 	/**
 	 * Saves shortly. `edited` is the file whose text changed, if that is all
 	 * that did: the test framework is then looked at again only when it is
-	 * under tests/, and the target only when it is compile_flags.txt, not on
+	 * under tests/, the target only when it is compile_flags.txt and the
+	 * clang-tidy rules only when it is .clang-tidy, not on
 	 * every keystroke in any file.
 	 */
 	private scheduleSave(edited?: string, change = true): void {
@@ -897,6 +993,7 @@ export class Workspace {
 			this.refreshTarget();
 			this.refreshOptimization();
 		}
+		if (edited === undefined || edited === TIDY_FILE) this.refreshTidy();
 		clearTimeout(this.saveTimer);
 		this.saveTimer = setTimeout(() => this.saveNow(), SAVE_DELAY_MS);
 	}
@@ -911,7 +1008,7 @@ export class Workspace {
 	/** The project as it is now, as it is saved. */
 	private currentProject(): Project {
 		const files = this.currentFiles();
-		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}) };
+		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}) };
 	}
 
 	/**

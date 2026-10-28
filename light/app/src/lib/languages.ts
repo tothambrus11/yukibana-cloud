@@ -5,7 +5,7 @@
  */
 
 /** Identifies a language, and with it a pack and a saved project. */
-export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'p5-global' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell' | 'go' | 'zig';
+export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'p5-global' | 'c' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell' | 'go' | 'zig';
 
 /** Project files by path relative to the workspace root, `/`-separated. */
 export type Files = Record<string, string>;
@@ -67,10 +67,110 @@ export interface Language {
 	 * reloaded as files change) instead of running `entry` in the terminal.
 	 */
 	preview?: string;
+	/**
+	 * The names of the project's configuration files, which the explorer
+	 * hides until "Show configuration files" is on: a file of one of these
+	 * names, in any folder, is one. They are the files the app's own
+	 * controls edit (Build settings rewrites compile_flags.txt, the
+	 * clang-tidy rules .clang-tidy), so a beginner never needs to open them;
+	 * they stay in the project, the server reads them, Download includes
+	 * them, and a tab open on one still shows.
+	 */
+	configFiles?: readonly string[];
 }
 
 /** A language's short name: `short` when it has one, else its label. */
 export const shortLabel = (language: Language): string => language.short ?? language.label;
+
+/**
+ * The C++ sample's clang-tidy checks, which the editor runs as you type
+ * (packs/cpp README, "clang-tidy"): the C++ Core Guidelines
+ * (cppcoreguidelines-*), the checks that find bugs (bugprone-*), and the
+ * modernize, performance and readability families, as Jason Turner's
+ * cpp-best-practices starter project enables them, less the checks that are
+ * noise in a small program or a lesson: swappable parameters, magic
+ * numbers, do-while, recursion, public data members, [[nodiscard]] on every
+ * getter, trailing return types, gsl::owner, printf's varargs (the samples
+ * print with printf), indexing with a variable, short names, uppercase
+ * literal suffixes and parentheses around arithmetic. Each line is a glob,
+ * the last one that matches a check deciding, as clang-tidy reads them; the
+ * rule editor (tidy-config.ts) rewrites the list and keeps the rest of the
+ * file.
+ */
+export const CPP_TIDY = `# clang-tidy's checks: the editor runs them as you type. Change them with
+# Build settings > clang-tidy rules, or here: each line is a glob, and the
+# last one that matches a check decides (- turns it off).
+Checks: >-
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  concurrency-*,
+  -concurrency-mt-unsafe,
+  cppcoreguidelines-*,
+  -cppcoreguidelines-avoid-do-while,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-pro-type-vararg,
+  misc-*,
+  -misc-no-recursion,
+  -misc-non-private-member-variables-in-classes,
+  modernize-*,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  portability-*,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-math-missing-parentheses,
+  -readability-uppercase-literal-suffix
+`;
+
+/**
+ * The C sample's clang-tidy checks: as C++'s, with the SEI CERT C coding
+ * standard (cert-*) in place of the C++ families, less unchecked printf
+ * results (cert-err33-c) and implicit conversions to bool (`if (p)` is how
+ * C says it).
+ */
+export const C_TIDY = `# clang-tidy's checks: the editor runs them as you type. Change them with
+# Build settings > clang-tidy rules, or here: each line is a glob, and the
+# last one that matches a check decides (- turns it off).
+Checks: >-
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  cert-*,
+  -cert-err33-c,
+  concurrency-*,
+  -concurrency-mt-unsafe,
+  misc-*,
+  -misc-no-recursion,
+  performance-*,
+  portability-*,
+  readability-*,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+  -readability-magic-numbers,
+  -readability-math-missing-parentheses,
+  -readability-uppercase-literal-suffix
+`;
+
+/** How Format Document lays out C and C++ (clang-format, which clangd has built in): LLVM's style with the samples' four-space indent. */
+export const CLANG_FORMAT = `# How Format Document lays out the code (clang-format's options:
+# https://clang.llvm.org/docs/ClangFormatStyleOptions.html).
+BasedOnStyle: LLVM
+IndentWidth: 4
+`;
+
+/** C and C++ projects' configuration files: clangd's, clang-tidy's and clang-format's. */
+const C_FAMILY_CONFIG = ['compile_flags.txt', 'compile_commands.json', '.clangd', '.clang-tidy', '.clang-format'] as const;
+
+/** Whether a language is C or C++: both are the C++ pack's, and build with compile_flags.txt (cpp-targets.ts and its siblings). */
+export function isCFamily(language: string): language is 'c' | 'cpp' {
+	return language === 'c' || language === 'cpp';
+}
 
 export const LANGUAGES: readonly Language[] = [
 	{
@@ -610,12 +710,79 @@ function draw() {
 		},
 	},
 	{
+		// C on the C++ pack: the same clangd, compilers, sysroot and runner,
+		// downloaded once for both (pack). What makes it C is its files
+		// (.c), its -std=c17 in compile_flags.txt and its headers, which the
+		// pack's server parses as C for a C project (packs/cpp/src/server.js,
+		// rootConfig). Tests would be C++ (GoogleTest, Catch2 and doctest are
+		// C++ frameworks) compiled with this project's C flags, so it has none.
+		id: 'c',
+		label: 'C',
+		monacoLanguages: ['c', 'cpp'],
+		pack: 'cpp',
+		settings: {},
+		entry: 'main.c',
+		extension: '.c',
+		configFiles: C_FAMILY_CONFIG,
+		runs: true,
+		sample: {
+			'main.c': `#include <stdio.h>
+
+#include "geometry.h"
+
+int main(void) {
+    const struct point a = {0.0, 0.0};
+    const struct point b = {3.0, 4.0};
+    printf("%f\\n", point_distance(a, b));
+    printf("%f\\n", point_norm(b));
+    return 0;
+}
+`,
+			'geometry.h': `#ifndef GEOMETRY_H
+#define GEOMETRY_H
+
+/// A point in the plane.
+struct point {
+    double x;
+    double y;
+};
+
+/// Distance from the origin.
+double point_norm(struct point p);
+
+/// Euclidean distance between two points.
+double point_distance(struct point a, struct point b);
+
+#endif
+`,
+			'geometry.c': `#include "geometry.h"
+
+#include <math.h>
+
+double point_norm(struct point p) { return hypot(p.x, p.y); }
+
+double point_distance(struct point a, struct point b) {
+    return hypot(a.x - b.x, a.y - b.y);
+}
+`,
+			'compile_flags.txt': `-std=c17
+-Wall
+-Wextra
+-I.
+`,
+			'.clang-tidy': C_TIDY,
+			'.clang-format': CLANG_FORMAT,
+		},
+	},
+	{
 		id: 'cpp',
 		label: 'C++',
 		monacoLanguages: ['cpp', 'c'],
+		pack: 'cpp',
 		settings: {},
 		entry: 'main.cpp',
 		extension: '.cpp',
+		configFiles: C_FAMILY_CONFIG,
 		runs: true,
 		tests: true,
 		sample: {
@@ -660,19 +827,19 @@ double distance(const Point &a, const Point &b) {
 #include "geometry.h"
 
 TEST(Geometry, NormOfThreeFourIsFive) {
-    Point p{3, 4};
+    const Point p{3, 4};
     EXPECT_DOUBLE_EQ(p.norm(), 5.0);
 }
 
 TEST(Geometry, DistanceIsSymmetric) {
-    Point a{1, 2};
-    Point b{-2, 6};
+    const Point a{1, 2};
+    const Point b{-2, 6};
     EXPECT_DOUBLE_EQ(distance(a, b), distance(b, a));
     EXPECT_DOUBLE_EQ(distance(a, b), 5.0);
 }
 
 TEST(Geometry, DistanceToItselfIsZero) {
-    Point a{1.5, -2.5};
+    const Point a{1.5, -2.5};
     EXPECT_EQ(distance(a, a), 0.0);
 }
 `,
@@ -681,6 +848,8 @@ TEST(Geometry, DistanceToItselfIsZero) {
 -Wextra
 -I.
 `,
+			'.clang-tidy': CPP_TIDY,
+			'.clang-format': CLANG_FORMAT,
 		},
 	},
 	{

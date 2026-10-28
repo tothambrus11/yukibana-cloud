@@ -34,6 +34,12 @@ export interface Project {
 	 * chooses one. A C or C++ project's level is its compile_flags.txt's.
 	 */
 	optimization?: string;
+	/**
+	 * false when clang-tidy is turned off for a C or C++ project: absent
+	 * (it runs) until the user turns it off. Its rules are the project's
+	 * .clang-tidy either way; other languages ignore it.
+	 */
+	clangTidy?: false;
 }
 
 /**
@@ -180,7 +186,7 @@ export async function projectOfLink(hash: string): Promise<{ language: LanguageI
 /** A project as the current schema writes it; what was left at its default is left out. */
 function documentOf(language: LanguageId, project: Project): ProjectDocument {
 	return {
-		v: 1,
+		v: 2,
 		language,
 		files: project.files,
 		...(project.folders.length ? { folders: project.folders } : {}),
@@ -188,6 +194,7 @@ function documentOf(language: LanguageId, project: Project): ProjectDocument {
 		active: project.active,
 		...(project.runOptions ? { runOptions: project.runOptions } : {}),
 		...(project.optimization !== undefined ? { optimization: project.optimization } : {}),
+		...(project.clangTidy === false ? { clangTidy: false } : {}),
 	};
 }
 
@@ -211,5 +218,6 @@ function projectOf(document: ProjectDocument, language: LanguageId): Project {
 		active: active !== null && active in files ? active : null,
 		...(document.runOptions ? { runOptions: { ...document.runOptions } } : {}),
 		...(savedLevelOf(language, document.optimization) !== null ? { optimization: document.optimization as string } : {}),
+		...(document.clangTidy === false ? { clangTidy: false as const } : {}),
 	};
 }

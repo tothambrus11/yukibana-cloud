@@ -26,7 +26,7 @@
 import type * as lsp from 'vscode-languageserver-protocol';
 import { createQuickPick, monaco, showEditorMessage, type QuickPickItem } from '../monaco';
 import { applyWorkspaceEdit } from '../workspace-edits';
-import { Connection, isLoadingProgress, loadingDone, LOADING_METHOD, REQUEST_CANCELLED, ResponseError, type LoadingProgress } from '@yukibana/protocol';
+import { CONFIGURE_METHOD, Connection, isLoadingProgress, isPartStatus, loadingDone, LOADING_METHOD, REQUEST_CANCELLED, ResponseError, STATUS_METHOD, type LoadingProgress, type PartStatus } from '@yukibana/protocol';
 import * as c from '@yukibana/monaco';
 import { whenLanguage, type CallDirection } from './call-hierarchy';
 import { symbolRows, type SymbolRow } from './workspace-symbols';
@@ -53,6 +53,8 @@ export interface ClientEvents {
 	 * (asked with `calls`). Only for a server with `callHierarchyProvider`.
 	 */
 	callHierarchy(item: lsp.CallHierarchyItem): void;
+	/** The server reported on one of its optional parts (`yukibana/status`, the C++ pack's clang-tidy). */
+	status(part: PartStatus): void;
 }
 
 /** How a client is set up; all of it fixed for the client's life. */
@@ -65,6 +67,12 @@ export interface ClientOptions {
 	rootUri: string;
 	/** Answers to `workspace/configuration`, by dotted section name. */
 	settings: Record<string, unknown>;
+	/**
+	 * `initialize`'s `initializationOptions`, the pack's own (packs/CONTRACT.md,
+	 * "Optional parts"): the C++ pack's `{ yukibana: { language, clangTidy } }`.
+	 * Later changes go with `configure`.
+	 */
+	initializationOptions?: unknown;
 	events: ClientEvents;
 }
 
@@ -109,6 +117,8 @@ export class LanguageClient {
 	/** The code lens provider, once registered: `workspace/codeLens/refresh` names it to Monaco. */
 	private codeLenses: monaco.languages.CodeLensProvider | null = null;
 	private stopping = false;
+	/** The settings `configure` was given before the server was ready: the last of them, sent once it is. */
+	private pendingConfigure: unknown;
 	private readonly semanticTokensChanged = new monaco.Emitter<void>();
 	private readonly codeLensesChanged = new monaco.Emitter<monaco.languages.CodeLensProvider>();
 	private readonly inlayHintsChanged = new monaco.Emitter<void>();
@@ -157,6 +167,8 @@ export class LanguageClient {
 		this.syncKind = typeof sync === 'number' ? sync : (sync?.change ?? 0);
 		this.connection.notify('initialized', {});
 		this.ready = true;
+		if (this.pendingConfigure !== undefined) this.connection.notify(CONFIGURE_METHOD, this.pendingConfigure);
+		this.pendingConfigure = undefined;
 		for (const model of models()) this.addModel(model);
 		this.registerFeatures();
 		const info = result.serverInfo;
@@ -194,6 +206,18 @@ export class LanguageClient {
 		this.watched(key, 3);
 	}
 
+	/**
+	 * Tells the server the project's settings changed (`yukibana/configure`,
+	 * the pack's own params, in the shape of its `initializationOptions`).
+	 * Before `initialize` was answered it is sent once it is, so a change
+	 * made while the server downloads is not lost.
+	 */
+	configure(params: unknown): void {
+		if (this.stopping) return;
+		if (this.ready) this.connection.notify(CONFIGURE_METHOD, params);
+		else this.pendingConfigure = params;
+	}
+
 	/** Shuts the server down politely, then terminates its worker regardless. */
 	async stop(): Promise<void> {
 		if (this.stopping) return;
@@ -213,6 +237,7 @@ export class LanguageClient {
 			clientInfo: { name: 'Yukibana Light' },
 			locale: navigator.language,
 			rootUri: this.options.rootUri,
+			...(this.options.initializationOptions !== undefined ? { initializationOptions: this.options.initializationOptions } : {}),
 			workspaceFolders: [{ uri: this.options.rootUri, name: 'workspace' }],
 			capabilities: {
 				general: { positionEncodings: ['utf-16'] },
@@ -301,6 +326,10 @@ export class LanguageClient {
 				return;
 			}
 			events.loading(loadingDone(p) ? null : p);
+		});
+		conn.onNotification(STATUS_METHOD, (p) => {
+			if (isPartStatus(p)) events.status(p);
+			else events.log('warning', `The language server sent a ${STATUS_METHOD} notification without an id, a label and a known state; it is ignored.`);
 		});
 		conn.onNotification('window/logMessage', (p) => {
 			const m = p as lsp.LogMessageParams;

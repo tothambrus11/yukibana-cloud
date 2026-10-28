@@ -17,7 +17,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { createDock } from '../lib/dock';
-	import { languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
+	import { isCFamily, languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf } from '../lib/packs';
 	import { KINDS, viewsOf } from '../lib/explore-views';
 	import { registerServiceWorker } from '../lib/pwa';
@@ -91,7 +91,7 @@
 	/** "the active C or C++ file" and the like, for the views' buttons. */
 	const activeSource = $derived(`the active ${shortLabel(language)} ${workspace.language === 'haskell' ? 'module' : 'file'}`);
 	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */
-	const hasBuild = $derived(workspace.language === 'cpp' || workspace.optimization !== null);
+	const hasBuild = $derived(isCFamily(workspace.language) || workspace.optimization !== null);
 	const summary = $derived(buildSummary(workspace));
 	const cached = $derived(offline.isPackCached(packOf(language)));
 	const themeLabel = $derived(`Switch to ${theme.current === 'dark' ? 'light' : 'dark'} theme`);
@@ -283,7 +283,7 @@
 		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), void workspace.restartServer())}>Restart language server</button>
 		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), workspace.showPanel('output'))}>Show output</button>
 	</Popover>
-	{#if workspace.language === 'cpp' && summary}
+	{#if isCFamily(workspace.language) && summary}
 		<button class="build-summary-button" onclick={(e) => openBuildSettings(e.currentTarget)} title="Build settings: {summary}"><span class="truncate">{summary}</span></button>
 	{/if}
 	<span class="spacer"></span>
