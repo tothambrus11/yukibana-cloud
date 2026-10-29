@@ -19,6 +19,7 @@
 <script lang="ts">
 	import { onMount, tick, type Component } from 'svelte';
 	import Popover from './Popover.svelte';
+	import Select, { type SelectOption } from './Select.svelte';
 	import { BUILD_SETTINGS_EVENT, buildSummary } from '../build-settings';
 	import type { Workspace } from '../workspace.svelte';
 	import Sanitizers from './Sanitizers.svelte';
@@ -50,11 +51,32 @@
 		rules?.show();
 	}
 	const summary = $derived(buildSummary(workspace));
+
+	/** The choices of each list; a hand-written value none of them is shows as one that cannot be chosen. */
+	const targetOptions = $derived<SelectOption[]>([
+		...TARGETS.map((t) => ({ value: t.id, label: t.label })),
+		...(workspace.target?.kind === 'unsupported' ? [{ value: 'other', label: `Other (${workspace.target.triple || 'no triple'})`, disabled: true }] : []),
+	]);
+	const standardOptions = $derived<SelectOption[]>([
+		{ value: 'default', label: `Default (${describeStandard({ kind: 'standard', ...defaultStandard(workspace.language === 'c' ? 'c' : 'cpp') })})` },
+		...standards.map((s) => ({ value: s.iso, label: s.label, keywords: [s.iso, s.gnu, ...s.aliases].join(' '), ...(s.draft ? { detail: 'draft' } : {}) })),
+		...(workspace.standard?.kind === 'other' ? [{ value: 'other', label: `-std=${workspace.standard.value}`, disabled: true }] : []),
+	]);
+	const frameworkOptions = $derived<SelectOption[]>(TEST_FRAMEWORKS.map((f) => ({ value: f.id, label: f.label })));
 	/** A C++ project on a Linux target: Run options apply (to Run and Test). */
 	const linuxTarget = $derived(workspace.target?.kind === 'target' && workspace.target.target.runtime === 'linux');
 	const targetValue = $derived(!workspace.target ? '' : workspace.target.kind === 'unsupported' ? 'other' : workspace.target.target.id);
 	/** The optimisation levels of the project's language, null for one without them (optimization.ts). */
 	const levels = $derived(workspace.optimization ? levelsOf(workspace.language) : null);
+	const levelOptions = $derived<SelectOption[]>([
+		...(levels ?? []).map((l) => ({
+			value: l.flag,
+			label: l.label,
+			keywords: l.flag,
+			...(l.unavailable ? { detail: 'not available yet', disabled: true, title: l.unavailable } : l.default ? { detail: 'default' } : {}),
+		})),
+		...(workspace.optimization?.kind === 'other' ? [{ value: 'other', label: workspace.optimization.flag, disabled: true }] : []),
+	]);
 	const levelValue = $derived(!workspace.optimization ? '' : workspace.optimization.kind === 'other' ? 'other' : workspace.optimization.level.flag);
 	const levelHelp = $derived(
 		cFamily
@@ -86,51 +108,29 @@
 	<div class="rows">
 		{#if cFamily}
 			<!-- The target is compile_flags.txt's --target line (cpp-targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
-			<label class="row target">
+			<div class="row target">
 				<span class="name">Target</span>
 				<span class="field">
-					<select
-						value={targetValue}
-						onchange={(e) => {
-							if (e.currentTarget.value !== 'other') workspace.chooseTarget(e.currentTarget.value as CppTargetId);
-							e.currentTarget.value = targetValue;
-						}}
-					>
-						{#each TARGETS as t (t.id)}
-							<option value={t.id}>{t.label}</option>
-						{/each}
-						{#if workspace.target?.kind === 'unsupported'}
-							<option value="other" disabled>Other ({workspace.target.triple || 'no triple'})</option>
-						{/if}
-					</select>
+					<Select label="Target" value={targetValue} options={targetOptions} onchange={(v) => workspace.chooseTarget(v as CppTargetId)} />
 					<small>What the code is compiled for and runs on. Rewrites <code>--target</code> in compile_flags.txt.</small>
 				</span>
-			</label>
+			</div>
 			{#if workspace.standard}
 				<!-- compile_flags.txt's -std= line for the project's language (cpp-standards.ts): choosing one rewrites it; a hand-written one is shown as it is. -->
 				<div class="row standard" role="group" aria-label="Standard">
 					<span class="name">Standard</span>
 					<span class="field">
 						<span class="inline">
-							<select
-								aria-label="Language standard"
+							<Select
+								label="Language standard"
 								value={standardValue}
-								onchange={(e) => {
-									const value = e.currentTarget.value;
+								options={standardOptions}
+								onchange={(value) => {
 									const standard = standards.find((s) => s.iso === value);
 									if (value === 'default') workspace.chooseStandard('default');
 									else if (standard) workspace.chooseStandard({ standard, gnu: workspace.standard?.kind === 'standard' && workspace.standard.gnu });
-									e.currentTarget.value = standardValue;
 								}}
-							>
-								<option value="default">Default ({describeStandard({ kind: 'standard', ...defaultStandard(workspace.language === 'c' ? 'c' : 'cpp') })})</option>
-								{#each standards as s (s.iso)}
-									<option value={s.iso}>{s.label}{s.draft ? ' (draft)' : ''}</option>
-								{/each}
-								{#if workspace.standard.kind === 'other'}
-									<option value="other" disabled>-std={workspace.standard.value}</option>
-								{/if}
-							</select>
+							/>
 							<label class="check" title="The GNU dialect (-std=gnu++20 rather than -std=c++20): GNU's extensions to the language, on by default in clang">
 								<input
 									type="checkbox"
@@ -151,26 +151,13 @@
 		{/if}
 		{#if levels && workspace.optimization}
 			<!-- C and C++: compile_flags.txt's -O line (optimization.ts), shown as it is when hand-edited; Swift and Scala: saved with the project. -->
-			<label class="row optimization">
+			<div class="row optimization">
 				<span class="name">Optimization</span>
 				<span class="field">
-					<select
-						value={levelValue}
-						onchange={(e) => {
-							if (e.currentTarget.value !== 'other') workspace.chooseOptimization(e.currentTarget.value);
-							e.currentTarget.value = levelValue;
-						}}
-					>
-						{#each levels as l (l.flag)}
-							<option value={l.flag} disabled={!!l.unavailable} title={l.unavailable ?? ''}>{l.label}{l.default ? ' (default)' : ''}{l.unavailable ? ' (not available yet)' : ''}</option>
-						{/each}
-						{#if workspace.optimization.kind === 'other'}
-							<option value="other" disabled>{workspace.optimization.flag}</option>
-						{/if}
-					</select>
+					<Select label="Optimization" value={levelValue} options={levelOptions} onchange={(v) => workspace.chooseOptimization(v)} />
 					<small>{levelHelp}</small>
 				</span>
-			</label>
+			</div>
 		{/if}
 		{#if cFamily}
 			<!-- The -fsanitize= line of compile_flags.txt (cpp-sanitizers.ts): ticking one rewrites it; a hand-written one is honoured. -->
@@ -205,26 +192,19 @@
 		{/if}
 		{#if cpp}
 			<!-- What tests/ includes is the framework; choosing one converts the sample's tests or adds a sample test. -->
-			<label class="row framework">
+			<div class="row framework">
 				<span class="name">Test framework</span>
 				<span class="field">
-					<select
+					<Select
+						label="Test framework"
 						value={workspace.testFramework ?? ''}
-						onchange={(e) => {
-							workspace.chooseTestFramework(e.currentTarget.value as TestFramework);
-							e.currentTarget.value = workspace.testFramework ?? '';
-						}}
-					>
-						{#if workspace.testFramework === null || workspace.testFramework === 'mixed'}
-							<option value={workspace.testFramework ?? ''} disabled>{workspace.testFramework === 'mixed' ? 'Mixed frameworks' : 'Test framework'}</option>
-						{/if}
-						{#each TEST_FRAMEWORKS as f (f.id)}
-							<option value={f.id}>{f.label}</option>
-						{/each}
-					</select>
+						options={frameworkOptions}
+						placeholder={workspace.testFramework === 'mixed' ? 'Mixed frameworks' : 'Test framework'}
+						onchange={(v) => workspace.chooseTestFramework(v as TestFramework)}
+					/>
 					<small>Changing it rewrites the files in tests/, or adds a sample test.</small>
 				</span>
-			</label>
+			</div>
 		{/if}
 	</div>
 </Popover>
@@ -290,18 +270,6 @@
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 0.4rem 0.9rem;
-	}
-	.inline > select,
-	.field > select {
-		justify-self: start;
-		max-width: 100%;
-		min-height: 2rem;
-		padding: 0 0.5rem;
-		border: 1px solid var(--control-border);
-		border-radius: 0.35rem;
-		background: var(--gray-7);
-		color: var(--white);
-		font: inherit;
 	}
 	.check {
 		display: inline-flex;

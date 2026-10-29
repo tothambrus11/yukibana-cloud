@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { decodeProject } from '../src/lib/project-link.ts';
-import { menuItem } from './ui.mjs';
+import { choose, LANGUAGE_PICKER, menuItem } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = process.env.BUILD_DIR ?? join(here, '..', 'build');
@@ -84,7 +84,7 @@ try {
 	await one.goto(base);
 	await one.evaluate(() => localStorage.clear());
 	await one.goto(base); // a fresh start: the sample
-	await one.selectOption('header select', 'python');
+	await choose(one, LANGUAGE_PICKER, 'python');
 	await ready(one, 'main.py');
 	check((await projectIn(one)).language === 'python', 'a tab opened without a link holds its project in its URL at once, before any edit');
 	check(await typeAtEnd(one, '\n# tab one\n'), 'an edit reaches the URL');
@@ -93,7 +93,7 @@ try {
 	await two.goto(base);
 	await ready(two, 'main.py');
 	check(await shows(two, '# tab one'), 'a new tab without a link starts from the project edited last');
-	await two.selectOption('header select', 'javascript');
+	await choose(two, LANGUAGE_PICKER, 'javascript');
 	await ready(two, 'main.js');
 	await two.waitForFunction(() => location.hash.length > 10 && document.title.includes('JavaScript'));
 	check(await typeAtEnd(two, '\n// tab two\n'), 'the second tab, switched to JavaScript, holds its own project in its URL');
