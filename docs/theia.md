@@ -3,7 +3,7 @@
 What a student's IDE needs from Yukibana is four things: who the student is,
 which exercises are open to them, what a submission from their folder would
 hold, and a way to send it. All four are in `@yukibana/cli`'s library
-(`cli/src/library.ts`), whose dependencies are `modern-tar` and `uuid` (neither
+(`cli/src/library.ts`), whose dependencies are `modern-tar`, `uuid`, `ignore` and `zod` (none
 with dependencies of its own), and which runs wherever Node 22.15
 or later does: a Theia backend, an Electron main process, a VS Code
 extension host. `demo/electron` is a complete, small client built on it;
@@ -144,6 +144,13 @@ How to word any of this is the host's. The demo's choices, with tests, are
 in `demo/electron/src/view.ts`; they are an example, not part of the library.
 
 ## The workspace
+
+`@yukibana/cli/config` is the part that runs in a browser: `parseSettings`
+reads a folder's `yukibana.json` with the defaults the IDE needs (a file
+without `version` or `kind` is fine, so any folder opens), and
+`DEFAULT_SETTINGS` is what a folder without one gets. It is the same
+schema `parseConfig` checks a release with, so the IDE and the CLI read
+every field the same way.
 
 `client.downloadStarter(projectId)` returns the starter archive, and
 `unpackStarter(archive, folder)` unpacks it into `folder`, which must be

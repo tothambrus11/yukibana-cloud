@@ -8,6 +8,10 @@
  *  means what the field says it means.
  */
 
+import * as z from 'zod';
+// The function form of .default(), which zod spells _default, since default is a keyword.
+import { _default as withDefault } from 'zod';
+
 export type EditionRole = 'student' | 'assistant' | 'owner';
 
 export interface Me {
@@ -136,106 +140,77 @@ export interface AuthConfig {
 /** A response that is not what this version expects. */
 export class Unexpected extends Error {}
 
-type Obj = Record<string, unknown>;
+const text = z.string();
+const maybeText = withDefault(z.nullable(z.string()), null);
+const count = z.number().check(z.refine(Number.isFinite));
+const role = z.enum(['student', 'assistant', 'owner']);
 
-function obj(v: unknown, where: string): Obj {
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Unexpected(`the registry answered ${where} as something other than an object`);
-  return v as Obj;
+// Each schema's output is checked against the documented interface above by
+// the decoder's return type, so the two cannot drift apart.
+const me = z.object({ userId: text, email: maybeText, fullName: maybeText, githubLogin: maybeText, platformRole: text });
+const edition = z.object({ editionId: text, courseCode: text, courseTitle: text, label: text, archived: z.boolean(), role });
+const project = z.object({
+  projectId: text, editionId: text, courseCode: text, editionLabel: text, slug: text, title: text, kind: text,
+  availableAfter: maybeText, deadline: maybeText, closesAt: maybeText, late: z.boolean(), role,
+  starterReady: z.boolean(), canSubmit: z.boolean(), mySubmissions: count, myLastSubmittedAt: maybeText,
+});
+const submission = z.object({
+  submissionId: text, projectId: text, submittedAt: text, byteSize: count, sha256: text, latest: z.boolean(), late: z.boolean(),
+  baseReleaseId: maybeText,
+  author: z.object({ userId: text, fullName: maybeText, githubLogin: maybeText, email: maybeText }),
+});
+const release = z.object({
+  releaseId: text, label: text, commit: maybeText, starterSize: count, teacherSize: count, uploadedAt: text, uploadedBy: maybeText, viaToken: z.boolean(),
+});
+const member = z.object({ email: text, role, source: text, userId: maybeText, fullName: maybeText, githubLogin: maybeText });
+const accepted = z.object({ submissionId: text, byteSize: count, sha256: text });
+const archive = z.object({ size: count, sha256: text });
+const published = z.object({ releaseId: text, starter: archive, teacher: archive });
+const authConfig = z.object({ supabaseUrl: text, publishableKey: text, oauthClientId: maybeText, siteUrl: maybeText });
+
+/** What a value of each JSON type is called in a sentence. */
+const NAMES: Readonly<Record<string, string>> = { string: 'text', number: 'a number', boolean: 'true or false', object: 'an object', array: 'a list' };
+
+/** Returns `v` as `schema` says, or throws `Unexpected` with a sentence
+ *  naming the field, from `where` down, and what came instead: "the
+ *  registry answered submissions[0].byteSize as string, not a number". */
+function decode<T>(schema: z.ZodType<T>, v: unknown, where: string): T {
+  const parsed = schema.safeParse(v);
+  if (parsed.success) return parsed.data;
+  const issue = parsed.error.issues[0];
+  const path = issue?.path ?? [];
+  const field = [where, ...path].map((p) => (typeof p === 'number' ? `[${p}]` : `.${String(p)}`)).join('').slice(1);
+  const got = path.reduce<unknown>((o, k) => (typeof o === 'object' && o !== null ? (o as Record<PropertyKey, unknown>)[k] : undefined), v);
+  if (issue?.code === 'invalid_value') throw new Unexpected(`the registry answered ${field} as ${JSON.stringify(got)}, not a role`);
+  const expected = issue?.code === 'invalid_type' ? issue.expected : 'value';
+  const name = NAMES[expected] ?? expected;
+  throw new Unexpected(expected === 'object' || expected === 'array'
+    ? `the registry answered ${field} as something other than ${name}`
+    : `the registry answered ${field} as ${typeof got}, not ${name}`);
 }
-function str(o: Obj, k: string, where: string): string {
-  const v = o[k];
-  if (typeof v !== 'string') throw new Unexpected(`the registry answered ${where}.${k} as ${typeof v}, not text`);
-  return v;
-}
-function strOrNull(o: Obj, k: string, where: string): string | null {
-  return o[k] === null || o[k] === undefined ? null : str(o, k, where);
-}
-function num(o: Obj, k: string, where: string): number {
-  const v = o[k];
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Unexpected(`the registry answered ${where}.${k} as ${typeof v}, not a number`);
-  return v;
-}
-function bool(o: Obj, k: string, where: string): boolean {
-  const v = o[k];
-  if (typeof v !== 'boolean') throw new Unexpected(`the registry answered ${where}.${k} as ${typeof v}, not true or false`);
-  return v;
-}
-function role(o: Obj, k: string, where: string): EditionRole {
-  const v = str(o, k, where);
-  if (v !== 'student' && v !== 'assistant' && v !== 'owner') throw new Unexpected(`the registry answered ${where}.${k} as "${v}", not a role`);
-  return v;
-}
-function list<T>(v: unknown, where: string, item: (v: unknown, where: string) => T): T[] {
+
+/** Returns `v` as a `Me`, or throws `Unexpected` naming the field. */
+export const decodeMe = (v: unknown, where = 'me'): Me => decode(me, v, where);
+/** Returns `v` as an `Edition`, or throws `Unexpected` naming the field. */
+export const decodeEdition = (v: unknown, where = 'edition'): Edition => decode(edition, v, where);
+/** Returns `v` as a `Project`, or throws `Unexpected` naming the field. */
+export const decodeProject = (v: unknown, where = 'project'): Project => decode(project, v, where);
+/** Returns `v` as a `Submission`, or throws `Unexpected` naming the field. */
+export const decodeSubmission = (v: unknown, where = 'submission'): Submission => decode(submission, v, where);
+/** Returns `v` as a `Release`, or throws `Unexpected` naming the field. */
+export const decodeRelease = (v: unknown, where = 'release'): Release => decode(release, v, where);
+/** Returns `v` as a `Member`, or throws `Unexpected` naming the field. */
+export const decodeMember = (v: unknown, where = 'member'): Member => decode(member, v, where);
+/** Returns `v` as an `Accepted`, or throws `Unexpected` naming the field. */
+export const decodeAccepted = (v: unknown, where = 'submission'): Accepted => decode(accepted, v, where);
+/** Returns `v` as a `Published`, or throws `Unexpected` naming the field. */
+export const decodePublished = (v: unknown, where = 'release'): Published => decode(published, v, where);
+/** Returns `v` as an `AuthConfig`, or throws `Unexpected` naming the field. */
+export const decodeAuthConfig = (v: unknown, where = 'auth config'): AuthConfig => decode(authConfig, v, where);
+
+/** Returns a decoder of a list whose items `item` decodes, each named
+ *  `where[i]` in an error. */
+export const decodeList = <T>(item: (v: unknown, where: string) => T, where: string) => (v: unknown): T[] => {
   if (!Array.isArray(v)) throw new Unexpected(`the registry answered ${where} as something other than a list`);
-  return v.map((x, i) => item(x, `${where}[${i}]`));
-}
-
-export function decodeMe(v: unknown, w = 'me'): Me {
-  const o = obj(v, w);
-  return { userId: str(o, 'userId', w), email: strOrNull(o, 'email', w), fullName: strOrNull(o, 'fullName', w), githubLogin: strOrNull(o, 'githubLogin', w), platformRole: str(o, 'platformRole', w) };
-}
-
-export function decodeEdition(v: unknown, w = 'edition'): Edition {
-  const o = obj(v, w);
-  return { editionId: str(o, 'editionId', w), courseCode: str(o, 'courseCode', w), courseTitle: str(o, 'courseTitle', w), label: str(o, 'label', w), archived: bool(o, 'archived', w), role: role(o, 'role', w) };
-}
-
-export function decodeProject(v: unknown, w = 'project'): Project {
-  const o = obj(v, w);
-  return {
-    projectId: str(o, 'projectId', w), editionId: str(o, 'editionId', w), courseCode: str(o, 'courseCode', w), editionLabel: str(o, 'editionLabel', w),
-    slug: str(o, 'slug', w), title: str(o, 'title', w), kind: str(o, 'kind', w),
-    availableAfter: strOrNull(o, 'availableAfter', w), deadline: strOrNull(o, 'deadline', w), closesAt: strOrNull(o, 'closesAt', w),
-    late: bool(o, 'late', w), role: role(o, 'role', w),
-    starterReady: bool(o, 'starterReady', w), canSubmit: bool(o, 'canSubmit', w),
-    mySubmissions: num(o, 'mySubmissions', w), myLastSubmittedAt: strOrNull(o, 'myLastSubmittedAt', w),
-  };
-}
-
-export function decodeSubmission(v: unknown, w = 'submission'): Submission {
-  const o = obj(v, w);
-  const a = obj(o['author'], `${w}.author`);
-  const aw = `${w}.author`;
-  return {
-    submissionId: str(o, 'submissionId', w), projectId: str(o, 'projectId', w), submittedAt: str(o, 'submittedAt', w),
-    byteSize: num(o, 'byteSize', w), sha256: str(o, 'sha256', w), latest: bool(o, 'latest', w), late: bool(o, 'late', w),
-    baseReleaseId: strOrNull(o, 'baseReleaseId', w),
-    author: { userId: str(a, 'userId', aw), fullName: strOrNull(a, 'fullName', aw), githubLogin: strOrNull(a, 'githubLogin', aw), email: strOrNull(a, 'email', aw) },
-  };
-}
-
-export function decodeRelease(v: unknown, w = 'release'): Release {
-  const o = obj(v, w);
-  return {
-    releaseId: str(o, 'releaseId', w), label: str(o, 'label', w), commit: strOrNull(o, 'commit', w), starterSize: num(o, 'starterSize', w),
-    teacherSize: num(o, 'teacherSize', w), uploadedAt: str(o, 'uploadedAt', w), uploadedBy: strOrNull(o, 'uploadedBy', w), viaToken: bool(o, 'viaToken', w),
-  };
-}
-
-export function decodeMember(v: unknown, w = 'member'): Member {
-  const o = obj(v, w);
-  return { email: str(o, 'email', w), role: role(o, 'role', w), source: str(o, 'source', w), userId: strOrNull(o, 'userId', w), fullName: strOrNull(o, 'fullName', w), githubLogin: strOrNull(o, 'githubLogin', w) };
-}
-
-export function decodeAccepted(v: unknown, w = 'submission'): Accepted {
-  const o = obj(v, w);
-  return { submissionId: str(o, 'submissionId', w), byteSize: num(o, 'byteSize', w), sha256: str(o, 'sha256', w) };
-}
-
-export function decodePublished(v: unknown, w = 'release'): Published {
-  const o = obj(v, w);
-  const s = obj(o['starter'], `${w}.starter`);
-  const t = obj(o['teacher'], `${w}.teacher`);
-  return {
-    releaseId: str(o, 'releaseId', w),
-    starter: { size: num(s, 'size', `${w}.starter`), sha256: str(s, 'sha256', `${w}.starter`) },
-    teacher: { size: num(t, 'size', `${w}.teacher`), sha256: str(t, 'sha256', `${w}.teacher`) },
-  };
-}
-
-export function decodeAuthConfig(v: unknown, w = 'auth config'): AuthConfig {
-  const o = obj(v, w);
-  return { supabaseUrl: str(o, 'supabaseUrl', w), publishableKey: str(o, 'publishableKey', w), oauthClientId: strOrNull(o, 'oauthClientId', w), siteUrl: strOrNull(o, 'siteUrl', w) };
-}
-
-export const decodeList = <T>(item: (v: unknown, where: string) => T, where: string) => (v: unknown): T[] => list(v, where, item);
+  return v.map((x: unknown, i) => item(x, `${where}[${i}]`));
+};

@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, excludes, manifestProblems, parseConfig, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
+import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, DEFAULT_SETTINGS, configSchema, excludes, manifestProblems, parseConfig, parseSettings, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
 
 const ok = (text: string) => {
   const p = parseConfig(text);
@@ -29,9 +29,9 @@ test('every rejection names the field the teacher has to fix', () => {
   assert.match(bad('{"version":1,"kind":"rust-cargo","hidden":["../x"]}'), /relative to the project root/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"maxBytes":-1}}'), /"submission.maxBytes"/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","readOnly":"README.md"}'), /"readOnly" must be a list/);
-  assert.match(bad('{"version":1,"kind":"rust-cargo","features":{"ai":"no"}}'), /"features"/);
-  assert.match(bad('{"version":1,"kind":"rust-cargo","layout":{"widgets":{"files":1}}}'), /"layout.widgets"/);
-  assert.match(bad('{"version":1,"kind":"rust-cargo","openFiles":[1]}'), /"openFiles"/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","features":{"ai":"no"}}'), /"features.ai" must be true or false/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","layout":{"widgets":{"files":1}}}'), /"layout.widgets.files" must be true or false/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","openFiles":[1]}'), /"openFiles" must be a list of paths/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"exclude":["/abs"]}}'), /"submission.exclude" paths are relative/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"filename":"a/b.tar.gz"}}'), /"submission.filename"/);
 });
@@ -113,7 +113,7 @@ test('a workspace member that is hidden is a problem too', () => {
 test('the schema the IDE validates against and the parser here know the same fields', async () => {
   const { readFile } = await import('node:fs/promises');
   const schema = JSON.parse(await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8')) as { properties: Record<string, unknown>; required: string[] };
-  const every = Object.fromEntries(Object.keys(schema.properties).map((k) => [k, k === 'version' ? 1 : k === 'kind' ? 'rust-cargo' : k === 'projectId' ? 'p' : k === 'releaseId' ? '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' : k === 'openFiles' || k === 'readOnly' || k === 'hidden' ? [] : {}]));
+  const every = Object.fromEntries(Object.keys(schema.properties).map((k) => [k, k === 'version' ? 1 : k === 'kind' ? 'rust-cargo' : k === 'projectId' ? 'p' : k === 'releaseId' ? '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' : k === 'assignmentFile' ? 'ASSIGNMENT.md' : k === 'openFiles' || k === 'readOnly' || k === 'hidden' ? [] : {}]));
   const p = parseConfig(JSON.stringify(every));
   assert.ok(p.ok, p.ok ? '' : p.error);
   assert.deepEqual(p.warnings, [], 'every field the schema has, the parser knows');
@@ -147,4 +147,42 @@ test('a release id that is not a uuid is refused, and a repository\'s own is nev
   const c = ok('{"version":1,"kind":"rust-cargo","releaseId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a5c"}');
   assert.equal('releaseId' in (JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>), false);
   assert.equal(ok('{"version":1,"kind":"rust-cargo","releaseId":"01A0B563-AEFF-7C42-AE73-5AAB2F2B5A5C"}').releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+});
+
+test('the IDE opens a folder whose file says nothing, or has no version or kind, with its defaults', () => {
+  assert.deepEqual(parseSettings('{}'), { ok: true, settings: DEFAULT_SETTINGS });
+  const p = parseSettings('{"features":{"ai":false},"submission":{"target":"file"}}');
+  assert.ok(p.ok);
+  assert.equal(p.settings.features.ai, false);
+  assert.equal(p.settings.features.squiggles, true);
+  assert.equal(p.settings.submission.target, 'file');
+  assert.ok(!parseSettings('{"features":{"ai":"no"}}').ok, 'but a wrong type is still refused');
+});
+
+test('every IDE setting defaults to on, the assignment to ASSIGNMENT.md and submissions to the registry, honouring .gitignore', () => {
+  assert.equal(DEFAULT_SETTINGS.assignmentFile, 'ASSIGNMENT.md');
+  assert.ok(Object.values(DEFAULT_SETTINGS.features).every((on) => on));
+  assert.ok(Object.values(DEFAULT_SETTINGS.layout.widgets).every((on) => on));
+  assert.deepEqual(DEFAULT_SETTINGS.layout.containers, {});
+  assert.equal(DEFAULT_SETTINGS.submission.target, 'cloud');
+  assert.equal(DEFAULT_SETTINGS.submission.respectGitignore, true);
+  assert.equal(DEFAULT_SETTINGS.projectId, null);
+});
+
+test('the published JSON schema names every field the parser knows', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const published = JSON.parse(await readFile(new URL('../../docs/yukibana.schema.json', import.meta.url), 'utf8')) as {
+    properties: Record<string, { properties?: Record<string, unknown> }>;
+  };
+  assert.deepEqual(Object.keys(published.properties).toSorted(), Object.keys(configSchema.shape).toSorted());
+  assert.deepEqual(Object.keys(published.properties['submission']?.properties ?? {}).toSorted(), Object.keys(configSchema.shape.submission.def.innerType.shape).toSorted());
+});
+
+test('the config module runs in a browser: it and what it imports use nothing from Node', async () => {
+  const { readFile } = await import('node:fs/promises');
+  for (const file of ['../src/lib/yukibana.ts', '../src/lib/glob.ts']) {
+    const source = await readFile(new URL(file, import.meta.url), 'utf8');
+    const imports = [...source.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
+    assert.deepEqual(imports.filter((i) => i !== 'zod' && i !== './glob.js'), [], `${file} imports only zod and the glob matcher`);
+  }
 });

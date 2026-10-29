@@ -8,7 +8,9 @@
  *  preview of a large folder costs a read of it and no more.
  */
 
-import { planSubmission } from './lib/pack.js';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { planSubmission, submissionExcluder } from './lib/pack.js';
 import { writeTar, type Entry, type EntryType } from './lib/tar.js';
 import { CONFIG_FILE, parseConfig, type Config } from './lib/yukibana.js';
 import { gzip } from './lib/gzip.js';
@@ -56,21 +58,33 @@ export interface SubmissionBundle {
   archive(): Promise<Uint8Array>;
 }
 
+const NO_CONFIG = `there is no ${CONFIG_FILE} here; submit from the folder the starter unpacked into`;
+
 export type BundleResult = { ok: true; bundle: SubmissionBundle } | { ok: false; problems: readonly string[] };
 
-/** A bundle from the folder `dir`, which must hold the starter's
+/** Returns a bundle of the folder `dir`, which must hold the starter's
  *  `yukibana.json`. Fails, with reasons, only when the config is missing or
  *  broken; a bundle with problems is still returned so a preview can show
- *  them alongside the files. */
+ *  them alongside the files.
+ *
+ *  Reads into memory only what may be sent: a folder the rules leave out,
+ *  such as `target/` or `node_modules`, is never entered. */
 export async function createSubmissionBundle(dir: string): Promise<BundleResult> {
-  return bundleOf(await readTree(dir));
+  const text = await readFile(join(dir, CONFIG_FILE), 'utf8').catch(() => null);
+  if (text === null) return { ok: false, problems: [NO_CONFIG] };
+  const parsed = parseConfig(text);
+  if (!parsed.ok) return { ok: false, problems: [parsed.error] };
+  const gitignores = new Map<string, string>();
+  const excluded = submissionExcluder(parsed.config, gitignores);
+  return bundleOf(await readTree(dir, { skip: excluded, gitignore: (folder, patterns) => gitignores.set(folder, patterns) }));
 }
 
-/** The same from a tree already in memory: what a test, or an editor that
- *  holds unsaved buffers, would use. */
+/** Returns a bundle of `tree`, a folder already in memory, as
+ *  `createSubmissionBundle` would: what a test, or an editor that holds
+ *  unsaved buffers, would use. */
 export function bundleOf(tree: readonly Entry[]): BundleResult {
   const cfg = tree.find((e) => e.path === CONFIG_FILE && e.type === 'file');
-  if (cfg === undefined) return { ok: false, problems: [`there is no ${CONFIG_FILE} here; submit from the folder the starter unpacked into`] };
+  if (cfg === undefined) return { ok: false, problems: [NO_CONFIG] };
   const parsed = parseConfig(new TextDecoder().decode(cfg.data));
   if (!parsed.ok) return { ok: false, problems: [parsed.error] };
   const config = parsed.config;

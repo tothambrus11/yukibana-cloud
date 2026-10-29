@@ -11,7 +11,18 @@
       "types": "./dist/library.d.ts",
       "default": "./dist/library.js"
     },
+    "./config": {
+      "types": "./dist/lib/yukibana.d.ts",
+      "default": "./dist/lib/yukibana.js"
+    },
     "./package.json": "./package.json"
+  },
+  "typesVersions": {
+    "*": {
+      "config": [
+        "dist/lib/yukibana.d.ts"
+      ]
+    }
   },
   "bin": {
     "yukibana": "dist/index.js"
@@ -37,7 +48,9 @@
     "vitest": "^5.0.4"
   },
   "dependencies": {
+    "ignore": "^7.0.13",
     "modern-tar": "^0.8.6",
-    "uuid": "^14.0.3"
+    "uuid": "^14.0.3",
+    "zod": "^4.6.7"
   }
 }
