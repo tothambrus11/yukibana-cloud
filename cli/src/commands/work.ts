@@ -11,15 +11,19 @@ import { sha256Hex } from '../lib/bytes.js';
 import { bytes, clientFor, fail, projectOf, type Invocation } from './common.js';
 
 /** Runs `starter <project> [--out dir]`: unpacks the project's starter into
- *  `dir/<project slug>`, `dir` defaulting to the working directory.
+ *  `dir` itself, or, without `--out`, into `<project slug>` in the working
+ *  directory. It once always added the slug under `dir`, so nobody could
+ *  name the folder their project went into; the default is this command's
+ *  to choose, and `unpackStarter` only ever takes the folder it is given.
  *
- *  Exits non-zero, having written nothing, when that folder exists and is
- *  not empty. Warns about each entry left out. */
+ *  Exits non-zero, having written nothing, when `--out` is empty, or when
+ *  the folder exists and is not empty. Warns about each entry left out. */
 export async function starter(inv: Invocation): Promise<void> {
+  if (inv.options.out?.trim() === '') fail('--out names the folder to unpack the starter into');
   const id = await projectOf(inv, inv.args[0]);
   const client = await clientFor(inv);
   const [project, archive] = await Promise.all([client.project(id), client.downloadStarter(id)]);
-  const folder = join(resolve(inv.options.out ?? '.'), project.slug);
+  const folder = resolve(inv.options.out ?? project.slug);
   const refused = await unpackStarter(archive, folder).catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
   for (const r of refused) console.error(`warning: not unpacked: ${r}`);
   console.log(`unpacked the starter into ${folder}`);
