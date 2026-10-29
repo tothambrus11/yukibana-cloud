@@ -14,7 +14,8 @@
 		"test:e2e:targets": "node tests/e2e-targets.mjs",
 		"test:e2e:layout": "node tests/e2e-layout.mjs",
 		"test:e2e:links": "node tests/e2e-links.mjs",
-		"test:export": "node tests/export.mjs"
+		"test:export": "node tests/export.mjs",
+		"test:export:ci": "node tests/export-ci.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "4.0.0",

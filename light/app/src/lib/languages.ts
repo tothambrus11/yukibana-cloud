@@ -402,9 +402,7 @@ export function distance(a: Point, b: Point): number {
 }
 
 /** A shape, told apart by its \`kind\`. */
-export type Shape =
-  | { kind: 'circle'; radius: number }
-  | { kind: 'square'; side: number };
+export type Shape = { kind: 'circle'; radius: number } | { kind: 'square'; side: number };
 
 /** The area of a shape; the switch covers every kind, which TypeScript checks. */
 export function area(shape: Shape): number {
@@ -1192,8 +1190,7 @@ public record Point(double x, double y) {
 
 /** Functions of points. */
 public final class Geometry {
-    private Geometry() {
-    }
+    private Geometry() {}
 
     /** Euclidean distance between two points. */
     public static double distance(Point a, Point b) {

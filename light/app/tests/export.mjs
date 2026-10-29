@@ -111,12 +111,68 @@ for (const language of LANGUAGES) {
 
 {
 	const cpp = sample('cpp');
-	const linked = (cmake) => /target_link_options\(project_flags INTERFACE ([^)]*)\)/.exec(cmake)?.[1] ?? '';
+	// The flags compile_flags.txt links, not the SANITIZE option's (-fsanitize=${SANITIZE}), which CI turns on.
+	const linked = (cmake) => [...cmake.matchAll(/target_link_options\(project_flags INTERFACE ([^)]*)\)/g)].map((m) => m[1]).find((o) => !o.includes('${SANITIZE}')) ?? '';
 	check(linked(exportProject(cpp, cpp.sample).files['CMakeLists.txt']) === '', 'cpp: without a sanitizer, CMake links no sanitizer runtime');
 	const both = exportProject(cpp, { ...cpp.sample, 'compile_flags.txt': `${cpp.sample['compile_flags.txt']}-fsanitize=address,undefined\n` }).files['CMakeLists.txt'];
 	check(linked(both) === '-fsanitize=address,undefined' && both.includes('target_compile_options(project_flags INTERFACE -fno-omit-frame-pointer)'), `cpp: AddressSanitizer and UndefinedBehaviorSanitizer are compiled, linked and given frame pointers (${linked(both)})`);
 	const ubsan = exportProject(cpp, { ...cpp.sample, 'compile_flags.txt': `${cpp.sample['compile_flags.txt']}-fsanitize=undefined\n` }).files['CMakeLists.txt'];
-	check(linked(ubsan) === '-fsanitize=undefined' && !ubsan.includes('-fno-omit-frame-pointer'), 'cpp: UndefinedBehaviorSanitizer alone needs no frame pointers');
+	check(linked(ubsan) === '-fsanitize=undefined' && !ubsan.includes('target_compile_options(project_flags INTERFACE -fno-omit-frame-pointer)'), 'cpp: UndefinedBehaviorSanitizer alone needs no frame pointers');
+}
+
+// ---- CI files: every service's YAML parses, and says what the jobs are
+
+{
+	const { buildSystems } = await import('../src/lib/export.ts');
+	const { CI_SERVICES, jobsFor } = await import('../src/lib/export-tooling.ts');
+	// Each file's structure as the service reads it, checked by Python's YAML parser.
+	const checker = `
+import sys, json, yaml
+cases = json.load(sys.stdin)
+bad = []
+for case in cases:
+    for path, text in case["files"].items():
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            bad.append(f"{case['name']} {path}: {e}"); continue
+        s = case["service"]
+        def need(ok, what):
+            if not ok: bad.append(f"{case['name']} {path}: {what}")
+        if s in ("github", "forgejo"):
+            jobs = doc.get("jobs", {})
+            need(list(jobs) == case["jobs"], f"jobs {list(jobs)}")
+            for j in jobs.values():
+                need(isinstance(j.get("container", {}).get("image"), str), "a container image")
+                need(all(("run" in st) != ("uses" in st) for st in j["steps"]), "each step runs or uses")
+                need(all(isinstance(st.get("run", ""), str) for st in j["steps"]), "runs are strings")
+        elif s == "gitlab":
+            jobs = [k for k in doc if k != "workflow"]
+            need(jobs == case["jobs"], f"jobs {jobs}")
+            for k in jobs:
+                need(isinstance(doc[k]["image"], str) and all(isinstance(x, str) for x in doc[k]["script"]), f"{k}: image and script")
+        elif s == "azure":
+            need([j["job"] for j in doc["jobs"]] == case["jobs"], "jobs")
+            need(all(j["steps"][0]["script"].startswith("docker run") for j in doc["jobs"]), "docker run")
+        elif s == "sourcehut":
+            need(isinstance(doc["image"], str) and all(isinstance(t, dict) and len(t) == 1 for t in doc["tasks"]), "image and tasks")
+print(json.dumps(bad))
+`;
+	const cases = [];
+	for (const language of LANGUAGES) {
+		for (const build of buildSystems(language, language.sample)) {
+			for (const service of CI_SERVICES) {
+				const { files, generated } = exportProject(language, language.sample, null, { ci: service.id, build: build.id });
+				const yml = Object.fromEntries(generated.filter((p) => p.endsWith('.yml')).map((p) => [p, files[p]]));
+				const project = { language, files: language.sample, paths: Object.keys(files).sort(), optimization: null };
+				const jobs = jobsFor(language.id, build.ci(project), language.sample).map((j) => j.id);
+				cases.push({ name: `${language.id}/${build.id}/${service.id}`, service: service.id, files: yml, jobs });
+			}
+		}
+	}
+	const r = spawnSync('python3', ['-I', '-c', checker], { input: JSON.stringify(cases), encoding: 'utf8' });
+	const bad = r.status === 0 ? JSON.parse(r.stdout) : [r.stderr];
+	check(bad.length === 0, `ci: the YAML of ${cases.length} language, build system and service combinations parses, with the jobs in order`, bad.join('\n'));
 }
 
 // ---- The zip, unpacked by Python's zipfile
