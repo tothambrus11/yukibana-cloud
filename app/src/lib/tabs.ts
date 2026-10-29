@@ -20,7 +20,7 @@ export interface Tab {
  *  falls back rather than rendering an empty or forbidden section. */
 export function tabOf(url: { readonly searchParams: { get(name: string): string | null } }, tabs: readonly Tab[]): string {
   const asked = url.searchParams.get('tab');
-  return tabs.find((t) => t.id === asked)?.id ?? tabs[0]?.id ?? '';
+  return tabs.find(t => t.id === asked)?.id ?? tabs[0]?.id ?? '';
 }
 
 /** The action URL for a form inside tab `tab`. */

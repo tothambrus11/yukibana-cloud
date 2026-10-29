@@ -49,10 +49,7 @@ test('the origin is the registry it is posting to, whatever path the teacher gav
   const { seen, fetchFn } = recorder(accepted());
   await publish(input({ url: 'https://cloud.yukibana.dev/projects/abc/' }), fetchFn);
   assert.equal(seen.request?.headers.get('origin'), 'https://cloud.yukibana.dev');
-  assert.equal(
-    seen.request?.url,
-    'https://cloud.yukibana.dev/api/projects/01a0b563-aeff-7c42-ae73-5aab2f2b5a5a/releases',
-  );
+  assert.equal(seen.request?.url, 'https://cloud.yukibana.dev/api/projects/01a0b563-aeff-7c42-ae73-5aab2f2b5a5a/releases');
 });
 
 test('the token travels as a bearer, which is the only thing the endpoint accepts', async () => {
@@ -77,9 +74,7 @@ test('both archives and the label go in one multipart body', async () => {
 });
 
 test('a refusal reaches the teacher in the words the registry used, not as a status code', async () => {
-  const { fetchFn } = recorder(
-    new Response(JSON.stringify({ message: 'unknown or revoked token' }), { status: 401 }),
-  );
+  const { fetchFn } = recorder(new Response(JSON.stringify({ message: 'unknown or revoked token' }), { status: 401 }));
   await assert.rejects(publish(input(), fetchFn), /the registry answered 401: unknown or revoked token/);
 });
 

@@ -17,11 +17,17 @@ function recording(answer: (req: Request) => Response | Promise<Response>) {
 }
 
 const submission = {
-  submissionId: 's-1', projectId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', submittedAt: '2026-10-07T10:00:00.000Z', byteSize: 10, sha256: 'ab', latest: true, late: false,
+  submissionId: 's-1',
+  projectId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a01',
+  submittedAt: '2026-10-07T10:00:00.000Z',
+  byteSize: 10,
+  sha256: 'ab',
+  latest: true,
+  late: false,
   author: { userId: 'u-1', fullName: 'Ada', githubLogin: 'ada', email: 'ada@uni.example' },
 };
 
-test('every request carries the person\'s token, and a list asks for what it was told', async () => {
+test("every request carries the person's token, and a list asks for what it was told", async () => {
   const { seen, client } = recording(() => json([submission]));
   const rows = await client.submissions('01a0b563-aeff-7c42-ae73-5aab2f2b5a01', { latest: true, author: 'u-1' });
   assert.equal(rows[0]?.author.githubLogin, 'ada');
@@ -34,15 +40,17 @@ test('a registry that answers another shape is named as such, not a crash three 
   await assert.rejects(client.submissions('01a0b563-aeff-7c42-ae73-5aab2f2b5a01'), /submissions\[0\]\.byteSize as string, not a number/);
 });
 
-test('a refusal carries the registry\'s status and sentence', async () => {
+test("a refusal carries the registry's status and sentence", async () => {
   const { client } = recording(() => json({ message: 'Log in first.' }, 401));
   await assert.rejects(client.me(), (e: unknown) => e instanceof RegistryError && e.status === 401 && /Log in first/.test(e.message));
 });
 
-test('a download follows the redirect itself and does not hand the person\'s token to the bucket', async () => {
-  const { seen, client } = recording((req) => req.url.startsWith('https://bucket.example')
-    ? new Response(new Uint8Array([1, 2, 3]))
-    : new Response(null, { status: 302, headers: { location: 'https://bucket.example/obj?sig=1' } }));
+test("a download follows the redirect itself and does not hand the person's token to the bucket", async () => {
+  const { seen, client } = recording(req =>
+    req.url.startsWith('https://bucket.example')
+      ? new Response(new Uint8Array([1, 2, 3]))
+      : new Response(null, { status: 302, headers: { location: 'https://bucket.example/obj?sig=1' } }),
+  );
   assert.deepEqual(await client.downloadSubmission('s-1'), new Uint8Array([1, 2, 3]));
   assert.equal(seen[1]?.url, 'https://bucket.example/obj?sig=1');
   assert.equal(seen[1]?.headers.get('authorization'), null);
@@ -70,12 +78,17 @@ test('a bundle is sent as a gzip body with an origin; one with problems is not s
 
 test('a submission says which release its folder started from, and the list says it back', async () => {
   const file = (path: string, body: string): Entry => ({ path, type: 'file', mode: 0o644, mtime: 1, data: new TextEncoder().encode(body) });
-  const made = bundleOf([file('yukibana.json', '{"version":1,"kind":"rust-cargo","projectId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a01","releaseId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a5c"}'), file('src/lib.rs', '')]);
+  const made = bundleOf([
+    file('yukibana.json', '{"version":1,"kind":"rust-cargo","projectId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a01","releaseId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a5c"}'),
+    file('src/lib.rs', ''),
+  ]);
   assert.ok(made.ok);
   assert.equal(made.bundle.releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
-  const { seen, client } = recording((req) => req.method === 'POST'
-    ? json({ submissionId: 's-9', byteSize: 3, sha256: 'cd' }, 201)
-    : json([{ ...submission, baseReleaseId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' }, submission]));
+  const { seen, client } = recording(req =>
+    req.method === 'POST'
+      ? json({ submissionId: 's-9', byteSize: 3, sha256: 'cd' }, 201)
+      : json([{ ...submission, baseReleaseId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c' }, submission]),
+  );
   await client.submit(made.bundle);
   assert.equal(seen[0]?.url, 'https://cloud.example/api/projects/01a0b563-aeff-7c42-ae73-5aab2f2b5a01/submissions?release=01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   const [based, older] = await client.submissions('01a0b563-aeff-7c42-ae73-5aab2f2b5a01');

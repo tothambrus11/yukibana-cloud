@@ -28,20 +28,23 @@ interface Times {
 }
 
 const times = async (): Promise<Times> =>
-  asUser(sql, claimsOf(TEACHER), async (tx) => {
+  asUser(sql, claimsOf(TEACHER), async tx => {
     const [row] = await tx<Times[]>`select available_after, deadline, closes_at from project where project_id = ${project}`;
     if (row === undefined) throw new Error('the project is gone');
     return row;
   });
 
 const setTimes = async (t: Times): Promise<void> => {
-  await asUser(sql, claimsOf(TEACHER), (tx) => tx`
-    update project set available_after = ${t.available_after}, deadline = ${t.deadline}, closes_at = ${t.closes_at} where project_id = ${project}`);
+  await asUser(
+    sql,
+    claimsOf(TEACHER),
+    tx => tx`
+    update project set available_after = ${t.available_after}, deadline = ${t.deadline}, closes_at = ${t.closes_at} where project_id = ${project}`,
+  );
 };
 
 /** Posts the settings form as the page would, and returns the answer. */
-const save = async (fields: Record<string, string>): Promise<Response> =>
-  fetch(`${app.origin}${page}?tab=settings&/update`, ownForm({ title: 'Warm-up', ...fields }, teacher));
+const save = async (fields: Record<string, string>): Promise<Response> => fetch(`${app.origin}${page}?tab=settings&/update`, ownForm({ title: 'Warm-up', ...fields }, teacher));
 
 let before: Times;
 
@@ -52,9 +55,17 @@ beforeAll(async () => {
   expect(sent.status, await sent.clone().text()).toBe(200);
   const verified = await fetch(`${app.origin}/auth/login?/verify`, ownForm({ email: TEACHER, code: await codeMailedTo(TEACHER, since), next: '/' }));
   expect(verified.status, await verified.clone().text()).toBe(303);
-  teacher = verified.headers.getSetCookie().map((l) => l.split(';')[0] ?? '').filter((p) => !p.endsWith('=')).join('; ');
-  const [p] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string; edition_id: string }[]>`
-    select project_id, edition_id from project where slug = 'warmup'`);
+  teacher = verified.headers
+    .getSetCookie()
+    .map(l => l.split(';')[0] ?? '')
+    .filter(p => !p.endsWith('='))
+    .join('; ');
+  const [p] = await asUser(
+    sql,
+    claimsOf(TEACHER),
+    tx => tx<{ project_id: string; edition_id: string }[]>`
+    select project_id, edition_id from project where slug = 'warmup'`,
+  );
   if (p === undefined) throw new Error('no seeded project "warmup"');
   project = p.project_id;
   page = `/editions/${p.edition_id}/projects/${p.project_id}`;
@@ -84,9 +95,12 @@ test('saving the settings without touching a time keeps it to the second, even i
   await setTimes(set);
   const r = await save({
     zone: 'Europe/Zurich',
-    available_after: '2026-10-25T02:30', available_after_was: '2026-10-25T00:30:00.000Z',
-    deadline: '2026-10-30T23:59', deadline_was: '2026-10-30T22:59:59.000Z',
-    closes_at: '', closes_at_was: '',
+    available_after: '2026-10-25T02:30',
+    available_after_was: '2026-10-25T00:30:00.000Z',
+    deadline: '2026-10-30T23:59',
+    deadline_was: '2026-10-30T22:59:59.000Z',
+    closes_at: '',
+    closes_at_was: '',
   });
   expect(r.status, await r.clone().text()).toBeLessThan(400);
   expect(await times()).toEqual(set);

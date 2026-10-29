@@ -17,7 +17,7 @@ import type { Context } from './context';
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
 export async function me(ctx: Context, claims: Claims): Promise<MeJson> {
-  return asUser(ctx.sql, claims, async (tx) => {
+  return asUser(ctx.sql, claims, async tx => {
     const [u] = await tx<{ full_name: string | null; github_login: string | null; role: string }[]>`
       select full_name, github_login, role::text as role from app_user where user_id = ${claims.sub}`;
     return { userId: claims.sub, email: claims.email, fullName: u?.full_name ?? null, githubLogin: u?.github_login ?? null, platformRole: u?.role ?? 'user' };
@@ -25,17 +25,17 @@ export async function me(ctx: Context, claims: Claims): Promise<MeJson> {
 }
 
 export async function editions(ctx: Context, claims: Claims): Promise<EditionJson[]> {
-  return asUser(ctx.sql, claims, async (tx) => {
+  return asUser(ctx.sql, claims, async tx => {
     const rows = await tx<{ edition_id: string; label: string; archived: boolean; code: string; title: string; role: EditionRole }[]>`
       select e.edition_id, e.label, e.archived_at is not null as archived, c.code, e.title, app.role_in(e.edition_id)::text as role
       from course_edition e join course c on c.course_id = e.course_id
       order by e.archived_at nulls first, c.code, e.label desc`;
-    return rows.map((r) => ({ editionId: r.edition_id, courseCode: r.code, courseTitle: r.title, label: r.label, archived: r.archived, role: r.role }));
+    return rows.map(r => ({ editionId: r.edition_id, courseCode: r.code, courseTitle: r.title, label: r.label, archived: r.archived, role: r.role }));
   });
 }
 
 export async function members(ctx: Context, claims: Claims, edition: EditionId): Promise<MemberJson[]> {
-  return asUser(ctx.sql, claims, async (tx) => {
+  return asUser(ctx.sql, claims, async tx => {
     const seen = await tx`select 1 from course_edition where edition_id = ${edition}`;
     if (seen.length === 0) error(404, 'No such edition.');
     const rows = await tx<{ email: string; role: EditionRole; source: string; user_id: string | null; full_name: string | null; github_login: string | null }[]>`
@@ -43,7 +43,7 @@ export async function members(ctx: Context, claims: Claims, edition: EditionId):
       from enrollment en left join app_user u on u.user_id = en.user_id
       where en.edition_id = ${edition}
       order by en.role desc, en.email`;
-    return rows.map((r) => ({ email: r.email, role: r.role, source: r.source, userId: r.user_id, fullName: r.full_name, githubLogin: r.github_login }));
+    return rows.map(r => ({ email: r.email, role: r.role, source: r.source, userId: r.user_id, fullName: r.full_name, githubLogin: r.github_login }));
   });
 }
 
@@ -81,20 +81,33 @@ async function projectRows(tx: Tx, claims: Claims, edition: EditionId | null, on
     where (${edition}::uuid is null or p.edition_id = ${edition}::uuid)
       and (${only}::uuid is null or p.project_id = ${only}::uuid)
     order by e.archived_at nulls first, p.deadline nulls last, c.code, p.title`;
-  return rows.map((r) => ({
-    projectId: r.project_id, editionId: r.edition_id, courseCode: r.course_code, editionLabel: r.edition_label,
-    slug: r.slug, title: r.title, kind: r.kind, availableAfter: iso(r.available_after), deadline: iso(r.deadline), closesAt: iso(r.closes_at), late: r.late, role: r.role,
-    starterReady: r.starter_ready, canSubmit: r.can_submit, mySubmissions: r.my_submissions, myLastSubmittedAt: iso(r.my_last),
+  return rows.map(r => ({
+    projectId: r.project_id,
+    editionId: r.edition_id,
+    courseCode: r.course_code,
+    editionLabel: r.edition_label,
+    slug: r.slug,
+    title: r.title,
+    kind: r.kind,
+    availableAfter: iso(r.available_after),
+    deadline: iso(r.deadline),
+    closesAt: iso(r.closes_at),
+    late: r.late,
+    role: r.role,
+    starterReady: r.starter_ready,
+    canSubmit: r.can_submit,
+    mySubmissions: r.my_submissions,
+    myLastSubmittedAt: iso(r.my_last),
   }));
 }
 
 /** The projects the caller can see, optionally in one edition. */
 export async function projects(ctx: Context, claims: Claims, edition: EditionId | null): Promise<ProjectJson[]> {
-  return asUser(ctx.sql, claims, (tx) => projectRows(tx, claims, edition, null));
+  return asUser(ctx.sql, claims, tx => projectRows(tx, claims, edition, null));
 }
 
 export async function project(ctx: Context, claims: Claims, id: ProjectId): Promise<ProjectJson> {
-  const [p] = await asUser(ctx.sql, claims, (tx) => projectRows(tx, claims, null, id));
+  const [p] = await asUser(ctx.sql, claims, tx => projectRows(tx, claims, null, id));
   if (p === undefined) error(404, 'No such project.');
   return p;
 }
@@ -111,15 +124,27 @@ export interface SubmissionFilter {
  *  comes from `app.deadline_of`, because a student whose window has closed
  *  no longer sees the project but still reads their own submissions to it. */
 export async function submissions(ctx: Context, claims: Claims, id: ProjectId, filter: SubmissionFilter): Promise<SubmissionJson[]> {
-  return asUser(ctx.sql, claims, async (tx) => {
+  return asUser(ctx.sql, claims, async tx => {
     const seen = await tx`
       select 1 where exists (select 1 from project where project_id = ${id})
                   or exists (select 1 from submission where project_id = ${id})`;
     if (seen.length === 0) error(404, 'No such project.');
-    const rows = await tx<{
-      submission_id: string; project_id: string; submitted_at: Date; byte_size: string; sha256: string;
-      author_id: string; full_name: string | null; github_login: string | null; email: string | null; latest: boolean; late: boolean; base_release_id: string | null;
-    }[]>`
+    const rows = await tx<
+      {
+        submission_id: string;
+        project_id: string;
+        submitted_at: Date;
+        byte_size: string;
+        sha256: string;
+        author_id: string;
+        full_name: string | null;
+        github_login: string | null;
+        email: string | null;
+        latest: boolean;
+        late: boolean;
+        base_release_id: string | null;
+      }[]
+    >`
       select * from (
         select s.submission_id, s.project_id, s.submitted_at, s.byte_size::text as byte_size, encode(s.sha256, 'hex') as sha256,
                s.author_id, u.full_name, u.github_login, en.email, s.base_release_id,
@@ -133,9 +158,15 @@ export async function submissions(ctx: Context, claims: Claims, id: ProjectId, f
       ) x
       where not ${filter.latest} or x.latest
       order by x.submitted_at desc, x.submission_id desc`;
-    return rows.map((r) => ({
-      submissionId: r.submission_id, projectId: r.project_id, submittedAt: r.submitted_at.toISOString(),
-      byteSize: Number(r.byte_size), sha256: r.sha256, latest: r.latest, late: r.late, baseReleaseId: r.base_release_id,
+    return rows.map(r => ({
+      submissionId: r.submission_id,
+      projectId: r.project_id,
+      submittedAt: r.submitted_at.toISOString(),
+      byteSize: Number(r.byte_size),
+      sha256: r.sha256,
+      latest: r.latest,
+      late: r.late,
+      baseReleaseId: r.base_release_id,
       author: { userId: r.author_id, fullName: r.full_name, githubLogin: r.github_login, email: r.email },
     }));
   });
@@ -145,27 +176,35 @@ export async function submissions(ctx: Context, claims: Claims, id: ProjectId, f
  *  student gets an empty list for a project they can see, and a 404 for one
  *  they cannot. */
 export async function releases(ctx: Context, claims: Claims, id: ProjectId): Promise<ReleaseJson[]> {
-  return asUser(ctx.sql, claims, async (tx) => {
+  return asUser(ctx.sql, claims, async tx => {
     const seen = await tx`select 1 from project where project_id = ${id}`;
     if (seen.length === 0) error(404, 'No such project.');
-    const rows = await tx<{ release_id: string; label: string; commit_sha: string | null; starter_size: string; teacher_size: string; uploaded_at: Date; uploader: string | null; via_token: boolean }[]>`
+    const rows = await tx<
+      { release_id: string; label: string; commit_sha: string | null; starter_size: string; teacher_size: string; uploaded_at: Date; uploader: string | null; via_token: boolean }[]
+    >`
       select r.release_id, r.label, r.commit_sha, r.starter_size::text as starter_size, r.teacher_size::text as teacher_size, r.uploaded_at,
              coalesce(u.github_login, u.full_name) as uploader, r.token_id is not null as via_token
       from project_release r left join app_user u on u.user_id = r.uploaded_by
       where r.project_id = ${id}
       order by r.seq desc`;
-    return rows.map((r) => ({
-      releaseId: r.release_id, label: r.label, commit: r.commit_sha, starterSize: Number(r.starter_size), teacherSize: Number(r.teacher_size),
-      uploadedAt: r.uploaded_at.toISOString(), uploadedBy: r.uploader, viaToken: r.via_token,
+    return rows.map(r => ({
+      releaseId: r.release_id,
+      label: r.label,
+      commit: r.commit_sha,
+      starterSize: Number(r.starter_size),
+      teacherSize: Number(r.teacher_size),
+      uploadedAt: r.uploaded_at.toISOString(),
+      uploadedBy: r.uploader,
+      viaToken: r.via_token,
     }));
   });
 }
 
 /** Owner writes on the roster. The functions check the caller and audit. */
 export async function enrol(ctx: Context, claims: Claims, edition: EditionId, email: string, role: EditionRole): Promise<void> {
-  await asUser(ctx.sql, claims, (tx) => tx`select app.enrol(${edition}, ${email}, ${role}::app.edition_role)`);
+  await asUser(ctx.sql, claims, tx => tx`select app.enrol(${edition}, ${email}, ${role}::app.edition_role)`);
 }
 
 export async function unenrol(ctx: Context, claims: Claims, edition: EditionId, email: string): Promise<void> {
-  await asUser(ctx.sql, claims, (tx) => tx`select app.unenrol(${edition}, ${email})`);
+  await asUser(ctx.sql, claims, tx => tx`select app.unenrol(${edition}, ${email})`);
 }

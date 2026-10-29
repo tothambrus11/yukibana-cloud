@@ -38,7 +38,8 @@ async function bundleIn(dir: string): Promise<SubmissionBundle> {
 function preview(bundle: SubmissionBundle): void {
   for (const f of bundle.files) console.log(`  ${f.path}${f.type === 'symlink' ? ` -> ${f.linkTarget ?? ''}` : `  (${bytes(f.size)})`}`);
   console.log(`${bundle.files.length} files, ${bytes(bundle.totalBytes)} before compression`);
-  if (bundle.skipped.length > 0) console.log(`left out by yukibana.json: ${bundle.skipped.length} (${bundle.skipped.slice(0, 5).join(', ')}${bundle.skipped.length > 5 ? ', …' : ''})`);
+  if (bundle.skipped.length > 0)
+    console.log(`left out by yukibana.json: ${bundle.skipped.length} (${bundle.skipped.slice(0, 5).join(', ')}${bundle.skipped.length > 5 ? ', …' : ''})`);
   for (const p of bundle.problems) console.error(`problem: ${p}`);
 }
 
@@ -53,9 +54,7 @@ export async function pack(inv: Invocation): Promise<void> {
   preview(bundle);
   if (bundle.problems.length > 0) fail('not packed: fix the problems above');
   const archive = await bundle.archive();
-  const out = inv.options.out === undefined
-    ? join(await mkdtemp(join(tmpdir(), 'yukibana-pack-')), bundle.config.submission.filename)
-    : resolve(inv.options.out);
+  const out = inv.options.out === undefined ? join(await mkdtemp(join(tmpdir(), 'yukibana-pack-')), bundle.config.submission.filename) : resolve(inv.options.out);
   await save(out, archive);
   console.log(`wrote ${out}: ${bytes(archive.byteLength)}, sha256 ${sha256Hex(archive)}`);
 }

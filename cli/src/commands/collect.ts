@@ -89,7 +89,7 @@ export async function download(inv: Invocation): Promise<void> {
     if (wanted === 'own') console.log(`assembling each submission with the release it started from (the newest, ${newest === undefined ? '' : nameOf(newest)}, when unknown)`);
     else {
       const named = wanted === 'newest' ? newest?.releaseId : wanted.releaseId;
-      const r = releases.find((x) => x.releaseId === named);
+      const r = releases.find(x => x.releaseId === named);
       console.log(`assembling with release ${r === undefined ? '' : nameOf(r)}`);
     }
   }
@@ -97,9 +97,12 @@ export async function download(inv: Invocation): Promise<void> {
   const teacherOf = (r: Release): Promise<Entry[]> => {
     let got = teachers.get(r.releaseId);
     if (got === undefined) {
-      got = client.downloadRelease(r.releaseId, 'teacher').then(readArchive).catch((e: unknown) => {
-        throw new Error(`the teacher archive of release ${r.releaseId} could not be read (${e instanceof Error ? e.message : String(e)})`);
-      });
+      got = client
+        .downloadRelease(r.releaseId, 'teacher')
+        .then(readArchive)
+        .catch((e: unknown) => {
+          throw new Error(`the teacher archive of release ${r.releaseId} could not be read (${e instanceof Error ? e.message : String(e)})`);
+        });
       teachers.set(r.releaseId, got);
     }
     return got;
@@ -107,7 +110,7 @@ export async function download(inv: Invocation): Promise<void> {
   const bases = { same: 0, older: 0, unknown: 0 };
 
   const out = resolve(o.out ?? `submissions-${id.slice(0, 8)}`);
-  const authors = [...new Map(chosen.map((s) => [s.author.userId, s.author] as const)).values()];
+  const authors = [...new Map(chosen.map(s => [s.author.userId, s.author] as const)).values()];
   const folders = folderNames(authors);
   const versionFolders = versions ? versionNames(chosen) : new Map<string, string>();
   const done: Downloaded[] = [];
@@ -169,7 +172,19 @@ export async function download(inv: Invocation): Promise<void> {
         }
         for (const r of await writeEntries(target, entries)) console.error(`warning: ${folder}: not unpacked: ${r}`);
       }
-      done.push({ folder, submissionId: s.submissionId, submittedAt: s.submittedAt, late: s.late, sha256: s.sha256, author: s.author, baseReleaseId: base, assembledWith, tampering, unrestored, overridden });
+      done.push({
+        folder,
+        submissionId: s.submissionId,
+        submittedAt: s.submittedAt,
+        late: s.late,
+        sha256: s.sha256,
+        author: s.author,
+        baseReleaseId: base,
+        assembledWith,
+        tampering,
+        unrestored,
+        overridden,
+      });
       console.log(`${folder}${s.late ? '  (late)' : ''}${started}${tampering !== null && tampered(tampering) ? `  ! ${describe(tampering, unrestored)}` : ''}`);
       const lag = behind(releases, base);
       if (lag !== null) console.error(`warning: ${folder}: ${lag}`);
@@ -185,7 +200,9 @@ export async function download(inv: Invocation): Promise<void> {
   console.log(`${done.length} of ${chosen.length} into ${out}`);
   if (o.assemble === true) {
     const [newest] = releases;
-    console.log(`started from the newest release${newest === undefined ? '' : ` (${nameOf(newest)})`}: ${bases.same}; from an older one: ${bases.older}; unknown: ${bases.unknown}`);
+    console.log(
+      `started from the newest release${newest === undefined ? '' : ` (${nameOf(newest)})`}: ${bases.same}; from an older one: ${bases.older}; unknown: ${bases.unknown}`,
+    );
   }
   if (problems.length > 0) fail(...problems);
 }
@@ -218,14 +235,14 @@ export async function assembleCommand(inv: Invocation): Promise<void> {
     for (const p of t.modified) console.log(`modified: ${p}`);
     for (const p of t.deleted) console.log(`deleted:  ${p}`);
     for (const p of t.added) console.log(`added:    ${p}`);
-    console.log('(each replaced by the teacher\'s version)');
+    console.log("(each replaced by the teacher's version)");
   }
 }
 
 /** The release a submission's own yukibana.json says it started from, or
  *  null when it says none or the file is not there or not valid. */
 function claimedRelease(entries: readonly Entry[]): string | null {
-  const cfg = entries.find((e) => e.path === CONFIG_FILE && e.type === 'file');
+  const cfg = entries.find(e => e.path === CONFIG_FILE && e.type === 'file');
   if (cfg === undefined) return null;
   const parsed = parseConfig(new TextDecoder().decode(cfg.data));
   return parsed.ok ? parsed.config.releaseId : null;
@@ -238,7 +255,10 @@ async function entriesOf(path: string): Promise<Entry[]> {
 /** Whether `path` may be written: missing, empty, or `force` (then it is
  *  removed first). */
 async function vacant(path: string, force: boolean): Promise<boolean> {
-  const exists = await stat(path).then(() => true, () => false);
+  const exists = await stat(path).then(
+    () => true,
+    () => false,
+  );
   if (!exists) return true;
   if ((await stat(path)).isDirectory() && (await isEmptyDir(path))) return true;
   if (!force) return false;

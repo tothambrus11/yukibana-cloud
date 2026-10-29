@@ -50,7 +50,7 @@ export function matcher(patterns: readonly string[]): (path: string) => boolean 
     const parts = clean.split('/');
     for (let n = parts.length; n >= 1; n--) {
       const candidate = parts.slice(0, n).join('/');
-      if (regexps.some((r) => r.test(candidate))) return true;
+      if (regexps.some(r => r.test(candidate))) return true;
     }
     return false;
   };

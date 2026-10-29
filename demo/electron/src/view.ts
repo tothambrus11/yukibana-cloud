@@ -63,7 +63,7 @@ export function exerciseCards(projects: readonly Project[], now: number, locale?
   };
   return projects
     .toSorted((a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title))
-    .map((p) => {
+    .map(p => {
       const { due, tone } = dueOf(p, now, locale);
       return {
         projectId: p.projectId,
@@ -74,11 +74,12 @@ export function exerciseCards(projects: readonly Project[], now: number, locale?
         canSubmit: p.canSubmit,
         starterReady: p.starterReady,
         role: p.role,
-        mine: p.role !== 'student'
-          ? `you are ${p.role}`
-          : p.mySubmissions === 0
-            ? 'nothing submitted yet'
-            : `${p.mySubmissions} submission${p.mySubmissions === 1 ? '' : 's'}${p.myLastSubmittedAt === null ? '' : `, last ${shortDate(p.myLastSubmittedAt, locale)}`}`,
+        mine:
+          p.role !== 'student'
+            ? `you are ${p.role}`
+            : p.mySubmissions === 0
+              ? 'nothing submitted yet'
+              : `${p.mySubmissions} submission${p.mySubmissions === 1 ? '' : 's'}${p.myLastSubmittedAt === null ? '' : `, last ${shortDate(p.myLastSubmittedAt, locale)}`}`,
       };
     });
 }
@@ -110,7 +111,7 @@ export function bytes(n: number): string {
 /** The submission list, newest first as the registry sends it. The latest
  *  version of each author is the one that is assessed. */
 export function submissionRows(subs: readonly Submission[], locale?: string): SubmissionRow[] {
-  return subs.map((s) => ({
+  return subs.map(s => ({
     submissionId: s.submissionId,
     when: shortDate(s.submittedAt, locale),
     size: bytes(s.byteSize),
@@ -125,7 +126,7 @@ export function submissionRows(subs: readonly Submission[], locale?: string): Su
 export function sendable(problems: readonly string[], folderProject: string | null, open: readonly Project[]): { ok: true; projectId: string } | { ok: false; why: string } {
   if (problems.length > 0) return { ok: false, why: problems.join(' ') };
   if (folderProject === null) return { ok: false, why: 'This folder does not say which exercise it is for. Download the starter from here and work in that folder.' };
-  const p = open.find((x) => x.projectId === folderProject);
+  const p = open.find(x => x.projectId === folderProject);
   if (p === undefined) return { ok: false, why: 'This folder belongs to an exercise that is not open to you now.' };
   if (!p.canSubmit) return { ok: false, why: `"${p.title}" is not accepting submissions now.` };
   return { ok: true, projectId: p.projectId };

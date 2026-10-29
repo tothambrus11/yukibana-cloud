@@ -38,7 +38,10 @@ test('unpacking a hostile submission writes nothing outside the folder and no li
 
 test('only a .tar.gz is read; a .tar.zst is refused', async () => {
   const tar = await writeTar([file('yukibana.json', '{}'), file('src/main.rs', 'fn main() {}')]);
-  assert.deepEqual((await readArchive(await gzip(tar))).map((e) => e.path), ['yukibana.json', 'src/main.rs']);
+  assert.deepEqual(
+    (await readArchive(await gzip(tar))).map(e => e.path),
+    ['yukibana.json', 'src/main.rs'],
+  );
   await assert.rejects(readArchive(new Uint8Array([0x28, 0xb5, 0x2f, 0xfd, 0])), /not a \.tar\.gz/);
 });
 

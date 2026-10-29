@@ -17,7 +17,7 @@ const ctx: Context = { config, sql, bucket: s3Bucket(config.s3) };
 // its people: whoever this file enrolled leaves it again.
 const enrolled: string[] = [];
 afterAll(async () => {
-  await asUser(sql, claimsOf(TEACHER), async (tx) => {
+  await asUser(sql, claimsOf(TEACHER), async tx => {
     for (const addr of enrolled) await tx`select app.unenrol(e.edition_id, ${addr}) from enrollment e where e.email = ${addr}`;
   });
   await sql.end({ timeout: 5 });
@@ -34,7 +34,7 @@ const browser = (): CodeAuth =>
 const fresh = (): string => `code-${randomUUID()}@yukibana.local`;
 
 async function enrolAsTeacher(addr: string): Promise<void> {
-  await asUser(sql, claimsOf(TEACHER), async (tx) => {
+  await asUser(sql, claimsOf(TEACHER), async tx => {
     const [p] = await tx<{ edition_id: string }[]>`select edition_id from project where slug = 'warmup'`;
     if (p === undefined) throw new Error('no seeded project');
     await tx`select app.enrol(${p.edition_id}::uuid, ${addr})`;
@@ -44,7 +44,7 @@ async function enrolAsTeacher(addr: string): Promise<void> {
 
 /** Whom the roster says `addr` is: null until an account has claimed it. */
 async function linkedTo(addr: string): Promise<string | null> {
-  const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ user_id: string | null }[]>`select user_id from enrollment where email = ${addr}`);
+  const [row] = await asUser(sql, claimsOf(TEACHER), tx => tx<{ user_id: string | null }[]>`select user_id from enrollment where email = ${addr}`);
   if (row === undefined) throw new Error(`${addr} is not on the roster`);
   return row.user_id;
 }
@@ -66,7 +66,7 @@ test('a student enrolled by address logs in with the code mailed to it, and find
   expect(p).toMatchObject({ slug: 'warmup', role: 'student', canSubmit: true });
 });
 
-test('asking for a code for someone else\'s address links nothing to anyone until that code is typed', async () => {
+test("asking for a code for someone else's address links nothing to anyone until that code is typed", async () => {
   const addr = fresh();
   await enrolAsTeacher(addr);
   expect(await sendCode(browser(), addr)).toEqual({ ok: true });

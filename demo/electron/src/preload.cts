@@ -9,23 +9,23 @@ import type { Bridge } from './bridge.js' with { 'resolution-mode': 'import' };
 
 const { contextBridge, ipcRenderer } = electron;
 
-const METHODS = [
-  'status', 'login', 'logout', 'exercises', 'submissions', 'downloadStarter', 'chooseFolder', 'previewFile', 'submit',
-] as const satisfies readonly (keyof Bridge)[];
+const METHODS = ['status', 'login', 'logout', 'exercises', 'submissions', 'downloadStarter', 'chooseFolder', 'previewFile', 'submit'] as const satisfies readonly (keyof Bridge)[];
 type Missing = Exclude<keyof Bridge, (typeof METHODS)[number]>;
 const complete: Missing extends never ? true : Missing = true;
 void complete;
 
 /** IPC errors arrive as "Error invoking remote method 'x': Error: <message>";
  *  the page wants the sentence. */
-const call = (name: string) => async (...args: unknown[]): Promise<unknown> => {
-  try {
-    return await ipcRenderer.invoke(name, ...args);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    throw new Error(message.replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, ''), { cause: e });
-  }
-};
+const call =
+  (name: string) =>
+  async (...args: unknown[]): Promise<unknown> => {
+    try {
+      return await ipcRenderer.invoke(name, ...args);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      throw new Error(message.replace(/^Error invoking remote method '[^']+': (?:\w*Error: )?/, ''), { cause: e });
+    }
+  };
 
-contextBridge.exposeInMainWorld('yukibana', Object.fromEntries(METHODS.map((m) => [m, call(m)])));
+contextBridge.exposeInMainWorld('yukibana', Object.fromEntries(METHODS.map(m => [m, call(m)])));
 contextBridge.exposeInMainWorld('yukibanaDemo', { rendered: () => ipcRenderer.send('rendered') });

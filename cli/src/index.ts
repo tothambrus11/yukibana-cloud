@@ -51,15 +51,25 @@ const USAGE = `usage: yukibana <command> [arguments] [options]
   token for publish.`;
 
 const COMMANDS: Record<string, (inv: Invocation) => Promise<void>> = {
-  login, logout: logoutCommand, whoami,
-  editions, members, projects, project, releases, submissions,
-  starter, pack, submit,
-  check: (inv) => release('check', inv),
-  build: (inv) => release('build', inv),
-  publish: (inv) => release('publish', inv),
-  download, assemble: assembleCommand,
-  enrol: (inv) => roster('enrol', inv),
-  unenrol: (inv) => roster('unenrol', inv),
+  login,
+  logout: logoutCommand,
+  whoami,
+  editions,
+  members,
+  projects,
+  project,
+  releases,
+  submissions,
+  starter,
+  pack,
+  submit,
+  check: inv => release('check', inv),
+  build: inv => release('build', inv),
+  publish: inv => release('publish', inv),
+  download,
+  assemble: assembleCommand,
+  enrol: inv => roster('enrol', inv),
+  unenrol: inv => roster('unenrol', inv),
 };
 
 async function main(): Promise<void> {

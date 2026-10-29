@@ -77,7 +77,11 @@ async function confirm(req: ConnectRequest, as: Browser = site): Promise<URL> {
   expect(at.origin + at.pathname).toBe(`${SITE}/auth/connect/consent`);
   expect(started.cookie).toEqual({ name: connectCookie(n), value: at.searchParams.get('authorization_id') });
   const decided = await consent({
-    authorizationId: at.searchParams.get('authorization_id'), signedIn: true, cookies: started.cookie === null ? [] : [started.cookie], auth: as.auth.oauth, expected: expected(),
+    authorizationId: at.searchParams.get('authorization_id'),
+    signedIn: true,
+    cookies: started.cookie === null ? [] : [started.cookie],
+    auth: as.auth.oauth,
+    expected: expected(),
   });
   expect(decided.spend).toEqual([connectCookie(n)]);
   if ('status' in decided.to) throw new Error(decided.to.message);
@@ -109,7 +113,7 @@ test('the person signed in on the website, once they confirm, gives the IDE a co
   expect(again.status).toBe(400);
 });
 
-test('the IDE\'s session refreshes only by naming its client, and logging it out leaves the website signed in', async () => {
+test("the IDE's session refreshes only by naming its client, and logging it out leaves the website signed in", async () => {
   const { verifier, req } = cliRequest();
   const code = (await confirm(req)).searchParams.get('code') ?? '';
   const traded = await token({ grant_type: 'authorization_code', code, client_id: clientId(), redirect_uri: RETURN, code_verifier: verifier });
@@ -138,7 +142,7 @@ test('the IDE\'s session refreshes only by naming its client, and logging it out
   expect(data.session?.user.id).toBe(userId);
 });
 
-test('someone else, signed in elsewhere, cannot approve an authorization the first person\'s browser began', async () => {
+test("someone else, signed in elsewhere, cannot approve an authorization the first person's browser began", async () => {
   const { req } = cliRequest();
   const res = await fetch(authorizeUrl(config.supabaseUrl, clientId(), RETURN, req, nonce()), { redirect: 'manual' });
   const id = new URL(res.headers.get('location') ?? '').searchParams.get('authorization_id') ?? '';

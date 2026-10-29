@@ -80,8 +80,7 @@ export function submissionExcluder(config: Config, gitignores: ReadonlyMap<strin
     }
     return ignored;
   };
-  return (path, folder) =>
-    path !== CONFIG_FILE && (excluded(path) || (config.submission.respectGitignore && ignoredByGit(path, folder)));
+  return (path, folder) => path !== CONFIG_FILE && (excluded(path) || (config.submission.respectGitignore && ignoredByGit(path, folder)));
 }
 
 /** Returns the `.gitignore` files of `tree`, each under its folder (`''`
@@ -108,7 +107,7 @@ export function planSubmission(tree: readonly Entry[], config: Config): Packing 
   const skipped: string[] = [];
   const problems: string[] = [];
   const leftOutFolders = new Set<string>();
-  const inLeftOutFolder = (path: string): boolean => foldersAbove(path).some((folder) => leftOutFolders.has(folder));
+  const inLeftOutFolder = (path: string): boolean => foldersAbove(path).some(folder => leftOutFolders.has(folder));
   for (const e of tree) {
     if (inLeftOutFolder(e.path)) continue;
     if (excluded(e.path, e.type === 'dir')) {
@@ -130,14 +129,12 @@ export function planSubmission(tree: readonly Entry[], config: Config): Packing 
     }
     kept.push(e);
   }
-  if (!kept.some((e) => e.path === CONFIG_FILE && e.type === 'file')) {
+  if (!kept.some(e => e.path === CONFIG_FILE && e.type === 'file')) {
     problems.push(`there is no ${CONFIG_FILE} here; submit from the folder the starter unpacked into`);
   }
 
   // A directory stays when something in it stays, or when no include list
   // narrows the submission (an empty directory may be part of the layout).
-  const entries = include === null
-    ? kept
-    : kept.filter((e) => e.type !== 'dir' || included(e.path) || kept.some((k) => k.type !== 'dir' && k.path.startsWith(`${e.path}/`)));
+  const entries = include === null ? kept : kept.filter(e => e.type !== 'dir' || included(e.path) || kept.some(k => k.type !== 'dir' && k.path.startsWith(`${e.path}/`)));
   return { entries, skipped, problems };
 }

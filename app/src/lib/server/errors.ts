@@ -64,11 +64,17 @@ export async function asJsonError(response: Response): Promise<Response> {
 
 function fallback(status: number): string {
   switch (status) {
-    case 400: return 'The request cannot mean anything.';
-    case 401: return 'Log in first.';
-    case 403: return 'You may not do that.';
-    case 404: return 'No such thing.';
-    case 405: return 'That method is not allowed here.';
-    default: return status < 500 ? `The request was refused (${status}).` : `The request failed on the server (${status}).`;
+    case 400:
+      return 'The request cannot mean anything.';
+    case 401:
+      return 'Log in first.';
+    case 403:
+      return 'You may not do that.';
+    case 404:
+      return 'No such thing.';
+    case 405:
+      return 'That method is not allowed here.';
+    default:
+      return status < 500 ? `The request was refused (${status}).` : `The request failed on the server (${status}).`;
   }
 }

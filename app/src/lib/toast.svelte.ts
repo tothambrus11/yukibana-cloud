@@ -28,7 +28,7 @@ let next = 0;
  *  layout's effect re-raised a refusal the moment it was dismissed or timed
  *  out, so the notice could not be closed. */
 export function toast(message: string): void {
-  if (untrack(() => toasts.some((t) => t.message === message))) return;
+  if (untrack(() => toasts.some(t => t.message === message))) return;
   const id = next++;
   toasts.push({ id, message });
   setTimeout(() => dismiss(id), SHOWN_MS);
@@ -37,6 +37,6 @@ export function toast(message: string): void {
 /** Takes notice `id` away now, before its time; one already gone is
  *  nothing to do. */
 export function dismiss(id: number): void {
-  const i = toasts.findIndex((t) => t.id === id);
+  const i = toasts.findIndex(t => t.id === id);
   if (i !== -1) toasts.splice(i, 1);
 }

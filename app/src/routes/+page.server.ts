@@ -18,52 +18,53 @@ interface EditionRow {
  *  projects for the to-do list, and for a teacher the courses they may add
  *  an edition to. Every row comes through
  *  the policies, so there is nothing to filter here. */
-export const load: PageServerLoad = async (event) => {
+export const load: PageServerLoad = async event => {
   if (event.locals.claims === null) return { user: null, editions: [], courses: [], platformRole: null, tasks: [] };
   const claims = event.locals.claims;
-  return withContext((ctx) =>
-    asUser(ctx.sql, claims, async (tx) => {
+  return withContext(ctx =>
+    asUser(ctx.sql, claims, async tx => {
       const editions = await tx<EditionRow[]>`
         select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role
         from course_edition e join course c on c.course_id = e.course_id
         order by e.archived_at nulls first, c.code, e.label desc`;
       const [me] = await tx<{ role: string | null }[]>`select app.platform_role()::text as role`;
       const platformRole = me?.role ?? null;
-      const courses = platformRole === 'teacher' || platformRole === 'admin'
-        // A course is named by its latest edition: `course.title` is kept so.
-        ? await tx<{ course_id: string; code: string; title: string }[]>`select course_id, code, title from course order by code`
-        : [];
+      const courses =
+        platformRole === 'teacher' || platformRole === 'admin'
+          ? // A course is named by its latest edition: `course.title` is kept so.
+            await tx<{ course_id: string; code: string; title: string }[]>`select course_id, code, title from course order by code`
+          : [];
       // The to-do list: every project the person has as a student, across
       // editions. The page sorts and splits it.
-      const tasks = editions.some((e) => e.role === 'student') ? await studentProjects(tx, claims, null) : [];
+      const tasks = editions.some(e => e.role === 'student') ? await studentProjects(tx, claims, null) : [];
       return { user: claims.sub, editions, courses, platformRole, tasks };
     }),
   );
 };
 
 export const actions: Actions = {
-  createCourse: async (event) => {
+  createCourse: async event => {
     const claims = requireClaims(event);
     const form = await event.request.formData();
     const code = text(form, 'code');
     const title = text(form, 'title');
     if (code === '' || title === '') return fail(400, { error: 'A course needs a code and a title.' });
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_course(${code}, ${title})`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.create_course(${code}, ${title})`));
     } catch (e) {
       if (clashOf(e) === 'course_code_key') return fail(409, { error: `A course with the code "${code}" already exists. Add an edition to it instead.` });
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }
     return { ok: true };
   },
-  createEdition: async (event) => {
+  createEdition: async event => {
     const claims = requireClaims(event);
     const form = await event.request.formData();
     const course = text(form, 'course_id');
     const label = text(form, 'label');
     if (label === '') return fail(400, { error: 'An edition needs a label, like "2026 autumn".' });
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.create_edition(${course}, ${label})`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.create_edition(${course}, ${label})`));
     } catch (e) {
       if (clashOf(e) === 'course_edition_course_id_label_key') return fail(409, { error: `This course already has an edition called "${label}". Choose another label.` });
       return fail(statusOf(e).status, { error: statusOf(e).message });

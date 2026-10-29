@@ -19,10 +19,7 @@ import { writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BrowserWindow, app, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
-import {
-  YukibanaClient, createSubmissionBundle, loginWithLoopback, logout, tokenProvider, unpackStarter,
-  type CallbackOutcome, type SubmissionBundle,
-} from '@yukibana/cli';
+import { YukibanaClient, createSubmissionBundle, loginWithLoopback, logout, tokenProvider, unpackStarter, type CallbackOutcome, type SubmissionBundle } from '@yukibana/cli';
 import type { Bridge, BundlePreview, FilePreview, Status } from './bridge.js';
 import { safeStore } from './safe-store.js';
 
@@ -62,14 +59,12 @@ async function pickFolder(event: IpcMainInvokeEvent, title: string, create: bool
   return chosen.canceled ? null : (chosen.filePaths[0] ?? null);
 }
 
-const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const escapeHtml = (s: string): string => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 /** What the browser shows when the login comes back: the library serves it
  *  and the app writes it. */
 function callbackPage(outcome: CallbackOutcome): string {
-  const [title, text] = outcome.ok
-    ? ['Signed in to Yukibana', 'You may close this tab and return to the application.']
-    : ['Sign-in was not completed', escapeHtml(outcome.reason)];
+  const [title, text] = outcome.ok ? ['Signed in to Yukibana', 'You may close this tab and return to the application.'] : ['Sign-in was not completed', escapeHtml(outcome.reason)];
   return `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:system-ui;max-width:32rem;margin:4rem auto"><h1>${title}</h1><p>${text}</p></body>`;
 }
 
@@ -87,7 +82,7 @@ function textOf(bytes: Uint8Array): string | null {
 const handlers: { [K in keyof Bridge]: (event: IpcMainInvokeEvent, ...args: Parameters<Bridge[K]>) => ReturnType<Bridge[K]> } = {
   status: async () => status(),
   async login(_event, url) {
-    const session = await loginWithLoopback(url, { open: (u) => shell.openExternal(u.toString()), callbackPage });
+    const session = await loginWithLoopback(url, { open: u => shell.openExternal(u.toString()), callbackPage });
     await store.save(session);
     return status();
   },
@@ -115,15 +110,19 @@ const handlers: { [K in keyof Bridge]: (event: IpcMainInvokeEvent, ...args: Para
     bundles.set(bundleId, made.bundle);
     const b = made.bundle;
     const preview: BundlePreview = {
-      bundleId, folder, projectId: b.projectId,
-      files: b.files.map((f) => ({ path: f.path, size: f.size, type: f.type })),
-      skipped: b.skipped, problems: b.problems, totalBytes: b.totalBytes,
+      bundleId,
+      folder,
+      projectId: b.projectId,
+      files: b.files.map(f => ({ path: f.path, size: f.size, type: f.type })),
+      skipped: b.skipped,
+      problems: b.problems,
+      totalBytes: b.totalBytes,
     };
     return preview;
   },
   async previewFile(_event, bundleId, path) {
     const bundle = bundles.get(bundleId);
-    const file = bundle?.files.find((f) => f.path === path);
+    const file = bundle?.files.find(f => f.path === path);
     if (bundle === undefined || file === undefined) throw new Error('That file is not in the bundle.');
     const bytes = bundle.read(path);
     const preview: FilePreview = { path, size: file.size, text: bytes === undefined ? (file.type === 'symlink' ? '(a symbolic link)' : null) : textOf(bytes) };

@@ -33,8 +33,13 @@ test('a deadline reads as time left or time past', () => {
 });
 
 test('the to-do list puts the most urgent first and open-ended work last', () => {
-  const items = [{ id: 'none', deadline: null }, { id: 'later', deadline: h(50) }, { id: 'overdue', deadline: h(-3) }, { id: 'soon', deadline: h(2) }];
-  expect(items.toSorted(byUrgency).map((i) => i.id)).toEqual(['overdue', 'soon', 'later', 'none']);
+  const items = [
+    { id: 'none', deadline: null },
+    { id: 'later', deadline: h(50) },
+    { id: 'overdue', deadline: h(-3) },
+    { id: 'soon', deadline: h(2) },
+  ];
+  expect(items.toSorted(byUrgency).map(i => i.id)).toEqual(['overdue', 'soon', 'later', 'none']);
 });
 
 test('a dragged project lands where it was dropped, between the two the server places it between', () => {

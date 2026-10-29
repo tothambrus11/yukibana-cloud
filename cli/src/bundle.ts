@@ -83,14 +83,14 @@ export async function createSubmissionBundle(dir: string): Promise<BundleResult>
  *  `createSubmissionBundle` would: what a test, or an editor that holds
  *  unsaved buffers, would use. */
 export function bundleOf(tree: readonly Entry[]): BundleResult {
-  const cfg = tree.find((e) => e.path === CONFIG_FILE && e.type === 'file');
+  const cfg = tree.find(e => e.path === CONFIG_FILE && e.type === 'file');
   if (cfg === undefined) return { ok: false, problems: [NO_CONFIG] };
   const parsed = parseConfig(new TextDecoder().decode(cfg.data));
   if (!parsed.ok) return { ok: false, problems: [parsed.error] };
   const config = parsed.config;
 
   const packing = planSubmission(tree, config);
-  const byPath = new Map(packing.entries.filter((e) => e.type === 'file').map((e) => [e.path, e.data] as const));
+  const byPath = new Map(packing.entries.filter(e => e.type === 'file').map(e => [e.path, e.data] as const));
   const files: BundleFile[] = [];
   for (const e of packing.entries) {
     if (e.type === 'dir') continue;
@@ -115,7 +115,7 @@ export function bundleOf(tree: readonly Entry[]): BundleResult {
       skipped: packing.skipped,
       problems,
       totalBytes,
-      read: (path) => byPath.get(path),
+      read: path => byPath.get(path),
       archive: () => (archived ??= writeTar(packing.entries).then(gzip)),
     },
   };

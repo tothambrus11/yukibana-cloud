@@ -4,18 +4,18 @@
 // login with something that looks nothing like the cause.
 //
 //   node scripts/check-production-config.mjs
-import { readFileSync } from "node:fs";
+import { readFileSync } from 'node:fs';
 
 const WHERE = {
   REPLACE_ME_PROJECT_REF: "the Supabase project ref: the first label of the project's API URL, https://<ref>.supabase.co",
-  REPLACE_ME_HYPERDRIVE_ID: "the Hyperdrive id printed by `wrangler hyperdrive create yukibana-cloud --connection-string=...`",
-  REPLACE_ME_WORKERS_SUBDOMAIN: "the workers.dev subdomain, or the custom domain the app is served on",
+  REPLACE_ME_HYPERDRIVE_ID: 'the Hyperdrive id printed by `wrangler hyperdrive create yukibana-cloud --connection-string=...`',
+  REPLACE_ME_WORKERS_SUBDOMAIN: 'the workers.dev subdomain, or the custom domain the app is served on',
 };
 
-const files = ["wrangler.jsonc", "supabase/config.toml"];
+const files = ['wrangler.jsonc', 'supabase/config.toml'];
 const found = [];
 for (const file of files) {
-  const lines = readFileSync(new URL(`../${file}`, import.meta.url), "utf8").split("\n");
+  const lines = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8').split('\n');
   lines.forEach((line, i) => {
     for (const name of Object.keys(WHERE)) {
       if (line.includes(name)) found.push({ file, line: i + 1, name });
@@ -24,15 +24,15 @@ for (const file of files) {
 }
 
 if (found.length === 0) {
-  console.log("production configuration has no placeholders left");
+  console.log('production configuration has no placeholders left');
   process.exit(0);
 }
-console.error("These production values are still placeholders:\n");
-for (const name of new Set(found.map((f) => f.name))) {
+console.error('These production values are still placeholders:\n');
+for (const name of new Set(found.map(f => f.name))) {
   console.error(`  ${name}`);
   console.error(`    is ${WHERE[name]}`);
-  for (const f of found.filter((x) => x.name === name)) console.error(`    at ${f.file}:${f.line}`);
-  console.error("");
+  for (const f of found.filter(x => x.name === name)) console.error(`    at ${f.file}:${f.line}`);
+  console.error('');
 }
-console.error("Fill them in and commit; docs/deploy.md says where each comes from.");
+console.error('Fill them in and commit; docs/deploy.md says where each comes from.');
 process.exit(1);

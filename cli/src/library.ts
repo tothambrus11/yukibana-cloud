@@ -42,8 +42,17 @@
 export { createSubmissionBundle, bundleOf, type BundleFile, type BundleResult, type SubmissionBundle } from './bundle.js';
 export { YukibanaClient, RegistryError, type ClientOptions, type SubmissionQuery } from './client.js';
 export {
-  startLogin, refreshSession, tokenProvider, logout, memoryStore, codeOf, NotLoggedIn,
-  type LoggedOut, type PendingLogin, type Session, type SessionStore,
+  startLogin,
+  refreshSession,
+  tokenProvider,
+  logout,
+  memoryStore,
+  codeOf,
+  NotLoggedIn,
+  type LoggedOut,
+  type PendingLogin,
+  type Session,
+  type SessionStore,
 } from './session.js';
 export { loginWithLoopback, type CallbackOutcome, type LoopbackOptions } from './loopback.js';
 export { loginCode } from './lib/pkce.js';
@@ -53,8 +62,21 @@ export { publish, type PublishInput } from './publish.js';
 export { assemble, submissionRoot, teacherRoot, tampered, type Assembled, type Assembly, type Tampering } from './lib/assemble.js';
 export { planSubmission, type Packing } from './lib/pack.js';
 export {
-  parseConfig, parseSettings, protectedPaths, configSchema, settingsSchema, CONFIG_FILE, DEFAULT_SETTINGS, KINDS,
-  type Config, type Features, type Kind, type Layout, type Settings, type SubmissionRules, type Widgets,
+  parseConfig,
+  parseSettings,
+  protectedPaths,
+  configSchema,
+  settingsSchema,
+  CONFIG_FILE,
+  DEFAULT_SETTINGS,
+  KINDS,
+  type Config,
+  type Features,
+  type Kind,
+  type Layout,
+  type Settings,
+  type SubmissionRules,
+  type Widgets,
 } from './lib/yukibana.js';
 export { matcher } from './lib/glob.js';
 export { readTar, writeTar, type Entry, type EntryType } from './lib/tar.js';

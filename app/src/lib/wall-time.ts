@@ -66,11 +66,18 @@ export function instantOf(wall: string, zone: string, was: Date | null = null): 
   if (was !== null && local(was, zone) === wall) return { ok: true, at: new Date(was) };
   const m = WALL.exec(wall);
   if (m === null) return { ok: false, why: `"${wall}" is not a date and time.` };
-  const [y, mo, d, h, mi, s] = m.slice(1).map((x) => (x === undefined ? 0 : Number(x))) as [number, number, number, number, number, number];
+  const [y, mo, d, h, mi, s] = m.slice(1).map(x => (x === undefined ? 0 : Number(x))) as [number, number, number, number, number, number];
   // The wall time as if the zone were UTC, checked against the calendar:
   // Date.UTC rolls 31 April over to 1 May without a word.
   const naive = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
-  if (naive.getUTCFullYear() !== y || naive.getUTCMonth() !== mo - 1 || naive.getUTCDate() !== d || naive.getUTCHours() !== h || naive.getUTCMinutes() !== mi || naive.getUTCSeconds() !== s) {
+  if (
+    naive.getUTCFullYear() !== y ||
+    naive.getUTCMonth() !== mo - 1 ||
+    naive.getUTCDate() !== d ||
+    naive.getUTCHours() !== h ||
+    naive.getUTCMinutes() !== mi ||
+    naive.getUTCSeconds() !== s
+  ) {
     return { ok: false, why: `${wall.slice(0, 10)} is not a day of the calendar.` };
   }
   // The zone's offset a day either side covers both offsets in force around
@@ -80,7 +87,7 @@ export function instantOf(wall: string, zone: string, was: Date | null = null): 
   // which of the two it picks depends on the zone of the machine it runs on.
   const DAY = 86_400_000;
   const offsets = new Set([tzOffset(zone, new Date(naive.getTime() - DAY)), tzOffset(zone, new Date(naive.getTime() + DAY))]);
-  const candidates = [...offsets].map((o) => naive.getTime() - o * 60_000).filter((t) => tzOffset(zone, new Date(t)) * 60_000 === naive.getTime() - t);
+  const candidates = [...offsets].map(o => naive.getTime() - o * 60_000).filter(t => tzOffset(zone, new Date(t)) * 60_000 === naive.getTime() - t);
   if (candidates.length === 0) {
     return { ok: false, why: `${wall.replace('T', ' ')} does not happen in ${zone}: the clocks skip it that night.` };
   }

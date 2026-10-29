@@ -28,7 +28,7 @@ test('put, head, get, presign and delete, against a real S3 endpoint', async () 
 test('a presigned URL past its time is refused', async () => {
   await bucket.put(key, body, 'application/octet-stream');
   const url = await bucket.presignGet(key, 1, 'x.bin');
-  await new Promise((r) => setTimeout(r, 2500));
+  await new Promise(r => setTimeout(r, 2500));
   const res = await fetch(url);
   expect(res.status).toBe(403);
   await bucket.delete(key);

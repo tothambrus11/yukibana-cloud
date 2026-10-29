@@ -19,7 +19,7 @@ afterAll(() => sql.end({ timeout: 5 }));
 const gz = (n: number) => new Uint8Array([0x1f, 0x8b, n]);
 
 async function warmup(): Promise<ProjectId> {
-  const [row] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`select project_id from project where slug = 'warmup'`);
+  const [row] = await asUser(sql, claimsOf(TEACHER), tx => tx<{ project_id: string }[]>`select project_id from project where slug = 'warmup'`);
   if (row === undefined) throw new Error('no seeded project');
   return trustId<ProjectId>(row.project_id);
 }
@@ -43,7 +43,7 @@ test('a submission is a .tar.gz; anything else, a .tar.zst included, is refused 
   expect(await status(acceptSubmission(ctx, claimsOf(ALICE), id, new Uint8Array([0x50, 0x4b, 3, 4]), null))).toBe(415);
 });
 
-test('a student\'s open exercises are the published projects of their editions, with what they may do in each', async () => {
+test("a student's open exercises are the published projects of their editions, with what they may do in each", async () => {
   const [p] = await projects(ctx, claimsOf(BOB), null);
   expect(p).toMatchObject({ slug: 'warmup', role: 'student', canSubmit: true, courseCode: 'CS-101' });
   const [e] = await editions(ctx, claimsOf(BOB));
@@ -57,35 +57,35 @@ test('a teacher sees every version and, by default in the CLI, the latest of eac
   const bobs = await acceptSubmission(ctx, claimsOf(BOB), id, gz(3), null);
 
   const all = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: null });
-  const ids = all.map((s) => s.submissionId);
+  const ids = all.map(s => s.submissionId);
   expect(ids).toEqual(expect.arrayContaining([first.submissionId, second.submissionId, bobs.submissionId]));
-  expect(all.find((s) => s.submissionId === first.submissionId)?.latest).toBe(false);
-  expect(all.find((s) => s.submissionId === second.submissionId)).toMatchObject({ latest: true, author: { githubLogin: 'alice', email: ALICE } });
+  expect(all.find(s => s.submissionId === first.submissionId)?.latest).toBe(false);
+  expect(all.find(s => s.submissionId === second.submissionId)).toMatchObject({ latest: true, author: { githubLogin: 'alice', email: ALICE } });
 
   const latest = await submissions(ctx, claimsOf(TEACHER), id, { latest: true, author: null });
-  expect(latest.filter((s) => s.author.userId === uid(ALICE)).map((s) => s.submissionId)).toEqual([second.submissionId]);
-  expect(latest.every((s) => s.latest)).toBe(true);
+  expect(latest.filter(s => s.author.userId === uid(ALICE)).map(s => s.submissionId)).toEqual([second.submissionId]);
+  expect(latest.every(s => s.latest)).toBe(true);
 
   const alices = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: uid(ALICE) });
-  expect(alices.every((s) => s.author.userId === uid(ALICE))).toBe(true);
+  expect(alices.every(s => s.author.userId === uid(ALICE))).toBe(true);
 
   const bobSees = await submissions(ctx, claimsOf(BOB), id, { latest: false, author: null });
   expect(bobSees.length).toBeGreaterThan(0);
-  expect(bobSees.every((s) => s.author.userId === uid(BOB))).toBe(true);
+  expect(bobSees.every(s => s.author.userId === uid(BOB))).toBe(true);
 
   const mine = await project(ctx, claimsOf(ALICE), id);
   expect(mine.mySubmissions).toBeGreaterThanOrEqual(2);
   expect(mine.myLastSubmittedAt).not.toBeNull();
 });
 
-test('a student cannot read a classmate\'s submissions by naming them, nor the roster, nor the releases', async () => {
+test("a student cannot read a classmate's submissions by naming them, nor the roster, nor the releases", async () => {
   const id = await warmup();
   const asked = await submissions(ctx, claimsOf(BOB), id, { latest: false, author: uid(ALICE) });
   expect(asked).toEqual([]);
   expect(await releases(ctx, claimsOf(BOB), id)).toEqual([]);
   const [e] = await editions(ctx, claimsOf(BOB));
   const roster = await members(ctx, claimsOf(BOB), trustId<EditionId>(e?.editionId ?? ''));
-  expect(roster.map((m) => m.email)).toEqual([BOB]);
+  expect(roster.map(m => m.email)).toEqual([BOB]);
 });
 
 test('a project or edition the caller is not in is a 404, the same as one that does not exist', async () => {
@@ -98,18 +98,22 @@ test('a project or edition the caller is not in is a 404, the same as one that d
 test('staff see the whole roster with names, linked or not', async () => {
   const [e] = await editions(ctx, claimsOf(TEACHER));
   const roster = await members(ctx, claimsOf(TEACHER), trustId<EditionId>(e?.editionId ?? ''));
-  expect(roster.map((m) => m.email)).toEqual(expect.arrayContaining([TEACHER, ALICE, BOB]));
-  expect(roster.find((m) => m.email === ALICE)).toMatchObject({ role: 'student', githubLogin: 'alice' });
+  expect(roster.map(m => m.email)).toEqual(expect.arrayContaining([TEACHER, ALICE, BOB]));
+  expect(roster.find(m => m.email === ALICE)).toMatchObject({ role: 'student', githubLogin: 'alice' });
 });
 
 test('after the deadline a student still submits, and it reads as late; once the window closes the project is gone but their work is not', async () => {
   const slug = `late-${Date.now()}`;
   const [e] = await editions(ctx, claimsOf(TEACHER));
   const edition = e?.editionId ?? '';
-  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+  const [made] = await asUser(
+    sql,
+    claimsOf(TEACHER),
+    tx => tx<{ project_id: string }[]>`
     insert into project (edition_id, slug, title, kind, available_after, deadline, closes_at)
     values (${edition}, ${slug}, 'Late work', 'rust-cargo', now() - interval '3 hours', now() - interval '2 hours', now() + interval '1 day')
-    returning project_id`);
+    returning project_id`,
+  );
   const id = trustId<ProjectId>(made?.project_id ?? '');
 
   const open = await project(ctx, claimsOf(ALICE), id);
@@ -118,12 +122,12 @@ test('after the deadline a student still submits, and it reads as late; once the
   const [mine] = await submissions(ctx, claimsOf(ALICE), id, { latest: true, author: null });
   expect(mine).toMatchObject({ submissionId: sent.submissionId, late: true });
 
-  await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() + interval '1 hour' where project_id = ${id}`);
+  await asUser(sql, claimsOf(TEACHER), tx => tx`update project set deadline = now() + interval '1 hour' where project_id = ${id}`);
   const [extended] = await submissions(ctx, claimsOf(TEACHER), id, { latest: true, author: uid(ALICE) });
   expect(extended?.late).toBe(false);
 
-  await asUser(sql, claimsOf(TEACHER), (tx) => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
-  expect((await projects(ctx, claimsOf(ALICE), null)).some((p) => p.projectId === id)).toBe(false);
+  await asUser(sql, claimsOf(TEACHER), tx => tx`update project set deadline = now() - interval '2 hours', closes_at = now() - interval '1 second' where project_id = ${id}`);
+  expect((await projects(ctx, claimsOf(ALICE), null)).some(p => p.projectId === id)).toBe(false);
   expect(await status(project(ctx, claimsOf(ALICE), id))).toBe(404);
   const late = await outcome(acceptSubmission(ctx, claimsOf(ALICE), id, gz(10), null));
   expect(late.status).toBe(403);
@@ -133,25 +137,29 @@ test('after the deadline a student still submits, and it reads as late; once the
   expect(await status(submissions(ctx, claimsOf(BOB), id, { latest: false, author: null }))).toBe(404);
 });
 
-test('a student\'s project list says what they handed in and when; staff of an edition have no student list there', async () => {
+test("a student's project list says what they handed in and when; staff of an edition have no student list there", async () => {
   const id = await warmup();
   await acceptSubmission(ctx, claimsOf(BOB), id, gz(42), null);
-  const mine = await asUser(sql, claimsOf(BOB), (tx) => studentProjects(tx, claimsOf(BOB), null));
-  const warm = mine.find((p) => p.project_id === id);
+  const mine = await asUser(sql, claimsOf(BOB), tx => studentProjects(tx, claimsOf(BOB), null));
+  const warm = mine.find(p => p.project_id === id);
   expect(warm).toMatchObject({ slug: 'warmup', can_submit: true, course_code: 'CS-101' });
   expect(warm?.submissions).toBeGreaterThan(0);
   expect(warm?.last_submitted_at).toBeInstanceOf(Date);
-  const teachers = await asUser(sql, claimsOf(TEACHER), (tx) => studentProjects(tx, claimsOf(TEACHER), null));
+  const teachers = await asUser(sql, claimsOf(TEACHER), tx => studentProjects(tx, claimsOf(TEACHER), null));
   expect(teachers).toEqual([]);
 });
 
 test('a submission records the release it started from only when that release is of the same project', async () => {
   const id = await warmup();
   const [e] = await editions(ctx, claimsOf(TEACHER));
-  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+  const [made] = await asUser(
+    sql,
+    claimsOf(TEACHER),
+    tx => tx<{ project_id: string }[]>`
     insert into project (edition_id, slug, title, kind)
     values (${e?.editionId ?? ''}, ${`elsewhere-${Date.now()}`}, 'Elsewhere, a draft', 'rust-cargo')
-    returning project_id`);
+    returning project_id`,
+  );
   const elsewhere = trustId<ProjectId>(made?.project_id ?? '');
   const release = gz(0);
   const ours = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, id, release, release, 'ours', null, trustId<ReleaseId>(crypto.randomUUID()));
@@ -161,7 +169,7 @@ test('a submission records the release it started from only when that release is
   const misplaced = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(21), theirs.releaseId);
   const invented = await acceptSubmission(ctx, claimsOf(ALICE), id, gz(22), trustId<ReleaseId>(crypto.randomUUID()));
   const all = await submissions(ctx, claimsOf(TEACHER), id, { latest: false, author: uid(ALICE) });
-  const base = (s: { submissionId: string }) => all.find((x) => x.submissionId === s.submissionId)?.baseReleaseId;
+  const base = (s: { submissionId: string }) => all.find(x => x.submissionId === s.submissionId)?.baseReleaseId;
   expect(base(based)).toBe(ours.releaseId);
   expect(base(misplaced)).toBeNull();
   expect(base(invented)).toBeNull();
@@ -169,10 +177,14 @@ test('a submission records the release it started from only when that release is
 
 test('a refused submission says why to the people in the edition, and nothing new to anyone else', async () => {
   const [e] = await editions(ctx, claimsOf(TEACHER));
-  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+  const [made] = await asUser(
+    sql,
+    claimsOf(TEACHER),
+    tx => tx<{ project_id: string }[]>`
     insert into project (edition_id, slug, title, kind)
     values (${e?.editionId ?? ''}, ${`draft-${Date.now()}`}, 'A draft', 'rust-cargo')
-    returning project_id`);
+    returning project_id`,
+  );
   const draft = trustId<ProjectId>(made?.project_id ?? '');
   const open = await warmup();
 
@@ -195,18 +207,28 @@ test('a refused submission says why to the people in the edition, and nothing ne
 
 test('a window that closes between the check and the insert stores nothing: no row, no object, and a 403 that says it closed', async () => {
   const [e] = await editions(ctx, claimsOf(TEACHER));
-  const [made] = await asUser(sql, claimsOf(TEACHER), (tx) => tx<{ project_id: string }[]>`
+  const [made] = await asUser(
+    sql,
+    claimsOf(TEACHER),
+    tx => tx<{ project_id: string }[]>`
     insert into project (edition_id, slug, title, kind, available_after, closes_at)
     values (${e?.editionId ?? ''}, ${`race-${Date.now()}`}, 'Closing', 'rust-cargo', now() - interval '1 day', now() - interval '1 second')
-    returning project_id`);
+    returning project_id`,
+  );
   const id = trustId<ProjectId>(made?.project_id ?? '');
   // What the bucket was asked to do, so the test can see the object go.
   const put: string[] = [];
   const deleted: string[] = [];
   const bucket: Bucket = {
     ...ctx.bucket,
-    put: async (key, body, type) => { put.push(key); await ctx.bucket.put(key, body, type); },
-    delete: async (key) => { deleted.push(key); await ctx.bucket.delete(key); },
+    put: async (key, body, type) => {
+      put.push(key);
+      await ctx.bucket.put(key, body, type);
+    },
+    delete: async key => {
+      deleted.push(key);
+      await ctx.bucket.delete(key);
+    },
   };
 
   // Straight to the insert, as if the check had passed a moment earlier.

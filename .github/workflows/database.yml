@@ -148,4 +148,3 @@ jobs:
       - name: Push Supabase settings
         if: steps.env.outputs.configured == 'yes'
         run: npx supabase config push --project-ref "$SUPABASE_PROJECT_REF" --yes
-

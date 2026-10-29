@@ -50,6 +50,5 @@ export function safeStore(dir: string): SafeStore {
 function isSession(v: unknown): v is Session {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  return ['url', 'supabaseUrl', 'publishableKey', 'accessToken', 'refreshToken'].every((k) => typeof o[k] === 'string')
-    && typeof o['expiresAt'] === 'number';
+  return ['url', 'supabaseUrl', 'publishableKey', 'accessToken', 'refreshToken'].every(k => typeof o[k] === 'string') && typeof o['expiresAt'] === 'number';
 }

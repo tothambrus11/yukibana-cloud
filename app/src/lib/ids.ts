@@ -38,16 +38,13 @@ export const trustKey = (value: string): ObjectKey => value as ObjectKey;
 
 /** A key for a submission body. One prefix per kind of object, so a bucket
  *  listing sorts by what things are, and a lifecycle rule can tell them apart. */
-export const submissionKey = (submission: SubmissionId): ObjectKey =>
-  `submissions/${submission}.tar.gz` as ObjectKey;
+export const submissionKey = (submission: SubmissionId): ObjectKey => `submissions/${submission}.tar.gz` as ObjectKey;
 
 /** A key for a release's starter: what students download. `object` is a
  *  fresh random id, not the release id: the object is stored before the row
  *  exists, and the row remembers the key. */
-export const starterKey = (project: ProjectId, object: string): ObjectKey =>
-  `starters/${project}/${object}.tar.gz` as ObjectKey;
+export const starterKey = (project: ProjectId, object: string): ObjectKey => `starters/${project}/${object}.tar.gz` as ObjectKey;
 
 /** A key for a release's teacher archive: the whole project, hidden tests
  *  included. Never served to a student. */
-export const teacherKey = (project: ProjectId, object: string): ObjectKey =>
-  `teacher/${project}/${object}.tar.gz` as ObjectKey;
+export const teacherKey = (project: ProjectId, object: string): ObjectKey => `teacher/${project}/${object}.tar.gz` as ObjectKey;

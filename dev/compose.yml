@@ -15,15 +15,15 @@ services:
       # sibling container and reaches this through the host gateway, which
       # loopback-only publishing excludes. It is what the Supabase CLI does
       # with its own ports, and why they are reachable from in there.
-      - "9000:9000"
+      - '9000:9000'
     environment:
       RUSTFS_ACCESS_KEY: rustfsadmin
       RUSTFS_SECRET_KEY: rustfsadmin
-      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_CONSOLE_ENABLE: 'false'
     volumes:
       - rustfs-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:9000/health || exit 1"]
+      test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:9000/health || exit 1']
       interval: 2s
       timeout: 2s
       retries: 30
@@ -35,7 +35,7 @@ services:
     depends_on:
       rustfs:
         condition: service_healthy
-    entrypoint: ["sh", "-c"]
+    entrypoint: ['sh', '-c']
     command:
       - >
         curl -sf -X PUT --aws-sigv4 aws:amz:us-east-1:s3 --user rustfsadmin:rustfsadmin
