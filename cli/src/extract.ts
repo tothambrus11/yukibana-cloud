@@ -7,7 +7,7 @@
  */
 
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises';
-import { dirname, join, posix, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { submissionRoot } from './lib/assemble.js';
 import { escapes } from './lib/starter.js';
 import { readTar, type Entry } from './lib/tar.js';
@@ -33,8 +33,12 @@ export async function isEmptyDir(dir: string): Promise<boolean> {
 /** Writes `entries` under `dir`, which is created. Returns the paths it
  *  refused, with why; the rest are written. Permission bits are kept, minus
  *  anything beyond 0o777, so a script stays executable and nothing becomes
- *  setuid. */
-export async function writeEntries(dir: string, entries: readonly Entry[]): Promise<string[]> {
+ *  setuid.
+ *
+ *  Adds to `wrote`, before writing under it, the top-level path in `dir` of
+ *  every entry it accepts, so a caller can remove exactly those when a
+ *  write fails. Refused entries are never added. */
+export async function writeEntries(dir: string, entries: readonly Entry[], wrote = new Set<string>()): Promise<string[]> {
   const root = resolve(dir);
   await mkdir(root, { recursive: true });
   const refused: string[] = [];
@@ -50,6 +54,7 @@ export async function writeEntries(dir: string, entries: readonly Entry[]): Prom
       refused.push(`${e.path}: outside the folder`);
       continue;
     }
+    if (e.type !== 'symlink') wrote.add(join(root, e.path.split('/')[0] ?? ''));
     if (e.type === 'dir') {
       await mkdir(full, { recursive: true });
     } else if (e.type === 'file') {
@@ -65,6 +70,7 @@ export async function writeEntries(dir: string, entries: readonly Entry[]): Prom
       continue;
     }
     const full = join(root, ...e.path.split('/'));
+    wrote.add(join(root, e.path.split('/')[0] ?? ''));
     try {
       await mkdir(dirname(full), { recursive: true });
       await symlink(e.linkTarget, full);
@@ -109,21 +115,17 @@ export async function unpackStarter(archive: Uint8Array, folder: string): Promis
   if (found !== null && !(await isEmptyDir(root))) throw new Error(`${root} already has files in it; nothing was unpacked`);
   // The first folder this had to create, or undefined when `root` was there.
   const created = await mkdir(root, { recursive: true });
+  const wrote = new Set<string>();
   try {
-    return await writeEntries(root, entries);
+    return await writeEntries(root, entries, wrote);
   } catch (e) {
-    const written = created !== undefined ? [created] : [...new Set(entries.map((x) => join(root, topLevel(x.path))))];
+    // Only what writeEntries accepted. This once took the top level of every
+    // entry, refused ones included: `../notes` made it remove the parent of
+    // `folder`, and `/etc/x` made it loop for ever.
+    const written = created !== undefined ? [created] : [...wrote];
     const left: string[] = [];
     for (const path of written) await rm(path, { recursive: true, force: true }).catch(() => left.push(path));
     const why = e instanceof Error ? e.message : String(e);
     throw new Error(left.length === 0 ? why : `${why}; and could not remove what was written: ${left.join(', ')}`, { cause: e });
   }
-}
-
-/** Returns the first segment of `path`, an archive path: `src` for
- *  `src/main.rs`, and `README.md` for itself. */
-function topLevel(path: string): string {
-  let top = path;
-  while (posix.dirname(top) !== '.') top = posix.dirname(top);
-  return top;
 }

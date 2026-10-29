@@ -110,3 +110,14 @@ test('a starter that cannot be written whole leaves nothing half-written', async
   assert.deepEqual(await readdir(parent), ['chosen'], 'every folder it made is gone');
   assert.deepEqual(await readdir(empty), [], 'the folder it was given is as empty as it was');
 });
+
+test('a starter that fails halfway never removes anything outside the folder it was given', async () => {
+  const parent = await parentDir();
+  const chosen = join(parent, 'chosen');
+  await mkdir(chosen);
+  await writeFile(join(parent, 'other-work.txt'), 'mine');
+  const hostile = await starterOf([file('../notes', 'x'), file('/abs/x', 'x'), file('.', 'x'), file('src', ''), file('src/main.rs', '')]);
+  await assert.rejects(unpackStarter(hostile, chosen));
+  assert.deepEqual((await readdir(parent)).toSorted(), ['chosen', 'other-work.txt'], 'the parent and its other files are untouched');
+  assert.deepEqual(await readdir(chosen), [], 'and the folder it was given is empty again');
+});
