@@ -56,7 +56,7 @@ jobs:
             /tmp/yk/tools-store
           key: ghc-wasm-914-tools-${{ github.run_id }}
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: haskell-ghc-tools

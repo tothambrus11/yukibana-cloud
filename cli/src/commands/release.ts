@@ -16,11 +16,13 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
   const folder = inv.options.folder ?? basename(dir);
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(folder)) fail(`--folder must be lowercase letters, digits and dashes; "${folder}" is not (it names the directory students unpack)`);
 
-  const projectId = command === 'publish'
-    ? await projectOf(inv, inv.options.project, dir).catch(() => fail('--project (or YUKIBANA_PROJECT) is required to publish'))
-    : (inv.options.project ?? inv.env['YUKIBANA_PROJECT'] ?? '');
+  const projectId =
+    command === 'publish'
+      ? await projectOf(inv, inv.options.project, dir).catch(() => fail('--project (or YUKIBANA_PROJECT) is required to publish'))
+      : (inv.options.project ?? inv.env['YUKIBANA_PROJECT'] ?? '');
   // Not for `check`, whose starter nobody receives: a YUKIBANA_PROJECT set for something else must not fail it.
-  if (command !== 'check' && projectId !== '' && !isProjectId(projectId)) fail(`"${projectId}" is not a project id, a uuidv7; the starter would carry it, and its yukibana.json would be refused`);
+  if (command !== 'check' && projectId !== '' && !isProjectId(projectId))
+    fail(`"${projectId}" is not a project id, a uuidv7; the starter would carry it, and its yukibana.json would be refused`);
 
   // The id is chosen before the build so the starter can carry it, and the
   // publish below gives the row the same one. A check publishes nothing, so

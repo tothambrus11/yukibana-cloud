@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const src = fileURLToPath(new URL('../src', import.meta.url));
 
 function files(dir: string, ext: string): string[] {
-  return readdirSync(dir).flatMap((name) => {
+  return readdirSync(dir).flatMap(name => {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) return files(path, ext);
     return path.endsWith(ext) ? [path] : [];
@@ -26,13 +26,13 @@ test('a page says what is on it and nothing about how it looks', () => {
   // One stylesheet, styling elements rather than classes, is what keeps a
   // page plain HTML. Six pages each with a <style> block is six sets of
   // numbers for a row to shift between.
-  const withStyle = routes.filter((f) => /<style[\s>]/.test(readFileSync(f, 'utf8')));
-  expect(withStyle.map((f) => f.slice(src.length))).toEqual([]);
+  const withStyle = routes.filter(f => /<style[\s>]/.test(readFileSync(f, 'utf8')));
+  expect(withStyle.map(f => f.slice(src.length))).toEqual([]);
 });
 
 test('the one stylesheet is pulled in once, by the layout every page is inside', () => {
-  const importers = routes.filter((f) => readFileSync(f, 'utf8').includes('app.css'));
-  expect(importers.map((f) => f.slice(src.length))).toEqual(['/routes/+layout.svelte']);
+  const importers = routes.filter(f => readFileSync(f, 'utf8').includes('app.css'));
+  expect(importers.map(f => f.slice(src.length))).toEqual(['/routes/+layout.svelte']);
 });
 
 test('both colour schemes come from one set of values, not a second block to keep in step', () => {

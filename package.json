@@ -5,7 +5,9 @@
   "description": "The local stack and its checks. The app is under app/, the CLI under cli/, the database under supabase/, a desktop demo under demo/electron/.",
   "scripts": {
     "install:all": "npm ci && npm --prefix app ci && npm --prefix cli ci && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm --prefix demo/electron ci",
-    "check": "npm --prefix app run lint && npm --prefix app run typecheck && npm --prefix app test && npm --prefix cli run lint && npm --prefix cli run typecheck && npm --prefix cli test && npm --prefix cli run build && npm --prefix demo/electron run lint && npm --prefix demo/electron run typecheck && npm --prefix demo/electron test",
+    "check": "npm run format:check && npm --prefix app run lint && npm --prefix app run typecheck && npm --prefix app test && npm --prefix cli run lint && npm --prefix cli run typecheck && npm --prefix cli test && npm --prefix cli run build && npm --prefix demo/electron run lint && npm --prefix demo/electron run typecheck && npm --prefix demo/electron test",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "dev": "npm --prefix app run dev",
     "smoke": "node scripts/smoke.mjs",
     "db:reset": "supabase db reset",
@@ -24,8 +26,9 @@
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
+    "oxfmt": "0.74.0",
     "squawk-cli": "^2.70.0",
-    "supabase": "^2.121.0",
+    "supabase": "^2.122.0",
     "wrangler": "^4.151.2"
   }
 }

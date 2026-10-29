@@ -20,7 +20,7 @@ updates:
     cooldown:
       default-days: 7
     commit-message:
-      prefix: "ci"
+      prefix: 'ci'
 
   # One entry, four manifests: the root (the stack's own tooling), the app,
   # the CLI and the desktop demo.
@@ -35,12 +35,12 @@ updates:
     cooldown:
       default-days: 3
     commit-message:
-      prefix: "deps"
+      prefix: 'deps'
     ignore:
       # @types/node describes a particular Node release, and CI, the
       # devcontainer and workerd all run 22. Taking a major here would let
       # the compiler accept APIs that are not there at runtime, which is the
       # one kind of type error this setup exists to prevent. It moves when
       # the runtime moves.
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']

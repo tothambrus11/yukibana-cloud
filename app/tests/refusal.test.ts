@@ -12,9 +12,7 @@ const row = (over: Partial<RefusalRow>): RefusalRow => ({
 });
 
 test('an owner submitting to their own project is told that only students submit, and what they are instead', () => {
-  expect(refusalMessage(row({ reason: 'staff', role: 'owner' }))).toBe(
-    'You are an owner of Programming 1 (2026); only its students can submit to this project.',
-  );
+  expect(refusalMessage(row({ reason: 'staff', role: 'owner' }))).toBe('You are an owner of Programming 1 (2026); only its students can submit to this project.');
   expect(refusalMessage(row({ reason: 'staff', role: 'assistant' }))).toMatch(/^You are an assistant of Programming 1 \(2026\);/);
 });
 

@@ -40,7 +40,9 @@ export interface LoopbackOptions {
  *  stored: the caller saves it where it keeps sessions. */
 export async function loginWithLoopback(registry: string, options: LoopbackOptions): Promise<Session> {
   let deliver!: (url: URL) => void;
-  const arrived = new Promise<URL>((resolve) => { deliver = resolve; });
+  const arrived = new Promise<URL>(resolve => {
+    deliver = resolve;
+  });
   // What the browser must bring back; until the login has started, nothing
   // is expected, and nothing is accepted.
   let expected: string | null | undefined;

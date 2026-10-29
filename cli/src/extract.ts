@@ -43,7 +43,7 @@ export async function writeEntries(dir: string, entries: readonly Entry[], wrote
   await mkdir(root, { recursive: true });
   const refused: string[] = [];
   const target = (path: string): string | null => {
-    if (path === '' || path.startsWith('/') || path.split('/').some((s) => s === '..' || s === '') || path.includes('\\')) return null;
+    if (path === '' || path.startsWith('/') || path.split('/').some(s => s === '..' || s === '') || path.includes('\\')) return null;
     const full = resolve(root, ...path.split('/'));
     return full.startsWith(root + sep) ? full : null;
   };
@@ -59,7 +59,7 @@ export async function writeEntries(dir: string, entries: readonly Entry[], wrote
       await mkdir(full, { recursive: true });
     } else if (e.type === 'file') {
       await mkdir(dirname(full), { recursive: true });
-      await writeFile(full, e.data, { mode: (e.mode & 0o777) || 0o644 });
+      await writeFile(full, e.data, { mode: e.mode & 0o777 || 0o644 });
     } else {
       links.push(e);
     }

@@ -1,6 +1,18 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, DEFAULT_SETTINGS, isProjectId, excludes, manifestProblems, parseConfig, parseSettings, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
+import {
+  DEFAULT_FILENAME,
+  DEFAULT_MAX_BYTES,
+  DEFAULT_SETTINGS,
+  isProjectId,
+  excludes,
+  manifestProblems,
+  parseConfig,
+  parseSettings,
+  protectedPaths,
+  sameStudentConfig,
+  starterConfig,
+} from '../src/lib/yukibana.js';
 
 const ok = (text: string) => {
   const p = parseConfig(text);
@@ -52,14 +64,17 @@ test('a project id is a uuidv7, as the registry makes them, in any case', () => 
 });
 
 test('the IDE settings from the example file are a valid project, with the defaults filled in', () => {
-  const p = parseConfig(JSON.stringify({
-    version: 1, kind: 'scala-sbt',
-    features: { codeSuggestions: true, squiggles: true, ai: false },
-    layout: { widgets: { files: false, search: false }, containers: { 'metals-explorer': false } },
-    openFiles: ['README.md', 'hello_world.scala'],
-    submission: { exclude: ['.metals', '.scala-build'] },
-    readOnly: ['tests/*', 'README.md', 'yukibana.json'],
-  }));
+  const p = parseConfig(
+    JSON.stringify({
+      version: 1,
+      kind: 'scala-sbt',
+      features: { codeSuggestions: true, squiggles: true, ai: false },
+      layout: { widgets: { files: false, search: false }, containers: { 'metals-explorer': false } },
+      openFiles: ['README.md', 'hello_world.scala'],
+      submission: { exclude: ['.metals', '.scala-build'] },
+      readOnly: ['tests/*', 'README.md', 'yukibana.json'],
+    }),
+  );
   assert.ok(p.ok);
   assert.deepEqual(p.warnings, []);
   assert.deepEqual(p.config.readOnly, ['tests/*', 'README.md', 'yukibana.json']);
@@ -110,21 +125,26 @@ test('a Cargo.toml that names a hidden path is a problem, not a surprise later',
   const files: Record<string, string> = {
     'Cargo.toml': '[package]\nname = "x"\n[[test]]\nname = "secret"\npath = "tests/hidden/secret.rs"\n',
   };
-  const problems = manifestProblems(c, (p) => files[p]);
+  const problems = manifestProblems(c, p => files[p]);
   assert.equal(problems.length, 1);
   assert.match(problems[0] ?? '', /tests\/hidden\/secret.rs/);
-  assert.deepEqual(manifestProblems(c, () => undefined), ['Cargo.toml is missing at the repository root']);
-  assert.deepEqual(manifestProblems(c, (p) => (p === 'Cargo.toml' ? '[package]\nname = "x"\n' : undefined)), []);
+  assert.deepEqual(
+    manifestProblems(c, () => undefined),
+    ['Cargo.toml is missing at the repository root'],
+  );
+  assert.deepEqual(
+    manifestProblems(c, p => (p === 'Cargo.toml' ? '[package]\nname = "x"\n' : undefined)),
+    [],
+  );
 });
 
 test('a workspace member that is hidden is a problem too', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","hidden":["grader"]}');
   const cargo = '[workspace]\nmembers = ["app", "grader"]\n';
-  const problems = manifestProblems(c, (p) => (p === 'Cargo.toml' ? cargo : undefined));
+  const problems = manifestProblems(c, p => (p === 'Cargo.toml' ? cargo : undefined));
   assert.equal(problems.length, 1);
   assert.match(problems[0] ?? '', /workspace member "grader"/);
 });
-
 
 test('a starter built without a project leaves the id out, and its copy still parses so a student can submit', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","hidden":["tests/hidden"]}');
@@ -135,18 +155,18 @@ test('a starter built without a project leaves the id out, and its copy still pa
   assert.equal(back.config.projectId, null);
 });
 
-test('a starter copy names its release, and a student\'s copy that does is not a change to the file', () => {
+test("a starter copy names its release, and a student's copy that does is not a change to the file", () => {
   const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
   const copy = starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   const back = parseConfig(copy);
   assert.ok(back.ok, back.ok ? '' : back.error);
   assert.equal(back.config.releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   assert.ok(sameStudentConfig(c, copy));
-  assert.ok(sameStudentConfig(c, copy.replace('5a5c', '5a5d')), 'nor is another release id: which release it names is the download\'s question');
+  assert.ok(sameStudentConfig(c, copy.replace('5a5c', '5a5d')), "nor is another release id: which release it names is the download's question");
   assert.equal('releaseId' in (JSON.parse(starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null)) as Record<string, unknown>), false, 'a check names no release');
 });
 
-test('a release id that is not a uuid is refused, and a repository\'s own is never copied into a starter', () => {
+test("a release id that is not a uuid is refused, and a repository's own is never copied into a starter", () => {
   const notUuid = parseConfig('{"version":1,"kind":"rust-cargo","releaseId":"v2"}');
   assert.ok(!notUuid.ok);
   assert.match(notUuid.error, /"releaseId" must be a release id/);
@@ -167,21 +187,23 @@ test('the IDE opens a folder whose file says nothing, or has no version or kind,
 
 test('every IDE setting defaults to on, the assignment to ASSIGNMENT.md and submissions to the registry, honouring .gitignore', () => {
   assert.equal(DEFAULT_SETTINGS.assignmentFile, 'ASSIGNMENT.md');
-  assert.ok(Object.values(DEFAULT_SETTINGS.features).every((on) => on));
-  assert.ok(Object.values(DEFAULT_SETTINGS.layout.widgets).every((on) => on));
+  assert.ok(Object.values(DEFAULT_SETTINGS.features).every(on => on));
+  assert.ok(Object.values(DEFAULT_SETTINGS.layout.widgets).every(on => on));
   assert.deepEqual(DEFAULT_SETTINGS.layout.containers, {});
   assert.equal(DEFAULT_SETTINGS.submission.target, 'cloud');
   assert.equal(DEFAULT_SETTINGS.submission.respectGitignore, true);
   assert.equal(DEFAULT_SETTINGS.projectId, null);
 });
 
-
-
 test('the config module runs in a browser: it and what it imports use nothing from Node', async () => {
   const { readFile } = await import('node:fs/promises');
   for (const file of ['../src/lib/yukibana.ts', '../src/lib/glob.ts', '../src/lib/issues.ts']) {
     const source = await readFile(new URL(file, import.meta.url), 'utf8');
-    const imports = [...source.matchAll(/^import .* from '([^']+)';/gm)].map((m) => m[1]);
-    assert.deepEqual(imports.filter((i) => !['zod', './glob.js', './issues.js'].includes(i ?? '')), [], `${file} imports only zod and its own modules`);
+    const imports = [...source.matchAll(/^import .* from '([^']+)';/gm)].map(m => m[1]);
+    assert.deepEqual(
+      imports.filter(i => !['zod', './glob.js', './issues.js'].includes(i ?? '')),
+      [],
+      `${file} imports only zod and its own modules`,
+    );
   }
 });

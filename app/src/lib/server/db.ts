@@ -61,7 +61,7 @@ async function become(tx: Tx, role: string, claims: string): Promise<void> {
 /** Runs `run` in one transaction as the person the claims describe. */
 export async function asUser<T>(sql: Sql, claims: Claims, run: (tx: Tx) => Promise<T>): Promise<T> {
   let result!: T;
-  await sql.begin(async (tx) => {
+  await sql.begin(async tx => {
     await become(tx, 'authenticated', claimsJson(claims));
     result = await run(tx);
   });
@@ -73,7 +73,7 @@ export async function asUser<T>(sql: Sql, claims: Claims, run: (tx: Tx) => Promi
  *  nothing at all. */
 export async function asPublisher<T>(sql: Sql, run: (tx: Tx) => Promise<T>): Promise<T> {
   let result!: T;
-  await sql.begin(async (tx) => {
+  await sql.begin(async tx => {
     await become(tx, 'yukibana_publisher', '');
     result = await run(tx);
   });
@@ -91,12 +91,16 @@ export function statusOf(e: unknown): { status: number; message: string; code: s
   const code = typeof e === 'object' && e !== null && 'code' in e ? String(e.code) : '';
   const message = e instanceof Error ? e.message : String(e);
   switch (code) {
-    case '42501': return { status: 403, message, code };
-    case 'P0002': return { status: 404, message, code };
+    case '42501':
+      return { status: 403, message, code };
+    case 'P0002':
+      return { status: 404, message, code };
     case '23505':
     case '23514':
-    case '23503': return { status: 409, message, code };
-    default: return { status: 500, message, code };
+    case '23503':
+      return { status: 409, message, code };
+    default:
+      return { status: 500, message, code };
   }
 }
 

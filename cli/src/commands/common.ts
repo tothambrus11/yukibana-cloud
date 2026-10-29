@@ -116,9 +116,13 @@ export function print<T>(inv: Invocation, rows: readonly T[], columns: Record<st
     return;
   }
   const heads = Object.keys(columns);
-  const cells = rows.map((r) => heads.map((h) => (columns[h] ?? (() => ''))(r)));
-  const widths = heads.map((h, i) => Math.max(h.length, ...cells.map((c) => (c[i] ?? '').length)));
-  const line = (c: readonly string[]): string => c.map((s, i) => s.padEnd(widths[i] ?? 0)).join('  ').trimEnd();
+  const cells = rows.map(r => heads.map(h => (columns[h] ?? (() => ''))(r)));
+  const widths = heads.map((h, i) => Math.max(h.length, ...cells.map(c => (c[i] ?? '').length)));
+  const line = (c: readonly string[]): string =>
+    c
+      .map((s, i) => s.padEnd(widths[i] ?? 0))
+      .join('  ')
+      .trimEnd();
   console.log(line(heads));
   for (const c of cells) console.log(line(c));
 }

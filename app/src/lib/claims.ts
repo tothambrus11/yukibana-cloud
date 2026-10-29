@@ -25,5 +25,4 @@ export function claimsOf(payload: { sub?: unknown; role?: unknown; email?: unkno
 }
 
 /** The JSON the database receives. */
-export const claimsJson = (claims: Claims): string =>
-  JSON.stringify({ sub: claims.sub, role: claims.role, email: claims.email ?? undefined });
+export const claimsJson = (claims: Claims): string => JSON.stringify({ sub: claims.sub, role: claims.role, email: claims.email ?? undefined });

@@ -78,23 +78,25 @@ const TYPE = { file: 'file', dir: 'directory', symlink: 'symlink' } as const sat
  *  and unnamed, so the archive says nothing about the machine it was made
  *  on. */
 export function writeTar(entries: readonly Entry[]): Promise<Uint8Array<ArrayBuffer>> {
-  return packTar(entries.map((e): TarEntry => {
-    // The ustar field holds 0 to 8^11 - 1 seconds, and the library writes
-    // anything else as garbage; outside that, a pax record carries the date.
-    const fits = e.mtime >= 0 && e.mtime < 8 ** 11;
-    const header: TarHeader = {
-      name: e.type === 'dir' ? `${e.path}/` : e.path,
-      type: TYPE[e.type],
-      size: e.type === 'file' ? e.data.length : 0,
-      mode: e.mode,
-      mtime: new Date((fits ? e.mtime : 0) * 1000),
-      uid: 0,
-      gid: 0,
-      uname: '',
-      gname: '',
-    };
-    if (!fits) header.pax = { mtime: String(e.mtime) };
-    if (e.linkTarget !== undefined) header.linkname = e.linkTarget;
-    return e.type === 'file' ? { header, body: e.data } : { header };
-  }));
+  return packTar(
+    entries.map((e): TarEntry => {
+      // The ustar field holds 0 to 8^11 - 1 seconds, and the library writes
+      // anything else as garbage; outside that, a pax record carries the date.
+      const fits = e.mtime >= 0 && e.mtime < 8 ** 11;
+      const header: TarHeader = {
+        name: e.type === 'dir' ? `${e.path}/` : e.path,
+        type: TYPE[e.type],
+        size: e.type === 'file' ? e.data.length : 0,
+        mode: e.mode,
+        mtime: new Date((fits ? e.mtime : 0) * 1000),
+        uid: 0,
+        gid: 0,
+        uname: '',
+        gname: '',
+      };
+      if (!fits) header.pax = { mtime: String(e.mtime) };
+      if (e.linkTarget !== undefined) header.linkname = e.linkTarget;
+      return e.type === 'file' ? { header, body: e.data } : { header };
+    }),
+  );
 }

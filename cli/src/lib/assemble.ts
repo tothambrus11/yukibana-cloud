@@ -76,10 +76,10 @@ export const tampered = (t: Tampering): boolean => t.modified.length + t.deleted
  *  root. Anything else is taken as it is: guessing harder would guess wrong
  *  for a project that happens to have one top-level folder. */
 export function submissionRoot(entries: readonly Entry[]): Entry[] {
-  if (entries.some((e) => e.path === CONFIG_FILE)) return [...entries];
-  const tops = new Set(entries.map((e) => e.path.split('/')[0]));
+  if (entries.some(e => e.path === CONFIG_FILE)) return [...entries];
+  const tops = new Set(entries.map(e => e.path.split('/')[0]));
   const [only] = tops;
-  if (tops.size === 1 && only !== undefined && entries.some((e) => e.path === `${only}/${CONFIG_FILE}`)) {
+  if (tops.size === 1 && only !== undefined && entries.some(e => e.path === `${only}/${CONFIG_FILE}`)) {
     return unwrap(entries);
   }
   return [...entries];
@@ -90,7 +90,7 @@ export function submissionRoot(entries: readonly Entry[]): Entry[] {
  *  folder (see `planTeacher`). */
 export function teacherRoot(entries: readonly Entry[]): { ok: true; entries: Entry[]; config: Config } | { ok: false; problem: string } {
   const root = unwrap(entries);
-  const cfg = root.find((e) => e.path === CONFIG_FILE && e.type === 'file');
+  const cfg = root.find(e => e.path === CONFIG_FILE && e.type === 'file');
   if (cfg === undefined) return { ok: false, problem: `the teacher archive has no ${CONFIG_FILE}` };
   const parsed = parseConfig(new TextDecoder().decode(cfg.data));
   if (!parsed.ok) return { ok: false, problem: `the teacher archive's ${parsed.error}` };
@@ -164,12 +164,15 @@ export function assemble(submission: readonly Entry[], teacherArchive: readonly 
 
   for (const [path, e] of theirs) out.set(path, e);
   const entries = [...out.values()].toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  const unrestored = [...modified, ...deleted, ...added].filter((p) => !isProtected(p)).toSorted();
+  const unrestored = [...modified, ...deleted, ...added].filter(p => !isProtected(p)).toSorted();
   return {
     ok: true,
     config,
     assembly: {
-      entries, refused, unrestored, overridden: overridden.toSorted(),
+      entries,
+      refused,
+      unrestored,
+      overridden: overridden.toSorted(),
       tampering: { modified: modified.toSorted(), deleted: deleted.toSorted(), added: added.toSorted() },
     },
   };

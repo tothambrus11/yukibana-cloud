@@ -13,8 +13,7 @@ import { dirname, join } from 'node:path';
 import type { Session, SessionStore } from './session.js';
 
 export function defaultSessionPath(env: NodeJS.ProcessEnv = process.env): string {
-  const dir = env['YUKIBANA_CONFIG_DIR']
-    ?? join(env['XDG_CONFIG_HOME'] ?? join(homedir(), '.config'), 'yukibana');
+  const dir = env['YUKIBANA_CONFIG_DIR'] ?? join(env['XDG_CONFIG_HOME'] ?? join(homedir(), '.config'), 'yukibana');
   return join(dir, 'session.json');
 }
 
@@ -50,8 +49,10 @@ export function fileStore(path: string = defaultSessionPath()): SessionStore {
 function isSession(v: unknown): v is Session {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
-  return ['url', 'supabaseUrl', 'publishableKey', 'accessToken', 'refreshToken'].every((k) => typeof o[k] === 'string')
-    && typeof o['expiresAt'] === 'number'
-    && (o['email'] === null || typeof o['email'] === 'string')
-    && (o['clientId'] === undefined || typeof o['clientId'] === 'string');
+  return (
+    ['url', 'supabaseUrl', 'publishableKey', 'accessToken', 'refreshToken'].every(k => typeof o[k] === 'string') &&
+    typeof o['expiresAt'] === 'number' &&
+    (o['email'] === null || typeof o['email'] === 'string') &&
+    (o['clientId'] === undefined || typeof o['clientId'] === 'string')
+  );
 }

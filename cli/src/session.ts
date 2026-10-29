@@ -76,8 +76,12 @@ export function memoryStore(initial: Session | null = null): SessionStore {
   let held = initial;
   return {
     load: async () => held,
-    save: async (s) => { held = s; },
-    clear: async () => { held = null; },
+    save: async s => {
+      held = s;
+    },
+    clear: async () => {
+      held = null;
+    },
   };
 }
 
@@ -121,10 +125,14 @@ export async function startLogin(registry: string, redirectUrl: string, fetchFn:
       redirectUrl,
       state: st,
       async finish(callback) {
-        if (stateOf(callback) !== st) throw new Error('the login came back without this request\'s state; start it again');
+        if (stateOf(callback) !== st) throw new Error("the login came back without this request's state; start it again");
         const code = codeOf(callback);
         const body = await oauthTokenCall(fetchFn, auth.supabaseUrl, auth.publishableKey, {
-          grant_type: 'authorization_code', code, client_id: clientId, redirect_uri: connectReturnUrl(site), code_verifier: pair.verifier,
+          grant_type: 'authorization_code',
+          code,
+          client_id: clientId,
+          redirect_uri: connectReturnUrl(site),
+          code_verifier: pair.verifier,
         });
         return sessionOf(base.origin, auth.supabaseUrl, auth.publishableKey, body, clientId);
       },
@@ -177,7 +185,13 @@ function stateOf(callback: URL | string): string | null {
  *  endpoint and names its client; any other at Auth's own. */
 export async function refreshSession(session: Session, fetchFn: typeof fetch = fetch, timeoutMs = AUTH_TIMEOUT_MS): Promise<Session> {
   if (session.clientId !== undefined) {
-    const fresh = await oauthTokenCall(fetchFn, session.supabaseUrl, session.publishableKey, { grant_type: 'refresh_token', refresh_token: session.refreshToken, client_id: session.clientId }, timeoutMs);
+    const fresh = await oauthTokenCall(
+      fetchFn,
+      session.supabaseUrl,
+      session.publishableKey,
+      { grant_type: 'refresh_token', refresh_token: session.refreshToken, client_id: session.clientId },
+      timeoutMs,
+    );
     return sessionOf(session.url, session.supabaseUrl, session.publishableKey, fresh, session.clientId, session.email);
   }
   const body = await tokenCall(fetchFn, session.supabaseUrl, session.publishableKey, 'refresh_token', { refresh_token: session.refreshToken }, timeoutMs);
@@ -280,7 +294,7 @@ async function answer(res: Response): Promise<unknown> {
   const body: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const o = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
-    const why = [o['msg'], o['error_description'], o['message'], o['error']].find((v) => typeof v === 'string');
+    const why = [o['msg'], o['error_description'], o['message'], o['error']].find(v => typeof v === 'string');
     throw new Error(`the Auth server answered ${res.status}${typeof why === 'string' ? `: ${why}` : ''}`);
   }
   return body;
@@ -309,9 +323,7 @@ function sessionOf(url: string, supabaseUrl: string, publishableKey: string, bod
   const access = o['access_token'];
   const refresh = o['refresh_token'];
   if (typeof access !== 'string' || typeof refresh !== 'string') throw new Error('the Auth server answered without a session');
-  const expiresAt = typeof o['expires_at'] === 'number'
-    ? o['expires_at']
-    : Math.floor(Date.now() / 1000) + (typeof o['expires_in'] === 'number' ? o['expires_in'] : 3600);
+  const expiresAt = typeof o['expires_at'] === 'number' ? o['expires_at'] : Math.floor(Date.now() / 1000) + (typeof o['expires_in'] === 'number' ? o['expires_in'] : 3600);
   const user = typeof o['user'] === 'object' && o['user'] !== null ? (o['user'] as Record<string, unknown>) : {};
   const email = typeof user['email'] === 'string' ? user['email'] : (emailOf(access) ?? knownEmail);
   return { url, supabaseUrl, publishableKey, accessToken: access, refreshToken: refresh, expiresAt, email, ...(clientId === undefined ? {} : { clientId }) };

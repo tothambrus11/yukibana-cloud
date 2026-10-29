@@ -5,6 +5,7 @@ import { asUser, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
+import { instantOf, isZone, type Reading } from '#lib/wall-time.ts';
 
 interface ProjectRow {
   project_id: ProjectId;
@@ -71,11 +72,11 @@ function ids(params: { edition: string; project: string }): { edition: EditionId
   return { edition, project };
 }
 
-export const load: PageServerLoad = async (event) => {
+export const load: PageServerLoad = async event => {
   const claims = requireClaims(event);
   const { edition, project } = ids(event.params);
-  return withContext((ctx) =>
-    asUser(ctx.sql, claims, async (tx) => {
+  return withContext(ctx =>
+    asUser(ctx.sql, claims, async tx => {
       const [p] = await tx<ProjectRow[]>`
         select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                app.role_in(p.edition_id)::text as role,
@@ -124,16 +125,31 @@ const httpFailing = (e: unknown) => {
   }
   return failing(e);
 };
-const dateOf = (value: string): Date | null => {
-  if (value === '') return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) error(400, `Not a date: ${value}`);
-  return d;
-};
+/** The form's three times as instants, read in the zone the page wrote them
+ *  in (its hidden `zone` field), each keeping the instant it was rendered
+ *  from (its hidden `…_was` field) when its text is unchanged
+ *  (#lib/wall-time). A form without a zone is a page from before times
+ *  carried one, written in the browser's zone, which the Worker cannot
+ *  know: it is refused rather than read as UTC, which is the bug it was. */
+function timesOf(form: FormData): { ok: true; availableAfter: Date | null; deadline: Date | null; closesAt: Date | null } | { ok: false; why: string } {
+  const zone = text(form, 'zone');
+  if (!isZone(zone)) return { ok: false, why: 'This page is out of date: reload it and save again.' };
+  const read = (name: string): Reading => {
+    const was = new Date(text(form, `${name}_was`));
+    return instantOf(text(form, name), zone, Number.isNaN(was.getTime()) ? null : was);
+  };
+  const availableAfter = read('available_after');
+  if (!availableAfter.ok) return availableAfter;
+  const deadline = read('deadline');
+  if (!deadline.ok) return deadline;
+  const closesAt = read('closes_at');
+  if (!closesAt.ok) return closesAt;
+  return { ok: true, availableAfter: availableAfter.at, deadline: deadline.at, closesAt: closesAt.at };
+}
 
 export const actions: Actions = {
   /** The page's upload form. The API route does the same for an IDE. */
-  submit: async (event) => {
+  submit: async event => {
     const claims = requireClaims(event);
     const { project } = ids(event.params);
     const form = await event.request.formData();
@@ -141,40 +157,44 @@ export const actions: Actions = {
     if (!(file instanceof File)) return fail(400, { error: 'Choose a .tar.gz file.' });
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
-      const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes, null));
+      const accepted = await withContext(ctx => acceptSubmission(ctx, claims, project, bytes, null));
       return { submitted: accepted };
     } catch (e) {
       return httpFailing(e);
     }
   },
-  update: async (event) => {
+  update: async event => {
     const claims = requireClaims(event);
     const { project } = ids(event.params);
     const form = await event.request.formData();
     const title = text(form, 'title');
     if (title === '') return fail(400, { error: 'A project needs a title.' });
-    const availableAfter = dateOf(text(form, 'available_after'));
-    const deadline = dateOf(text(form, 'deadline'));
-    const closesAt = dateOf(text(form, 'closes_at'));
+    const times = timesOf(form);
+    if (!times.ok) return fail(400, { error: times.why });
+    const { availableAfter, deadline, closesAt } = times;
     try {
-      await withContext((ctx) =>
-        asUser(ctx.sql, claims, (tx) => tx`
+      await withContext(ctx =>
+        asUser(
+          ctx.sql,
+          claims,
+          tx => tx`
           update project set title = ${title}, available_after = ${availableAfter}, deadline = ${deadline}, closes_at = ${closesAt}
-          where project_id = ${project}`),
+          where project_id = ${project}`,
+        ),
       );
     } catch (e) {
       return failing(e);
     }
     return { ok: true };
   },
-  createToken: async (event) => {
+  createToken: async event => {
     const claims = requireClaims(event);
     const { project } = ids(event.params);
     const form = await event.request.formData();
     const label = text(form, 'label') || 'ci';
     try {
-      const secret = await withContext((ctx) =>
-        asUser(ctx.sql, claims, async (tx) => {
+      const secret = await withContext(ctx =>
+        asUser(ctx.sql, claims, async tx => {
           const [row] = await tx<{ secret: string }[]>`select app.create_project_token(${project}, ${label}) as secret`;
           if (row === undefined) throw new Error('no token returned');
           return row.secret;
@@ -185,14 +205,14 @@ export const actions: Actions = {
       return failing(e);
     }
   },
-  revokeToken: async (event) => {
+  revokeToken: async event => {
     const claims = requireClaims(event);
     ids(event.params);
     const form = await event.request.formData();
     const token = uuidOf<TokenId>(text(form, 'token_id'));
     if (token === null) return fail(400, { error: 'No such token.' });
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.revoke_project_token(${token})`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.revoke_project_token(${token})`));
     } catch (e) {
       return failing(e);
     }

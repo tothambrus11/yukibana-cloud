@@ -45,7 +45,7 @@ jobs:
       - name: Build
         run: light/packs/haskell/ghc/build-rootfs.sh "$RUNNER_TEMP/out"
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: haskell-ghc-rootfs

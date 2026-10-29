@@ -127,7 +127,7 @@ jobs:
       # so all of them merge into one static/packs. What each pack was made
       # from is the artifact toolchain-key-<pack>, which pack-* never
       # matches.
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: pack-*
           merge-multiple: true
@@ -136,7 +136,7 @@ jobs:
       # What each pack was made from, as the pack or assemble job wrote it:
       # one file per pack, $RUNNER_TEMP/keys/<pack>, holding `tree <tree id>`,
       # or one line `toolchain <pack>/<unit> <key>` per unit.
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: toolchain-key-*
           merge-multiple: true
@@ -228,7 +228,7 @@ jobs:
       # The artifact's root is release/, so the downloaded zip holds
       # yukibana-light/. Level 0: the packs are .wasm with .br and .gz
       # siblings already, and zipping them again buys little.
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: yukibana-light-preview-${{ github.run_number }}
           path: ${{ runner.temp }}/release/
@@ -246,7 +246,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: yukibana-light-preview-${{ github.run_number }}
           path: release
@@ -318,7 +318,7 @@ jobs:
         with:
           node-version: 24
 
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: yukibana-light-preview-${{ github.run_number }}
           path: ${{ runner.temp }}/release

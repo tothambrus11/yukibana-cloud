@@ -32,13 +32,15 @@ interface SetCookie {
 }
 
 function setCookies(response: Response): SetCookie[] {
-  return response.headers.getSetCookie().map((line) => {
+  return response.headers.getSetCookie().map(line => {
     const [pair = '', ...rest] = line.split(';');
     const at = pair.indexOf('=');
-    const attributes = new Map(rest.map((a) => {
-      const eq = a.indexOf('=');
-      return eq === -1 ? [a.trim().toLowerCase(), ''] : [a.slice(0, eq).trim().toLowerCase(), a.slice(eq + 1).trim()];
-    }));
+    const attributes = new Map(
+      rest.map(a => {
+        const eq = a.indexOf('=');
+        return eq === -1 ? [a.trim().toLowerCase(), ''] : [a.slice(0, eq).trim().toLowerCase(), a.slice(eq + 1).trim()];
+      }),
+    );
     return { name: pair.slice(0, at).trim(), value: pair.slice(at + 1).trim(), attributes };
   });
 }
@@ -63,7 +65,7 @@ async function signIn(addr: string): Promise<SetCookie[]> {
   expect(sent.status, await sent.clone().text()).toBe(200);
   const verified = await fetch(`${app.origin}/auth/login?/verify`, ownForm({ email: addr, code: await codeMailedTo(addr, since), next: '/' }));
   expect(verified.status, await verified.clone().text()).toBe(303);
-  const cookies = setCookies(verified).filter((c) => c.value !== '');
+  const cookies = setCookies(verified).filter(c => c.value !== '');
   expect(cookies.length, 'logging in set no cookie').toBeGreaterThan(0);
   for (const c of cookies) {
     expect(c.name.startsWith(SESSION_COOKIE), c.name).toBe(true);
@@ -74,7 +76,7 @@ async function signIn(addr: string): Promise<SetCookie[]> {
   return cookies;
 }
 
-const cookieHeader = (cookies: readonly { name: string; value: string }[]): string => cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+const cookieHeader = (cookies: readonly { name: string; value: string }[]): string => cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
 /** Whom the app takes the bearer of `cookie` for: their address, or null. */
 async function whoIs(cookie: string): Promise<string | null> {
@@ -84,8 +86,7 @@ async function whoIs(cookie: string): Promise<string | null> {
   return ((await r.json()) as { email: string | null }).email;
 }
 
-const fingerprint = async (): Promise<unknown> =>
-  asUser(sql, claimsOf(TEACHER), async (tx) => (await tx<{ f: unknown }[]>`select tests.fingerprint() as f`)[0]?.f);
+const fingerprint = async (): Promise<unknown> => asUser(sql, claimsOf(TEACHER), async tx => (await tx<{ f: unknown }[]>`select tests.fingerprint() as f`)[0]?.f);
 
 beforeAll(async () => {
   app = await startApp();
@@ -113,13 +114,16 @@ function routes(values: Record<string, string>): Route[] {
   const found: Route[] = [];
   const walk = (dir: string): void => {
     const files = readdirSync(dir);
-    const id = relative(root, dir).split(sep).filter((s) => s !== '').map((s) => {
-      const name = s.match(/^\[(\w+)\]$/)?.[1];
-      if (name === undefined) return s;
-      const value = values[name];
-      if (value === undefined) throw new Error(`no value for the route parameter [${name}] in ${dir}: add one to this test`);
-      return value;
-    });
+    const id = relative(root, dir)
+      .split(sep)
+      .filter(s => s !== '')
+      .map(s => {
+        const name = s.match(/^\[(\w+)\]$/)?.[1];
+        if (name === undefined) return s;
+        const value = values[name];
+        if (value === undefined) throw new Error(`no value for the route parameter [${name}] in ${dir}: add one to this test`);
+        return value;
+      });
     const path = `/${id.join('/')}`;
     const requests: { method: string; query: string }[] = [];
     if (files.includes('+page.svelte')) requests.push({ method: 'GET', query: '' });
@@ -140,7 +144,7 @@ function routes(values: Record<string, string>): Route[] {
 /** Real ids where the seed has them, so a request reaches the route's code
  *  rather than its 404. */
 async function seeded(): Promise<Record<string, string>> {
-  return asUser(sql, claimsOf(TEACHER), async (tx) => {
+  return asUser(sql, claimsOf(TEACHER), async tx => {
     const [p] = await tx<{ project_id: string; edition_id: string }[]>`select project_id, edition_id from project where slug = 'warmup'`;
     if (p === undefined) throw new Error('no seeded project "warmup"');
     const [r] = await tx<{ id: string }[]>`select release_id as id from project_release where project_id = ${p.project_id} limit 1`;
@@ -154,24 +158,43 @@ async function seeded(): Promise<Record<string, string>> {
  *  request let through: enrol someone as an owner, create a course, rename
  *  the project, log out. */
 const BAIT: Record<string, string> = {
-  email: 'mallory@evil.example', role: 'owner', code: 'EVIL-1', title: 'Owned', label: 'owned', slug: 'owned', course_id: '', kind: 'exercise',
+  email: 'mallory@evil.example',
+  role: 'owner',
+  code: 'EVIL-1',
+  title: 'Owned',
+  label: 'owned',
+  slug: 'owned',
+  course_id: '',
+  kind: 'exercise',
 };
 
 const bodies = (): { type: string; body: () => BodyInit }[] => [
-  { type: 'text/plain', body: () => Object.entries(BAIT).map(([k, v]) => `${k}=${v}`).join('\n') },
+  {
+    type: 'text/plain',
+    body: () =>
+      Object.entries(BAIT)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n'),
+  },
   { type: 'application/x-www-form-urlencoded', body: () => new URLSearchParams(BAIT) },
-  { type: 'multipart/form-data', body: () => {
-    const form = new FormData();
-    for (const [k, v] of Object.entries(BAIT)) form.set(k, v);
-    form.set('starter', new File(['x'], 'starter.tar.gz'));
-    form.set('teacher', new File(['x'], 'teacher.tar.gz'));
-    return form;
-  } },
+  {
+    type: 'multipart/form-data',
+    body: () => {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(BAIT)) form.set(k, v);
+      form.set('starter', new File(['x'], 'starter.tar.gz'));
+      form.set('teacher', new File(['x'], 'teacher.tar.gz'));
+      return form;
+    },
+  },
 ];
 
 test('a page on a sibling subdomain cannot act as the person viewing it, through any route', { timeout: 180_000 }, async () => {
   const all = routes(await seeded());
-  expect(all.some((r) => r.requests.some((q) => q.method !== 'GET')), 'found no route that writes').toBe(true);
+  expect(
+    all.some(r => r.requests.some(q => q.method !== 'GET')),
+    'found no route that writes',
+  ).toBe(true);
   const before = await fingerprint();
   const letThrough: string[] = [];
   for (const { path, requests } of all) {
@@ -197,13 +220,13 @@ test('a page on a sibling subdomain that loads every route of this site changes 
   const before = await fingerprint();
   const touched: string[] = [];
   for (const { path, requests } of all) {
-    if (!requests.some((q) => q.method === 'GET')) continue;
+    if (!requests.some(q => q.method === 'GET')) continue;
     // A no-cors fetch, an <img>, a <script src>: the browser sends the
     // cookies and no Origin.
     const r = await fetch(`${app.origin}${path}`, { headers: { 'sec-fetch-site': 'same-site', 'sec-fetch-mode': 'no-cors', cookie: teacher }, redirect: 'manual' });
     await r.arrayBuffer();
-    const session = setCookies(r).filter((c) => c.name.startsWith(SESSION_COOKIE));
-    if (session.length > 0) touched.push(`GET ${path} set ${session.map((c) => c.name).join(', ')}`);
+    const session = setCookies(r).filter(c => c.name.startsWith(SESSION_COOKIE));
+    if (session.length > 0) touched.push(`GET ${path} set ${session.map(c => c.name).join(', ')}`);
   }
   expect(touched).toEqual([]);
   expect(await fingerprint()).toEqual(before);
@@ -240,14 +263,12 @@ test('a page on a sibling subdomain cannot have Auth bind or approve a login of 
   ]) {
     const r = await fetch(`${app.origin}${path}`, { headers: sibling, redirect: 'manual' });
     await r.arrayBuffer();
-    const spent = setCookies(r).filter((c) => c.name.startsWith(CONNECT_COOKIE_PREFIX)).map((c) => c.name);
+    const spent = setCookies(r)
+      .filter(c => c.name.startsWith(CONNECT_COOKIE_PREFIX))
+      .map(c => c.name);
     answers.push(`${path}: ${r.status}${spent.length > 0 ? `, spent ${spent.join(', ')}` : ''}`);
   }
-  expect(answers).toEqual([
-    `/auth/connect/consent?authorization_id=${forged}: 400`,
-    '/auth/connect/consent: 400',
-    expect.stringMatching(/^\/auth\/connect\/return\?.*: 400$/),
-  ]);
+  expect(answers).toEqual([`/auth/connect/consent?authorization_id=${forged}: 400`, '/auth/connect/consent: 400', expect.stringMatching(/^\/auth\/connect\/return\?.*: 400$/)]);
   expect(await fingerprint()).toEqual(before);
 
   // The control: the browser's own authorization does reach Auth, and the
@@ -256,7 +277,8 @@ test('a page on a sibling subdomain cannot have Auth bind or approve a login of 
   // is not Auth's site_url, so the approval is then refused; the binding
   // is what counts here.)
   const own = await fetch(`${app.origin}/auth/connect/consent?authorization_id=${theirs}`, {
-    headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', cookie: browser }, redirect: 'manual',
+    headers: { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', cookie: browser },
+    redirect: 'manual',
   });
   await own.arrayBuffer();
   expect(own.status).not.toBe(503);
@@ -269,7 +291,7 @@ test('a Domain=yukibana.dev cookie set by a light.yukibana.dev page does not cha
   // yukibana.dev to sign the teacher in as Alice. (It cannot set one under
   // the __Host- name: a browser refuses that name with a Domain.)
   const legacy = `sb-${new URL(config.supabaseUrl).hostname.split('.')[0] ?? ''}-auth-token`;
-  const tossed = (await signIn(ALICE)).map((c) => ({ name: c.name.replace(SESSION_COOKIE, legacy), value: c.value }));
+  const tossed = (await signIn(ALICE)).map(c => ({ name: c.name.replace(SESSION_COOKIE, legacy), value: c.value }));
 
   expect(await whoIs(cookieHeader(tossed))).toBeNull();
   expect(await whoIs(`${cookieHeader(tossed)}; ${teacher}`)).toBe(TEACHER);
@@ -278,6 +300,8 @@ test('a Domain=yukibana.dev cookie set by a light.yukibana.dev page does not cha
   // And a request that carries one is told to forget it; that it cannot
   // reach the copy set for the whole domain is why the name is what counts.
   const r = await fetch(`${app.origin}/auth/login`, { headers: { cookie: cookieHeader(tossed) } });
-  const cleared = setCookies(r).filter((c) => c.value === '' && c.name.startsWith(legacy)).map((c) => c.name);
-  expect(cleared.toSorted()).toEqual(tossed.map((c) => c.name).toSorted());
+  const cleared = setCookies(r)
+    .filter(c => c.value === '' && c.name.startsWith(legacy))
+    .map(c => c.name);
+  expect(cleared.toSorted()).toEqual(tossed.map(c => c.name).toSorted());
 });

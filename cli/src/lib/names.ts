@@ -30,9 +30,10 @@ const RESERVED = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
  *  script are kept: "Zoë Ångström" stays that. */
 export function safeSegment(text: string): string {
   // Whitespace first, so a tab or a line break becomes a space, not a `_`.
-  let s = Array.from(text.normalize('NFC').replace(/\s+/g, ' '), (ch) => (unsafe(ch) ? '_' : ch)).join('')
+  let s = Array.from(text.normalize('NFC').replace(/\s+/g, ' '), ch => (unsafe(ch) ? '_' : ch))
+    .join('')
     .trim()
-    .replace(/^\.+/, (dots) => '_'.repeat(dots.length))
+    .replace(/^\.+/, dots => '_'.repeat(dots.length))
     .replace(/[. ]+$/, '');
   if (s === '') s = '_';
   if (RESERVED.test(s)) s = `_${s}`;
@@ -73,7 +74,7 @@ export function displayName(p: Person): string {
  *  added in brackets, so neither student of a pair is the one with the
  *  plain name by accident of ordering. */
 export function folderNames(people: readonly Person[]): Map<string, string> {
-  const base = new Map(people.map((p) => [p.userId, safeSegment(displayName(p))] as const));
+  const base = new Map(people.map(p => [p.userId, safeSegment(displayName(p))] as const));
   const out = new Map<string, string>();
   const count = new Map<string, number>();
   for (const name of base.values()) count.set(name.toLowerCase(), (count.get(name.toLowerCase()) ?? 0) + 1);
@@ -101,5 +102,8 @@ export function folderNames(people: readonly Person[]): Map<string, string> {
 export function stampOf(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return safeSegment(iso);
-  return d.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
+  return d
+    .toISOString()
+    .replace(/\.\d{3}Z$/, 'Z')
+    .replace(/:/g, '-');
 }

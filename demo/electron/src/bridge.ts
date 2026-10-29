@@ -50,9 +50,7 @@ export interface Status {
 /** What became of a starter download: the person cancelled the folder
  *  dialog, or the starter is unpacked into `folder`, with the entries left
  *  out (each `path: reason`, such as a link out of the folder). */
-export type StarterDownload =
-  | { readonly kind: 'cancelled' }
-  | { readonly kind: 'unpacked'; readonly folder: string; readonly leftOut: readonly string[] };
+export type StarterDownload = { readonly kind: 'cancelled' } | { readonly kind: 'unpacked'; readonly folder: string; readonly leftOut: readonly string[] };
 
 export interface Bridge {
   status(): Promise<Status>;

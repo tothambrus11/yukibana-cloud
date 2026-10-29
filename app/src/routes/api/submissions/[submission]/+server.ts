@@ -6,9 +6,9 @@ import { submissionUrl } from '#lib/server/submissions.ts';
 
 /** A submission's body, as a redirect to a URL that works for a minute, for
  *  its author or the edition's staff. */
-export const GET: RequestHandler = async (event) => {
+export const GET: RequestHandler = async event => {
   const claims = requireClaims(event);
   const submission = uuidOf<SubmissionId>(event.params.submission);
   if (submission === null) error(404, 'No such submission.');
-  return withContext(async (ctx) => toBucket(ctx, await submissionUrl(ctx, claims, submission)));
+  return withContext(async ctx => toBucket(ctx, await submissionUrl(ctx, claims, submission)));
 };

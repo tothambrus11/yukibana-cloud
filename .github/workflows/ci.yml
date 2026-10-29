@@ -115,6 +115,24 @@ jobs:
           name: ci-stack
           paths: ${{ env.COMMON_INPUTS }}${{ env.STACK_INPUTS }}
 
+  # Whether `npm run format` would change anything. It is quick enough to run
+  # every time, so it is not in the plan. Only oxfmt is needed from the root's
+  # tools, and none of their install scripts.
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - run: npm run format:check
+
   # The registry: lint, typecheck, unit tests and a production build, no
   # services.
   app:

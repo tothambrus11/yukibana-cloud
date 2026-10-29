@@ -62,7 +62,7 @@ export async function recordSubmission(ctx: Context, claims: Claims, project: Pr
 
   let stored: boolean;
   try {
-    stored = await asUser(ctx.sql, claims, async (tx) => {
+    stored = await asUser(ctx.sql, claims, async tx => {
       const rows = await tx<{ submission_id: string }[]>`
         insert into submission (submission_id, edition_id, project_id, author_id, object_key, byte_size, sha256, base_release_id)
         select ${id}, p.edition_id, p.project_id, ${claims.sub}, ${key}, ${body.byteLength}, ${digest as Uint8Array<ArrayBuffer>}, ${base}::uuid
@@ -83,7 +83,7 @@ export async function recordSubmission(ctx: Context, claims: Claims, project: Pr
     await forget(ctx, key);
     error(403, (await refusal(ctx, claims, project)) ?? NOT_ACCEPTING);
   }
-  return { submissionId: id, byteSize: body.byteLength, sha256: Array.from(digest, (b) => b.toString(16).padStart(2, '0')).join('') };
+  return { submissionId: id, byteSize: body.byteLength, sha256: Array.from(digest, b => b.toString(16).padStart(2, '0')).join('') };
 }
 
 /** Deletes the object of a submission whose row was refused. */
@@ -107,11 +107,11 @@ async function forget(ctx: Context, key: ObjectKey): Promise<void> {
  *  the failure is reported. A savepoint keeps that failure from taking the
  *  decision down with it. */
 async function refusal(ctx: Context, claims: Claims, project: ProjectId): Promise<string | null> {
-  return asUser(ctx.sql, claims, async (tx) => {
+  return asUser(ctx.sql, claims, async tx => {
     const [ok] = await tx<{ ok: boolean }[]>`select app.can_submit(${project}) as ok`;
     if (ok?.ok === true) return null;
     try {
-      const [r] = await tx.savepoint((sp) => sp<RefusalRow[]>`select * from app.submit_refusal(${project})`);
+      const [r] = await tx.savepoint(sp => sp<RefusalRow[]>`select * from app.submit_refusal(${project})`);
       return refusalMessage(r ?? null);
     } catch (e) {
       report('submissions', `no reason for refusing ${project}: ${e instanceof Error ? e.message : String(e)}`);
@@ -123,7 +123,7 @@ async function refusal(ctx: Context, claims: Claims, project: ProjectId): Promis
 /** A URL for the caller to download `submission`, if they may. The policy
  *  on the table is the check: a row the caller cannot read is a 404. */
 export async function submissionUrl(ctx: Context, claims: Claims, submission: SubmissionId): Promise<URL> {
-  const row = await asUser(ctx.sql, claims, async (tx) => {
+  const row = await asUser(ctx.sql, claims, async tx => {
     const [r] = await tx<{ object_key: string; slug: string; submitted_at: Date; login: string | null }[]>`
       select s.object_key, p.slug, s.submitted_at, u.github_login as login
       from submission s
@@ -140,7 +140,7 @@ export async function submissionUrl(ctx: Context, claims: Claims, submission: Su
 /** A URL for the caller to download `project`'s starter, if they may and
  *  one has been built. `app.current_starter` decides both. */
 export async function starterUrl(ctx: Context, claims: Claims, project: ProjectId): Promise<URL> {
-  const row = await asUser(ctx.sql, claims, async (tx) => {
+  const row = await asUser(ctx.sql, claims, async tx => {
     const [r] = await tx<{ key: string | null; slug: string | null }[]>`
       select app.current_starter(${project}) as key, (select slug from project where project_id = ${project}) as slug`;
     return r ?? null;

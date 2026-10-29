@@ -11,9 +11,12 @@ test('a student listens to their editions and to themselves, never to a staff to
 });
 
 test('staff also listen to the staff topic of the editions they teach, and only those', () => {
-  expect(topicsFor(me, [{ editionId: course, role: 'assistant' }, { editionId: other, role: 'student' }])).toEqual([
-    `edition:${course}`, `edition:${course}:staff`, `edition:${other}`, `user:${me}`,
-  ]);
+  expect(
+    topicsFor(me, [
+      { editionId: course, role: 'assistant' },
+      { editionId: other, role: 'student' },
+    ]),
+  ).toEqual([`edition:${course}`, `edition:${course}:staff`, `edition:${other}`, `user:${me}`]);
 });
 
 test('somebody enrolled nowhere still hears about their own submissions and enrolments', () => {

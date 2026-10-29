@@ -50,7 +50,7 @@ export const load: PageServerLoad = async ({ locals, url, setHeaders }) => {
   if (config.oauthClientId === null) error(503, NOT_OFFERED);
   const claims = locals.claims;
   if (claims === null) redirect(303, `/auth/login?next=${encodeURIComponent(here(req))}`);
-  const who = await withContext((ctx) => me(ctx, claims));
+  const who = await withContext(ctx => me(ctx, claims));
   return {
     request: { redirect_uri: loopback(req.port).toString(), code_challenge: req.challenge, state: req.state },
     code: loginCode(req.state),
@@ -64,7 +64,7 @@ export const actions: Actions = {
    *  `/auth/connect/consent`; the connect cookie, named by the nonce in the
    *  state and holding that id, is what that route checks before it asks
    *  Auth anything (`start` in #lib/server/connect says why). */
-  continue: async (event) => {
+  continue: async event => {
     const req = await formRequest(event);
     const config = workerConfig();
     if (config.oauthClientId === null) error(503, NOT_OFFERED);
@@ -80,14 +80,14 @@ export const actions: Actions = {
   /** Another account: log this browser out of the website (this browser
    *  only; other devices and the IDE's own sessions stay), then the login
    *  page, which comes back here. */
-  switch: async (event) => {
+  switch: async event => {
     const req = await formRequest(event);
     await event.locals.supabase.auth.signOut({ scope: 'local' });
     redirect(303, `/auth/login?next=${encodeURIComponent(here(req))}`);
   },
 
   /** No: tell the CLI, so it stops waiting and says so. */
-  cancel: async (event) => {
+  cancel: async event => {
     const req = await formRequest(event);
     redirect(303, declinedUrl(req).toString(), { external: [loopback(req.port).origin] });
   },
