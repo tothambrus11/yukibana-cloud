@@ -39,7 +39,7 @@ export async function readTree(dir: string, options: TreeOptions = {}): Promise<
  *  than by turning a Windows path's backslashes round afterwards. */
 async function walk(root: string, folder: string, out: Entry[], options: TreeOptions): Promise<void> {
   const here = join(root, folder);
-  const names = (await readdir(here)).toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const names = (await readdir(here)).toSorted();
   if (options.gitignore !== undefined && names.includes(GITIGNORE)) {
     const s = await lstat(join(here, GITIGNORE));
     if (s.isFile()) options.gitignore(folder, await readFile(join(here, GITIGNORE), 'utf8'));
