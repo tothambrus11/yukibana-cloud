@@ -249,8 +249,8 @@ class EditorRenderer implements IContentRenderer {
 		});
 		editor.addAction({
 			id: 'yukibana.download',
-			label: 'Download Project for an IDE',
-			run: () => this.workspace.download(),
+			label: 'Download Project for an IDE…',
+			run: () => this.workspace.requestDownload(),
 		});
 		// Editors are made anew for each project, so only a language with the views offers them.
 		// The C++ views' action ids (yukibana.showIr, yukibana.showAsm) are the ones they always had.
