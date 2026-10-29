@@ -584,7 +584,7 @@ jobs:
       # The units this run's waves built of this pack (a pack's name has no
       # `-`, so toolchain-<pack>-* is this pack's alone). None is no error:
       # the store has them.
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.once.outputs.done != 'true'
         with:
           pattern: toolchain-${{ matrix.pack }}-*
@@ -945,7 +945,7 @@ jobs:
           echo "rootfs-run=$(sed -n 's/^ROOTFS_RUN=\([0-9][0-9]*\).*/\1/p' build.sh)" >> "$GITHUB_OUTPUT"
           echo "tools-run=$(sed -n 's/^TOOLS_RUN=\([0-9][0-9]*\).*/\1/p' build.sh)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         id: rootfs-artifact
         if: steps.haskell.outputs.rootfs-run
         continue-on-error: true
@@ -955,7 +955,7 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/haskell-ghc-rootfs
 
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         id: tools-artifact
         if: steps.haskell.outputs.tools-run
         continue-on-error: true
@@ -1092,7 +1092,7 @@ jobs:
 
       # Every unit's artifact is toolchain-<pack>-<unit>-<key>; in a run
       # without `upload` no other artifact starts with toolchain-.
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: toolchain-*
           merge-multiple: true
@@ -1142,7 +1142,7 @@ jobs:
 
       # Only the packs this run built: the pack job uploads pack-<pack> on
       # main only for a build that passed.
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: pack-*
           merge-multiple: true

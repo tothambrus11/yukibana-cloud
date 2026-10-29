@@ -78,14 +78,14 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: haskell-ghc-rootfs
           run-id: ${{ steps.pins.outputs.rootfs-run }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/rootfs
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: haskell-ghc-tools
           run-id: ${{ steps.pins.outputs.tools-run }}
