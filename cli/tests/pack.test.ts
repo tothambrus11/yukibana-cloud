@@ -11,7 +11,7 @@ afterEach(() => vi.restoreAllMocks());
 
 async function project(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'yukibana-project-'));
-  await writeFile(join(dir, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'scala-sbt', projectId: 'p-1' }));
+  await writeFile(join(dir, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'scala-sbt', projectId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a01' }));
   await writeFile(join(dir, 'Main.scala'), 'object Main');
   return dir;
 }

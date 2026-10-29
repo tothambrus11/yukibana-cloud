@@ -5,6 +5,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { build, commitOf, newReleaseId } from '../build.js';
 import { sha256Hex } from '../lib/bytes.js';
+import { isProjectId } from '../lib/yukibana.js';
 import { publish } from '../publish.js';
 import { accessTokenFor, fail, projectOf, registryUrl, type Invocation } from './common.js';
 
@@ -18,6 +19,7 @@ export async function release(command: 'check' | 'build' | 'publish', inv: Invoc
   const projectId = command === 'publish'
     ? await projectOf(inv, inv.options.project, dir).catch(() => fail('--project (or YUKIBANA_PROJECT) is required to publish'))
     : (inv.options.project ?? inv.env['YUKIBANA_PROJECT'] ?? '');
+  if (projectId !== '' && !isProjectId(projectId)) fail(`"${projectId}" is not a project id, a uuidv7; the starter would carry it, and its yukibana.json would be refused`);
 
   // The id is chosen before the build so the starter can carry it, and the
   // publish below gives the row the same one. A check publishes nothing, so

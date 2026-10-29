@@ -1,6 +1,6 @@
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, DEFAULT_SETTINGS, excludes, manifestProblems, parseConfig, parseSettings, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
+import { DEFAULT_FILENAME, DEFAULT_MAX_BYTES, DEFAULT_SETTINGS, isProjectId, excludes, manifestProblems, parseConfig, parseSettings, protectedPaths, sameStudentConfig, starterConfig } from '../src/lib/yukibana.js';
 
 const ok = (text: string) => {
   const p = parseConfig(text);
@@ -36,6 +36,21 @@ test('every rejection names the field the teacher has to fix', () => {
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"filename":"a/b.tar.gz"}}'), /"submission.filename"/);
 });
 
+test('a file with several mistakes names every one of them, so one run is enough to fix it', () => {
+  assert.equal(
+    bad('{"version":1,"kind":"python","features":{"ai":"no"}}'),
+    'yukibana.json: "kind" must be one of rust-cargo, scala-sbt; yukibana.json: "features.ai" must be true or false',
+  );
+});
+
+test('a project id is a uuidv7, as the registry makes them, in any case', () => {
+  assert.match(bad('{"version":1,"kind":"rust-cargo","projectId":"p-1"}'), /"projectId" must be a project id, a uuidv7/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","projectId":"01a0b563-aeff-4c42-ae73-5aab2f2b5a01"}'), /"projectId"/, 'a uuidv4 is not one');
+  assert.equal(ok('{"version":1,"kind":"rust-cargo","projectId":"01A0B563-AEFF-7C42-AE73-5AAB2F2B5A01"}').projectId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01');
+  assert.equal(isProjectId('01a0b563-aeff-7c42-ae73-5aab2f2b5a01'), true);
+  assert.equal(isProjectId('p-1'), false, 'build --project refuses it before a starter carries it');
+});
+
 test('the IDE settings from the example file are a valid project, with the defaults filled in', () => {
   const p = parseConfig(JSON.stringify({
     version: 1, kind: 'scala-sbt',
@@ -67,7 +82,7 @@ test('an assembly protects the config itself, the read-only paths and the hidden
 
 test('a student copy that says what the starter said is unchanged, whatever its formatting', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
-  const copy = starterConfig(c, 'p-1', null);
+  const copy = starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null);
   assert.ok(sameStudentConfig(c, copy));
   assert.ok(sameStudentConfig(c, '{"readOnly":["tests/*"],"kind":"rust-cargo","version":1}'), 'key order and the project id do not matter');
   assert.ok(!sameStudentConfig(c, copy.replace('"tests/*"', '"nothing"')), 'an emptied read-only list is a change');
@@ -84,8 +99,8 @@ test('what is always dropped comes first, then the kind, then the teacher', () =
 
 test('the starter copy carries the project id and not the hidden paths', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","hidden":["tests/hidden"]}');
-  const copy = JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>;
-  assert.equal(copy['projectId'], 'p-1');
+  const copy = JSON.parse(starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null)) as Record<string, unknown>;
+  assert.equal(copy['projectId'], '01a0b563-aeff-7c42-ae73-5aab2f2b5a01');
   assert.equal(copy['kind'], 'rust-cargo');
   assert.equal('hidden' in copy, false, 'the copy must not say what was removed');
 });
@@ -122,13 +137,13 @@ test('a starter built without a project leaves the id out, and its copy still pa
 
 test('a starter copy names its release, and a student\'s copy that does is not a change to the file', () => {
   const c = ok('{"version":1,"kind":"rust-cargo","readOnly":["tests/*"],"hidden":["tests/hidden"]}');
-  const copy = starterConfig(c, 'p-1', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const copy = starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   const back = parseConfig(copy);
   assert.ok(back.ok, back.ok ? '' : back.error);
   assert.equal(back.config.releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   assert.ok(sameStudentConfig(c, copy));
   assert.ok(sameStudentConfig(c, copy.replace('5a5c', '5a5d')), 'nor is another release id: which release it names is the download\'s question');
-  assert.equal('releaseId' in (JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>), false, 'a check names no release');
+  assert.equal('releaseId' in (JSON.parse(starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null)) as Record<string, unknown>), false, 'a check names no release');
 });
 
 test('a release id that is not a uuid is refused, and a repository\'s own is never copied into a starter', () => {
@@ -136,7 +151,7 @@ test('a release id that is not a uuid is refused, and a repository\'s own is nev
   assert.ok(!notUuid.ok);
   assert.match(notUuid.error, /"releaseId" must be a release id/);
   const c = ok('{"version":1,"kind":"rust-cargo","releaseId":"01a0b563-aeff-7c42-ae73-5aab2f2b5a5c"}');
-  assert.equal('releaseId' in (JSON.parse(starterConfig(c, 'p-1', null)) as Record<string, unknown>), false);
+  assert.equal('releaseId' in (JSON.parse(starterConfig(c, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null)) as Record<string, unknown>), false);
   assert.equal(ok('{"version":1,"kind":"rust-cargo","releaseId":"01A0B563-AEFF-7C42-AE73-5AAB2F2B5A5C"}').releaseId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
 });
 

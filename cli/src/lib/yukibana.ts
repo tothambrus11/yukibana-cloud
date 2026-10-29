@@ -185,6 +185,16 @@ export function isUuid(s: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
 
+/** The shape of a project id: a uuidv7, in any case, because the database
+ *  makes every one with `app.uuidv7()`. */
+const projectIdSchema = z.uuidv7('must be a project id, a uuidv7');
+
+/** `true` iff `s` could be a project id. `build --project` checks it, so a
+ *  starter never carries an id its own `yukibana.json` would refuse. */
+export function isProjectId(s: string): boolean {
+  return projectIdSchema.safeParse(s).success;
+}
+
 const bool = z.boolean();
 const on = withDefault(bool, true);
 const flags = z.record(z.string(), bool);
@@ -229,7 +239,7 @@ const settingsShape = {
       z.int(), z.positive(),
     ), DEFAULT_MAX_BYTES), 'The largest submission this project expects, in bytes. The registry has its own cap above which this cannot go.'),
   }), {}), 'What a submission from this folder holds, and where the IDE sends it.'),
-  projectId: about(withDefault(z.nullable(z.string().check(z.minLength(1))), null),
+  projectId: about(withDefault(z.nullable(projectIdSchema), null),
     'Written by yukibana build and publish into the starter\'s copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.'),
 };
 
@@ -275,13 +285,15 @@ const KNOWN = new Set(Object.keys(configSchema.shape));
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-/** Returns the first of `issues` as a sentence naming the field, because
- *  the teacher reads it and fixes the file. */
+/** Returns every one of `issues` as a sentence naming its field, joined
+ *  by "; ", because the teacher reads them and fixes the file. It once
+ *  named only the first, so a file with three mistakes took three runs. */
 function sentence(issues: readonly z.core.$ZodIssue[]): string {
-  const issue = issues[0];
-  if (issue === undefined) return `${CONFIG_FILE} is not valid`;
-  const field = fieldOf(issue.path);
-  return field === '' ? `${CONFIG_FILE} ${expectation(issue)}` : `${CONFIG_FILE}: "${field}" ${expectation(issue)}`;
+  if (issues.length === 0) return `${CONFIG_FILE} is not valid`;
+  return issues.map((issue) => {
+    const field = fieldOf(issue.path);
+    return field === '' ? `${CONFIG_FILE} ${expectation(issue)}` : `${CONFIG_FILE}: "${field}" ${expectation(issue)}`;
+  }).join('; ');
 }
 
 /** Returns `text` as a JSON object, or why it is not one. */
@@ -303,7 +315,7 @@ export function parseConfig(text: string): Parsed {
   const parsed = configSchema.safeParse(read.raw);
   if (!parsed.success) return { ok: false, error: sentence(parsed.error.issues) };
   const warnings = Object.keys(read.raw).filter((k) => !KNOWN.has(k)).map((k) => `${CONFIG_FILE}: unknown field "${k}" is passed through as it is`);
-  const config: Config = { ...parsed.data, releaseId: parsed.data.releaseId?.toLowerCase() ?? null, raw: read.raw };
+  const config: Config = { ...parsed.data, projectId: parsed.data.projectId?.toLowerCase() ?? null, releaseId: parsed.data.releaseId?.toLowerCase() ?? null, raw: read.raw };
   return { ok: true, config, warnings };
 }
 

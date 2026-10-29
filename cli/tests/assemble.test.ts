@@ -14,7 +14,7 @@ const body = (entries: readonly Entry[], path: string) => {
 const CONFIG = '{"version":1,"kind":"scala-sbt","readOnly":["tests/*","README.md","yukibana.json"],"hidden":["tests/hidden"]}';
 const parsed = parseConfig(CONFIG);
 if (!parsed.ok) throw new Error(parsed.error);
-const studentCopy = starterConfig(parsed.config, 'p-1', null);
+const studentCopy = starterConfig(parsed.config, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null);
 
 /** The teacher archive: the whole project in its folder. */
 const teacher: Entry[] = [
@@ -138,7 +138,7 @@ test('a student who started from an old release and changed its read-only file i
 });
 
 test('a starter copy naming its release is not a change to yukibana.json', () => {
-  const stamped = starterConfig(parsed.config, 'p-1', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const stamped = starterConfig(parsed.config, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   const sub = honest().map((e) => (e.path === 'yukibana.json' ? file(e.path, stamped) : e));
   const made = assemble(sub, teacher);
   assert.ok(made.ok);
