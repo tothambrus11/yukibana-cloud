@@ -169,22 +169,26 @@ const archive = z.object({ size: count, sha256: text });
 const published = z.object({ releaseId: text, starter: archive, teacher: archive });
 const authConfig = z.object({ supabaseUrl: text, publishableKey: text, oauthClientId: maybeText, siteUrl: maybeText });
 
-/** Returns `v` as `schema` says, or throws `Unexpected` with a sentence
- *  naming the field, from `where` down, and what came instead: "the
- *  registry answered submissions[0].byteSize as string, not a number". */
+/** Returns `v` as `schema` says, or throws `Unexpected` with a sentence for
+ *  every field that is wrong, from `where` down, joined by "; ". */
 function decode<T>(schema: z.ZodType<T>, v: unknown, where: string): T {
   const parsed = schema.safeParse(v);
   if (parsed.success) return parsed.data;
-  const issue = parsed.error.issues[0];
-  const path = issue?.path ?? [];
-  const field = fieldOf(path, where);
-  const got = path.reduce<unknown>((o, k) => (typeof o === 'object' && o !== null ? (o as Record<PropertyKey, unknown>)[k] : undefined), v);
-  if (issue?.code === 'invalid_value') throw new Unexpected(`the registry answered ${field} as ${JSON.stringify(got)}, not a role`);
-  const expected = issue?.code === 'invalid_type' ? issue.expected : 'value';
+  throw new Unexpected(parsed.error.issues.map((issue) => answered(issue, v, where)).join('; '));
+}
+
+/** Returns what `issue` found in `v`, naming the field from `where` down
+ *  and what came instead: "the registry answered submissions[0].byteSize
+ *  as string, not a number". */
+function answered(issue: z.core.$ZodIssue, v: unknown, where: string): string {
+  const field = fieldOf(issue.path, where);
+  const got = issue.path.reduce<unknown>((o, k) => (typeof o === 'object' && o !== null ? (o as Record<PropertyKey, unknown>)[k] : undefined), v);
+  if (issue.code === 'invalid_value') return `the registry answered ${field} as ${JSON.stringify(got)}, not a role`;
+  const expected = issue.code === 'invalid_type' ? issue.expected : 'value';
   const name = nameOf(expected);
-  throw new Unexpected(expected === 'object' || expected === 'array'
+  return expected === 'object' || expected === 'array'
     ? `the registry answered ${field} as something other than ${name}`
-    : `the registry answered ${field} as ${typeof got}, not ${name}`);
+    : `the registry answered ${field} as ${typeof got}, not ${name}`;
 }
 
 /** Returns `v` as a `Me`, or throws `Unexpected` naming the field. */
