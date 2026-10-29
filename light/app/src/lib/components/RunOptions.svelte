@@ -8,6 +8,9 @@
 -->
 <script lang="ts">
 	import type { Workspace } from '../workspace.svelte';
+	import Select, { type SelectOption } from './Select.svelte';
+
+	const CPUS: readonly SelectOption[] = ['1', '2', '4'].map((n) => ({ value: n, label: n }));
 
 	let { workspace }: { workspace: Workspace } = $props();
 
@@ -26,14 +29,10 @@
 			<span>User mode (experimental)<small>QEMU translates system calls itself: smaller and starts sooner, but no kernel underneath: one CPU, no fork, and a null dereference reads 0 instead of crashing.</small></span>
 		</label>
 	</fieldset>
-	<label class="row" title={options.emulation === 'user' ? 'User mode emulates one CPU' : 'The guest’s CPUs'}>
+	<div class="row cpus" title={options.emulation === 'user' ? 'User mode emulates one CPU' : 'The guest’s CPUs'}>
 		<span>CPUs<small>{options.emulation === 'user' ? 'User mode emulates one CPU.' : 'The guest’s CPUs, for threads.'}</small></span>
-		<select value={String(options.cpus)} disabled={options.emulation === 'user'} onchange={(e) => workspace.setRunOptions({ cpus: Number(e.currentTarget.value) as 1 | 2 | 4 })}>
-			<option value="1">1</option>
-			<option value="2">2</option>
-			<option value="4">4</option>
-		</select>
-	</label>
+		<Select label="CPUs" value={String(options.cpus)} options={CPUS} disabled={options.emulation === 'user'} onchange={(v) => workspace.setRunOptions({ cpus: Number(v) as 1 | 2 | 4 })} />
+	</div>
 	<label class="row">
 		<span>strace<small>Show the program's system calls in the terminal, dimmed.</small></span>
 		<input type="checkbox" checked={options.strace} onchange={(e) => workspace.setRunOptions({ strace: e.currentTarget.checked })} />
@@ -79,18 +78,5 @@
 		justify-content: space-between;
 		gap: 0.75rem;
 		color: var(--white);
-	}
-	.row select {
-		flex: none;
-		min-height: 1.7rem;
-		padding: 0 0.4rem;
-		border: 1px solid var(--control-border);
-		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--white);
-		font: inherit;
-	}
-	.row select:disabled {
-		opacity: 0.5;
 	}
 </style>

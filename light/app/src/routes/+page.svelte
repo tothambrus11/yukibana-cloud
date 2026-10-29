@@ -27,6 +27,7 @@
 	import { buildSummary, openBuildSettings } from '../lib/build-settings';
 	import MoreMenu from '../lib/components/MoreMenu.svelte';
 	import Popover from '../lib/components/Popover.svelte';
+	import Select, { type SelectOption } from '../lib/components/Select.svelte';
 	import Licenses from '../lib/components/Licenses.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
@@ -86,6 +87,15 @@
 	const warnings = $derived(workspace.problems.filter((p) => p.severity === 'warning').length);
 	const percent = $derived(workspace.progress && workspace.progress.total > 0 ? Math.min(100, (100 * workspace.progress.loaded) / workspace.progress.total) : null);
 	const language = $derived(languageOf(workspace.language));
+	/** The language picker's choices; a language whose pack is kept for offline use says so. */
+	const languageOptions = $derived<SelectOption[]>(
+		pickerLanguages().map((l) => ({
+			value: l.id,
+			label: l.label,
+			keywords: `${l.id} ${shortLabel(l)} ${packOf(l)}`,
+			...(offline.isPackCached(packOf(l)) ? { detail: 'offline' } : {}),
+		})),
+	);
 	/** The language's compiler output views (explore-views.ts), none for most. */
 	const views = $derived(viewsOf(workspace.language)?.views.map((v) => v.kind) ?? []);
 	/** "the active C or C++ file" and the like, for the views' buttons. */
@@ -155,17 +165,12 @@
 			<span class="name">Yukibana</span><span class="product">Light</span>
 		</a>
 
-		<!-- The chosen language is shown by .lang-label (its full or short name, by the bar's width); the native select lies over it, unseen, so a phone keeps its own picker. -->
-		<label class="lang" title="Language: {language.label}">
-			<span class="lang-label" aria-hidden="true"><span class="full">{language.label}</span><span class="short">{shortLabel(language)}</span></span>
-			<span class="sr-only">Language</span>
-			<select value={workspace.language} onchange={(e) => void workspace.switchTo(e.currentTarget.value as LanguageId)}>
-				{#each pickerLanguages() as l (l.id)}
-					<option value={l.id}>{l.label}{offline.isPackCached(packOf(l)) ? ' (offline)' : ''}</option>
-				{/each}
-			</select>
-			<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-		</label>
+		<!-- The chosen language is shown by .lang-label: its full or short name, by the bar's width. -->
+		<Select class="lang" label="Language" title="Language: {language.label}" value={workspace.language} options={languageOptions} onchange={(v) => void workspace.switchTo(v as LanguageId)}>
+			{#snippet button()}
+				<span class="lang-label"><span class="full">{language.label}</span><span class="short">{shortLabel(language)}</span></span>
+			{/snippet}
+		</Select>
 
 		<!-- One button that is Run or Stop, as wide as the wider of the two, and Test and Mutate stay where they are while it runs: pressing a button moves nothing. -->
 		{#if workspace.runner.busy}
@@ -281,7 +286,7 @@
 	</button>
 	<Popover bind:this={serverMenu} id="server-menu" label="Language server" role="menu" class="server-menu">
 		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), void workspace.restartServer())}>Restart language server</button>
-		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), workspace.showPanel('output'))}>Show output</button>
+		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), workspace.showPanel('log'))}>Show log</button>
 	</Popover>
 	{#if isCFamily(workspace.language) && summary}
 		<button class="build-summary-button" onclick={(e) => openBuildSettings(e.currentTarget)} title="Build settings: {summary}"><span class="truncate">{summary}</span></button>
@@ -342,38 +347,21 @@
 		font-size: 1.05rem;
 		color: var(--gray-2);
 	}
-	.lang {
-		position: relative;
-		display: inline-flex;
+	/* The language picker: a Select (Select.svelte) whose button is drawn as the bar's. */
+	.bar :global(.lang) {
 		flex: 0 1 auto;
-		align-items: center;
-		min-width: 0;
 		max-width: 12rem;
-		min-height: 2rem;
-		padding: 0 1.9rem 0 0.75rem;
-		border: 1px solid var(--gray-5);
-		border-radius: 0.35rem;
+		padding: 0 0.6rem 0 0.75rem;
+		border-color: var(--gray-5);
 		background: var(--gray-6);
-		color: var(--white);
 		font-size: 0.9rem;
 		font-weight: 500;
-		cursor: pointer;
 	}
-	/* A finger's height on a touch screen, as the bar's buttons have (app.css). */
-	@media (pointer: coarse) {
-		.lang {
-			min-height: 2.75rem;
-		}
-	}
-	.lang:hover,
-	.lang:focus-within {
+	.bar :global(.lang:hover),
+	.bar :global(.lang[aria-expanded='true']) {
 		border-color: var(--control-border);
 	}
-	.lang:has(select:focus-visible) {
-		outline: var(--focus-ring);
-		outline-offset: 1px;
-	}
-	.lang-label {
+	:global(.lang-label) {
 		display: block;
 		min-width: 0;
 		overflow: hidden;
@@ -382,25 +370,6 @@
 	}
 	:global(.lang-label .short) {
 		display: none;
-	}
-	.lang select {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		opacity: 0;
-		font: inherit;
-		cursor: pointer;
-	}
-	.lang svg {
-		position: absolute;
-		right: 0.6rem;
-		width: 0.8rem;
-		height: 0.8rem;
-		fill: none;
-		stroke: var(--gray-2);
-		stroke-width: 2;
-		pointer-events: none;
 	}
 	.run {
 		border-color: var(--accent);
@@ -526,7 +495,7 @@
 	 * The bar's own buttons, its children only: the server menu's Popover is
 	 * rendered inside the footer, and `.status-bar button` once matched its
 	 * menu items too, made them inline and laid them side by side, with
-	 * "Show output" off the edge of the menu.
+	 * "Show log" off the edge of the menu.
 	 */
 	.status-bar > button {
 		display: inline-flex;

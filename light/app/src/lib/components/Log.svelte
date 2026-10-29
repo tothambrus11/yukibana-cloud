@@ -1,9 +1,12 @@
 <!--
-  The language server's log: its own messages, its stderr, and what the
-  client reports (a failed start, a request that errored).
+  The tools' log: the language server's messages and stderr, and what the
+  client reports (a failed start, a request that errored); a run's side
+  channel (the guest kernel, timings); the app's own notes (a setting
+  changed, a download made). Never the program's output, which is the
+  terminal's: each line names who wrote it so that none reads as if it were.
 -->
 <script lang="ts">
-	import type { Workspace } from '../workspace.svelte';
+	import type { LogSource, Workspace } from '../workspace.svelte';
 
 	let { workspace }: { workspace: Workspace } = $props();
 
@@ -16,25 +19,32 @@
 	});
 
 	const time = (d: Date) => d.toLocaleTimeString(undefined, { hour12: false });
+
+	/** The tag beside a line, and what its tooltip says it means. */
+	const SOURCES: Record<LogSource, { tag: string; says: string }> = {
+		server: { tag: 'server', says: 'The language server' },
+		run: { tag: 'run', says: 'The run, beside the program: timings, the emulated machine' },
+		app: { tag: 'app', says: 'Light itself' },
+	};
 </script>
 
-<div class="output">
+<div class="log-panel">
 	<div class="lines" bind:this={scroller} onscroll={(e) => {
 		const el = e.currentTarget;
 		follow = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
 	}}>
 		{#if workspace.log.length === 0}
-			<p class="empty">The language server's messages appear here.</p>
+			<p class="empty">Messages from the language server, the compiler and the runner appear here. Your program's output is in the Terminal.</p>
 		{/if}
 		{#each workspace.log as line (line.id)}
-			<div class="line {line.level}"><span class="time">{time(line.time)}</span>{line.text}</div>
+			<div class="line {line.level}"><span class="time">{time(line.time)}</span><span class="source" title={SOURCES[line.source].says}>{SOURCES[line.source].tag}</span>{line.text}</div>
 		{/each}
 	</div>
-	<button class="clear" title="Clear output" onclick={() => workspace.clearLog()}>Clear</button>
+	<button class="clear" title="Clear the log" onclick={() => workspace.clearLog()}>Clear</button>
 </div>
 
 <style>
-	.output {
+	.log-panel {
 		position: relative;
 		height: 100%;
 	}
@@ -71,6 +81,13 @@
 		margin-right: 0.75rem;
 		color: var(--gray-4);
 	}
+	.source {
+		display: inline-block;
+		/* As wide as the widest tag, so the messages start in one column. */
+		min-width: 7ch;
+		margin-right: 0.6rem;
+		color: var(--gray-3);
+	}
 	.clear {
 		position: absolute;
 		top: 0.4rem;
@@ -86,7 +103,7 @@
 		opacity: 0;
 		transition: opacity 0.15s;
 	}
-	.output:hover .clear,
+	.log-panel:hover .clear,
 	.clear:focus-visible {
 		opacity: 1;
 	}

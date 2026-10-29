@@ -20,7 +20,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { buildSetting, closePopovers, toggleView } from './ui.mjs';
+import { buildSetting, choose, closePopovers, LANGUAGE_PICKER, toggleView } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = join(here, '..', 'build');
@@ -192,7 +192,7 @@ async function open() {
 	const errors = [];
 	page.on('pageerror', (e) => errors.push(e.message));
 	// The runner's timing marks and exit codes, as its worker posts them to
-	// the page (the Output panel shows the marks only while it is in front).
+	// the page (the Log panel shows the marks only while it is in front).
 	await page.addInitScript(() => {
 		const Native = globalThis.Worker;
 		globalThis.ykMarks = [];
@@ -210,7 +210,7 @@ async function open() {
 	await page.goto(`http://127.0.0.1:${port}/?trace`);
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
-	await page.selectOption('header select', 'cpp');
+	await choose(page, LANGUAGE_PICKER, 'cpp');
 	await page.locator('footer .state').filter({ hasNotText: /Starting|Loading|stopped/ }).waitFor({ timeout: 240_000 });
 	await page.locator('.explorer .row .name', { hasText: /^main\.cpp$/ }).click();
 	return { context, page, responses, errors, settled: () => Promise.all(pending.splice(0)) };
@@ -279,7 +279,7 @@ async function viewShows(page, kind, predicate, timeout) {
 
 /** Chooses `id` in the Target picker and waits until compile_flags.txt says so. */
 async function chooseTarget(page, id) {
-	await (await buildSetting(page, 'target')).selectOption(id);
+	await choose(page, await buildSetting(page, 'target'), id);
 	await closePopovers(page);
 	const triple = id === 'wasm32-wasi' ? null : `--target=${id.replace('-linux', '-linux-musl')}`;
 	await page.waitForFunction(
@@ -296,7 +296,7 @@ async function chooseTarget(page, id) {
 async function runOptions(page, { emulation, cpus, strace }) {
 	const pop = await buildSetting(page, 'run-options');
 	await pop.locator(`input[value="${emulation}"]`).check();
-	if (emulation === 'system') await pop.locator('select').selectOption(String(cpus));
+	if (emulation === 'system') await choose(page, pop.locator('.cpus .yk-select-button'), String(cpus));
 	const box = pop.locator('input[type=checkbox]');
 	if ((await box.isChecked()) !== strace) await box.click();
 	await closePopovers(page);
@@ -305,7 +305,7 @@ async function runOptions(page, { emulation, cpus, strace }) {
 /**
  * Runs main.cpp holding `source` and waits for the run to end. Returns the
  * terminal's status and text, the wall time from the click, the timing
- * marks the run wrote to the Output panel, and the files it fetched.
+ * marks the run wrote to the Log panel, and the files it fetched.
  */
 async function run(s, source, timeout = 600_000) {
 	const { page, responses } = s;

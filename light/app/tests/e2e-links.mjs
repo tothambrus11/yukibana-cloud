@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { decodeProject } from '../src/lib/project-link.ts';
-import { menuItem } from './ui.mjs';
+import { choose, LANGUAGE_PICKER, menuItem } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = process.env.BUILD_DIR ?? join(here, '..', 'build');
@@ -84,7 +84,7 @@ try {
 	await one.goto(base);
 	await one.evaluate(() => localStorage.clear());
 	await one.goto(base); // a fresh start: the sample
-	await one.selectOption('header select', 'python');
+	await choose(one, LANGUAGE_PICKER, 'python');
 	await ready(one, 'main.py');
 	check((await projectIn(one)).language === 'python', 'a tab opened without a link holds its project in its URL at once, before any edit');
 	check(await typeAtEnd(one, '\n# tab one\n'), 'an edit reaches the URL');
@@ -93,7 +93,7 @@ try {
 	await two.goto(base);
 	await ready(two, 'main.py');
 	check(await shows(two, '# tab one'), 'a new tab without a link starts from the project edited last');
-	await two.selectOption('header select', 'javascript');
+	await choose(two, LANGUAGE_PICKER, 'javascript');
 	await ready(two, 'main.js');
 	await two.waitForFunction(() => location.hash.length > 10 && document.title.includes('JavaScript'));
 	check(await typeAtEnd(two, '\n// tab two\n'), 'the second tab, switched to JavaScript, holds its own project in its URL');
@@ -141,14 +141,14 @@ try {
 	check(await shows(one, '// tab two'), "a link pasted into an open tab's address bar opens its project there");
 	await context.close();
 
-	// A damaged link: said in the output panel; the app starts as without one.
+	// A damaged link: said in the Log panel; the app starts as without one.
 	const damaged = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 	const url = urls[0];
 	await damaged.goto(url.slice(0, url.length - 20));
 	await damaged.locator('.explorer .row .name').first().waitFor({ timeout: 30_000 });
-	await damaged.locator('.dv-tab .dock-tab', { hasText: /^Output$/ }).first().click();
-	const said = await damaged.waitForFunction(() => [...document.querySelectorAll('.output')].some((o) => o.textContent?.includes('Could not open the project in this link')), null, { timeout: 10_000 }).then(() => true, () => false);
-	check(said, 'a link cut short is reported in the output panel, and the app still starts');
+	await damaged.locator('.dv-tab .dock-tab', { hasText: /^Log$/ }).first().click();
+	const said = await damaged.waitForFunction(() => [...document.querySelectorAll('.log-panel')].some((o) => o.textContent?.includes('Could not open the project in this link')), null, { timeout: 10_000 }).then(() => true, () => false);
+	check(said, 'a link cut short is reported in the Log panel, and the app still starts');
 	await damaged.close();
 
 	// The Share button at each width: with its word, as an icon, or in ⋯.

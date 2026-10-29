@@ -1,6 +1,6 @@
 /**
  * The window layout, made with dockview: the explorer, editor tabs (one
- * Monaco editor per open file), the terminal with Output and Problems, and,
+ * Monaco editor per open file), the terminal with Log and Problems, and,
  * when asked for, the compiler output views (LLVM IR, assembly), the
  * Preview of a web project and the call hierarchy. Every panel can be
  * dragged, split and resized; editor and view tabs close, the fixed panels
@@ -46,7 +46,7 @@ import { VIEW_TEXT } from './theme.svelte';
 import { modeFor, placeFor, sizesFor, type LayoutMode, type PanelKind, type Placement, type Reference } from './layout-mode';
 import Explorer from './components/Explorer.svelte';
 import Problems from './components/Problems.svelte';
-import Output from './components/Output.svelte';
+import Log from './components/Log.svelte';
 import Terminal from './components/Terminal.svelte';
 import CallHierarchy from './components/CallHierarchy.svelte';
 
@@ -67,7 +67,7 @@ const VIEW_KINDS = ALL_KINDS;
 const viewOfPanel = (id: string): ExploreKind | undefined => VIEW_KINDS.find((k) => VIEWS[k].id === id);
 
 /** The panels that are always there, in the order the bottom group lists them on a phone. */
-const FIXED = ['explorer', 'terminal', 'output', 'problems'] as const;
+const FIXED = ['explorer', 'terminal', 'log', 'problems'] as const;
 
 /**
  * Each fixed panel's tab icon (16 × 16, stroked), shown alone when its tab
@@ -433,8 +433,8 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 					return new SvelteRenderer(Explorer, workspace);
 				case 'problems':
 					return new SvelteRenderer(Problems, workspace);
-				case 'output':
-					return new SvelteRenderer(Output, workspace);
+				case 'log':
+					return new SvelteRenderer(Log, workspace);
 				case 'terminal':
 					return new SvelteRenderer(Terminal, workspace);
 				case 'preview':
@@ -502,12 +502,12 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	if (mode === 'wide') {
 		fixed('explorer', 'Explorer', false);
 		const terminal = fixed('terminal', 'Terminal', false, { direction: 'right' });
-		fixed('output', 'Output', true, { referencePanel: terminal, direction: 'within' });
+		fixed('log', 'Log', true, { referencePanel: terminal, direction: 'within' });
 		fixed('problems', 'Problems', true, { referencePanel: terminal, direction: 'within' });
 		editorArea = dock.addGroup(groupPosition(placement('editor-area')));
 	} else {
 		const terminal = fixed('terminal', 'Terminal', false);
-		fixed('output', 'Output', true, { referencePanel: terminal, direction: 'within' });
+		fixed('log', 'Log', true, { referencePanel: terminal, direction: 'within' });
 		fixed('problems', 'Problems', true, { referencePanel: terminal, direction: 'within' });
 		editorArea = dock.addGroup({ referencePanel: terminal, direction: 'above' });
 		fixed('explorer', 'Explorer', mode === 'narrow', panelPosition(placement('explorer')));
@@ -591,7 +591,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 		mode = next;
 		element.dataset['layoutMode'] = next;
 		const fronts = dock.groups.map((g) => g.activePanel).filter((p): p is IDockviewPanel => p !== undefined && !isEditor(p));
-		const bottomish = ['terminal', 'output', 'problems', 'call-hierarchy'].map(panel).filter((p): p is IDockviewPanel => p !== undefined);
+		const bottomish = ['terminal', 'log', 'problems', 'call-hierarchy'].map(panel).filter((p): p is IDockviewPanel => p !== undefined);
 		const views = viewPanels();
 		arranging = true;
 		try {
@@ -850,7 +850,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 		showTerminal(): void {
 			reveal(panel('terminal'));
 		},
-		showPanel(id: 'output' | 'problems'): void {
+		showPanel(id: 'log' | 'problems'): void {
 			reveal(panel(id));
 		},
 		showPreview(): void {

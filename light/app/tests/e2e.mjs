@@ -14,7 +14,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { buildSetting, closePopovers, menuItem, openBuildSettings, resetProject, toggleView } from './ui.mjs';
+import { buildSetting, choose as chooseIn, closePopovers, LANGUAGE_PICKER, menuItem, openBuildSettings, resetProject, toggleView } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // BUILD_DIR: another build of the app, such as one in a scratch folder.
@@ -137,7 +137,7 @@ async function run(language, c) {
 	await page.goto(`http://127.0.0.1:${port}/?trace`);
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
-	await page.selectOption('header select', language);
+	await chooseIn(page, LANGUAGE_PICKER, language);
 	const status = page.locator('footer .state');
 	const started = await status
 		.filter({ hasNotText: /Starting|Loading|stopped/ })
@@ -146,7 +146,7 @@ async function run(language, c) {
 	const statusText = (await status.textContent())?.trim();
 	check(started && !/failed/.test(statusText ?? ''), `server running (${statusText}) after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 	if (!started || /failed/.test(statusText ?? '')) {
-		console.log((await page.locator('.output .lines').textContent())?.slice(-1500));
+		console.log((await page.locator('.log-panel .lines').textContent())?.slice(-1500));
 		await page.close();
 		return;
 	}
@@ -371,11 +371,11 @@ print("\\(source) = \\(value)")
 async function testFrameworks(page, check) {
 	const choice = await buildSetting(page, 'framework');
 	await closePopovers(page);
-	check((await choice.inputValue()) === 'gtest', `the test framework choice shows GoogleTest for the sample (${await choice.inputValue()})`);
+	check((await choice.getAttribute('data-value')) === 'gtest', `the test framework choice shows GoogleTest for the sample (${await choice.getAttribute('data-value')})`);
 	for (const [framework, passed] of [['doctest', 'Status: SUCCESS!'], ['catch2', 'All tests passed (4 assertions in 3 test cases)'], ['gtest', '[  PASSED  ] 3 tests.']]) {
 		await chooseSetting(page, choice, framework);
 		const converted = await page.locator('.dv-groupview .view-lines').first().filter({ hasText: framework === 'gtest' ? 'gtest/gtest.h' : `${framework}/` }).waitFor({ timeout: 10_000 }).then(() => true, () => false);
-		check(converted && (await choice.inputValue()) === framework, `choosing ${framework} rewrites and shows tests/geometry_test.cpp, and the choice says ${await choice.inputValue()}`);
+		check(converted && (await choice.getAttribute('data-value')) === framework, `choosing ${framework} rewrites and shows tests/geometry_test.cpp, and the choice says ${await choice.getAttribute('data-value')}`);
 		await page.locator('header button', { hasText: /^Test$/ }).click();
 		const status = page.locator('.terminal .status');
 		const ended = await status.filter({ hasText: /Exited|Stopped/ }).waitFor({ timeout: 240_000 }).then(() => true, () => false);
@@ -416,7 +416,7 @@ async function cFamilySettings(page, check, language, requests) {
 	// The standard.
 	const flags = (await modelText(page, 'compile_flags.txt')) ?? '';
 	const [from, to] = language === 'c' ? ['c23', 'c17'] : ['c++23', 'c++20'];
-	const standard = page.locator('#build-settings .row.standard select');
+	const standard = page.locator('#build-settings .row.standard .yk-select-button');
 	await chooseSetting(page, standard, to);
 	check((await modelText(page, 'compile_flags.txt')) === flags.replace(`-std=${from}`, `-std=${to}`), `choosing ${to} rewrites the -std= line (${JSON.stringify(await modelText(page, 'compile_flags.txt'))})`);
 	await chooseSetting(page, standard, from);
@@ -454,13 +454,13 @@ async function cFamilySettings(page, check, language, requests) {
 }
 
 /**
- * Chooses `value` in a select of the Build settings popover (`select`, a
- * locator of it), opening the popover first and closing it after, as a
- * person would.
+ * Chooses `value` in a drop-down list of the Build settings popover
+ * (`select`, a locator of its button), opening the popover first and
+ * closing it after, as a person would.
  */
 async function chooseSetting(page, select, value) {
 	await openBuildSettings(page);
-	await select.selectOption(value);
+	await chooseIn(page, select, value);
 	await closePopovers(page);
 }
 
@@ -502,9 +502,9 @@ async function viewShows(page, kind, predicate, timeout) {
  * line. Ends on the sample, its views closed by Reset project.
  */
 async function cppOptimization(page, check) {
-	const picker = page.locator('header .optimization select');
+	const picker = page.locator('header .optimization .yk-select-button');
 	const flags = await modelText(page, 'compile_flags.txt');
-	check((await picker.inputValue()) === '-O2' && !/^-O/m.test(flags ?? ''), `the sample is at -O2, the default, with no -O line (${await picker.inputValue()})`);
+	check((await picker.getAttribute('data-value')) === '-O2' && !/^-O/m.test(flags ?? ''), `the sample is at -O2, the default, with no -O line (${await picker.getAttribute('data-value')})`);
 	await openFile(page, 'geometry.cpp');
 	await toggleView(page, 'asm');
 	const o2 = await viewShows(page, 'asm', (t) => t.includes('distance'), 240_000);
@@ -514,7 +514,7 @@ async function cppOptimization(page, check) {
 
 	await chooseSetting(page, picker, '-O0');
 	const text = (await modelText(page, 'compile_flags.txt')) ?? '';
-	check(text === `${flags}-O0\n` && (await picker.inputValue()) === '-O0', `choosing -O0 appends -O0 to compile_flags.txt (${JSON.stringify(text)})`);
+	check(text === `${flags}-O0\n` && (await picker.getAttribute('data-value')) === '-O0', `choosing -O0 appends -O0 to compile_flags.txt (${JSON.stringify(text)})`);
 	const o0 = await viewShows(page, 'asm', (t) => t !== o2.text && t.includes('distance'), 60_000);
 	check(o0.ok && / -O0( |$)/.test((await shownFlags()) ?? '') && instructions(o0.text) > instructions(o2.text), `the assembly follows: -O0 in its toolbar, ${instructions(o0.text)} instructions against -O2's ${instructions(o2.text)} (${o0.seconds.toFixed(1)} s)`);
 	await page.locator('header button.run').click();
@@ -525,10 +525,10 @@ async function cppOptimization(page, check) {
 	check((await modelText(page, 'compile_flags.txt')) === flags, 'choosing -O2, the default, removes the -O line again');
 	await setText(page, 'compile_flags.txt', `${flags}-Og\n`);
 	await page.waitForTimeout(300);
-	check((await picker.inputValue()) === 'other' && (await picker.locator('option[value="other"]').textContent()) === '-Og', `a hand-written -Og is shown as it is (${await picker.inputValue()})`);
+	check((await picker.getAttribute('data-value')) === 'other' && (await picker.textContent())?.trim() === '-Og', `a hand-written -Og is shown as it is (${await picker.getAttribute('data-value')})`);
 	await resetProject(page);
 	const reset = await page.waitForFunction(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue().startsWith('-std='), null, { timeout: 15_000 }).then(() => true, () => false);
-	check(reset && (await picker.inputValue()) === '-O2', `Reset project puts the sample back at -O2 (${await picker.inputValue()})`);
+	check(reset && (await picker.getAttribute('data-value')) === '-O2', `Reset project puts the sample back at -O2 (${await picker.getAttribute('data-value')})`);
 }
 
 /**
@@ -580,29 +580,32 @@ async function cppSanitizers(page, check, requests) {
  * the sample's output; Reset project returns to the default.
  */
 async function savedOptimization(page, check, language) {
-	const picker = page.locator('header .optimization select');
+	const picker = page.locator('header .optimization .yk-select-button');
 	// From the sample (an earlier step may have left another project).
 	await resetProject(page);
 	await page.locator('.explorer .row .name', { hasText: CASES[language].file }).first().waitFor({ timeout: 30_000 });
 	const { start, choose, disabled, said: saying } = language === 'swift'
 		? { start: '-Onone', choose: '-O', disabled: [], said: 'Optimization: -O, for Run and Test.' }
 		: { start: 'off', choose: 'on', disabled: [], said: 'Optimization: Optimizer on, for Run.' };
-	check((await picker.inputValue()) === start, `the Optimization select starts at ${start} (${await picker.inputValue()})`);
-	const off = await picker.locator('option:disabled').evaluateAll((options) => options.map((o) => o.value));
+	check((await picker.getAttribute('data-value')) === start, `the Optimization select starts at ${start} (${await picker.getAttribute('data-value')})`);
+	await openBuildSettings(page);
+	await picker.click();
+	const off = await page.locator(`#${await picker.getAttribute('aria-controls')} [role=option][aria-disabled=true]`).evaluateAll((options) => options.map((o) => o.dataset.value));
+	await closePopovers(page);
 	check(off.join() === disabled.join(), `levels not available yet are disabled (${off.join(', ') || 'none'})`);
 	await chooseSetting(page, picker, choose);
-	await page.locator('.dv-tab .dock-tab', { hasText: /^Output$/ }).first().click();
-	const said = await page.waitForFunction((t) => [...document.querySelectorAll('.output')].some((o) => o.textContent?.includes(t)), saying, { timeout: 5_000 }).then(() => true, () => false);
-	check(said, 'choosing a level says so in the output panel');
+	await page.locator('.dv-tab .dock-tab', { hasText: /^Log$/ }).first().click();
+	const said = await page.waitForFunction((t) => [...document.querySelectorAll('.log-panel')].some((o) => o.textContent?.includes(t)), saying, { timeout: 5_000 }).then(() => true, () => false);
+	check(said, 'choosing a level says so in the Log panel');
 	await page.waitForTimeout(1500);
 	await page.reload();
-	const kept = await page.locator('header .optimization select').waitFor({ state: 'attached', timeout: 60_000 }).then(async () => (await picker.inputValue()) === choose, () => false);
-	check(kept, `${choose} is saved with the project and still chosen after a reload (${await picker.inputValue().catch(() => '?')})`);
+	const kept = await page.locator('header .optimization .yk-select-button').waitFor({ state: 'attached', timeout: 60_000 }).then(async () => (await picker.getAttribute('data-value')) === choose, () => false);
+	check(kept, `${choose} is saved with the project and still chosen after a reload (${await picker.getAttribute('data-value').catch(() => '?')})`);
 	await page.locator('header button.run').click();
 	const ran = await ended(page);
 	check(ran.done && ran.shown.includes(CASES[language].output) && /Exited with code 0 /.test(ran.status), `Run at ${choose} prints the sample's output (${ran.status}: ${JSON.stringify(ran.shown.slice(-200))})`);
 	await resetProject(page);
-	const reset = await page.waitForFunction((v) => document.querySelector('header .optimization select')?.value === v, start, { timeout: 15_000 }).then(() => true, () => false);
+	const reset = await page.waitForFunction((v) => document.querySelector('header .optimization .yk-select-button')?.dataset.value === v, start, { timeout: 15_000 }).then(() => true, () => false);
 	check(reset, `Reset project puts the sample back at ${start}`);
 }
 
@@ -640,7 +643,7 @@ int main() {
 	const before = cppPackFiles(requests);
 	check(!before.some((f) => forbidden.some((x) => f.includes(x))), `editing, Run and Test on WebAssembly fetch nothing of the Linux targets or views (${before.join(', ')})`);
 
-	const picker = page.locator('header .target select');
+	const picker = page.locator('header .target .yk-select-button');
 	const testButton = page.locator('header button.test');
 	const errorCount = page.locator('footer .counts span[title=Errors]');
 	const warningCount = page.locator('footer .counts span[title=Warnings]');
@@ -682,7 +685,7 @@ int main() {
 		}
 
 		const threads = arch === 'x86_64' ? 4 : 1;
-		await (await buildSetting(page, 'run-options')).locator('select').selectOption(String(threads));
+		await chooseIn(page, (await buildSetting(page, 'run-options')).locator('.cpus .yk-select-button'), String(threads));
 		await closePopovers(page);
 		await setText(page, 'main.cpp', THREADS);
 		await page.locator('header button.run').click();
@@ -696,7 +699,7 @@ int main() {
 			check(segv.done && /code 139/.test(segv.status) && segv.shown.includes('signal 11'), `a null dereference on aarch64 exits 139 with signal 11 (${segv.status}: ${JSON.stringify(segv.shown.slice(-200))})`);
 		}
 		await setText(page, 'main.cpp', sample);
-		await (await buildSetting(page, 'run-options')).locator('select').selectOption('1');
+		await chooseIn(page, (await buildSetting(page, 'run-options')).locator('.cpus .yk-select-button'), '1');
 		await closePopovers(page);
 
 		const files = cppPackFiles(requests.slice(from));
@@ -763,7 +766,7 @@ int main() {
 	// Back to the sample, on WebAssembly.
 	await resetProject(page);
 	const reset = await page.waitForFunction(() => globalThis.monaco.editor.getModels().find((m) => m.uri.path === '/workspace/compile_flags.txt')?.getValue().startsWith('-std='), null, { timeout: 15_000 }).then(() => true, () => false);
-	check(reset && (await picker.inputValue()) === 'wasm32-wasi', `Reset project restores the sample on WebAssembly (${await picker.inputValue()})`);
+	check(reset && (await picker.getAttribute('data-value')) === 'wasm32-wasi', `Reset project restores the sample on WebAssembly (${await picker.getAttribute('data-value')})`);
 }
 
 /**
@@ -1451,10 +1454,10 @@ async function switching() {
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
 	await page.locator('footer .state', { hasText: 'basedpyright' }).waitFor({ timeout: 60_000 });
-	await page.selectOption('header select', 'javascript');
-	await page.selectOption('header select', 'python');
-	await page.selectOption('header select', 'javascript');
-	await page.selectOption('header select', 'python');
+	await chooseIn(page, LANGUAGE_PICKER, 'javascript');
+	await chooseIn(page, LANGUAGE_PICKER, 'python');
+	await chooseIn(page, LANGUAGE_PICKER, 'javascript');
+	await chooseIn(page, LANGUAGE_PICKER, 'python');
 	const settled = await page.locator('footer .state', { hasText: 'basedpyright' }).waitFor({ timeout: 60_000 }).then(() => true, () => false);
 	const files = (await page.locator('.explorer .row .name').allTextContents()).join(',');
 	check(settled && files === 'tests,test_geometry.py,geometry.py,main.py', `after four quick switches python runs on the python files (${files})`);
@@ -1484,7 +1487,7 @@ async function downloading() {
 	await page.goto(`http://127.0.0.1:${port}/`);
 	await page.evaluate(() => localStorage.clear());
 	await page.reload();
-	await page.selectOption('header select', 'cpp');
+	await chooseIn(page, LANGUAGE_PICKER, 'cpp');
 	await page.locator('.explorer .row .name', { hasText: 'geometry.h' }).waitFor({ timeout: 30_000 });
 	const [download] = await Promise.all([page.waitForEvent('download'), menuItem(page, 'Download project').then((item) => item.click())]);
 	const dir = mkdtempSync(join(tmpdir(), 'yukibana-download-'));
@@ -1574,7 +1577,7 @@ async function integrity() {
 		await cdp.send('ServiceWorker.enable');
 		await cdp.send('ServiceWorker.stopAllWorkers');
 		await page.reload();
-		await page.locator('header select').waitFor({ timeout: 30_000 }).catch(() => undefined); // the planted page has none: said below
+		await page.locator(LANGUAGE_PICKER).waitFor({ timeout: 30_000 }).catch(() => undefined); // the planted page has none: said below
 		const shown = await page.evaluate(() => ({ title: document.title, planted: document.querySelector('#planted') !== null, controlled: navigator.serviceWorker.controller !== null }));
 		check(!shown.planted && shown.title !== 'planted' && shown.controlled, `a program cannot change what the app serves on the next visit: index.html (title ${JSON.stringify(shown.title)}, controlled ${shown.controlled})`);
 		const stored = await until(
@@ -1673,7 +1676,7 @@ async function lazyServices() {
 	await page.locator('footer .state', { hasText: 'basedpyright' }).waitFor({ timeout: 60_000 });
 	await page.waitForTimeout(2000);
 	check(!workers.includes('html') && !workers.includes('css'), `a Python session fetches no HTML or CSS worker (workers: ${workers.join(', ')})`);
-	await page.selectOption('header select', 'web');
+	await chooseIn(page, LANGUAGE_PICKER, 'web');
 	await page.locator('.explorer .row .name', { hasText: /^index\.html$/ }).waitFor({ timeout: 30_000 });
 	await page.waitForTimeout(2000);
 	check(!workers.includes('html'), `the web project fetches no HTML worker before index.html is open (workers: ${workers.join(', ')})`);
@@ -1768,7 +1771,9 @@ async function offlineUse() {
 		const cached = await row.locator('.ok').waitFor({ timeout: 120_000 }).then(() => true, () => false);
 		check(cached, `Python is available offline (${(await row.textContent())?.trim().replace(/\s+/g, ' ')})`);
 		await page.keyboard.press('Escape');
-		const option = await page.locator('header select option[value="python"]').textContent();
+		await page.locator(LANGUAGE_PICKER).click();
+		const option = await page.locator('.yk-select-list:popover-open [role=option][data-value="python"]').textContent();
+		await closePopovers(page);
 		check(/offline/.test(option ?? ''), `the language list marks Python as offline (${option})`);
 
 		await context.setOffline(true);
