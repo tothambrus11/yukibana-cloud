@@ -162,7 +162,7 @@ jobs:
       # What earlier waves of this run built of the units it needs. A unit
       # the store already had is not among them: ensure fetches it, and
       # verifies that main built it.
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.earlier.outputs.path == '' && inputs.deps != ''
         with:
           pattern: ${{ inputs.deps }}
