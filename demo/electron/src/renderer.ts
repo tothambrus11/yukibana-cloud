@@ -145,8 +145,9 @@ async function renderDetail(into: HTMLElement): Promise<void> {
     el('button', {
       disabled: !p.starterReady,
       title: p.starterReady ? 'Unpack the starter into a folder' : 'No starter has been released yet',
-      onclick: () => void api.downloadStarter(p.projectId).then((folder) => {
-        if (folder !== null) say('ok', `The starter is in ${folder}. Work there, then submit that folder.`);
+      onclick: () => void api.downloadStarter(p.projectId).then((done) => {
+        if (done.kind === 'unpacked' && done.leftOut.length === 0) say('ok', `The starter is in ${done.folder}. Work there, then submit that folder.`);
+        else if (done.kind === 'unpacked') say('error', `The starter is in ${done.folder}, but these were not unpacked: ${done.leftOut.join('; ')}`);
         rerender();
       }, (e: unknown) => { say('error', errorText(e)); rerender(); }),
     }, 'Download starter…'),

@@ -33,7 +33,7 @@ request as you, and the database's policies decide.
 | `whoami`, `editions`, `members <edition>` | who you are, where you are enrolled, a roster (staff see everyone) |
 | `projects [--edition id] [--open]` | your projects; `--open` keeps the ones taking submissions from you now |
 | `project [<id>]`, `releases [<id>]` | one project; its releases (staff) |
-| `starter <id> [--out dir]` | download and unpack the starter |
+| `starter <id> [--out dir]` | download the starter and unpack it into `dir`, by default `./<project slug>/`; the folder must be missing or empty |
 | `pack [dir] [--out file]` | list what `submit` would send, and write the archive: to `--out`, or by default into a new folder under the system's temporary directory, never into the project. `submit` itself writes nothing to disk |
 | `submit [dir] [--yes]` | list what would be sent, ask, send. The project is the one in `./yukibana.json` |
 | `submissions [<id>] [--latest] [--student-submissions who]` | newest first; staff see everyone's; late ones marked, with the release each started from, and a warning for each not based on the newest release |
