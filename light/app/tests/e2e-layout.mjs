@@ -28,7 +28,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { closePopovers, layoutMode, openBuildSettings, openMore, toggleView } from './ui.mjs';
+import { choose, closePopovers, LANGUAGE_PICKER, layoutMode, openBuildSettings, openMore, toggleView } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = process.env.BUILD_DIR ?? join(here, '..', 'build');
@@ -89,12 +89,14 @@ const STATES = [
 	{ name: 'python-start', language: 'python', reach: true },
 	{ name: 'more', language: 'python', open: async (page) => void (await openMore(page)), close: closePopovers },
 	{ name: 'server-menu', language: 'python', open: openServerMenu, close: closePopovers },
+	{ name: 'language-list', language: 'python', open: openLanguageList, close: closePopovers },
 	{ name: 'offline', language: 'python', open: openOffline, close: async (page) => void (await page.keyboard.press('Escape')) },
 	{ name: 'problems', language: 'python', setup: async (page) => page.locator('footer .problems-button').click() },
 	{ name: 'python-run', language: 'python', setup: run },
 	{ name: 'javascript', language: 'javascript', reach: true },
 	{ name: 'cpp-start', language: 'cpp', reach: true },
 	{ name: 'build', language: 'cpp', open: async (page) => void (await openBuildSettings(page)), close: closePopovers },
+	{ name: 'standard-list', language: 'cpp', open: openStandardList, close: closePopovers },
 	{ name: 'cpp-ir', language: 'cpp', setup: (page) => showView(page, 'ir') },
 	{ name: 'cpp-asm', language: 'cpp', setup: (page) => showView(page, 'asm') },
 	{ name: 'asm-options', language: 'cpp', open: openAsmOptions, close: closePopovers },
@@ -174,8 +176,8 @@ function fail(viewport, state, element, what) {
 /** Opens the app in `language` and waits for its language server. */
 async function load(page, language) {
 	await page.goto(`${origin}/`);
-	await page.locator('header select').first().waitFor();
-	if ((await page.locator('header select').first().inputValue()) !== language) await page.selectOption('header select', language);
+	await page.locator(LANGUAGE_PICKER).waitFor();
+	if ((await page.locator(LANGUAGE_PICKER).getAttribute('data-value')) !== language) await choose(page, LANGUAGE_PICKER, language);
 	await page.locator('footer .state .ok').waitFor({ timeout: 300_000 });
 	await settle(page);
 }
@@ -203,6 +205,19 @@ async function openOffline(page) {
 async function openServerMenu(page) {
 	await page.locator('footer button.server').click();
 	await page.locator('#server-menu:popover-open').waitFor();
+}
+
+/** Opens the bar's language picker (Select.svelte), whose list is long enough to have a search field. */
+async function openLanguageList(page) {
+	await page.locator(LANGUAGE_PICKER).click();
+	await page.locator('.yk-select-list:popover-open').waitFor();
+}
+
+/** Opens the Standard list inside Build settings: a list over a popover (a sheet over a sheet on a phone). */
+async function openStandardList(page) {
+	const popover = await openBuildSettings(page);
+	await popover.locator('.row.standard .yk-select-button').click();
+	await page.locator('.yk-select-list:popover-open').waitFor();
 }
 
 /** Opens the Assembly view's Options menu (the view is open: cpp-asm left it). */
@@ -314,6 +329,21 @@ function inspect({ touch }) {
 		return false;
 	};
 
+	/** What can be seen of `el`: its rectangle cut by every ancestor that scrolls or clips (a list's option half scrolled out of it is only the half inside). */
+	const visibleRect = (el) => {
+		let { left, top, right, bottom } = el.getBoundingClientRect();
+		for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+			const s = getComputedStyle(a);
+			if (!/auto|scroll|hidden/.test(s.overflowX + s.overflowY)) continue;
+			const b = a.getBoundingClientRect();
+			left = Math.max(left, b.left);
+			top = Math.max(top, b.top);
+			right = Math.min(right, b.right);
+			bottom = Math.min(bottom, b.bottom);
+		}
+		return { left, top, right, bottom, width: right - left, height: bottom - top };
+	};
+
 	// 1. No horizontal scroll, of the page or of the bars.
 	if (document.documentElement.scrollWidth > innerWidth || scrollX !== 0) add('html', `the page scrolls sideways (${document.documentElement.scrollWidth} > ${innerWidth})`);
 	for (const bar of document.querySelectorAll('header.bar-host, footer.status-bar')) if (bar.scrollWidth > bar.clientWidth + 1) add(bar, `overflows its width (${bar.scrollWidth} > ${bar.clientWidth})`);
@@ -353,12 +383,12 @@ function inspect({ touch }) {
 	}
 
 	// 4. Every control on screen: in the viewport, and a view header's inside its group.
-	const CONTROLS = 'button, select, input, a[href], [role=menuitem], [role=menuitemcheckbox]';
+	const CONTROLS = 'button, select, input, a[href], [role=menuitem], [role=menuitemcheckbox], [role=option]';
 	const places = [...document.querySelectorAll('header.bar-host, footer.status-bar, .yk-view-head, :popover-open, dialog[open], .dv-tabs-and-actions-container')];
 	for (const place of places)
 		for (const el of place.querySelectorAll(CONTROLS)) {
 			if (!shown(el) || scrolledAway(el)) continue;
-			const r = el.getBoundingClientRect();
+			const r = visibleRect(el);
 			if (r.left < -1 || r.top < -1 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1) add(el, `is outside the viewport (${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)})`);
 			// A view's Options menu is in its header but drawn in the top layer, over the other groups: only the window bounds it.
 			const group = el.closest('.yk-view-head') && !el.closest('[popover]') ? el.closest('.dv-groupview')?.getBoundingClientRect() : null;
@@ -653,7 +683,7 @@ async function switching(context, viewports) {
 				});
 			const before = await sizes();
 			for (const language of ['javascript', 'python']) {
-				await page.selectOption('header select', language);
+				await choose(page, LANGUAGE_PICKER, language);
 				await page.locator('footer .state .ok').waitFor({ timeout: 300_000 });
 				await settle(page);
 			}

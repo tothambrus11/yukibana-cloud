@@ -53,9 +53,28 @@ export async function openBuildSettings(page) {
 }
 
 /**
- * A field of the Build settings, the popover opened first: the `select` of
- * target, optimization or framework, or the group of sanitizers or of run
- * options (their checkboxes and fields are inline in the popover).
+ * Chooses `value` in a drop-down list (components/Select.svelte), given
+ * its button: opens the list and clicks the option, as a person would. The
+ * button's `data-value` is the value chosen.
+ * @param {import('playwright-core').Page} page
+ * @param {import('playwright-core').Locator | string} button  the list's button, or a selector of it
+ * @param {string} value
+ */
+export async function choose(page, button, value) {
+	const trigger = typeof button === 'string' ? page.locator(button).first() : button;
+	await trigger.click();
+	const list = page.locator(`#${await trigger.getAttribute('aria-controls')}`);
+	await list.locator(`[role=option][data-value="${value}"]`).click();
+}
+
+/** The bar's language picker: a Select's button (`data-value` is the language). */
+export const LANGUAGE_PICKER = 'header .yk-select-button.lang';
+
+/**
+ * A field of the Build settings, the popover opened first: the drop-down
+ * button of target, optimization or framework (Select.svelte: choose()
+ * picks a value, `data-value` says it), or the group of sanitizers or of
+ * run options (their checkboxes and fields are inline in the popover).
  * @param {import('playwright-core').Page} page
  * @param {'target' | 'optimization' | 'framework' | 'sanitizers' | 'run-options'} which
  */
@@ -63,7 +82,7 @@ export async function buildSetting(page, which) {
 	const popover = await openBuildSettings(page);
 	if (which === 'sanitizers') return popover.locator('.sanitizers');
 	if (which === 'run-options') return popover.locator('.run-options');
-	return popover.locator(`.row.${which} select`);
+	return popover.locator(`.row.${which} .yk-select-button`);
 }
 
 /**
