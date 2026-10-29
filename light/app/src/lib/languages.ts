@@ -1316,12 +1316,13 @@ main = do
 `,
 			'Geometry.hs': `-- | Points and shapes in the plane.
 module Geometry
-  ( Point (..)
-  , norm
-  , distance
-  , Shape (..)
-  , area
-  ) where
+  ( Point (..),
+    norm,
+    distance,
+    Shape (..),
+    area,
+  )
+where
 
 -- | A point in the plane.
 data Point = Point {px :: Double, py :: Double}
@@ -1354,9 +1355,9 @@ import Test.Hspec
 
 main :: IO ()
 main = hspec $ do
-  describe "norm" $
-    it "is 5 at (3, 4)" $
-      norm (Point 3 4) \`shouldBe\` 5
+  describe "norm"
+    $ it "is 5 at (3, 4)"
+    $ norm (Point 3 4) \`shouldBe\` 5
 
   describe "distance" $ do
     it "is symmetric" $ do
@@ -1367,9 +1368,9 @@ main = hspec $ do
     it "is 0 from a point to itself" $
       distance (Point 7 (-3)) (Point 7 (-3)) \`shouldBe\` 0
 
-  describe "area" $
-    it "of a square of side 3 is 9" $
-      area (Square 3) \`shouldBe\` 9
+  describe "area"
+    $ it "of a square of side 3 is 9"
+    $ area (Square 3) \`shouldBe\` 9
 `,
 		},
 	},

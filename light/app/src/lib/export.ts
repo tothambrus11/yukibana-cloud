@@ -295,7 +295,8 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			instructions: (_, files) => stackInstructions(files),
 			ci: (p) => ({
 				extra: { sourcehut: { packages: ['haskell-stack'] } },
-				jobs: [testJob('Build and test', steps(['Build', 'stack build'], ...(haskellTests(p.files) ? [['Test', 'stack test'] as const] : [])))],
+				// --install-ghc: the haskell image tells Stack to use its own GHC, which is not the snapshot's.
+				jobs: [testJob('Build and test', steps(['Build', 'stack build --install-ghc'], ...(haskellTests(p.files) ? [['Test', 'stack test --install-ghc'] as const] : [])))],
 			}),
 		},
 	],
@@ -620,6 +621,9 @@ export function cmakeLists(files: Files, entry: string): string {
 	if (flags.includes.length) lines.push(`target_include_directories(project_flags INTERFACE ${flags.includes.map(cmakeDir).join(' ')})`);
 	if (flags.definitions.length) lines.push(`target_compile_definitions(project_flags INTERFACE ${flags.definitions.map(cmakeArg).join(' ')})`);
 	if (flags.options.length) lines.push('if(NOT MSVC)', `    target_compile_options(project_flags INTERFACE ${flags.options.map(cmakeArg).join(' ')})`, 'endif()');
+	// C++'s runtime brings libm with it; C's does not on Linux, where
+	// hypot() and the rest of <math.h> are in a library of their own.
+	if (c) lines.push("# libm, where <math.h>'s functions are on Linux (C++ links it anyway).", 'find_library(MATH_LIBRARY m)', 'if(MATH_LIBRARY)', '    target_link_libraries(project_flags INTERFACE ${MATH_LIBRARY})', 'endif()');
 	// A sanitizer (cpp-sanitizers.ts) is a link flag as well: the compiler
 	// driver links its runtime. Its reports name lines with debug
 	// information (a Debug build), and AddressSanitizer's stacks need frame
@@ -831,6 +835,16 @@ function mesonArray(items: readonly string[], indent = ''): string {
 }
 
 /**
+ * A Meson standard option's value: the standard, then its draft name for a
+ * compiler Meson thinks too old for the final one (clang 18 has c2x but
+ * not c23 by Meson's table); Meson 1.3 and later take the first it knows.
+ */
+function mesonStd(prefix: string, standard: string, drafts: Record<string, string>): string {
+	const draft = drafts[standard];
+	return draft ? `${prefix}${standard},${prefix}${draft}` : `${prefix}${standard}`;
+}
+
+/**
  * meson.build for the project as the C++ pack builds it, as CMakeLists.txt
  * does (cmakeLists): `app` from every C/C++ source outside tests/ (a
  * library when nothing defines main), `app_tests` from tests/ and the
@@ -851,8 +865,8 @@ export function mesonBuild(files: Files, entry: string): string {
 	const languages = [...(cxx ? ['cpp'] : []), ...(c ? ['c'] : [])];
 	const target = linuxTarget(files);
 	const options = [
-		...(flags.cxx && cxx ? [`cpp_std=${flags.cxx.extensions ? 'gnu' : 'c'}++${flags.cxx.standard}`] : []),
-		...(flags.c && c ? [`c_std=${flags.c.extensions ? 'gnu' : 'c'}${flags.c.standard}`] : []),
+		...(flags.cxx && cxx ? [`cpp_std=${mesonStd(`${flags.cxx.extensions ? 'gnu' : 'c'}++`, flags.cxx.standard, { '20': '2a', '23': '2b', '26': '2c' })}`] : []),
+		...(flags.c && c ? [`c_std=${mesonStd(flags.c.extensions ? 'gnu' : 'c', flags.c.standard, { '23': '2x' })}`] : []),
 		// compile_flags.txt's -W options say which warnings, as in the browser.
 		'warning_level=0',
 		'buildtype=debug',
@@ -906,12 +920,15 @@ export function mesonBuild(files: Files, entry: string): string {
 		);
 	}
 	const list = (paths: readonly string[]) => mesonArray(paths, '  ');
+	// C++'s runtime brings libm with it; C's does not on Linux.
+	if (c) lines.push("# libm, where <math.h>'s functions are on Linux (C++ links it anyway).", "libm = compiler.find_library('m', required: false)", '');
+	const programDeps = [...(c ? ['libm'] : []), ...(rcProgram ? ['rapidcheck'] : [])];
 	if (program.length) {
 		lines.push(
 			'# The program: every source outside tests/.',
 			`app = ${hasMain ? 'executable' : 'static_library'}('app', ${list(program)},`,
 			'  include_directories: inc,',
-			...(rcProgram ? ['  dependencies: rapidcheck,'] : []),
+			...(programDeps.length ? [`  dependencies: ${programDeps.length > 1 ? `[${programDeps.join(', ')}]` : programDeps[0]},`] : []),
 			')',
 			'',
 		);
@@ -925,7 +942,7 @@ export function mesonBuild(files: Files, entry: string): string {
 		const label = { gtest: `GoogleTest ${GTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}` }[testFramework];
 		// RapidCheck's framework integrations are headers in its extras/.
 		const extras = rcTests && testFramework !== 'doctest' ? [`include_directories('subprojects/rapidcheck/extras/${testFramework === 'gtest' ? 'gtest' : 'catch'}/include')`] : [];
-		const deps = ['framework', ...(rcTests ? ['rapidcheck'] : [])];
+		const deps = ['framework', ...(c ? ['libm'] : []), ...(rcTests ? ['rapidcheck'] : [])];
 		const ownDoctest = ownMain || tests.some((p) => implementsDoctest(files[p] ?? ''));
 		const doctestMain = testFramework === 'doctest' && !ownDoctest;
 		const testSources = doctestMain ? [...underTest, ...tests.slice(1)] : [...underTest, ...tests];
