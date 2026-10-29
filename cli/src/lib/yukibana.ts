@@ -20,15 +20,16 @@
  *  One zod schema (`configSchema`) checks the whole file, the IDE's fields
  *  with the IDE's defaults included, and the IDE parses the file with it
  *  (`settingsSchema`, the part it reads), so the two cannot disagree about
- *  what a field means. It is `zod/mini`, about 7 KB in a bundle, where
- *  `zod` would be 90 KB, in every IDE and app that bundles the library.
+ *  what a field means. It is the whole of `zod`, not `zod/mini`: the
+ *  mini build saved a few dozen KB in bundles that are hundreds of MB,
+ *  at the price of a terser API nobody else here writes.
  *  The starter's copy is the file as written, so a
  *  field this version does not know passes through untouched.
  */
 
-import * as z from 'zod/mini';
-// zod/mini spells it _default, since default is a keyword.
-import { _default as withDefault } from 'zod/mini';
+import * as z from 'zod';
+// The function form of .default(), which zod spells _default, since default is a keyword.
+import { _default as withDefault } from 'zod';
 import { matcher } from './glob.js';
 
 /** The file's name, at the project root, in the repository and in every

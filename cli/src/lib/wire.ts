@@ -8,9 +8,9 @@
  *  means what the field says it means.
  */
 
-import * as z from 'zod/mini';
-// zod/mini spells it _default, since default is a keyword.
-import { _default as withDefault } from 'zod/mini';
+import * as z from 'zod';
+// The function form of .default(), which zod spells _default, since default is a keyword.
+import { _default as withDefault } from 'zod';
 
 export type EditionRole = 'student' | 'assistant' | 'owner';
 
@@ -174,7 +174,7 @@ const NAMES: Readonly<Record<string, string>> = { string: 'text', number: 'a num
 /** Returns `v` as `schema` says, or throws `Unexpected` with a sentence
  *  naming the field, from `where` down, and what came instead: "the
  *  registry answered submissions[0].byteSize as string, not a number". */
-function decode<T>(schema: z.ZodMiniType<T>, v: unknown, where: string): T {
+function decode<T>(schema: z.ZodType<T>, v: unknown, where: string): T {
   const parsed = schema.safeParse(v);
   if (parsed.success) return parsed.data;
   const issue = parsed.error.issues[0];
