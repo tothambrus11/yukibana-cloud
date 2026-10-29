@@ -99,7 +99,7 @@ export function withSanitizers(text: string | undefined, choice: SanitizerChoice
 }
 
 /**
- * What the output panel says after the menu changed `choice`: which
+ * What the Log panel says after the menu changed `choice`: which
  * sanitizers are on, and the line of compile_flags.txt that says so.
  */
 export function describeSanitizers(choice: SanitizerChoice): string {

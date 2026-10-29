@@ -38,7 +38,7 @@ export type ClientState =
 	| { kind: 'stopped' }
 	| { kind: 'failed'; reason: string };
 
-/** Severity of a line in the output panel, after LSP's `MessageType`. */
+/** Severity of a line in the Log panel, after LSP's `MessageType`. */
 export type LogLevel = 'error' | 'warning' | 'info' | 'log';
 
 /** What the client tells the page. */
@@ -320,7 +320,7 @@ export class LanguageClient {
 		// download that has reached its total is over.
 		conn.onNotification(LOADING_METHOD, (p) => {
 			// A malformed report would draw a bar that never ends; it is
-			// named in the Output panel instead, and the bar left as it was.
+			// named in the Log panel instead, and the bar left as it was.
 			if (!isLoadingProgress(p)) {
 				events.log('warning', `The language server sent a ${LOADING_METHOD} notification without a label and byte counts; it is ignored.`);
 				return;
@@ -537,7 +537,7 @@ export class LanguageClient {
 	/**
 	 * Sends a request on behalf of a Monaco provider. A cancelled request,
 	 * or one for a model the server does not own, answers `null`; any other
-	 * failure is written to the output panel and also answers `null`, since
+	 * failure is written to the Log panel and also answers `null`, since
 	 * Monaco has no way to show most providers' errors.
 	 */
 	private async ask<R>(model: monaco.editor.ITextModel, method: string, params: unknown, token: monaco.CancellationToken): Promise<R | null> {

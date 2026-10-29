@@ -141,14 +141,14 @@ try {
 	check(await shows(one, '// tab two'), "a link pasted into an open tab's address bar opens its project there");
 	await context.close();
 
-	// A damaged link: said in the output panel; the app starts as without one.
+	// A damaged link: said in the Log panel; the app starts as without one.
 	const damaged = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 	const url = urls[0];
 	await damaged.goto(url.slice(0, url.length - 20));
 	await damaged.locator('.explorer .row .name').first().waitFor({ timeout: 30_000 });
-	await damaged.locator('.dv-tab .dock-tab', { hasText: /^Output$/ }).first().click();
-	const said = await damaged.waitForFunction(() => [...document.querySelectorAll('.output')].some((o) => o.textContent?.includes('Could not open the project in this link')), null, { timeout: 10_000 }).then(() => true, () => false);
-	check(said, 'a link cut short is reported in the output panel, and the app still starts');
+	await damaged.locator('.dv-tab .dock-tab', { hasText: /^Log$/ }).first().click();
+	const said = await damaged.waitForFunction(() => [...document.querySelectorAll('.log-panel')].some((o) => o.textContent?.includes('Could not open the project in this link')), null, { timeout: 10_000 }).then(() => true, () => false);
+	check(said, 'a link cut short is reported in the Log panel, and the app still starts');
 	await damaged.close();
 
 	// The Share button at each width: with its word, as an icon, or in ⋯.

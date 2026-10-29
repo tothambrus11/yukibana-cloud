@@ -39,7 +39,7 @@ export type TerminalState = { kind: 'idle' } | RunState;
  * Where a runner's messages that are not the program's own go: the guest
  * kernel's console and QEMU's messages (`kernel`, one line at a time,
  * without its newline), timings, and messages that broke the contract
- * (`problem`, a sentence saying what was wrong), for the Output panel.
+ * (`problem`, a sentence saying what was wrong), for the Log panel.
  */
 export interface RunnerLog {
 	kernel(line: string): void;
@@ -78,7 +78,7 @@ export class Runner {
 	/** What the terminal shows above a source's output (`attach`), until a run replaces it; null while a runner's run is shown. */
 	#heading: string | null = null;
 
-	/** `log` receives what the Output panel shows of a run; without it, that is dropped. */
+	/** `log` receives what the Log panel shows of a run; without it, that is dropped. */
 	constructor(private readonly log: RunnerLog | null = null) {}
 
 	get #runners(): RunnerPool {
@@ -231,7 +231,7 @@ export class Runner {
 				this.#append('info', event.text + '\n');
 				break;
 			case 'problem':
-				// Without an Output panel, the terminal says it: never nowhere.
+				// Without an Log panel, the terminal says it: never nowhere.
 				if (this.log) this.log.problem(event.text);
 				else this.#append('info', event.text + '\n');
 				break;

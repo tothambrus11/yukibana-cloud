@@ -708,7 +708,7 @@ for the chosen framework; tests someone wrote or changed are left as they
 are, and a sample test file of the chosen framework is added instead
 (`tests/geometry_test.cpp`'s tests while `geometry.h` is the sample's, else
 a test of `std::string` that needs nothing of the project), with a warning
-in the output panel when the tests now mix frameworks. The Download's
+in the Log panel when the tests now mix frameworks. The Download's
 CMakeLists.txt fetches the same framework (`app/src/lib/export.ts`).
 `#include "geometry.h"` from `tests/` resolves through `-I.` in the
 sample's `compile_flags.txt`, for clang and clangd alike (clangd resolves it
