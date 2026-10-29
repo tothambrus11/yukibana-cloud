@@ -29,6 +29,6 @@
     "oxfmt": "0.74.0",
     "squawk-cli": "^2.70.0",
     "supabase": "^2.122.0",
-    "wrangler": "^4.151.2"
+    "wrangler": "^4.153.0"
   }
 }
