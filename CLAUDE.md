@@ -179,7 +179,10 @@ so; the bugs are the documentation people read.
 
 ## Before you push
 
-`npm run check` at the root: lint, typecheck, unit tests. With the stack
+`npm run check` at the root: formatting, lint, typecheck, unit tests.
+`npm run format` formats everything but Markdown, the Svelte components and
+`light/` with oxfmt: single quotes (double only where they spare an escape),
+lines up to 180 characters. With the stack
 running: `npm run db:lint`, `npm run db:reset`, `npm run db:test`,
 `npm run test:integration`. CI runs all of it, plus the devcontainer build.
 On `main`, the database deploys only after CI is green (migrations,
