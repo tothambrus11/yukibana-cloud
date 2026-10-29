@@ -69,6 +69,29 @@ test('a bundle is made from a folder on disk the same way', async () => {
   assert.deepEqual(made.bundle.files.map((f) => f.path), ['src/lib.rs', 'yukibana.json']);
 });
 
+test('a .gitignore that the rules leave out still leaves out what it names, rather than sending it empty', async () => {
+  for (const [ignore, extra] of [['.gitignore\n*.log\nlogs/\n', {}], ['*.log\nlogs/\n', { submission: { exclude: ['.gitignore'] } }]] as const) {
+    const root = await mkdtemp(join(tmpdir(), 'yukibana-bundle-'));
+    await writeFile(join(root, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'rust-cargo', ...extra }));
+    await writeFile(join(root, '.gitignore'), ignore);
+    await writeFile(join(root, 'a.log'), 'log');
+    await mkdir(join(root, 'logs'));
+    await writeFile(join(root, 'logs/x'), 'x');
+    await writeFile(join(root, 'main.rs'), 'fn main() {}');
+    const made = await createSubmissionBundle(root);
+    assert.ok(made.ok);
+    assert.deepEqual(made.bundle.files.map((f) => f.path), ['main.rs', 'yukibana.json']);
+    assert.deepEqual(made.bundle.skipped, ['.gitignore', 'a.log', 'logs/']);
+  }
+});
+
+test('.gitignore patterns match case-sensitively, as git does', () => {
+  const made = bundleOf([config(), file('.gitignore', 'readme.md\n'), file('README.md', '# hi'), file('readme.md', '')]);
+  assert.ok(made.ok);
+  assert.ok(made.bundle.files.some((f) => f.path === 'README.md'));
+  assert.ok(!made.bundle.files.some((f) => f.path === 'readme.md'));
+});
+
 test('what the .gitignore files of a project ignore is not submitted, a deeper file overriding a shallower one', () => {
   const made = bundleOf([
     config(), file('.gitignore', '*.log\nbuild/\n'), file('a.log', ''), dir('build'), file('build/out', ''),

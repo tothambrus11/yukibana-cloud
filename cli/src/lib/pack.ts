@@ -70,7 +70,8 @@ export function submissionExcluder(config: Config, gitignores: ReadonlyMap<strin
       const patterns = gitignores.get(at);
       if (patterns === undefined) continue;
       let rules = compiled.get(at);
-      if (rules === undefined) compiled.set(at, (rules = ignore().add(patterns)));
+      // Case-sensitive, as git is unless core.ignorecase: `readme.md` does not leave out `README.md`.
+      if (rules === undefined) compiled.set(at, (rules = ignore({ ignorecase: false }).add(patterns)));
       const below = at === '' ? path : posix.relative(at, path);
       // `ignore` takes a trailing slash as the mark of a folder, so `build/` matches one.
       const verdict = rules.test(folder ? `${below}/` : below);
