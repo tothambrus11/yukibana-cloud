@@ -13,7 +13,7 @@ import { viewOf, viewsOf, type ExploreKind } from './explore-views';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
-import { exportProject } from './export';
+import { buildSystems, exportProject, type BuildSystem, type ExportOptions } from './export';
 import { zip } from './zip';
 import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
 import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
@@ -556,16 +556,40 @@ export class Workspace {
 		this.scheduleSave();
 	}
 
+	/** Opens the Download dialog; the page sets it. Without one, Download asks for nothing beyond the build files. */
+	exportDialog: (() => void) | null = null;
+
+	/** Download, as the explorer's and the menu's buttons ask for it: the dialog, which then calls `download`. */
+	requestDownload(): void {
+		if (this.exportDialog) this.exportDialog();
+		else void this.download();
+	}
+
+	/**
+	 * What Download would add to the project with `options` (export.ts): the
+	 * build systems that fit it, and the paths it would generate.
+	 */
+	exportPreview(options: ExportOptions): { buildSystems: BuildSystem[]; generated: string[] } {
+		const language = languageOf(this.language);
+		const files = this.currentFiles();
+		return { buildSystems: buildSystems(language, files), generated: this.exported(options).generated };
+	}
+
+	/** The project as Download zips it, with `options` (export.ts). */
+	private exported(options: ExportOptions) {
+		return exportProject(languageOf(this.language), this.currentFiles(), isCFamily(this.language) ? null : this.chosenLevel, options);
+	}
+
 	/**
 	 * Downloads the project as `<language>-project.zip`, for an IDE: its files
 	 * as last edited and its empty folders, in a folder of the same name, plus
-	 * the build files, README and .gitignore it lacks (export.ts). Says in the
+	 * the build files, README and .gitignore it lacks, and the CI, dev
+	 * container and .gitattributes `options` ask for (export.ts). Says in the
 	 * Log panel what was generated.
 	 */
-	async download(): Promise<void> {
+	async download(options: ExportOptions = {}): Promise<void> {
 		const language = languageOf(this.language);
-		const files = this.currentFiles();
-		const exported = exportProject(language, files, isCFamily(this.language) ? null : this.chosenLevel);
+		const exported = this.exported(options);
 		const paths = Object.keys(exported.files).sort();
 		const empty = this.allFolders().filter((f) => !paths.some((p) => p.startsWith(f + '/')) && !this.folders.some((g) => g.startsWith(f + '/')));
 		const name = `${language.id}-project`;

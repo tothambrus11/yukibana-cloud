@@ -23,6 +23,7 @@
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
+	import Export from '../lib/components/Export.svelte';
 	import BuildSettings from '../lib/components/BuildSettings.svelte';
 	import { buildSummary, openBuildSettings } from '../lib/build-settings';
 	import MoreMenu from '../lib/components/MoreMenu.svelte';
@@ -44,6 +45,8 @@
 	let dockElement: HTMLElement;
 	let dock: ReturnType<typeof createDock> | undefined;
 	let offlineDialog = $state<Offline>();
+	let exportDialog = $state<Export>();
+	workspace.exportDialog = () => exportDialog?.show();
 	let serverMenu = $state<Popover>();
 	let licensesDialog = $state<Licenses>();
 	/** Set when a new build is installed and waiting: activates it and reloads. */
@@ -244,7 +247,7 @@
 				<div class="menu-divider" role="separator" data-fold="44"></div>
 			{/if}
 			<button class="menu-item" role="menuitem" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">Share link to project</button>
-			<button class="menu-item" role="menuitem" onclick={() => void workspace.download()} title="Download the project as a zip, with the build files an IDE needs">Download project (.zip)</button>
+			<button class="menu-item" role="menuitem" onclick={() => workspace.requestDownload()} title="Download the project as a zip, with the build files an IDE needs, and CI and a dev container if you like">Download project (.zip)…</button>
 			<button class="menu-item danger" role="menuitem" onclick={reset} title="Replace this language's project with the sample">Reset project…</button>
 			<div class="menu-divider" role="separator"></div>
 			<button class="menu-item" role="menuitem" onclick={() => offlineDialog?.show()}>Offline use…{#if cached}<span class="hint">{shortLabel(language)} ✓</span>{/if}</button>
@@ -257,6 +260,7 @@
 <main class="dock" bind:this={dockElement}></main>
 
 <Offline bind:this={offlineDialog} />
+<Export bind:this={exportDialog} {workspace} />
 <Licenses bind:this={licensesDialog} />
 
 <div class="toast" role="status" aria-live="polite" class:shown={toast !== null}>{toast ?? ''}</div>

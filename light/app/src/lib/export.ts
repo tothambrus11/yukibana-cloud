@@ -18,6 +18,7 @@ import { detectTestFramework, withoutComments, TEST_FRAMEWORKS, type TestFramewo
 import { targetOf, type CppTarget } from './cpp-targets.ts';
 import { sanitizersOf } from './cpp-sanitizers.ts';
 import { CPP_LEVELS, defaultLevel, SWIFT_LEVELS } from './optimization.ts';
+import { ciService, clangTidyJob, devcontainer, gitattributes, jobFiles, jobsFor, type BuildCi, type CiService, type CiServiceId, type Extra, type Job, type JobSpec, type Step } from './export-tooling.ts';
 
 /** What a download contains. */
 export interface ExportedProject {
@@ -48,58 +49,314 @@ interface Project {
 	optimization: string | null;
 }
 
-/** A language's build files: the paths it can generate, and their contents. */
-interface BuildFiles {
-	/** The build files this language's projects get, or, when that depends on the project, a function of its files. */
+/**
+ * A way to build a language's projects: the build files it can generate,
+ * their contents, and what CI runs with them. A language has one or more,
+ * its usual one first (BUILD).
+ */
+export interface BuildSystem {
+	/** Names it in ExportOptions.build: `cmake`, `meson`, `gradle`. */
+	id: string;
+	/** What the export dialog shows. */
+	label: string;
+	/** Whether it can build the project; absent when it can build any. */
+	fits?: (files: Files) => boolean;
+	/** The build files this build system's projects get, or, when that depends on the project, a function of its files. */
 	paths: readonly string[] | ((files: Files) => readonly string[]);
 	generate(project: Project): Files;
+	/** How to build, run and test, as README sections; absent for the language's usual build system, whose are `instructions`. */
+	instructions?: (language: Language, files: Files) => string[];
+	/** What its tools write into the project folder, for .gitignore, beyond the language's own (IGNORED). */
+	ignored?: readonly string[];
+	/** Its CI jobs: build and test, and the checks that need a build. */
+	ci(project: Project): BuildCi;
+}
+
+/** What goes into a download beside the project and its build files. Everything is off when not given. */
+export interface ExportOptions {
+	/** The build system's id (`buildSystems`); the language's usual one when absent or not one of the language's. */
+	build?: string;
+	/** The CI service to configure, or none. */
+	ci?: CiServiceId | null;
+	/** Whether to add .devcontainer/, the CI jobs' environment for VS Code and Codespaces. */
+	devcontainer?: boolean;
+	/** Whether to add .gitattributes, which keeps line endings LF everywhere. */
+	gitattributes?: boolean;
 }
 
 /** The C++ runner's level for a project without a -O line (optimization.ts, packs/cpp/src/toolchain.js). */
 const CPP_DEFAULT_LEVEL = defaultLevel(CPP_LEVELS).flag;
 
-const BUILD: Record<LanguageId, BuildFiles> = {
-	c: { paths: ['CMakeLists.txt'], generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry) }) },
-	cpp: { paths: ['CMakeLists.txt'], generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry) }) },
-	swift: { paths: ['Package.swift'], generate: (p) => ({ 'Package.swift': packageSwift(p.files, p.paths, p.optimization) }) },
-	python: { paths: ['pyproject.toml'], generate: (p) => ({ 'pyproject.toml': pyprojectToml(p.files) }) },
-	javascript: { paths: ['package.json', 'stryker.config.json'], generate: (p) => ({ 'package.json': packageJson(p.language.entry, p.files), 'stryker.config.json': strykerConfig() }) },
-	typescript: { paths: ['package.json', 'stryker.config.json'], generate: (p) => ({ 'package.json': typescriptPackageJson(p.language.entry, p.files), 'stryker.config.json': strykerConfig() }) },
-	web: viteBuild('web-project'),
-	p5: viteBuild('p5-project'),
-	'p5-global': viteBuild('p5-project'),
-	scala: { paths: ['build.sbt', 'project/build.properties'], generate: (p) => ({ 'build.sbt': buildSbt(p.files), 'project/build.properties': `sbt.version=${SBT_VERSION}\n` }) },
-	php: { paths: ['composer.json', 'phpunit.xml'], generate: (p) => ({ 'composer.json': composerJson(p.language.entry, p.files), 'phpunit.xml': phpunitXml(p.files) }) },
-	rust: { paths: ['Cargo.toml'], generate: (p) => ({ 'Cargo.toml': cargoToml(p.files) }) },
-	java: { paths: ['pom.xml'], generate: (p) => ({ 'pom.xml': pomXml(p.files, p.language.entry) }) },
-	kotlin: {
-		paths: ['build.gradle.kts', 'settings.gradle.kts'],
-		generate: (p) => ({ 'build.gradle.kts': buildGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "kotlin-project"\n' }),
-	},
-	haskell: {
-		paths: ['haskell-project.cabal', 'cabal.project'],
-		generate: (p) => ({ 'haskell-project.cabal': haskellCabal(p.files, p.language.entry), 'cabal.project': 'packages: .\n' }),
-	},
-	go: { paths: ['go.mod'], generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }) },	zig: { paths: ['build.zig'], generate: (p) => ({ 'build.zig': buildZig(p.language.entry) }) },
+/** Steps that run with `cwd` the project folder; one step per line of `commands`. */
+const steps = (...commands: readonly (readonly [string, string])[]): Step[] => commands.map(([name, run]) => ({ name, run }));
+
+/** A job that builds and tests, with id `test`. */
+const testJob = (name: string, s: readonly Step[], extra?: Extra): JobSpec => ({ id: 'test', name, steps: s, ...(extra ? { extra } : {}) });
+
+const CMAKE: BuildSystem = {
+	id: 'cmake',
+	label: 'CMake',
+	paths: ['CMakeLists.txt'],
+	generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry) }),
+	ci: (p) => cFamilyCi(p.files, p.language.entry, {
+		configure: (dir, more) => `cmake -S . -B ${dir} -G Ninja -DCMAKE_BUILD_TYPE=Debug${more.warningsAsErrors ? ' -DWARNINGS_AS_ERRORS=ON' : ''}${more.sanitize ? ` -DSANITIZE=${more.sanitize}` : ''}`,
+		build: (dir) => `cmake --build ${dir}`,
+		test: (dir) => `ctest --test-dir ${dir} --output-on-failure`,
+	}, { extensions: ['ms-vscode.cmake-tools'] }),
 };
+
+const MESON: BuildSystem = {
+	id: 'meson',
+	label: 'Meson',
+	paths: (files) => ['meson.build', ...mesonWraps(files).map(([name]) => `subprojects/${name}.wrap`)],
+	generate: (p) => ({ 'meson.build': mesonBuild(p.files, p.language.entry), ...Object.fromEntries(mesonWraps(p.files).map(([name, text]) => [`subprojects/${name}.wrap`, text])) }),
+	instructions: (language, files) => mesonInstructions(language, files),
+	ignored: ['/subprojects/*', '!/subprojects/*.wrap'],
+	ci: (p) => cFamilyCi(p.files, p.language.entry, {
+		// b_lundef: clang's sanitizer runtimes leave symbols for the executable to define.
+		configure: (dir, more) => `meson setup ${dir} --buildtype=debug${more.warningsAsErrors ? ' -Dwerror=true' : ''}${more.sanitize ? ` -Db_sanitize=${more.sanitize} -Db_lundef=false` : ''}`,
+		build: (dir) => `meson compile -C ${dir}`,
+		test: (dir) => `meson test -C ${dir} --print-errorlogs`,
+	}, { extensions: ['mesonbuild.mesonbuild'], extra: { apt: ['meson'], sourcehut: { packages: ['meson'] } } }),
+};
+
+/** Whether a project's tests and program would make a test executable or a program to run. */
+function cFamilyParts(files: Files, entry: string): { tests: boolean; main: boolean } {
+	const sources = Object.keys(files).filter((p) => CXX.test(p) || C.test(p));
+	return {
+		tests: sources.some((p) => TESTS.test(p)),
+		main: sources.some((p) => !TESTS.test(p) && (p === entry || definesMain(files[p] ?? ''))),
+	};
+}
+
+/**
+ * The CI of a C or C++ project, with either build system: a strict build
+ * (warnings are errors) and its tests; the tests again, or the program when
+ * there are none, with AddressSanitizer and UndefinedBehaviorSanitizer; and
+ * clang-tidy with the project's checks, every warning an error. The format
+ * check is the toolchain's (export-tooling.ts).
+ */
+function cFamilyCi(
+	files: Files,
+	entry: string,
+	tool: { configure: (dir: string, more: { warningsAsErrors?: boolean; sanitize?: string }) => string; build: (dir: string) => string; test: (dir: string) => string },
+	more: { extensions: readonly string[]; extra?: Extra },
+): BuildCi {
+	const { tests, main } = cFamilyParts(files, entry);
+	const exercise = (dir: string): [string, string][] => (tests ? [['Test', tool.test(dir)]] : main ? [['Run', `./${dir}/app </dev/null`]] : []);
+	const jobs: JobSpec[] = [
+		testJob('Build and test', steps(['Configure', tool.configure('build', { warningsAsErrors: true })], ['Build', tool.build('build')], ...(tests ? [['Test', tool.test('build')] as const] : []))),
+	];
+	if (tests || main)
+		jobs.push({
+			id: 'sanitize',
+			name: 'Sanitizers',
+			steps: steps(['Configure', tool.configure('build-sanitize', { sanitize: 'address,undefined' })], ['Build', tool.build('build-sanitize')], ...exercise('build-sanitize')),
+		});
+	jobs.push(...clangTidyJob(files, { name: 'Configure', run: tool.configure('build', {}) }, 'build'));
+	return { jobs, extensions: more.extensions, ...(more.extra ? { extra: more.extra } : {}) };
+}
+
+/** The build systems of each language, its usual one first. */
+const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
+	c: [CMAKE, MESON],
+	cpp: [CMAKE, MESON],
+	swift: [
+		{
+			id: 'swiftpm',
+			label: 'Swift Package Manager',
+			paths: ['Package.swift'],
+			generate: (p) => ({ 'Package.swift': packageSwift(p.files, p.paths, p.optimization) }),
+			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Build', 'swift build'], ...(swiftTests(p.files) ? [['Test', 'swift test'] as const] : [])))] }),
+		},
+	],
+	python: [
+		{
+			id: 'pyproject',
+			label: 'pyproject.toml (pip or uv)',
+			paths: ['pyproject.toml'],
+			generate: (p) => ({ 'pyproject.toml': pyprojectToml(p.files) }),
+			ci: (p) => ({
+				jobs: [
+					testJob(
+						'Test',
+						steps(
+							// pip 25.1 and later install a dependency group of pyproject.toml.
+							['Install', 'python -m venv .venv && .venv/bin/pip install --quiet --group dev'],
+							['Compile', "python -m compileall -q -x '(^|/)[.]' ."],
+							...(pythonTests(p.files) ? [['Test', '.venv/bin/python -m pytest'] as const] : []),
+						),
+					),
+				],
+			}),
+		},
+	],
+	javascript: [nodeBuild('javascript')],
+	typescript: [nodeBuild('typescript')],
+	web: [viteBuild('web-project')],
+	p5: [viteBuild('p5-project')],
+	'p5-global': [viteBuild('p5-project')],
+	scala: [
+		{
+			id: 'sbt',
+			label: 'sbt',
+			paths: ['build.sbt', 'project/build.properties'],
+			generate: (p) => ({ 'build.sbt': buildSbt(p.files), 'project/build.properties': `sbt.version=${SBT_VERSION}\n` }),
+			ci: (p) => ({ jobs: [testJob('Build and test', steps(['sbt', Object.keys(p.files).some((f) => f.startsWith('tests/') && /\.(scala|java)$/.test(f)) ? 'sbt -batch test' : 'sbt -batch compile']))] }),
+		},
+	],
+	php: [
+		{
+			id: 'composer',
+			label: 'Composer',
+			paths: ['composer.json', 'phpunit.xml'],
+			generate: (p) => ({ 'composer.json': composerJson(p.language.entry, p.files), 'phpunit.xml': phpunitXml(p.files) }),
+			ci: (p) => ({
+				jobs: [
+					testJob(
+						'Test',
+						steps(
+							['Lint', 'for f in $(find . -name vendor -prune -o -name "*.php" -print); do php -l "$f" >/dev/null || exit 1; done'],
+							['Install', 'composer install --no-interaction --no-progress'],
+							...(Object.keys(p.files).some((f) => f.startsWith('tests/') && f.endsWith('.php')) ? [['Test', 'composer test'] as const] : []),
+						),
+					),
+				],
+			}),
+		},
+	],
+	rust: [
+		{
+			id: 'cargo',
+			label: 'Cargo',
+			paths: ['Cargo.toml'],
+			generate: (p) => ({ 'Cargo.toml': cargoToml(p.files) }),
+			ci: () => ({ jobs: [testJob('Build and test', steps(['Build', 'cargo build --all-targets'], ['Test', 'cargo test']))] }),
+		},
+	],
+	java: [
+		{
+			id: 'maven',
+			label: 'Maven',
+			paths: ['pom.xml'],
+			generate: (p) => ({ 'pom.xml': pomXml(p.files, p.language.entry) }),
+			ci: () => ({ jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify']))] }),
+		},
+		{
+			id: 'gradle',
+			label: 'Gradle',
+			paths: ['build.gradle.kts', 'settings.gradle.kts'],
+			generate: (p) => ({ 'build.gradle.kts': javaGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "java-project"\n' }),
+			instructions: (_, files) => javaGradleInstructions(files),
+			ignored: ['build/', '.gradle/'],
+			ci: () => ({ extra: GRADLE_IMAGE, jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain']))] }),
+		},
+	],
+	kotlin: [
+		{
+			id: 'gradle',
+			label: 'Gradle',
+			paths: ['build.gradle.kts', 'settings.gradle.kts'],
+			generate: (p) => ({ 'build.gradle.kts': buildGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "kotlin-project"\n' }),
+			ci: () => ({ jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain']))] }),
+		},
+		{
+			id: 'maven',
+			label: 'Maven',
+			// kotlin-maven-plugin cannot leave a folder's tests out of its sources, so only Maven's own layout.
+			fits: (files) => kotlinFiles(files).every((p) => p.startsWith('src/main/kotlin/') || p.startsWith('src/test/kotlin/')),
+			paths: ['pom.xml'],
+			generate: (p) => ({ 'pom.xml': kotlinPomXml(p.files, p.language.entry) }),
+			instructions: (_, files) => kotlinMavenInstructions(files),
+			ignored: ['target/'],
+			ci: () => ({ extra: MAVEN_IMAGE, jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify']))] }),
+		},
+	],
+	haskell: [
+		{
+			id: 'cabal',
+			label: 'Cabal',
+			paths: ['haskell-project.cabal', 'cabal.project'],
+			generate: (p) => ({ 'haskell-project.cabal': haskellCabal(p.files, p.language.entry), 'cabal.project': 'packages: .\n' }),
+			ci: (p) => ({
+				jobs: [
+					testJob(
+						'Build and test',
+						steps(['Update the package index', 'cabal update'], ['Build', 'cabal build all'], ...(haskellTests(p.files) ? [['Test', 'cabal test all --test-show-details=direct'] as const] : [])),
+					),
+				],
+			}),
+		},
+		{
+			id: 'stack',
+			label: 'Stack',
+			paths: ['haskell-project.cabal', 'stack.yaml'],
+			generate: (p) => ({ 'haskell-project.cabal': haskellCabal(p.files, p.language.entry), 'stack.yaml': stackYaml() }),
+			instructions: (_, files) => stackInstructions(files),
+			ci: (p) => ({
+				extra: { sourcehut: { packages: ['haskell-stack'] } },
+				jobs: [testJob('Build and test', steps(['Build', 'stack build'], ...(haskellTests(p.files) ? [['Test', 'stack test'] as const] : [])))],
+			}),
+		},
+	],
+	go: [
+		{
+			id: 'go',
+			label: 'Go modules',
+			paths: ['go.mod'],
+			generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }),
+			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Build', 'go build ./...'], ...(Object.keys(p.files).some((f) => f.endsWith('_test.go')) ? [['Test', 'go test ./...'] as const] : [])))] }),
+		},
+	],
+	zig: [
+		{
+			id: 'zig',
+			label: 'zig build',
+			paths: ['build.zig'],
+			generate: (p) => ({ 'build.zig': buildZig(p.language.entry) }),
+			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Build', 'zig build'], ...(zigTests(p.files) ? [['Test', 'zig build test --summary all'] as const] : [])))] }),
+		},
+	],
+};
+
+/** The build systems that can build a project, the language's usual one first. */
+export function buildSystems(language: Language, files: Files): BuildSystem[] {
+	return BUILD[language.id].filter((b) => !b.fits || b.fits(files));
+}
 
 /**
  * The files to download for a project: `files` unchanged, plus each build
- * file of the language, README.md and .gitignore that the project does not
- * have. A README in any case or with any extension (readme.txt, README)
- * counts as having one.
+ * file of the chosen build system (the language's usual one by default),
+ * README.md and .gitignore that the project does not have, and what
+ * `options` asks for: CI for one service, with the formatter
+ * configurations its jobs read; .devcontainer/; .gitattributes. A README
+ * in any case or with any extension (readme.txt, README) counts as having
+ * one.
  */
-export function exportProject(language: Language, files: Files, optimization: string | null = null): ExportedProject {
-	const build = BUILD[language.id];
+export function exportProject(language: Language, files: Files, optimization: string | null = null, options: ExportOptions = {}): ExportedProject {
+	const fitting = buildSystems(language, files);
+	const build = fitting.find((b) => b.id === options.build) ?? fitting[0] ?? BUILD[language.id][0]!;
 	const absent = (path: string) => !(path in files);
 	const hasReadme = Object.keys(files).some((p) => /^readme(\.[^/]*)?$/i.test(p));
-	const paths = typeof build.paths === 'function' ? build.paths(files) : build.paths;
-	const generated = [...paths.filter(absent), ...(hasReadme ? [] : ['README.md']), ...['.gitignore'].filter(absent)].sort();
+	const buildPaths = typeof build.paths === 'function' ? build.paths(files) : build.paths;
+	const draft: Project = { language, files, paths: [...Object.keys(files), ...buildPaths].sort(), optimization };
+	const ci = build.ci(draft);
+	const jobs = jobsFor(language.id, ci, files);
+	const service = options.ci ? ciService(options.ci) : null;
+	const extras: Files = {
+		...(service ? { ...jobFiles(language.id, ci, files), ...service.render(jobs, `${language.id}-project`) } : {}),
+		...(options.devcontainer ? devcontainer(language, jobs, ci) : {}),
+		...(options.gitattributes ? { '.gitattributes': gitattributes(language.id) } : {}),
+	};
+	// A build file wins over a job's file of the same path (scalafmt's project/plugins.sbt never is one).
+	for (const path of buildPaths) delete extras[path];
+	const generated = [...new Set([...buildPaths, ...Object.keys(extras), ...(hasReadme ? [] : ['README.md']), '.gitignore'])].filter((p) => p === 'README.md' ? !hasReadme : absent(p)).sort();
 	const project: Project = { language, files, paths: [...Object.keys(files), ...generated].sort(), optimization };
 	const candidates: Files = {
+		...extras,
 		...build.generate(project),
-		'README.md': readme(language, files, generated),
-		'.gitignore': gitignore(language.id),
+		'README.md': readme(language, files, generated, build, { service, jobs, devcontainer: generated.includes('.devcontainer/devcontainer.json'), gitattributes: generated.includes('.gitattributes') }),
+		'.gitignore': gitignore(language.id, build),
 	};
 	const out: Files = { ...files };
 	for (const path of generated) out[path] = candidates[path] ?? '';
@@ -263,6 +520,53 @@ function linuxTarget(files: Files): CppTarget | null {
 	return choice.kind === 'target' && choice.target.runtime === 'linux' ? choice.target : null;
 }
 
+/** A C or C++ project as the C++ pack builds it, which CMakeLists.txt and meson.build both describe. */
+interface CFamilyLayout {
+	/** The C and C++ sources in tests/, sorted. */
+	tests: string[];
+	/** Every other C and C++ source, sorted: the program. */
+	program: string[];
+	/** The program's sources without its main, which the tests are linked with. */
+	underTest: string[];
+	/** Whether a test defines main itself, so the framework's main is not linked. */
+	ownMain: boolean;
+	/** Whether the program has a main: an executable, else a library. */
+	hasMain: boolean;
+	flags: Flags;
+	/** Whether the project needs a C++ compiler (it has C++ sources, or tests, which are C++), and a C one. */
+	cxx: boolean;
+	c: boolean;
+	/**
+	 * RapidCheck, where the browser links it: for the program when one of
+	 * its sources includes it, for the tests when they or the program's
+	 * sources under test do.
+	 */
+	rcProgram: boolean;
+	rcTests: boolean;
+	/** The tests' framework (testFrameworkOf), or null without tests. */
+	testFramework: TestFramework | null;
+}
+
+function cFamilyLayout(files: Files, entry: string): CFamilyLayout {
+	const sources = Object.keys(files).filter((p) => CXX.test(p) || C.test(p)).sort();
+	const tests = sources.filter((p) => TESTS.test(p));
+	const program = sources.filter((p) => !TESTS.test(p));
+	const underTest = program.filter((p) => p !== entry && !definesMain(files[p] ?? ''));
+	return {
+		tests,
+		program,
+		underTest,
+		ownMain: tests.some((p) => definesMain(files[p] ?? '')),
+		hasMain: program.some((p) => p === entry || definesMain(files[p] ?? '')),
+		flags: parseCompileFlags(files['compile_flags.txt'] ?? ''),
+		cxx: tests.length > 0 || !sources.some((p) => C.test(p)) || sources.some((p) => CXX.test(p)),
+		c: sources.some((p) => C.test(p)),
+		rcProgram: program.some((p) => includesRapidCheck(files[p] ?? '')),
+		rcTests: tests.length > 0 && [...tests, ...underTest].some((p) => includesRapidCheck(files[p] ?? '')),
+		testFramework: tests.length ? testFrameworkOf(files) : null,
+	};
+}
+
 /**
  * CMakeLists.txt for the project as the C++ pack builds it: one executable,
  * `app`, from every C/C++ source outside tests/; when tests/ has sources, a
@@ -281,22 +585,9 @@ function linuxTarget(files: Files): CppTarget | null {
  * what cross compiling would take (crossNote).
  */
 export function cmakeLists(files: Files, entry: string): string {
-	const sources = Object.keys(files).filter((p) => CXX.test(p) || C.test(p)).sort();
-	const tests = sources.filter((p) => TESTS.test(p));
-	const program = sources.filter((p) => !TESTS.test(p));
-	const underTest = program.filter((p) => p !== entry && !definesMain(files[p] ?? ''));
-	const ownMain = tests.some((p) => definesMain(files[p] ?? ''));
-	const hasMain = program.some((p) => p === entry || definesMain(files[p] ?? ''));
-	const flags = parseCompileFlags(files['compile_flags.txt'] ?? '');
-	const cxx = tests.length > 0 || !sources.some((p) => C.test(p)) || sources.some((p) => CXX.test(p));
-	const languages = [...(cxx ? ['CXX'] : []), ...(sources.some((p) => C.test(p)) ? ['C'] : [])];
+	const { tests, program, underTest, ownMain, hasMain, flags, cxx, c, rcProgram, rcTests, testFramework } = cFamilyLayout(files, entry);
+	const languages = [...(cxx ? ['CXX'] : []), ...(c ? ['C'] : [])];
 	const list = (paths: string[]) => paths.map((p) => `\n    ${cmakeQuote(p)}`).join('');
-	// RapidCheck, where the browser links it: for the program when one of its
-	// sources includes it, for the tests when they or the program's sources
-	// under test do.
-	const rcProgram = program.some((p) => includesRapidCheck(files[p] ?? ''));
-	const rcTests = tests.length > 0 && [...tests, ...underTest].some((p) => includesRapidCheck(files[p] ?? ''));
-	const testFramework = tests.length ? testFrameworkOf(files) : null;
 
 	const lines: string[] = [
 		'# Builds the project where it is, with the layout it had in Yukibana Light:',
@@ -316,7 +607,14 @@ export function cmakeLists(files: Files, entry: string): string {
 		lines.push(`# The C standard${fromFlags}.`);
 		lines.push(`set(CMAKE_C_STANDARD ${flags.c.standard})`, 'set(CMAKE_C_STANDARD_REQUIRED ON)', `set(CMAKE_C_EXTENSIONS ${flags.c.extensions ? 'ON' : 'OFF'})`);
 	}
-	lines.push('# build/compile_commands.json, which clangd and other tools read.', 'set(CMAKE_EXPORT_COMPILE_COMMANDS ON)', '');
+	lines.push(
+		'# build/compile_commands.json, which clangd and other tools read.',
+		'set(CMAKE_EXPORT_COMPILE_COMMANDS ON)',
+		// CMake 3.28 scans C++20 sources for modules and puts its own @file
+		// arguments in compile_commands.json, which clang-tidy cannot read.
+		...(cxx ? ["# No C++20 modules, as in the browser; scanning for them puts arguments clang-tidy cannot read in compile_commands.json.", 'set(CMAKE_CXX_SCAN_FOR_MODULES OFF)'] : []),
+		'',
+	);
 
 	lines.push(`# The project's own flags${fromFlags}, for its targets only.`, 'add_library(project_flags INTERFACE)');
 	if (flags.includes.length) lines.push(`target_include_directories(project_flags INTERFACE ${flags.includes.map(cmakeDir).join(' ')})`);
@@ -341,6 +639,24 @@ export function cmakeLists(files: Files, entry: string): string {
 	// too. Either comes after the build type's flags, so it is what applies.
 	if (!flags.options.some((o) => o.startsWith('-O')))
 		lines.push(`# The optimisation level Run uses when compile_flags.txt has no -O line, whatever the build type.`, 'if(NOT MSVC)', `    target_compile_options(project_flags INTERFACE ${CPP_DEFAULT_LEVEL})`, 'endif()');
+	// What CI turns on (export-tooling.ts): a build that fails on a warning,
+	// and one with sanitizers, for the project's code only.
+	lines.push(
+		'',
+		'# -DWARNINGS_AS_ERRORS=ON fails the build on any warning of the project (not of its test framework).',
+		'option(WARNINGS_AS_ERRORS "Treat the project\'s warnings as errors" OFF)',
+		'if(WARNINGS_AS_ERRORS AND MSVC)',
+		'    target_compile_options(project_flags INTERFACE /WX)',
+		'elseif(WARNINGS_AS_ERRORS)',
+		'    target_compile_options(project_flags INTERFACE -Werror)',
+		'endif()',
+		'# -DSANITIZE=address,undefined builds the project with those sanitizers (Debug, for file:line in reports).',
+		'set(SANITIZE "" CACHE STRING "Sanitizers to build with, as -fsanitize= takes them")',
+		'if(SANITIZE AND NOT MSVC)',
+		'    target_compile_options(project_flags INTERFACE -fsanitize=${SANITIZE} -fno-omit-frame-pointer)',
+		'    target_link_options(project_flags INTERFACE -fsanitize=${SANITIZE})',
+		'endif()',
+	);
 	lines.push('');
 
 	if (rcProgram || rcTests) {
@@ -439,6 +755,218 @@ export function cmakeLists(files: Files, entry: string): string {
 		}
 	}
 	return lines.join('\n');
+}
+
+// ---- C and C++: Meson
+
+/**
+ * The WrapDB entries of the test frameworks the browser runs, at its
+ * versions (packs/cpp/toolchains/libs/pins.sh), as `meson wrap install`
+ * writes them: the release archive, by checksum, and WrapDB's build files
+ * for it. GoogleTest's archive is the one CMakeLists.txt fetches.
+ */
+const MESON_WRAPS: Record<TestFramework, string> = {
+	gtest: `[wrap-file]
+directory = googletest-${GTEST_VERSION}
+source_url = https://github.com/google/googletest/archive/refs/tags/v${GTEST_VERSION}.tar.gz
+source_filename = googletest-${GTEST_VERSION}.tar.gz
+source_hash = ${GTEST_SHA256}
+source_fallback_url = https://wrapdb.mesonbuild.com/v2/gtest_${GTEST_VERSION}-1/get_source/googletest-${GTEST_VERSION}.tar.gz
+patch_filename = gtest_${GTEST_VERSION}-1_patch.zip
+patch_url = https://wrapdb.mesonbuild.com/v2/gtest_${GTEST_VERSION}-1/get_patch
+patch_fallback_url = https://github.com/mesonbuild/wrapdb/releases/download/gtest_${GTEST_VERSION}-1/gtest_${GTEST_VERSION}-1_patch.zip
+patch_hash = a51d48aa7a48fc666026f247f72c03d1629a145a89ae8a518825f189a52ace5d
+wrapdb_version = ${GTEST_VERSION}-1
+
+[provide]
+dependency_names = gtest, gmock, gtest_main, gmock_main
+`,
+	catch2: `[wrap-file]
+directory = Catch2-${CATCH2_VERSION}
+source_url = https://github.com/catchorg/Catch2/archive/v${CATCH2_VERSION}.tar.gz
+source_filename = Catch2-${CATCH2_VERSION}.tar.gz
+source_hash = d16bd1b8b2364918bd472cb216394acb93bde6784890df0d91bccfb3f28d777d
+source_fallback_url = https://wrapdb.mesonbuild.com/v2/catch2_${CATCH2_VERSION}-1/get_source/Catch2-${CATCH2_VERSION}.tar.gz
+wrapdb_version = ${CATCH2_VERSION}-1
+
+[provide]
+catch2 = catch2_dep
+catch2-with-main = catch2_with_main_dep
+`,
+	doctest: `[wrap-file]
+directory = doctest-${DOCTEST_VERSION}
+source_url = https://github.com/doctest/doctest/archive/refs/tags/v${DOCTEST_VERSION}.tar.gz
+source_filename = doctest-${DOCTEST_VERSION}.tar.gz
+source_hash = 174ebc4e769928959614789c5b4e9c3d0a0f81a62bb608756b127bfebfb21331
+source_fallback_url = https://wrapdb.mesonbuild.com/v2/doctest_${DOCTEST_VERSION}-1/get_source/doctest-${DOCTEST_VERSION}.tar.gz
+wrapdb_version = ${DOCTEST_VERSION}-1
+
+[provide]
+dependency_names = doctest
+`,
+};
+
+/** RapidCheck, which is not in WrapDB: its repository at the browser's commit, built with its own CMakeLists.txt. */
+const RAPIDCHECK_WRAP = `[wrap-git]
+url = https://github.com/emil-e/rapidcheck.git
+revision = ${RAPIDCHECK_COMMIT}
+depth = 1
+`;
+
+/** The subprojects/ wraps meson.build uses, as [name, contents]: the test framework, and RapidCheck when a source includes it. */
+export function mesonWraps(files: Files, entry = ''): (readonly [string, string])[] {
+	const layout = cFamilyLayout(files, entry);
+	return [...(layout.testFramework ? [[layout.testFramework, MESON_WRAPS[layout.testFramework]] as const] : []), ...(layout.rcProgram || layout.rcTests ? [['rapidcheck', RAPIDCHECK_WRAP] as const] : [])];
+}
+
+/** A Meson string literal. */
+function mesonString(s: string): string {
+	return `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
+}
+
+/** A Meson array of strings, one per line under `indent` when there is more than one. */
+function mesonArray(items: readonly string[], indent = ''): string {
+	if (items.length <= 1) return `[${items.map(mesonString).join('')}]`;
+	return `[\n${items.map((i) => `${indent}  ${mesonString(i)},\n`).join('')}${indent}]`;
+}
+
+/**
+ * meson.build for the project as the C++ pack builds it, as CMakeLists.txt
+ * does (cmakeLists): `app` from every C/C++ source outside tests/ (a
+ * library when nothing defines main), `app_tests` from tests/ and the
+ * program's sources without its main, linked with the framework tests/
+ * includes from subprojects/ (mesonWraps, forced over a system copy, so the
+ * version is the browser's), and RapidCheck through Meson's CMake module.
+ * compile_flags.txt's standard becomes Meson's, its other flags the
+ * project's arguments (not the subprojects'), and with no -O line the level
+ * is Run's. Meson writes build/compile_commands.json itself. doctest has no
+ * library with a main in WrapDB, so the first test file is compiled with
+ * DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN, unless a test implements doctest.
+ *
+ * Meson numbers each test executable as one test; `meson test` shows the
+ * framework's own output with --print-errorlogs or -v.
+ */
+export function mesonBuild(files: Files, entry: string): string {
+	const { tests, program, underTest, ownMain, hasMain, flags, cxx, c, rcProgram, rcTests, testFramework } = cFamilyLayout(files, entry);
+	const languages = [...(cxx ? ['cpp'] : []), ...(c ? ['c'] : [])];
+	const target = linuxTarget(files);
+	const options = [
+		...(flags.cxx && cxx ? [`cpp_std=${flags.cxx.extensions ? 'gnu' : 'c'}++${flags.cxx.standard}`] : []),
+		...(flags.c && c ? [`c_std=${flags.c.extensions ? 'gnu' : 'c'}${flags.c.standard}`] : []),
+		// compile_flags.txt's -W options say which warnings, as in the browser.
+		'warning_level=0',
+		'buildtype=debug',
+		...(testFramework || rcProgram || rcTests ? [`force_fallback_for=${[...(testFramework ? [testFramework] : []), ...(rcProgram || rcTests ? ['rapidcheck'] : [])].join(',')}`] : []),
+	];
+	const fromFlags = files['compile_flags.txt'] !== undefined ? ' (from compile_flags.txt, which clangd reads too)' : '';
+	const level = flags.options.some((o) => o.startsWith('-O')) ? [] : [CPP_DEFAULT_LEVEL];
+	const sanitize = flags.options.filter((o) => /^-f(no-)?sanitize|^-(shared|static)-libsan$/.test(o));
+	const langs = mesonArray(languages);
+	const lines = [
+		'# Builds the project where it is, with the layout it had in Yukibana Light:',
+		'#   meson setup build && meson compile -C build && ./build/app',
+		...(tests.length ? ['#   meson test -C build --print-errorlogs'] : []),
+		...(target
+			? [
+					`# In the browser, this project is built for ${target.triple} (the --target line of compile_flags.txt).`,
+					'# Meson builds for the machine it runs on. To cross compile, set up the build with a cross file',
+					`# (--cross-file) whose compilers are clang with --target=${target.triple} and a musl sysroot.`,
+				]
+			: []),
+		`project('app', ${languages.map(mesonString).join(', ')},`,
+		"  version: '0.1.0',",
+		"  meson_version: '>=1.4.0',",
+		`  default_options: ${mesonArray(options, '  ')},`,
+		')',
+		'',
+		`compiler = meson.get_compiler(${mesonString(languages[0]!)})`,
+		`# The project's own flags${fromFlags}, for its targets only; the options are`,
+		"# left out for MSVC, which does not take GCC-style flags.",
+		`inc = include_directories(${flags.includes.length ? flags.includes.map((d) => mesonString(d.replace(/\/$/, '') || '.')).join(', ') : "'.'"})`,
+		...(flags.definitions.length ? [`add_project_arguments(${mesonArray(flags.definitions.map((d) => `-D${d}`))}, language: ${langs})`] : []),
+		"if compiler.get_argument_syntax() == 'gcc'",
+		...(flags.options.length || level.length ? [`  # The optimisation level ${level.length ? 'is the one Run uses when compile_flags.txt has no -O line' : 'is compile_flags.txt\'s'}, whatever the build type.`, `  add_project_arguments(${mesonArray([...flags.options, ...level], '  ')}, language: ${langs})`] : []),
+		...(sanitize.length
+			? [
+					'  # The sanitizers link their runtimes.',
+					`  add_project_link_arguments(${mesonArray(sanitize, '  ')}, language: ${langs})`,
+					...(sanitizersOf(files['compile_flags.txt']).address ? [`  add_project_arguments('-fno-omit-frame-pointer', language: ${langs})`] : []),
+				]
+			: []),
+		'endif',
+		'',
+	];
+	if (rcProgram || rcTests) {
+		lines.push(
+			`# RapidCheck, property-based testing, at the commit the browser runs (its master`,
+			`# on ${RAPIDCHECK_DATE}; RapidCheck has no releases), built with its own CMakeLists.txt.`,
+			"cmake = import('cmake')",
+			"rapidcheck = cmake.subproject('rapidcheck').dependency('rapidcheck')",
+			'',
+		);
+	}
+	const list = (paths: readonly string[]) => mesonArray(paths, '  ');
+	if (program.length) {
+		lines.push(
+			'# The program: every source outside tests/.',
+			`app = ${hasMain ? 'executable' : 'static_library'}('app', ${list(program)},`,
+			'  include_directories: inc,',
+			...(rcProgram ? ['  dependencies: rapidcheck,'] : []),
+			')',
+			'',
+		);
+	}
+	if (tests.length && testFramework) {
+		const frameworkDep = {
+			gtest: `dependency(${mesonString(ownMain ? 'gtest' : 'gtest_main')})`,
+			catch2: `dependency(${mesonString(ownMain ? 'catch2' : 'catch2-with-main')})`,
+			doctest: "dependency('doctest')",
+		}[testFramework];
+		const label = { gtest: `GoogleTest ${GTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}` }[testFramework];
+		// RapidCheck's framework integrations are headers in its extras/.
+		const extras = rcTests && testFramework !== 'doctest' ? [`include_directories('subprojects/rapidcheck/extras/${testFramework === 'gtest' ? 'gtest' : 'catch'}/include')`] : [];
+		const deps = ['framework', ...(rcTests ? ['rapidcheck'] : [])];
+		const ownDoctest = ownMain || tests.some((p) => implementsDoctest(files[p] ?? ''));
+		const doctestMain = testFramework === 'doctest' && !ownDoctest;
+		const testSources = doctestMain ? [...underTest, ...tests.slice(1)] : [...underTest, ...tests];
+		lines.push(
+			`# The tests: tests/ and the program's sources without its main, with ${label},`,
+			'# the version the browser runs, from subprojects/. Downloaded once, when the build is set up.',
+			`framework = ${frameworkDep}`,
+		);
+		if (doctestMain)
+			lines.push(
+				"# doctest's main, which the browser links: the first test file implements it.",
+				`doctest_main = static_library('doctest_main', ${mesonString(tests[0]!)},`,
+				`  include_directories: [inc${extras.map((e) => `, ${e}`).join('')}],`,
+				`  dependencies: ${deps.length > 1 ? `[${deps.join(', ')}]` : deps[0]},`,
+				"  cpp_args: '-DDOCTEST_CONFIG_IMPLEMENT_WITH_MAIN',",
+				')',
+			);
+		lines.push(
+			`app_tests = executable('app_tests', ${list(testSources)},`,
+			`  include_directories: ${extras.length ? `[inc, ${extras.join(', ')}]` : 'inc'},`,
+			`  dependencies: ${deps.length > 1 ? `[${deps.join(', ')}]` : deps[0]},`,
+			...(doctestMain ? ['  link_with: doctest_main,'] : []),
+			')',
+			`test('app_tests', app_tests${testFramework === 'gtest' ? ", protocol: 'gtest'" : ''})`,
+			'',
+		);
+	}
+	return lines.join('\n');
+}
+
+/** The README's sections for a C or C++ project built with Meson. */
+function mesonInstructions(language: Language, files: Files): string[] {
+	const { tests, testFramework } = cFamilyLayout(files, language.entry);
+	return [
+		`## Build and run\n\nWith Meson 1.4 or later, Ninja and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\nmeson setup build\nmeson compile -C build\n./build/app\n\`\`\`\n\n\`meson setup build -Dwerror=true\` fails the build on any warning; \`-Db_sanitize=address,undefined\` builds with AddressSanitizer and UndefinedBehaviorSanitizer.`,
+		...(tests.length && testFramework
+			? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFramework]}, which Meson downloads into \`subprojects/\` the first time it sets up the build:\n\n\`\`\`sh\nmeson test -C build --print-errorlogs\n\`\`\``]
+			: []),
+		...crossSection(linuxTarget(files)).map((s) => s.replace('CMake leaves the target out', 'Meson leaves the target out').replace(/To cross compile, use a toolchain file that sets [^;]*; /, 'To cross compile, set up the build with a cross file (`--cross-file`) whose compilers are clang with that `--target` and a musl sysroot; ')),
+		'## Editors\n\nVS Code (with the Meson extension), CLion and Qt Creator open the folder as a Meson project. clangd reads `build/compile_commands.json`, which Meson writes, and `compile_flags.txt` for files outside the build.',
+	];
 }
 
 // ---- Swift: SwiftPM
@@ -586,7 +1114,9 @@ export function usesHypothesis(files: Files): boolean {
  * the project folder on the import path, so a test in tests/ can say `from
  * geometry import Point`, and tests/ as where tests are when there is one.
  * No build system: the project is a folder of modules, not a package to
- * install, which is also what uv assumes without one.
+ * install, which is also what uv assumes without one. Ruff's line length
+ * is the samples' 100, so CI's format check (export-tooling.ts) passes on
+ * them.
  */
 export function pyprojectToml(files: Files): string {
 	const hasTestsFolder = Object.keys(files).some((p) => p.startsWith('tests/') && p.endsWith('.py'));
@@ -603,6 +1133,10 @@ export function pyprojectToml(files: Files): string {
 		'[tool.pytest.ini_options]',
 		...(hasTestsFolder ? ['testpaths = ["tests"]'] : []),
 		'pythonpath = ["."]',
+		'',
+		'# Ruff formats and checks with lines of up to 100, as the samples are written.',
+		'[tool.ruff]',
+		'line-length = 100',
 		'',
 	].join('\n');
 }
@@ -714,6 +1248,34 @@ export function typescriptPackageJson(entry: string, files: Files = {}): string 
 	return JSON.stringify(json, null, 2) + '\n';
 }
 
+/** Whether a Node project has tests `node --test` finds (its default patterns, as the browser's Test). */
+function nodeTests(files: Files, typescript: boolean): boolean {
+	const ext = typescript ? 'm?[jt]s' : 'm?js';
+	return Object.keys(files).some((p) => /(^|\/)test\//.test(p) || new RegExp(`(^|/)([^/]+[.\\-_]test|test-[^/]*|test)\\.${ext}$`).test(p));
+}
+
+/** npm for a JavaScript or TypeScript project: package.json and the Stryker configuration Mutate's. */
+function nodeBuild(id: 'javascript' | 'typescript'): BuildSystem {
+	const typescript = id === 'typescript';
+	return {
+		id: 'npm',
+		label: 'npm',
+		paths: ['package.json', 'stryker.config.json'],
+		generate: (p) => ({ 'package.json': (typescript ? typescriptPackageJson : packageJson)(p.language.entry, p.files), 'stryker.config.json': strykerConfig() }),
+		ci: (p) => ({
+			jobs: [
+				testJob(
+					'Test',
+					steps(
+						...(Object.keys(shippedPackages(p.files)).length ? [['Install', 'npm install --no-audit --no-fund'] as const] : []),
+						nodeTests(p.files, typescript) ? ['Test', 'npm test'] : ['Run', 'npm start </dev/null'],
+					),
+				),
+			],
+		}),
+	};
+}
+
 // ---- Web: Vite
 
 /** The Vite the app itself is built with (app/package.json). */
@@ -746,10 +1308,13 @@ export function vitePackageJson(name: string, files: Files = {}): string {
 }
 
 /** The build files of a web project: package.json, and vite.config.js when a page has a classic TypeScript script. */
-function viteBuild(name: string): BuildFiles {
+function viteBuild(name: string): BuildSystem {
 	return {
+		id: 'vite',
+		label: 'Vite',
 		paths: (files) => ['package.json', ...(classicScripts(files).length > 0 ? ['vite.config.js'] : [])],
 		generate: (p) => ({ 'package.json': vitePackageJson(name, p.files), 'vite.config.js': viteConfig() }),
+		ci: () => ({ jobs: [testJob('Build', steps(['Install', 'npm install --no-audit --no-fund'], ['Type-check', 'npm run typecheck'], ['Build', 'npm run build']))] }),
 	};
 }
 
@@ -1092,6 +1657,86 @@ export function pomXml(files: Files, entry: string): string {
 	].join('\n');
 }
 
+// ---- Java: Gradle
+
+/** The image of a project built with Gradle, and Gradle on SourceHut. */
+const GRADLE_IMAGE: Extra = { image: 'gradle:9-jdk25', sourcehut: { packages: ['gradle'] } };
+/** The image of a project built with Maven, and Maven on SourceHut. */
+const MAVEN_IMAGE: Extra = { image: 'maven:3-eclipse-temurin-25', sourcehut: { packages: ['maven'] } };
+
+/**
+ * build.gradle.kts for a Java project where it is, as pom.xml builds it
+ * (pomXml): Maven's layout gets Gradle's defaults, any other compiles every
+ * .java file of the folder but the test folders, which are the tests, on
+ * JUnit Jupiter at the browser's version. `gradle run` runs the entry's
+ * class with stdin connected; javac compiles for the browser's release.
+ */
+export function javaGradleKts(files: Files, entry: string): string {
+	const java = Object.keys(files).filter((p) => p.endsWith('.java'));
+	const maven = java.every((p) => p.startsWith('src/main/java/') || p.startsWith('src/test/java/'));
+	const testDir = java.some((p) => p.startsWith('src/test/java/')) ? 'src/test/java' : java.some((p) => p.startsWith('tests/')) ? 'tests' : java.some((p) => p.startsWith('test/')) ? 'test' : 'src/test/java';
+	const layout = maven
+		? []
+		: [
+				'// The sources are in the project folder itself, not in src/main/java.',
+				'sourceSets {',
+				'    main {',
+				'        java.setSrcDirs(listOf("."))',
+				'        java.exclude("src/test/**", "test/**", "tests/**", "build/**", ".gradle/**")',
+				'    }',
+				'    test {',
+				`        java.setSrcDirs(listOf(${JSON.stringify(testDir)}))`,
+				'    }',
+				'}',
+				'',
+			];
+	return [
+		'// Builds the project where it is, with the layout it had in Yukibana Light:',
+		`//   gradle run${java.some((p) => JAVA_TESTS.test(p)) ? ', gradle test' : ''}`,
+		'plugins {',
+		'    application',
+		'}',
+		'',
+		'repositories {',
+		'    mavenCentral()',
+		'}',
+		'',
+		'dependencies {',
+		`    testImplementation(platform("org.junit:junit-bom:${JUNIT_VERSION}"))`,
+		'    testImplementation("org.junit.jupiter:junit-jupiter")',
+		'    testRuntimeOnly("org.junit.platform:junit-platform-launcher")',
+		'}',
+		'',
+		...layout,
+		'tasks.withType<JavaCompile> {',
+		`    options.release = ${JAVA_RELEASE}`,
+		'    options.encoding = "UTF-8"',
+		'}',
+		'',
+		'application {',
+		`    mainClass = ${JSON.stringify(javaMainClass(files, entry))}`,
+		'}',
+		'',
+		'tasks.named<JavaExec>("run") {',
+		'    standardInput = System.`in`',
+		'}',
+		'',
+		'tasks.test {',
+		'    useJUnitPlatform()',
+		'}',
+		'',
+	].join('\n');
+}
+
+function javaGradleInstructions(files: Files): string[] {
+	const tests = Object.keys(files).some((p) => JAVA_TESTS.test(p) && p.endsWith('.java'));
+	return [
+		`## Build and run\n\nWith Gradle 9 or later and a JDK ${JAVA_RELEASE} or later:\n\n\`\`\`sh\ngradle run -q --console=plain\n\`\`\`\n\n\`gradle wrapper\` adds \`./gradlew\`, which pins Gradle for everyone who builds the project.`,
+		...(tests ? [`## Test\n\nThe tests use JUnit ${JUNIT_VERSION}:\n\n\`\`\`sh\ngradle test\n\`\`\``] : []),
+		'## Editors\n\nIntelliJ IDEA, Eclipse and VS Code (with the Extension Pack for Java) open the folder and import `build.gradle.kts`.',
+	];
+}
+
 // ---- Kotlin: Gradle
 
 /** The Kotlin Gradle plugin, and so the Kotlin, the download builds with. */
@@ -1119,7 +1764,7 @@ export function kotlinMainClass(files: Files, entry: string): string {
  * instead of Gradle downloading another.
  */
 export function buildGradleKts(files: Files, entry: string): string {
-	const kt = Object.keys(files).filter((p) => /\.kts?$/.test(p) && !/(^|\/)(build|settings)\.gradle\.kts$/.test(p));
+	const kt = kotlinFiles(files);
 	const gradle = kt.every((p) => p.startsWith('src/main/kotlin/') || p.startsWith('src/test/kotlin/'));
 	const testDir = kt.some((p) => p.startsWith('src/test/kotlin/')) ? 'src/test/kotlin' : kt.some((p) => p.startsWith('tests/')) ? 'tests' : kt.some((p) => p.startsWith('test/')) ? 'test' : 'src/test/kotlin';
 	const layout = gradle
@@ -1167,6 +1812,97 @@ export function buildGradleKts(files: Files, entry: string): string {
 		'}',
 		'',
 	].join('\n');
+}
+
+/** The project's Kotlin files, Gradle's own scripts aside. */
+function kotlinFiles(files: Files): string[] {
+	return Object.keys(files).filter((p) => /\.kts?$/.test(p) && !/(^|\/)(build|settings)\.gradle\.kts$/.test(p));
+}
+
+/**
+ * pom.xml for a Kotlin project in Maven's layout (src/main/kotlin and
+ * src/test/kotlin, as the sample is; the only one the Kotlin Maven plugin
+ * can build, since it cannot leave a folder's tests out of its sources):
+ * Kotlin at the version build.gradle.kts uses, kotlin.test on JUnit 5, and
+ * `mvn exec:exec` running the entry's class with `java`.
+ */
+export function kotlinPomXml(files: Files, entry: string): string {
+	const tests = kotlinFiles(files).some((p) => p.startsWith('src/test/kotlin/'));
+	return [
+		'<?xml version="1.0" encoding="UTF-8"?>',
+		'<!-- Builds the project with the layout it had in Yukibana Light:',
+		`     mvn compile exec:exec${tests ? ', mvn test' : ''} -->`,
+		'<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
+		'         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">',
+		'  <modelVersion>4.0.0</modelVersion>',
+		'  <groupId>yukibana</groupId>',
+		'  <artifactId>kotlin-project</artifactId>',
+		'  <version>0.1.0</version>',
+		'',
+		'  <properties>',
+		`    <kotlin.version>${KOTLIN_VERSION}</kotlin.version>`,
+		'    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>',
+		`    <exec.mainClass>${kotlinMainClass(files, entry)}</exec.mainClass>`,
+		'  </properties>',
+		'',
+		'  <dependencies>',
+		'    <dependency>',
+		'      <groupId>org.jetbrains.kotlin</groupId>',
+		'      <artifactId>kotlin-stdlib</artifactId>',
+		'      <version>${kotlin.version}</version>',
+		'    </dependency>',
+		'    <dependency>',
+		'      <groupId>org.jetbrains.kotlin</groupId>',
+		'      <artifactId>kotlin-test-junit5</artifactId>',
+		'      <version>${kotlin.version}</version>',
+		'      <scope>test</scope>',
+		'    </dependency>',
+		'  </dependencies>',
+		'',
+		'  <build>',
+		'    <sourceDirectory>src/main/kotlin</sourceDirectory>',
+		'    <testSourceDirectory>src/test/kotlin</testSourceDirectory>',
+		'    <plugins>',
+		'      <plugin>',
+		'        <groupId>org.jetbrains.kotlin</groupId>',
+		'        <artifactId>kotlin-maven-plugin</artifactId>',
+		'        <version>${kotlin.version}</version>',
+		'        <!-- Compiles main and test sources in their phases. -->',
+		'        <extensions>true</extensions>',
+		'      </plugin>',
+		'      <plugin>',
+		'        <artifactId>maven-surefire-plugin</artifactId>',
+		'        <version>3.5.6</version>',
+		'      </plugin>',
+		'      <plugin>',
+		'        <groupId>org.codehaus.mojo</groupId>',
+		'        <artifactId>exec-maven-plugin</artifactId>',
+		'        <version>3.6.4</version>',
+		'        <!-- mvn exec:exec runs the program with the JDK that runs Maven, as `java` would. -->',
+		'        <configuration>',
+		'          <executable>${java.home}/bin/java</executable>',
+		'          <inheritIo>true</inheritIo>',
+		'          <arguments>',
+		'            <argument>-classpath</argument>',
+		'            <classpath/>',
+		'            <argument>${exec.mainClass}</argument>',
+		'          </arguments>',
+		'        </configuration>',
+		'      </plugin>',
+		'    </plugins>',
+		'  </build>',
+		'</project>',
+		'',
+	].join('\n');
+}
+
+function kotlinMavenInstructions(files: Files): string[] {
+	const tests = kotlinFiles(files).some((p) => p.startsWith('src/test/kotlin/'));
+	return [
+		`## Build and run\n\nWith Maven 3.9 or later and a JDK 17 or later (Maven downloads Kotlin ${KOTLIN_VERSION}):\n\n\`\`\`sh\nmvn -q compile exec:exec\n\`\`\``,
+		...(tests ? ['## Test\n\nThe tests use kotlin.test on JUnit 5:\n\n```sh\nmvn test\n```'] : []),
+		'## Editors\n\nIntelliJ IDEA opens the folder and imports `pom.xml`; so does VS Code with the Kotlin extension.',
+	];
 }
 
 // ---- Haskell: Cabal
@@ -1308,6 +2044,29 @@ export function haskellCabal(files: Files, entry: string): string {
 	return `${lines.join('\n')}\n`;
 }
 
+/** The Stackage snapshot stack.yaml pins: the newest LTS when this was written (GHC 9.10). */
+const STACK_SNAPSHOT = 'lts-24.65';
+
+/** stack.yaml: the project's .cabal file, built with a Stackage LTS's packages and GHC. */
+function stackYaml(): string {
+	return [
+		'# Stack builds the package haskell-project.cabal describes, with the packages',
+		`# and the GHC of a Stackage snapshot (${STACK_SNAPSHOT}: GHC 9.10; the browser's is 9.14).`,
+		`snapshot: ${STACK_SNAPSHOT}`,
+		'packages:',
+		'  - .',
+		'',
+	].join('\n');
+}
+
+function stackInstructions(files: Files): string[] {
+	return [
+		`## Build and run\n\nWith Stack (GHCup from haskell.org installs it), which downloads the GHC of its snapshot the first time:\n\n\`\`\`sh\nstack run\n\`\`\`\n\nStack uses GHC 9.10 (${STACK_SNAPSHOT}); the browser checks the project with GHC 9.14, so a warning may differ.`,
+		...(haskellTests(files) ? ['## Test\n\nThe tests use hspec:\n\n```sh\nstack test\n```'] : []),
+		'## Editors\n\nVS Code (with the Haskell extension), Emacs, Vim and Zed run the Haskell Language Server, which reads `stack.yaml` and the `.cabal` file; GHCup installs it with `ghcup install hls`.',
+	];
+}
+
 // ---- Every language: README.md and .gitignore
 
 /**
@@ -1409,6 +2168,26 @@ function goTargetSection(env: string): string[] {
 	];
 }
 
+/** Whether a Swift project has tests: .swift files in Tests/. */
+function swiftTests(files: Files): boolean {
+	return Object.keys(files).some((p) => p.startsWith(SWIFT_TESTS) && p.endsWith('.swift'));
+}
+
+/** Whether a Python project has tests pytest collects: test_*.py or *_test.py files. */
+function pythonTests(files: Files): boolean {
+	return Object.keys(files).some((p) => p.endsWith('.py') && /(^|\/)(test_[^/]*|[^/]*_test)\.py$/.test(p));
+}
+
+/** Whether a Haskell project has tests: .hs files in test/ or tests/. */
+function haskellTests(files: Files): boolean {
+	return Object.keys(files).some((p) => HASKELL_TESTS.test(p) && p.endsWith('.hs'));
+}
+
+/** Whether a Zig project has tests: a `test` block in some .zig file. */
+function zigTests(files: Files): boolean {
+	return Object.entries(files).some(([p, t]) => p.endsWith('.zig') && /^\s*test\b/m.test(t));
+}
+
 /** How to build, run and test with each language's tools, as Markdown sections. */
 function instructions(language: Language, files: Files): string[] {
 	const paths = Object.keys(files);
@@ -1417,14 +2196,14 @@ function instructions(language: Language, files: Files): string[] {
 		case 'cpp': {
 			const tests = paths.some((p) => TESTS.test(p) && (CXX.test(p) || C.test(p)));
 			return [
-				`## Build and run\n\nWith CMake 3.16 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake -S . -B build\ncmake --build build\n./build/app\n\`\`\``,
+				`## Build and run\n\nWith CMake 3.16 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake -S . -B build\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
 				...(tests ? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFrameworkOf(files)]}, which CMake downloads the first time it configures the build:\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``] : []),
 				...crossSection(linuxTarget(files)),
 				'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
 			];
 		}
 		case 'swift': {
-			const tests = paths.some((p) => p.startsWith(SWIFT_TESTS) && p.endsWith('.swift'));
+			const tests = swiftTests(files);
 			return [
 				'## Build and run\n\nWith Swift 6 (Xcode 16, or the toolchain from swift.org):\n\n```sh\nswift build\nswift run\n```',
 				...(tests ? ['## Test\n\nThe tests in `Tests/` use XCTest:\n\n```sh\nswift test\n```'] : []),
@@ -1432,7 +2211,7 @@ function instructions(language: Language, files: Files): string[] {
 			];
 		}
 		case 'python': {
-			const tests = paths.some((p) => p.endsWith('.py') && /(^|\/)(test_[^/]*|[^/]*_test)\.py$/.test(p));
+			const tests = pythonTests(files);
 			const hypothesis = usesHypothesis(files);
 			return [
 				`## Run\n\nWith Python 3.12 or later:\n\n\`\`\`sh\npython ${language.entry}\n\`\`\``,
@@ -1443,7 +2222,7 @@ function instructions(language: Language, files: Files): string[] {
 			];
 		}
 		case 'javascript': {
-			const tests = paths.some((p) => /(^|\/)test\//.test(p) || /(^|\/)([^/]+[.\-_]test|test-[^/]*|test)\.m?js$/.test(p));
+			const tests = nodeTests(files, false);
 			return [
 				`## Run\n\nWith Node.js 22 or later:\n\n\`\`\`sh\nnode ${language.entry}     # or: npm start\n\`\`\``,
 				...(tests ? [testSection(files)] : []),
@@ -1451,7 +2230,7 @@ function instructions(language: Language, files: Files): string[] {
 			];
 		}
 		case 'typescript': {
-			const tests = paths.some((p) => /(^|\/)test\//.test(p) || /(^|\/)([^/]+[.\-_]test|test-[^/]*|test)\.m?[jt]s$/.test(p));
+			const tests = nodeTests(files, true);
 			return [
 				`## Run\n\nWith Node.js 22.18 or later, which runs TypeScript by stripping its types (nothing to install):\n\n\`\`\`sh\nnode ${language.entry}     # or: npm start\n\`\`\``,
 				...(tests ? [testSection(files)] : []),
@@ -1500,7 +2279,7 @@ function instructions(language: Language, files: Files): string[] {
 			];
 		}
 		case 'haskell': {
-			const tests = paths.some((p) => HASKELL_TESTS.test(p) && p.endsWith('.hs'));
+			const tests = haskellTests(files);
 			return [
 				'## Build and run\n\nWith GHC 9.4 or later and cabal 3.8 or later (GHCup from haskell.org installs both):\n\n```sh\ncabal run -v0\n```\n\nThe browser checks and runs the project with GHC 9.14 and the flags this build uses (`GHC2021`, `-Wall`), so what it reported there is what GHC reports here.',
 				...(tests ? ['## Test\n\nThe tests use hspec, which cabal downloads the first time:\n\n```sh\ncabal test --test-show-details=direct\n```'] : []),
@@ -1517,7 +2296,7 @@ function instructions(language: Language, files: Files): string[] {
 			];
 		}
 		case 'zig': {
-			const tests = Object.entries(files).some(([p, t]) => p.endsWith('.zig') && /^\s*test\b/m.test(t));
+			const tests = zigTests(files);
 			return [
 				`## Build and run\n\nWith Zig ${ZIG_VERSION} (ziglang.org/download):\n\n\`\`\`sh\nzig build run\n\`\`\``,
 				...(tests ? ['## Test\n\n```sh\nzig build test --summary all\n```'] : []),
@@ -1536,29 +2315,55 @@ function instructions(language: Language, files: Files): string[] {
 	}
 }
 
+/** What the README says about the extras a download has. */
+interface ReadmeExtras {
+	service: CiService | null;
+	jobs: readonly Job[];
+	devcontainer: boolean;
+	gitattributes: boolean;
+}
+
+/** The README's sections on CI, the dev container and line endings, for what the download has. */
+function extrasSections(extras: ReadmeExtras): string[] {
+	const out: string[] = [];
+	if (extras.service) {
+		const jobs = extras.jobs.map((j) => `**${j.name}**`);
+		const listed = jobs.length > 1 ? `${jobs.slice(0, -1).join(', ')} and ${jobs.at(-1)}` : (jobs[0] ?? '');
+		const sourcehut = extras.service.id === 'sourcehut' ? ' In each manifest, replace `~you` with your sr.ht user (and the repository name if it differs); git.sr.ht then runs them on every push.' : '';
+		out.push(`## Continuous integration\n\n\`${extras.service.where}\` runs ${listed} on ${extras.service.label} for every push and pull request, each in the image it names (\`${extras.jobs[0]?.environment.image ?? ''}\`${extras.jobs.some((j) => j.environment.image !== extras.jobs[0]?.environment.image) ? ' and others' : ''}).${sourcehut} The format check fails on a file the formatter would change; run the same formatter on it to fix it.`);
+	}
+	if (extras.devcontainer)
+		out.push('## Dev container\n\n`.devcontainer/` describes a container with the tools to build, test and check this project, the ones CI uses. VS Code (with the Dev Containers extension) offers to reopen the folder in it; GitHub Codespaces and the `devcontainer` CLI use it too.');
+	if (extras.gitattributes)
+		out.push("## Line endings\n\n`.gitattributes` stores every text file with LF line endings and checks it out with LF on every system, whatever `core.autocrlf` is set to, so a clone on Windows needs no setting and builds the same in a container or in CI.");
+	return out;
+}
+
 /**
  * A README for a project that has none: where the project came from, which
- * files were generated (each can be edited or deleted), and how to build,
- * run and test it with the language's own tools.
+ * files were generated (each can be edited or deleted), how to build, run
+ * and test it with the build system's tools, and what its CI, dev container
+ * and .gitattributes do, when it has them.
  */
-function readme(language: Language, files: Files, generated: readonly string[]): string {
+function readme(language: Language, files: Files, generated: readonly string[], build: BuildSystem, extras: ReadmeExtras): string {
 	const others = generated.filter((p) => p !== 'README.md');
 	const quoted = others.map((p) => `\`${p}\``);
 	const listed = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}` : (quoted[0] ?? '');
 	return [
 		`# ${language.label} project`,
 		`Written in Yukibana Light. The files are where they were in the browser${others.length ? `; ${listed} ${others.length === 1 ? 'was' : 'were'} generated when it was downloaded, for the tools below, and can be changed like any other file` : ''}.`,
-		...instructions(language, files),
+		...(build.instructions ?? instructions)(language, files),
+		...extrasSections(extras),
 		'',
 	].join('\n\n');
 }
 
 /** What each language's tools write into the project folder, and editors' own files. */
 const IGNORED: Record<LanguageId, readonly string[]> = {
-	c: ['build/', 'cmake-build-*/', 'out/', '.cache/'],
-	cpp: ['build/', 'cmake-build-*/', 'out/', '.cache/'],
+	c: ['build/', 'build-*/', 'cmake-build-*/', 'out/', '.cache/'],
+	cpp: ['build/', 'build-*/', 'cmake-build-*/', 'out/', '.cache/'],
 	swift: ['.build/', '.swiftpm/', 'xcuserdata/', 'DerivedData/'],
-	python: ['__pycache__/', '*.py[cod]', '.venv/', '.pytest_cache/'],
+	python: ['__pycache__/', '*.py[cod]', '.venv/', '.venv-*/', '.pytest_cache/', '.ruff_cache/'],
 	javascript: ['node_modules/', '.stryker-tmp/', 'reports/'],
 	typescript: ['node_modules/', '.stryker-tmp/', 'reports/'],
 	web: ['node_modules/', 'dist/'],
@@ -1569,11 +2374,13 @@ const IGNORED: Record<LanguageId, readonly string[]> = {
 	rust: ['target/'],
 	java: ['target/', '*.class', '.classpath', '.project', '.settings/', '*.iml'],
 	kotlin: ['build/', '.gradle/', '.kotlin/', '*.class', '*.iml'],
-	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o'],	go: ['*.exe', '*.test', '*.out'],
+	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o'],
+	go: ['*.exe', '*.test', '*.out'],
 	zig: ['zig-out/', '.zig-cache/'],
 };
 
-/** A .gitignore for the build output of the language's tools. */
-function gitignore(language: LanguageId): string {
-	return ['# Build output', ...IGNORED[language], '', '# Editors and systems', '.idea/', '.DS_Store', ''].join('\n');
+/** A .gitignore for the build output of the language's tools and the build system's. */
+function gitignore(language: LanguageId, build: BuildSystem): string {
+	const ignored = [...new Set([...IGNORED[language], ...(build.ignored ?? [])])];
+	return ['# Build output', ...ignored, '', '# Editors and systems', '.idea/', '.DS_Store', ''].join('\n');
 }
