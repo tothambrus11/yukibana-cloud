@@ -7,8 +7,12 @@ test('sha256 of nothing is the well-known digest', async () => {
   assert.deepEqual(fromHex(hex(new Uint8Array([0, 1, 254, 255]))), new Uint8Array([0, 1, 254, 255]));
 });
 
-test('a submission is recognised by its first bytes', () => {
+test('a submission is recognised by its first bytes, and nothing else passes for gzip', () => {
   assert.equal(isGzip(new Uint8Array([0x1f, 0x8b, 8])), true);
+  assert.equal(isGzip(new Uint8Array([0x28, 0xb5, 0x2f, 0xfd])), false, 'a .tar.zst');
+  assert.equal(isGzip(new Uint8Array([0x50, 0x4b, 3, 4])), false, 'a zip');
+  assert.equal(isGzip(new Uint8Array([0x1f])), false, 'one byte');
+  assert.equal(isGzip(new Uint8Array(0)), false, 'nothing');
 });
 
 test('equality does not depend on where the bytes differ', () => {
