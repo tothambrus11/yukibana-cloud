@@ -223,7 +223,7 @@ jobs:
         with:
           subject-path: ${{ steps.archive.outputs.path }}
 
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.archive.outcome == 'success' || steps.earlier.outputs.path != ''
         with:
           name: toolchain-${{ env.PACK }}-${{ env.UNIT_NAME }}-${{ inputs.key }}

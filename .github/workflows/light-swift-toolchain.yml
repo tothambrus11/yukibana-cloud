@@ -233,7 +233,7 @@ jobs:
           done
           ls -la out
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7.0.2
         if: steps.pipeline.outputs.complete == 'true'
         with:
           name: swift-toolchain-wasm-${{ env.SWIFT_VERSION }}${{ env.SWIFT_MACROS != '1' && '-nomacros' || '' }}
