@@ -1,7 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
-  import { kb, local, when } from '#lib/format.ts';
+  import { kb, when } from '#lib/format.ts';
+  import { viewer } from '#lib/viewer.svelte.ts';
+  import { local } from '#lib/wall-time.ts';
   import { ideUrl } from '#lib/ide.ts';
   import { hold, live, refresh } from '#lib/live.svelte.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
@@ -25,6 +27,11 @@
         ...(submissions ? [{ id: 'submissions', label: 'My submissions', count: data.submissions.length }] : []),
       ]);
   const tab = $derived(tabOf(page.url, tabs));
+  const times = $derived([
+    ['available_after', 'Opens', p.available_after],
+    ['deadline', 'Deadline', p.deadline],
+    ['closes_at', 'Closes', p.closes_at],
+  ] as const);
   const pastDeadline = $derived(p.deadline !== null && new Date(p.deadline).getTime() <= Date.now());
   const students = $derived(new Set(data.submissions.map((s) => s.author_id)).size);
   const late = $derived(data.submissions.filter((s) => s.late).length);
@@ -76,9 +83,9 @@
   <section>
     <h2>Dates</h2>
     <div class="stats">
-      <div><strong>{when(p.available_after)}</strong><span>Opens</span></div>
-      <div><strong>{when(p.deadline)}</strong><span>Deadline</span></div>
-      <div><strong>{p.closes_at === null ? 'Never' : when(p.closes_at)}</strong><span>Closes</span></div>
+      <div><strong>{when(p.available_after, viewer.zone)}</strong><span>Opens</span></div>
+      <div><strong>{when(p.deadline, viewer.zone)}</strong><span>Deadline</span></div>
+      <div><strong>{p.closes_at === null ? 'Never' : when(p.closes_at, viewer.zone)}</strong><span>Closes</span></div>
     </div>
     {#if submissions}
       <p class="note">
@@ -151,7 +158,7 @@
                 {#if data.staff}
                   <td>{s.full_name ?? ''} {#if s.github_login}<span class="muted">@{s.github_login}</span>{/if}</td>
                 {/if}
-                <td>{when(s.submitted_at)}{#if s.late} <span class="chip late">late</span>{/if}</td>
+                <td>{when(s.submitted_at, viewer.zone)}{#if s.late} <span class="chip late">late</span>{/if}</td>
                 {#if data.staff}
                   <td>{#if s.base_id === null}<span class="muted">unknown</span>{:else}{#if s.base}{s.base} {/if}<code>{s.base_id}</code>{#if s.base_is_live} <span class="chip live">live</span>{/if}{/if}</td>
                 {/if}
@@ -182,7 +189,7 @@
           <tbody>
             {#each data.releases as r, i (r.release_id)}
               <tr>
-                <td>{when(r.uploaded_at)}{#if i === 0} <span class="chip live">live</span>{/if}</td>
+                <td>{when(r.uploaded_at, viewer.zone)}{#if i === 0} <span class="chip live">live</span>{/if}</td>
                 <td>{r.label}</td>
                 <td><code>{r.commit_sha?.slice(0, 12) ?? '—'}</code></td>
                 <td>{r.uploader ?? ''}{#if r.via_token} <span class="chip">token</span>{/if}</td>
@@ -229,8 +236,8 @@ YUKIBANA_URL     {data.origin}</pre>
             {#each data.tokens as t (t.token_id)}
               <tr>
                 <td>{t.label}</td>
-                <td>{when(t.created_at)}</td>
-                <td>{#if t.revoked_at}<span class="chip">revoked</span>{:else}{when(t.last_used_at)}{/if}</td>
+                <td>{when(t.created_at, viewer.zone)}</td>
+                <td>{#if t.revoked_at}<span class="chip">revoked</span>{:else}{when(t.last_used_at, viewer.zone)}{/if}</td>
                 <td>
                   {#if !t.revoked_at}
                     <form method="POST" action={actionIn('tokens', 'revokeToken')} class="inline">
@@ -266,9 +273,15 @@ YUKIBANA_URL     {data.origin}</pre>
     {#key p}
       <form method="POST" action={actionIn('settings', 'update')} class="stack" oninput={() => (editing = true)} onsubmit={() => (saving = true)}>
         <label>Title <input name="title" value={p.title} required /></label>
-        <label>Opens <input type="datetime-local" name="available_after" value={local(p.available_after)} /></label>
-        <label>Deadline <input type="datetime-local" name="deadline" value={local(p.deadline)} /></label>
-        <label>Closes <input type="datetime-local" name="closes_at" value={local(p.closes_at)} /></label>
+        <!-- The zone the times below are written in, and the instants they
+             were written from: the action reads the times in that zone, and
+             keeps an instant whose time nobody changed (#lib/wall-time). -->
+        <input type="hidden" name="zone" value={viewer.zone} />
+        {#each times as [name, label, at] (name)}
+          <input type="hidden" name="{name}_was" value={at === null ? '' : new Date(at).toISOString()} />
+          <label>{label} <input type="datetime-local" {name} value={local(at, viewer.zone)} /></label>
+        {/each}
+        <p class="note">Times are in {viewer.zone}{viewer.zone === 'UTC' ? '' : ', this browser’s time zone'}.</p>
         <button>Save</button>
       </form>
     {/key}
