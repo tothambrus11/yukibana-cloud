@@ -34,10 +34,20 @@ export function uriOf(path: string): monaco.Uri {
 	return monaco.Uri.parse(WORKSPACE.uriOf(path));
 }
 
-/** One line of the output panel. */
+/**
+ * Who wrote a line of the Log panel: the language server (its own messages
+ * and what the client says about it), a run's side channel (the guest
+ * kernel, timings, a runner that broke the contract), or the app. The panel
+ * shows it beside each line, so nothing there reads as the program's own
+ * output, which only the terminal shows.
+ */
+export type LogSource = 'server' | 'run' | 'app';
+
+/** One line of the Log panel. */
 export interface LogLine {
 	id: number;
 	level: LogLevel;
+	source: LogSource;
 	text: string;
 	time: Date;
 }
@@ -69,8 +79,8 @@ export interface EditorHost {
 	closeAll(): void;
 	/** Brings the terminal panel to the front. */
 	showTerminal(): void;
-	/** Brings the Output or Problems panel to the front: the status bar's server menu and problem counts. */
-	showPanel(id: 'output' | 'problems'): void;
+	/** Brings the Log or Problems panel to the front: the status bar's server menu and problem counts. */
+	showPanel(id: 'log' | 'problems'): void;
 	/** Opens the Preview panel (a web project's page), creating it the first time. */
 	showPreview(): void;
 	/** Closes the Preview panel, if it is open. */
@@ -95,7 +105,7 @@ const SAVE_DELAY_MS = 400;
 /**
  * The longest link the URL is given, in characters. Chromium takes 2 MB
  * and Firefox about 1 MB; past this a project is still saved in the
- * browser, but its link is left as it was, and the output panel says so.
+ * browser, but its link is left as it was, and the Log panel says so.
  */
 const MAX_LINK = 1_000_000;
 const MAX_LOG_LINES = 2000;
@@ -164,12 +174,12 @@ export class Workspace {
 	/**
 	 * The program run from this project, if any, and the terminal's
 	 * contents. The guest kernel's log and the run's timings go to the
-	 * Output panel.
+	 * Log panel.
 	 */
 	readonly runner = new Runner({
-		kernel: (line) => this.write('log', `[kernel] ${line}`),
-		mark: (name, ms) => this.write('log', `timing: ${name} ${(ms / 1000).toFixed(2)} s`),
-		problem: (text) => this.write('warning', text),
+		kernel: (line) => this.write('log', `[kernel] ${line}`, 'run'),
+		mark: (name, ms) => this.write('log', `timing: ${name} ${(ms / 1000).toFixed(2)} s`, 'run'),
+		problem: (text) => this.write('warning', text, 'run'),
 	});
 	/**
 	 * The compiler output views' client (languages with views, explore-views.ts), loaded
@@ -220,7 +230,7 @@ export class Workspace {
 	private written: string | null = null;
 	/** Whether the last write of the URL put the project there: false when it was too large or failed, and the URL is older. */
 	private linkCurrent = false;
-	/** Whether the output panel already said that this project is too large for its link. */
+	/** Whether the Log panel already said that this project is too large for its link. */
 	private tooLongSaid = false;
 	/** Bumped by every language switch, so a switch overtaken by a later one is skipped. */
 	private generation = 0;
@@ -297,7 +307,7 @@ export class Workspace {
 	/**
 	 * The link to this tab's project as it is now, for Share: whoever opens
 	 * it gets a copy of their own. Null when the project is too large for a
-	 * link (the output panel says so).
+	 * link (the Log panel says so).
 	 */
 	async shareLink(): Promise<string | null> {
 		clearTimeout(this.saveTimer);
@@ -401,8 +411,8 @@ export class Workspace {
 		else void this.showView(kind);
 	}
 
-	/** Brings the Output or Problems panel to the front. */
-	showPanel(id: 'output' | 'problems'): void {
+	/** Brings the Log or Problems panel to the front. */
+	showPanel(id: 'log' | 'problems'): void {
 		this.host?.showPanel(id);
 	}
 
@@ -436,7 +446,7 @@ export class Workspace {
 	/**
 	 * Puts a C or C++ project on target `id` (cpp-targets.ts): compile_flags.txt
 	 * is rewritten (or created) as one edit, which Undo takes back, then
-	 * saved; clangd, Run and the views follow the file. The output panel
+	 * saved; clangd, Run and the views follow the file. The Log panel
 	 * says what changed.
 	 */
 	chooseTarget(id: CppTargetId): void {
@@ -454,7 +464,7 @@ export class Workspace {
 	 * (cpp-sanitizers.ts): compile_flags.txt's -fsanitize= line is
 	 * rewritten (or the file created) as one edit, which Undo takes back,
 	 * then saved; clangd, Run, Test, the views and Download follow the file.
-	 * The output panel says what changed.
+	 * The Log panel says what changed.
 	 */
 	chooseSanitizers(choice: SanitizerChoice): void {
 		if (!isCFamily(this.language)) return;
@@ -469,7 +479,7 @@ export class Workspace {
 	 * For C and C++ compile_flags.txt's `-O` line is rewritten (or the file
 	 * created) as one edit, which Undo takes back, so clangd, Run and the
 	 * views follow the file; for Swift and Scala the level is saved with the
-	 * project and goes with Run (and Test). The output panel says what changed.
+	 * project and goes with Run (and Test). The Log panel says what changed.
 	 */
 	chooseOptimization(flag: string): void {
 		const levels = levelsOf(this.language);
@@ -494,7 +504,7 @@ export class Workspace {
 	 * compile_flags.txt's `-std=` line for the project's language is
 	 * rewritten (removed for `'default'`, or the file created) as one edit,
 	 * which Undo takes back, then saved; clangd, Run, the views and Download
-	 * follow the file. The output panel says what changed.
+	 * follow the file. The Log panel says what changed.
 	 */
 	chooseStandard(choice: { standard: Standard; gnu: boolean } | 'default'): void {
 		const language = this.language;
@@ -550,7 +560,7 @@ export class Workspace {
 	 * Downloads the project as `<language>-project.zip`, for an IDE: its files
 	 * as last edited and its empty folders, in a folder of the same name, plus
 	 * the build files, README and .gitignore it lacks (export.ts). Says in the
-	 * output panel what was generated.
+	 * Log panel what was generated.
 	 */
 	async download(): Promise<void> {
 		const language = languageOf(this.language);
@@ -580,7 +590,7 @@ export class Workspace {
 	/**
 	 * Switches a C++ project's tests to `framework` (cpp-tests.ts): the
 	 * sample's tests are rewritten for it, or a sample test file is added,
-	 * and the output panel says which. Each rewritten file changes as one
+	 * and the Log panel says which. Each rewritten file changes as one
 	 * edit of its own, which Undo in that file takes back without touching
 	 * what was typed before it. (It once skipped the undo stops, so Undo
 	 * merged the switch with the user's last typing and took both back.)
@@ -711,9 +721,9 @@ export class Workspace {
 		return [...all].sort();
 	}
 
-	/** Writes a line to the output panel. */
-	write(level: LogLevel, text: string): void {
-		const line = { id: this.logId++, level, text, time: new Date() };
+	/** Writes a line to the Log panel, as `source` (the app's own, unless named). */
+	write(level: LogLevel, text: string, source: LogSource = 'app'): void {
+		const line = { id: this.logId++, level, source, text, time: new Date() };
 		this.log = this.log.length >= MAX_LOG_LINES ? [...this.log.slice(-MAX_LOG_LINES + 1), line] : [...this.log, line];
 	}
 
@@ -858,7 +868,7 @@ export class Workspace {
 				loading: (p) => {
 					if (this.client === client) this.progress = p;
 				},
-				log: (level, text) => this.write(level, text),
+				log: (level, text) => this.write(level, text, 'server'),
 				open: (uri, selection) => {
 					const path = WORKSPACE.pathOf(uri);
 					if (path && this.models.has(path)) this.host?.open(path, selection);

@@ -61,7 +61,7 @@ export function signalMessage(n) {
  * @returns {string}
  */
 export function vmFailureMessage(started, why) {
-    return `The VM stopped before the program ${started ? 'finished' : 'started'} (${why}); see the kernel log in the Output panel.`;
+    return `The VM stopped before the program ${started ? 'finished' : 'started'} (${why}); see the kernel log in the Log panel.`;
 }
 
 /**

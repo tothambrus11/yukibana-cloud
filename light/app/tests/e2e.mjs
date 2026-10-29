@@ -146,7 +146,7 @@ async function run(language, c) {
 	const statusText = (await status.textContent())?.trim();
 	check(started && !/failed/.test(statusText ?? ''), `server running (${statusText}) after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 	if (!started || /failed/.test(statusText ?? '')) {
-		console.log((await page.locator('.output .lines').textContent())?.slice(-1500));
+		console.log((await page.locator('.log-panel .lines').textContent())?.slice(-1500));
 		await page.close();
 		return;
 	}
@@ -591,9 +591,9 @@ async function savedOptimization(page, check, language) {
 	const off = await picker.locator('option:disabled').evaluateAll((options) => options.map((o) => o.value));
 	check(off.join() === disabled.join(), `levels not available yet are disabled (${off.join(', ') || 'none'})`);
 	await chooseSetting(page, picker, choose);
-	await page.locator('.dv-tab .dock-tab', { hasText: /^Output$/ }).first().click();
-	const said = await page.waitForFunction((t) => [...document.querySelectorAll('.output')].some((o) => o.textContent?.includes(t)), saying, { timeout: 5_000 }).then(() => true, () => false);
-	check(said, 'choosing a level says so in the output panel');
+	await page.locator('.dv-tab .dock-tab', { hasText: /^Log$/ }).first().click();
+	const said = await page.waitForFunction((t) => [...document.querySelectorAll('.log-panel')].some((o) => o.textContent?.includes(t)), saying, { timeout: 5_000 }).then(() => true, () => false);
+	check(said, 'choosing a level says so in the Log panel');
 	await page.waitForTimeout(1500);
 	await page.reload();
 	const kept = await page.locator('header .optimization select').waitFor({ state: 'attached', timeout: 60_000 }).then(async () => (await picker.inputValue()) === choose, () => false);

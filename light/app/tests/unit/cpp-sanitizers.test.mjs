@@ -60,7 +60,7 @@ test("the pack's runner reads the menu's lines as the same sanitizers, and fetch
 		}
 });
 
-test('the output panel names the sanitizers on and the line that says so', () => {
+test('the Log panel names the sanitizers on and the line that says so', () => {
 	assert.equal(describeSanitizers(off), 'Sanitizers: off (no -fsanitize= line in compile_flags.txt).');
 	assert.match(describeSanitizers({ address: true, undefined: true }), /^Sanitizers: AddressSanitizer and UndefinedBehaviorSanitizer \(-fsanitize=address,undefined in compile_flags\.txt\)\./);
 	assert.deepEqual(SANITIZERS.map((s) => s.id), ['address', 'undefined']);

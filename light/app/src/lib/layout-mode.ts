@@ -5,13 +5,13 @@
  * Three modes, by the dock element's width:
  *
  * - `wide` (1600 px and up): Explorer │ editors │ [views] │ a right column
- *   with [Preview] above Terminal, Output and Problems.
+ *   with [Preview] above Terminal, Log and Problems.
  * - `medium` (900 to 1599 px): the Explorer down the left; above, the
  *   editors and [views or Preview]; below them, across both, Terminal,
- *   Output and Problems (VS Code's arrangement).
+ *   Log and Problems (VS Code's arrangement).
  * - `narrow` (under 900 px): the editors on top, and one bottom group
  *   whose tab strip is the pane switcher: Files, [Preview], Terminal,
- *   Output, Problems, [Call Hierarchy], [LLVM IR, Assembly].
+ *   Log, Problems, [Call Hierarchy], [LLVM IR, Assembly].
  *
  * Imports nothing, so `node` can load this file directly.
  */
@@ -60,7 +60,7 @@ export type PanelKind = 'editor-area' | 'explorer' | 'terminal' | 'view' | 'prev
  * What a placement can be relative to, as dock.ts names its panels and
  * groups: `editor-area` is the editors' group, `views` the group of the
  * open LLVM IR or Assembly view, `terminal` the group that holds Terminal,
- * Output and Problems (in narrow mode, the bottom group), `problems` the
+ * Log and Problems (in narrow mode, the bottom group), `problems` the
  * Problems panel, `preview` the Preview panel.
  */
 export type Reference = 'editor-area' | 'views' | 'terminal' | 'problems' | 'preview';

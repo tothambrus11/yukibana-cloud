@@ -45,7 +45,7 @@ only when a project needs it (the JavaScript pack, p5.js's declarations
 once a file imports `p5` or names `p5/global`); the bar shows until `loaded` reaches `total`.
 
 A pack sends `window/logMessage` for its own log lines and stderr; the app
-shows them in an output panel.
+shows them in an Log panel.
 
 ## Files
 
@@ -239,7 +239,7 @@ runner may send these to an app that does not show them):
                                              // in the terminal, between its output
 { type: 'kernel', text: string }             // an emulated machine's console: the guest kernel's
                                              // log and the emulator's own messages; the app writes
-                                             // it to the Output panel a line at a time, as
+                                             // it to the Log panel a line at a time, as
                                              // "[kernel] <line>"
 { type: 'mark', name: string, ms: number }   // a timing, ms since the run message arrived; the app
                                              // writes "timing: <name> <seconds> s" to the Output
@@ -250,7 +250,7 @@ runner may send these to an app that does not show them):
 A program that ends by a signal exits with 128 + the signal's number (139
 for SIGSEGV), after "Terminated by signal 11 (SIGSEGV)" on stderr; an
 emulated machine that fails exits 1, after saying on stderr that the
-guest kernel's log is in the Output panel. The app adds no note of its
+guest kernel's log is in the Log panel. The app adds no note of its
 own to a non-zero code: the guest kernel may print messages
 while a program that exits 5 on purpose runs fine.
 
@@ -259,7 +259,7 @@ The types, and guards that read these messages as data, are in
 every message a runner posts through them: the runner is the worker the
 user's program runs in, so a message may be anything. One the contract
 does not allow (no `type`, or a known type with a wrong field) is named in
-the app's Output panel and ignored; one of a type the app does not know is
+the app's Log panel and ignored; one of a type the app does not know is
 ignored without a word.
 
 ## Output

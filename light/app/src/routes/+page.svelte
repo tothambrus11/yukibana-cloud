@@ -281,7 +281,7 @@
 	</button>
 	<Popover bind:this={serverMenu} id="server-menu" label="Language server" role="menu" class="server-menu">
 		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), void workspace.restartServer())}>Restart language server</button>
-		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), workspace.showPanel('output'))}>Show output</button>
+		<button class="menu-item" role="menuitem" onclick={() => (serverMenu?.hide(), workspace.showPanel('log'))}>Show log</button>
 	</Popover>
 	{#if isCFamily(workspace.language) && summary}
 		<button class="build-summary-button" onclick={(e) => openBuildSettings(e.currentTarget)} title="Build settings: {summary}"><span class="truncate">{summary}</span></button>
@@ -526,7 +526,7 @@
 	 * The bar's own buttons, its children only: the server menu's Popover is
 	 * rendered inside the footer, and `.status-bar button` once matched its
 	 * menu items too, made them inline and laid them side by side, with
-	 * "Show output" off the edge of the menu.
+	 * "Show log" off the edge of the menu.
 	 */
 	.status-bar > button {
 		display: inline-flex;

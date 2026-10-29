@@ -192,7 +192,7 @@ async function open() {
 	const errors = [];
 	page.on('pageerror', (e) => errors.push(e.message));
 	// The runner's timing marks and exit codes, as its worker posts them to
-	// the page (the Output panel shows the marks only while it is in front).
+	// the page (the Log panel shows the marks only while it is in front).
 	await page.addInitScript(() => {
 		const Native = globalThis.Worker;
 		globalThis.ykMarks = [];
@@ -305,7 +305,7 @@ async function runOptions(page, { emulation, cpus, strace }) {
 /**
  * Runs main.cpp holding `source` and waits for the run to end. Returns the
  * terminal's status and text, the wall time from the click, the timing
- * marks the run wrote to the Output panel, and the files it fetched.
+ * marks the run wrote to the Log panel, and the files it fetched.
  */
 async function run(s, source, timeout = 600_000) {
 	const { page, responses } = s;
