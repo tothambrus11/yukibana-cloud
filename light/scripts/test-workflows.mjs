@@ -623,27 +623,34 @@ test('a light-v release is published only once every asset is attached', () => {
     assert.match(run, /gh release create [^\n]*--draft/);
     assert.ok(run.indexOf('--draft=false') > run.indexOf('gh release create'), 'published after the draft is made');
     assert.match(String(publish.if), ON_TAG);
-    assert.doesNotMatch(String(publish.if), /yukibana-light/, 'a branch push publishes no release');
+    assert.doesNotMatch(String(publish.if), /refs\/heads\//, 'a branch push publishes no release');
 });
 
-test('a push to yukibana-light deploys, one deploy at a time, and builds no slow pack to do it', () => {
-    // The integration branch goes live at light.yukibana.dev on every push
-    // that changes Light, as a tag does; the stores are main's only, so a
-    // deploy that built what they lack would build compilers for hours.
+test('main deploys on a push and after its packs are stored, one deploy at a time, and builds no slow pack to do it', () => {
+    // Light on main goes live at light.yukibana.dev on every push that
+    // changes it, as a tag does, and again once light-packs.yml has stored
+    // what that push changed; a deploy that built what the store lacks
+    // would build compilers for hours.
     const push = /** @type {{ tags?: string[], branches?: string[], paths?: string[] }} */ (releaseWorkflow.on.push);
     assert.deepEqual(push.tags, ['light-v*']);
-    assert.deepEqual(push.branches, ['yukibana-light']);
+    assert.deepEqual(push.branches, ['main']);
     for (const p of ['light/**', '.github/workflows/light-release.yml', '.github/workflows/light-packs.yml']) assert.ok(push.paths?.includes(p), `${p} is not in on.push.paths`);
+    const after = /** @type {{ workflows?: string[], types?: string[], branches?: string[] }} */ (releaseWorkflow.on.workflow_run);
+    assert.deepEqual(after.workflows, [String(/** @type {any} */ (workflow).name)], 'the deploy after the packs names light-packs.yml');
+    assert.deepEqual(after.types, ['completed']);
+    assert.deepEqual(after.branches, ['main']);
     const deploy = /** @type {Job & { concurrency?: Record<string, unknown>, environment?: Record<string, string> }} */ (releaseWorkflow.jobs.deploy);
     assert.match(String(deploy.if), ON_TAG);
-    assert.match(String(deploy.if), /github\.ref == 'refs\/heads\/yukibana-light'/);
+    assert.match(String(deploy.if), /github\.ref == 'refs\/heads\/main'/);
     assert.match(String(deploy.if), /github\.event_name == 'push'/, 'a run by hand deploys nothing');
+    assert.match(String(deploy.if), /github\.event\.workflow_run\.conclusion == 'success'/, 'a failed packs run deploys nothing');
     assert.deepEqual(deploy.concurrency, { group: 'light-deploy', 'cancel-in-progress': false });
     assert.equal(deploy.environment?.name, 'light');
-    // The branch's packs run takes stored builds; a tag's does not.
+    // A deploy's packs run takes stored builds; a tag's does not.
     const packs = /** @type {Job} */ (releaseWorkflow.jobs.packs);
     assert.equal(packs.with?.upload, true);
-    assert.equal(packs.with?.stored, "${{ github.event_name == 'push' && github.ref == 'refs/heads/yukibana-light' }}");
+    assert.equal(packs.with?.stored, "${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_run' }}");
+    assert.equal(packs.if, "${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}");
     // With `stored`, a pack the store lacks is its newest stored build, and
     // nothing in the pack job builds.
     const pack = stepsOf(/** @type {Job} */ (jobs.pack));

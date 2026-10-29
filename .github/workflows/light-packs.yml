@@ -53,14 +53,14 @@
 # (light/packs/stub), which proves the unit machinery on every run, is
 # never in one.
 #
-# The deploy rule. light-release.yml's run for a push to a branch (the
-# integration branch yukibana-light, deployed to light.yukibana.dev) also
+# The deploy rule. light-release.yml's deploy from main (a push, or this
+# workflow's green run on main; deployed to light.yukibana.dev) also
 # passes `stored: true`, and such a run never builds a pack either: an
 # unsplit pack whose sources the store lacks is the store's newest build of
 # that pack (`pack-store.sh fetch <pack> --any`), said as a warning and in
 # the job's summary, and its toolchain-key file names the tree that build
-# came from, not HEAD's. The stores are written on main only, so a branch
-# that changes a pack would otherwise build it, for hours, on every push. A
+# came from, not HEAD's. The deploy would otherwise build a changed pack, for
+# hours, while this workflow's own run builds and stores it. A
 # pack the store has no build of at all fails by name. The exception is a
 # pack whose matrix entry says `deploy-builds` (javascript, about two
 # minutes; kotlin, at most twenty): a deploy builds this commit's when the
