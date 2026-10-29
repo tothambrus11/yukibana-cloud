@@ -21,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
 };
 
 /** A submission: the archive as the request body, `Content-Type:
- *  application/zstd`, with the session as a bearer token or a cookie.
+ *  application/gzip`, with the session as a bearer token or a cookie.
  *  `?release=<id>` is the release the student's folder started from, as
  *  its yukibana.json says (see `acceptSubmission`). This
  *  is what an IDE extension calls. The body is read whole: the cap is small

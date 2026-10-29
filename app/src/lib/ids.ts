@@ -39,7 +39,7 @@ export const trustKey = (value: string): ObjectKey => value as ObjectKey;
 /** A key for a submission body. One prefix per kind of object, so a bucket
  *  listing sorts by what things are, and a lifecycle rule can tell them apart. */
 export const submissionKey = (submission: SubmissionId): ObjectKey =>
-  `submissions/${submission}.tar.zst` as ObjectKey;
+  `submissions/${submission}.tar.gz` as ObjectKey;
 
 /** A key for a release's starter: what students download. `object` is a
  *  fresh random id, not the release id: the object is stored before the row

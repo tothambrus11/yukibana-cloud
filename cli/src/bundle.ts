@@ -11,7 +11,7 @@
 import { planSubmission } from './lib/pack.js';
 import { writeTar, type Entry, type EntryType } from './lib/tar.js';
 import { CONFIG_FILE, parseConfig, type Config } from './lib/yukibana.js';
-import { zstd } from './lib/zstd.js';
+import { gzip } from './lib/gzip.js';
 import { readTree } from './tree.js';
 
 /** One file of a bundle, as a preview lists it. */
@@ -51,8 +51,8 @@ export interface SubmissionBundle {
    *  bytes are what will be sent; decoding them for display is the
    *  caller's business. */
   read(path: string): Uint8Array | undefined;
-  /** The archive the registry receives: a tar of the files, compressed
-   *  with zstandard. Made once and remembered. */
+  /** The archive the registry receives: a tar of the files, gzipped. Made
+   *  once and remembered. */
   archive(): Promise<Uint8Array>;
 }
 
@@ -102,7 +102,7 @@ export function bundleOf(tree: readonly Entry[]): BundleResult {
       problems,
       totalBytes,
       read: (path) => byPath.get(path),
-      archive: () => (archived ??= writeTar(packing.entries).then(zstd)),
+      archive: () => (archived ??= writeTar(packing.entries).then(gzip)),
     },
   };
 }

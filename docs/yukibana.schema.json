@@ -147,8 +147,8 @@
           }
         },
         "filename": {
-          "description": "What a packed submission is called on disk. The registry accepts a zstandard-compressed tar, whatever the name says.",
-          "default": "submission.tar.zst",
+          "description": "What a packed submission is called on disk. The registry accepts a gzipped tar, whatever the name says.",
+          "default": "submission.tar.gz",
           "type": "string"
         },
         "maxBytes": {

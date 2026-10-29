@@ -47,7 +47,7 @@ holds **projects**, a project has **releases** and **submissions**.
 * `audit_log` is a row for every write a `security definer` function made.
 
 Object keys are `starters/<project>/<uuid>.tar.gz`,
-`teacher/<project>/<uuid>.tar.gz` and `submissions/<submission>.tar.zst`
+`teacher/<project>/<uuid>.tar.gz` and `submissions/<submission>.tar.gz`
 (`app/src/lib/ids.ts`).
 
 ### Inside the Worker
@@ -142,7 +142,8 @@ Object keys are `starters/<project>/<uuid>.tar.gz`,
   same policies as the first load.
 * **The CLI and the registry share nothing but the HTTP API.** The archives
   are made by the CLI before they arrive, by pure functions in `cli/src/lib`;
-  the registry checks they are gzip or zstd and under a cap, and stores them.
+  the registry checks they are gzip and under a cap, and stores them
+  without opening them. Every archive is a `.tar.gz`.
 
 ### The flows that cross every element
 
@@ -156,7 +157,7 @@ both objects, then records the release through `app.publish_release` or
 deleted, and a failure to delete is reported as an orphan.
 
 **Submitting.** The CLI or the IDE packs the student's folder with the same
-library function into a `.tar.zst` and posts it to
+library function into a `.tar.gz` and posts it to
 `/api/projects/<id>/submissions`; the upload form on the project page ends
 in the same function, `acceptSubmission`. The Worker asks `app.can_submit`, so a closed window is refused before the
 upload is stored, writes the object, then inserts the row as the student

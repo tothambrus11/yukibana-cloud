@@ -33,7 +33,7 @@ test('every rejection names the field the teacher has to fix', () => {
   assert.match(bad('{"version":1,"kind":"rust-cargo","layout":{"widgets":{"files":1}}}'), /"layout.widgets"/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","openFiles":[1]}'), /"openFiles"/);
   assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"exclude":["/abs"]}}'), /"submission.exclude" paths are relative/);
-  assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"filename":"a/b.tar.zst"}}'), /"submission.filename"/);
+  assert.match(bad('{"version":1,"kind":"rust-cargo","submission":{"filename":"a/b.tar.gz"}}'), /"submission.filename"/);
 });
 
 test('the IDE settings from the example file are a valid project, with the defaults filled in', () => {

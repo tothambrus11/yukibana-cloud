@@ -5,7 +5,7 @@
 
 import { error } from '@sveltejs/kit';
 import type { Claims } from '#lib/claims.ts';
-import { isZstd, sha256 } from '#lib/bytes.ts';
+import { isGzip, sha256 } from '#lib/bytes.ts';
 import { submissionKey, trustId, trustKey, type ObjectKey, type ProjectId, type ReleaseId, type SubmissionId } from '#lib/ids.ts';
 import { report } from '#lib/report.ts';
 import { NOT_ACCEPTING, refusalMessage, type RefusalRow } from '#lib/refusal.ts';
@@ -34,7 +34,7 @@ export interface Accepted {
 export async function acceptSubmission(ctx: Context, claims: Claims, project: ProjectId, body: Uint8Array, base: ReleaseId | null): Promise<Accepted> {
   if (body.byteLength === 0) error(400, 'The submission is empty.');
   if (body.byteLength > ctx.config.submissionMaxBytes) error(413, `The submission is larger than ${ctx.config.submissionMaxBytes} bytes.`);
-  if (!isZstd(body)) error(415, 'A submission is a .tar.zst archive.');
+  if (!isGzip(body)) error(415, 'A submission is a .tar.gz archive.');
 
   const refused = await refusal(ctx, claims, project);
   if (refused !== null) error(403, refused);
@@ -58,7 +58,7 @@ export async function recordSubmission(ctx: Context, claims: Claims, project: Pr
   const digest = await sha256(body);
   const id = crypto.randomUUID() as SubmissionId; // a v4 is fine here: the key needs to be unguessable, not sortable
   const key = submissionKey(id);
-  await ctx.bucket.put(key, body, 'application/zstd');
+  await ctx.bucket.put(key, body, 'application/gzip');
 
   let stored: boolean;
   try {
@@ -134,7 +134,7 @@ export async function submissionUrl(ctx: Context, claims: Claims, submission: Su
   });
   if (row === null) error(404, 'No such submission.');
   const stamp = row.submitted_at.toISOString().replace(/[:.]/g, '-');
-  return ctx.bucket.presignGet(trustKey(row.object_key), 60, `${row.slug}-${row.login ?? 'student'}-${stamp}.tar.zst`);
+  return ctx.bucket.presignGet(trustKey(row.object_key), 60, `${row.slug}-${row.login ?? 'student'}-${stamp}.tar.gz`);
 }
 
 /** A URL for the caller to download `project`'s starter, if they may and

@@ -138,7 +138,7 @@ export const actions: Actions = {
     const { project } = ids(event.params);
     const form = await event.request.formData();
     const file = form.get('archive');
-    if (!(file instanceof File)) return fail(400, { error: 'Choose a .tar.zst file.' });
+    if (!(file instanceof File)) return fail(400, { error: 'Choose a .tar.gz file.' });
     const bytes = new Uint8Array(await file.arrayBuffer());
     try {
       const accepted = await withContext((ctx) => acceptSubmission(ctx, claims, project, bytes, null));

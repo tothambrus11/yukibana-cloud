@@ -25,14 +25,10 @@ export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
   return diff === 0;
 }
 
-/** Whether these bytes begin a zstandard frame: what a submission must be.
- *  The Worker cannot decompress zstd, so the magic number is all it checks;
- *  the archive is opened by whoever grades it. */
-export function isZstd(bytes: Uint8Array): boolean {
-  return bytes.length >= 4 && bytes[0] === 0x28 && bytes[1] === 0xb5 && bytes[2] === 0x2f && bytes[3] === 0xfd;
-}
-
-/** Whether these bytes begin a gzip member. */
+/** `true` iff these bytes begin a gzip member, as every archive must.
+ *
+ *  The registry never opens an archive: this check is all it does, and
+ *  whoever grades a submission opens it. */
 export function isGzip(bytes: Uint8Array): boolean {
   return bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 }
