@@ -20,6 +20,22 @@ test('a field of the wrong type is refused with a sentence that names it', () =>
   assert.throws(() => decodeProject('nothing'), /the registry answered project as something other than an object/);
 });
 
+test('an answer with several wrong fields names every one of them', () => {
+  assert.throws(
+    () => decodeProject({ ...project, deadline: 5, role: 'janitor' }),
+    new Unexpected('the registry answered project.deadline as number, not text; the registry answered project.role as "janitor", not a role'),
+  );
+});
+
+test('an answer with every field wrong names every one of them, none left for a second run', () => {
+  const allWrong = Object.fromEntries(Object.keys(project).map((k) => [k, Symbol(k)]));
+  assert.throws(() => decodeProject(allWrong), (e: unknown) => {
+    const message = e instanceof Error ? e.message : '';
+    for (const field of Object.keys(project)) assert.ok(message.includes(`project.${field} as`), field);
+    return true;
+  });
+});
+
 test('an error inside a list names the item and the field', () => {
   const submission = { submissionId: 's', projectId: 'p', submittedAt: 't', byteSize: 1, sha256: 'ab', latest: true, late: false, baseReleaseId: null, author: { userId: 'u' } };
   const list = decodeList(decodeSubmission, 'submissions');

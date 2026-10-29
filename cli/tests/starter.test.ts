@@ -15,7 +15,7 @@ async function fixture(): Promise<Entry[]> {
 }
 
 test('the starter keeps the sources and drops the hidden tests, the CI, the build output and the history', async () => {
-  const plan = planStarter(await fixture(), 'calc', 'p-1', null);
+  const plan = planStarter(await fixture(), 'calc', '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null);
   assert.deepEqual(plan.problems, []);
   const paths = plan.entries.map((e) => e.path);
   assert.equal(paths[0], 'calc', 'the folder comes first');
@@ -30,11 +30,11 @@ test('the starter keeps the sources and drops the hidden tests, the CI, the buil
 });
 
 test('the starter carries its own yukibana.json with the project id and without the hidden list', async () => {
-  const plan = planStarter(await fixture(), 'calc', 'p-1', null);
+  const plan = planStarter(await fixture(), 'calc', '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null);
   const cfg = plan.entries.find((e) => e.path === 'calc/yukibana.json');
   assert.ok(cfg);
   const parsed = JSON.parse(new TextDecoder().decode(cfg.data)) as Record<string, unknown>;
-  assert.equal(parsed['projectId'], 'p-1');
+  assert.equal(parsed['projectId'], '01a0b563-aeff-7c42-ae73-5aab2f2b5a01');
   assert.equal(parsed['hidden'], undefined);
   assert.equal(plan.entries.filter((e) => e.path.endsWith('yukibana.json')).length, 1, 'the original is not also there');
 });
@@ -82,7 +82,7 @@ test('the IDE\'s own state is in neither archive: everything it needs is declare
 });
 
 test('the starter\'s yukibana.json names the release it will be published as', async () => {
-  const plan = planStarter(await fixture(), 'calc', 'p-1', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
+  const plan = planStarter(await fixture(), 'calc', '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
   const cfg = plan.entries.find((e) => e.path === 'calc/yukibana.json');
   assert.ok(cfg);
   const parsed = JSON.parse(new TextDecoder().decode(cfg.data)) as Record<string, unknown>;

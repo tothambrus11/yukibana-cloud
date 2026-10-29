@@ -12,7 +12,7 @@ const text = (s: string) => new TextEncoder().encode(s);
 const file = (path: string, body: string): Entry => ({ path, type: 'file', mode: 0o644, mtime: 1, data: text(body) });
 const dir = (path: string): Entry => ({ path, type: 'dir', mode: 0o755, mtime: 1, data: new Uint8Array(0) });
 const config = (extra: Record<string, unknown> = {}) =>
-  file('yukibana.json', JSON.stringify({ version: 1, kind: 'scala-sbt', projectId: 'p-1', submission: { exclude: ['notes'] }, ...extra }));
+  file('yukibana.json', JSON.stringify({ version: 1, kind: 'scala-sbt', projectId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', submission: { exclude: ['notes'] }, ...extra }));
 
 test('a bundle lists what would be sent and leaves out history, IDE state, build output and what the project excludes', () => {
   const made = bundleOf([
@@ -24,7 +24,7 @@ test('a bundle lists what would be sent and leaves out history, IDE state, build
   const { bundle } = made;
   assert.deepEqual(bundle.files.map((f) => f.path), ['yukibana.json', 'build.sbt', 'src/Main.scala']);
   assert.deepEqual(bundle.skipped.toSorted(), ['.git/', '.metals/', '.theia/', 'notes', 'target/'], 'a folder left out whole is listed once');
-  assert.equal(bundle.projectId, 'p-1');
+  assert.equal(bundle.projectId, '01a0b563-aeff-7c42-ae73-5aab2f2b5a01');
   assert.deepEqual(bundle.problems, []);
   assert.equal(new TextDecoder().decode(bundle.read('src/Main.scala')), 'object Main', 'a preview reads the bytes that will be sent');
   assert.equal(bundle.read('notes'), undefined, 'and nothing that will not');
@@ -59,7 +59,7 @@ test('a folder without a config is not a submission; one too large or with an es
 
 test('a bundle is made from a folder on disk the same way', async () => {
   const root = await mkdtemp(join(tmpdir(), 'yukibana-bundle-'));
-  await writeFile(join(root, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'rust-cargo', projectId: 'p-2' }));
+  await writeFile(join(root, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'rust-cargo', projectId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a02' }));
   await mkdir(join(root, 'src'));
   await writeFile(join(root, 'src/lib.rs'), 'fn x() {}');
   await mkdir(join(root, 'target'));
@@ -120,7 +120,7 @@ test('yukibana.json is submitted even when a .gitignore names it', () => {
 
 test('a folder on disk that the rules leave out is never entered, and the bundle is the same as from memory', async () => {
   const root = await mkdtemp(join(tmpdir(), 'yukibana-bundle-'));
-  await writeFile(join(root, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'rust-cargo', projectId: 'p-3' }));
+  await writeFile(join(root, 'yukibana.json'), JSON.stringify({ version: 1, kind: 'rust-cargo', projectId: '01a0b563-aeff-7c42-ae73-5aab2f2b5a03' }));
   await writeFile(join(root, '.gitignore'), 'scratch/\n');
   await mkdir(join(root, 'scratch/deep'), { recursive: true });
   await writeFile(join(root, 'scratch/deep/big.bin'), 'x');

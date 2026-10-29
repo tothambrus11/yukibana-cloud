@@ -4,10 +4,14 @@ The contract between a course repository and Yukibana. It lives at the
 project root, and it is read by two programs: the student's IDE (our Theia
 fork), for how the workspace looks and which files are read-only, and the
 CLI, for what a student must never receive and what a submission holds.
-`docs/yukibana.schema.json` is the JSON Schema.
+Its JSON Schema is generated from the parser's own schema into
+`docs/yukibana.schema.json` and served at
+`https://cloud.yukibana.dev/schema/yukibana.json`; name it as `$schema` and
+an editor checks the file as you type.
 
 ```json
 {
+  "$schema": "https://cloud.yukibana.dev/schema/yukibana.json",
   "version": 1,
   "kind": "scala-sbt",
   "features": { "codeSuggestions": true, "squiggles": true, "ai": false },
@@ -36,7 +40,7 @@ CLI, for what a student must never receive and what a submission holds.
 | `submission.target` | no | Where the IDE sends a submission: `cloud`, the registry (the default), or `file`, an archive the student saves. The CLI always sends to the registry. |
 | `submission.filename` | no | What `yukibana pack` calls the archive it writes (into a fresh folder under the system's temporary directory, unless told `--out`). Default `submission.tar.gz`. The bytes are always a gzipped tar, whatever the name. |
 | `submission.maxBytes` | no | The largest submission this project expects. Default 32 MiB; the registry has its own cap above which this cannot go. |
-| `projectId` | no | Written by `publish` (or `build --project`) into the starter's copy, so `yukibana submit` and the IDE know where a submission from that folder goes without the student choosing. A course repository leaves it out; a starter built without a project has none, and its students name the project when they submit. The registry does not trust it: a submission is accepted only where the student's enrolment allows. |
+| `projectId` | no | A uuidv7, as the registry makes them. Written by `publish` (or `build --project`, which refuses anything else) into the starter's copy, so `yukibana submit` and the IDE know where a submission from that folder goes without the student choosing. A course repository leaves it out; a starter built without a project has none, and its students name the project when they submit. The registry does not trust it: a submission is accepted only where the student's enrolment allows. |
 | `releaseId` | no | Written by `publish` and `build` into the starter's copy: the release this starter is. The CLI chooses the id before building and the release row is given the same one, so it cannot name a different release however late a student downloads. `submit` and the IDE send it with the submission. The registry keeps it only when it is a release of the same project, and grading uses it to tell what the student changed from what a later release changed. A course repository leaves it out. |
 
 Globs are relative to the project root. `*` stays inside a path segment, `**`
