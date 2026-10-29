@@ -415,7 +415,7 @@ async function cFamilySettings(page, check, language, requests) {
 
 	// The standard.
 	const flags = (await modelText(page, 'compile_flags.txt')) ?? '';
-	const [from, to] = language === 'c' ? ['c17', 'c23'] : ['c++20', 'c++23'];
+	const [from, to] = language === 'c' ? ['c23', 'c17'] : ['c++23', 'c++20'];
 	const standard = page.locator('#build-settings .row.standard select');
 	await chooseSetting(page, standard, to);
 	check((await modelText(page, 'compile_flags.txt')) === flags.replace(`-std=${from}`, `-std=${to}`), `choosing ${to} rewrites the -std= line (${JSON.stringify(await modelText(page, 'compile_flags.txt'))})`);

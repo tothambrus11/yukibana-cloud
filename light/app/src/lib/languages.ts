@@ -92,7 +92,14 @@ export const shortLabel = (language: Language): string => language.short ?? lang
  * numbers, do-while, recursion, public data members, [[nodiscard]] on every
  * getter, trailing return types, gsl::owner, printf's varargs (the samples
  * print with printf), indexing with a variable, short names, uppercase
- * literal suffixes and parentheses around arithmetic. Each line is a glob,
+ * literal suffixes, parentheses around arithmetic, and designated
+ * initializers for every aggregate (`Point{.x = 1, .y = 2}` for a pair).
+ * The sample is C++23, so modernize-use-std-print would move printf to
+ * std::println; it is off because <print> costs a compile in the browser
+ * about 3.5 s more at -O2 (1.2 s at -O0) and the object 170 KB, on every
+ * Run (measured with the pack's clang 21). A check that needs a newer
+ * standard than the project's is skipped by clang-tidy itself
+ * (isLanguageVersionSupported), so these rules suit any -std=. Each line is a glob,
  * the last one that matches a check deciding, as clang-tidy reads them; the
  * rule editor (tidy-config.ts) rewrites the list and keeps the rest of the
  * file.
@@ -117,7 +124,9 @@ Checks: >-
   -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
   modernize-*,
+  -modernize-use-designated-initializers,
   -modernize-use-nodiscard,
+  -modernize-use-std-print,
   -modernize-use-trailing-return-type,
   performance-*,
   portability-*,
@@ -712,7 +721,7 @@ function draw() {
 	{
 		// C on the C++ pack: the same clangd, compilers, sysroot and runner,
 		// downloaded once for both (pack). What makes it C is its files
-		// (.c), its -std=c17 in compile_flags.txt and its headers, which the
+		// (.c), its -std=c23 in compile_flags.txt and its headers, which the
 		// pack's server parses as C for a C project (packs/cpp/src/server.js,
 		// rootConfig). Tests would be C++ (GoogleTest, Catch2 and doctest are
 		// C++ frameworks) compiled with this project's C flags, so it has none.
@@ -765,7 +774,7 @@ double point_distance(struct point a, struct point b) {
     return hypot(a.x - b.x, a.y - b.y);
 }
 `,
-			'compile_flags.txt': `-std=c17
+			'compile_flags.txt': `-std=c23
 -Wall
 -Wextra
 -I.
@@ -843,7 +852,7 @@ TEST(Geometry, DistanceToItselfIsZero) {
     EXPECT_EQ(distance(a, a), 0.0);
 }
 `,
-			'compile_flags.txt': `-std=c++20
+			'compile_flags.txt': `-std=c++23
 -Wall
 -Wextra
 -I.
