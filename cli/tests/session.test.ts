@@ -21,7 +21,15 @@ test('a login sends the browser to GitHub through the Auth server with a challen
   assert.equal(url.searchParams.get('code_challenge_method'), 's256');
 
   const session = await pending.finish(new URL('http://127.0.0.1:4242/callback?code=abc'));
-  assert.deepEqual(session, { url: 'https://cloud.example', supabaseUrl: 'https://auth.example', publishableKey: 'pk', accessToken: 'at', refreshToken: 'rt', expiresAt: 2000, email: 'ada@uni.example' });
+  assert.deepEqual(session, {
+    url: 'https://cloud.example',
+    supabaseUrl: 'https://auth.example',
+    publishableKey: 'pk',
+    accessToken: 'at',
+    refreshToken: 'rt',
+    expiresAt: 2000,
+    email: 'ada@uni.example',
+  });
   const exchange = seen[1];
   assert.ok(exchange);
   assert.equal(exchange.url, 'https://auth.example/auth/v1/token?grant_type=pkce');
@@ -36,13 +44,21 @@ test('a login the person declined says why, and a bare code is accepted as one',
   assert.equal(codeOf('abc123'), 'abc123');
 });
 
-const session = (expiresAt: number): Session => ({ url: 'https://cloud.example', supabaseUrl: 'https://auth.example', publishableKey: 'pk', accessToken: `at-${expiresAt}`, refreshToken: `rt-${expiresAt}`, expiresAt, email: null });
+const session = (expiresAt: number): Session => ({
+  url: 'https://cloud.example',
+  supabaseUrl: 'https://auth.example',
+  publishableKey: 'pk',
+  accessToken: `at-${expiresAt}`,
+  refreshToken: `rt-${expiresAt}`,
+  expiresAt,
+  email: null,
+});
 
 test('a token with time left is used as it is; one about to expire is refreshed once, saved, and shared by concurrent callers', async () => {
   let refreshes = 0;
   const fetchFn: typeof fetch = async () => {
     refreshes++;
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise(r => setTimeout(r, 10));
     return json({ access_token: 'fresh', refresh_token: 'rt2', expires_at: 5000 });
   };
   const store = memoryStore(session(1030));
@@ -67,14 +83,16 @@ test('without a session, or with one the Auth server will not renew, the answer 
  *  reads its `email` for display. */
 const jwt = (claims: Record<string, unknown>): string => `h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`;
 
-const connecting = (seen: Request[], token = jwt({ sub: 'u', email: 'ada@uni.example' })): typeof fetch => async (input, init) => {
-  const req = new Request(input, init);
-  seen.push(req);
-  if (req.url.endsWith('/api/auth/config')) return json({ supabaseUrl: 'https://auth.example', publishableKey: 'pk', oauthClientId: 'client-1' });
-  return json({ access_token: token, refresh_token: 'rt', expires_in: 3600, token_type: 'bearer' });
-};
+const connecting =
+  (seen: Request[], token = jwt({ sub: 'u', email: 'ada@uni.example' })): typeof fetch =>
+  async (input, init) => {
+    const req = new Request(input, init);
+    seen.push(req);
+    if (req.url.endsWith('/api/auth/config')) return json({ supabaseUrl: 'https://auth.example', publishableKey: 'pk', oauthClientId: 'client-1' });
+    return json({ access_token: token, refresh_token: 'rt', expires_in: 3600, token_type: 'bearer' });
+  };
 
-test('with an OAuth client, a loopback login goes through the website\'s connect page, and the code is traded at the OAuth server with the verifier', async () => {
+test("with an OAuth client, a loopback login goes through the website's connect page, and the code is traded at the OAuth server with the verifier", async () => {
   const seen: Request[] = [];
   const pending = await startLogin('https://cloud.example/some/page', 'http://127.0.0.1:4242/callback', connecting(seen));
   const url = pending.authorizeUrl;
@@ -97,12 +115,12 @@ test('with an OAuth client, a loopback login goes through the website\'s connect
   assert.equal(sent.get('grant_type'), 'authorization_code');
   assert.equal(sent.get('code'), 'abc');
   assert.equal(sent.get('client_id'), 'client-1');
-  assert.equal(sent.get('redirect_uri'), 'https://cloud.example/auth/connect/return', 'the client\'s one redirect URI, which the code was issued for');
+  assert.equal(sent.get('redirect_uri'), 'https://cloud.example/auth/connect/return', "the client's one redirect URI, which the code was issued for");
   assert.equal(challengeOf(sent.get('code_verifier') ?? ''), url.searchParams.get('code_challenge'));
   assert.equal(sent.get('client_secret'), null, 'a public client has no secret to send');
 });
 
-test('a code or an error that comes back without this request\'s state is not acted on: nothing is traded, and no refusal is believed', async () => {
+test("a code or an error that comes back without this request's state is not acted on: nothing is traded, and no refusal is believed", async () => {
   const seen: Request[] = [];
   const pending = await startLogin('https://cloud.example', 'http://127.0.0.1:4242/callback', connecting(seen));
   for (const stray of [
@@ -111,17 +129,19 @@ test('a code or an error that comes back without this request\'s state is not ac
     'abc',
     'http://127.0.0.1:4242/callback?error=access_denied&error_description=Forged',
     'http://127.0.0.1:4242/callback?error=access_denied&error_description=Forged&state=wrong',
-  ]) await assert.rejects(pending.finish(stray), /without this request's state/, stray);
+  ])
+    await assert.rejects(pending.finish(stray), /without this request's state/, stray);
   assert.equal(seen.length, 1, 'nothing was sent to the Auth server');
   assert.equal(pending.state, pending.authorizeUrl.searchParams.get('state'));
 });
 
-test('the connect page and the code\'s redirect URI are on the site the registry names, which may not be the address asked', async () => {
+test("the connect page and the code's redirect URI are on the site the registry names, which may not be the address asked", async () => {
   const seen: Request[] = [];
   const fetchFn: typeof fetch = async (input, init) => {
     const req = new Request(input, init);
     seen.push(req);
-    if (req.url.endsWith('/api/auth/config')) return json({ supabaseUrl: 'https://auth.example', publishableKey: 'pk', oauthClientId: 'client-1', siteUrl: 'https://cloud.example' });
+    if (req.url.endsWith('/api/auth/config'))
+      return json({ supabaseUrl: 'https://auth.example', publishableKey: 'pk', oauthClientId: 'client-1', siteUrl: 'https://cloud.example' });
     return json({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 });
   };
   const pending = await startLogin('https://yukibana.workers.example', 'http://127.0.0.1:4242/callback', fetchFn);
@@ -159,7 +179,7 @@ test('a session from the website refreshes at the OAuth server naming its client
   assert.equal('clientId' in old, false);
 });
 
-test('logging out ends this session only, not the website or the person\'s other machines', async () => {
+test("logging out ends this session only, not the website or the person's other machines", async () => {
   const seen: Request[] = [];
   const fetchFn: typeof fetch = async (input, init) => {
     seen.push(new Request(input, init));
@@ -182,7 +202,10 @@ test('a session idle past its hour is renewed first, so the logout has a live to
     return new Response(null, { status: 204 });
   };
   assert.deepEqual(await logout(memoryStore(session(900)), fetchFn, () => 1000), { revoked: true, why: null });
-  assert.deepEqual(seen.map((r) => new URL(r.url).pathname), ['/auth/v1/token', '/auth/v1/logout']);
+  assert.deepEqual(
+    seen.map(r => new URL(r.url).pathname),
+    ['/auth/v1/token', '/auth/v1/logout'],
+  );
   assert.equal(seen[1]?.headers.get('authorization'), 'Bearer fresh');
 });
 
@@ -191,7 +214,9 @@ test('a logout the Auth server did not carry out says why, and still forgets the
   const store = memoryStore(session(5000));
   assert.deepEqual(await logout(store, refused, () => 1000), { revoked: false, why: 'the Auth server answered 401' });
   assert.equal(await store.load(), null);
-  const unreachable: typeof fetch = async () => { throw new Error('timed out'); };
+  const unreachable: typeof fetch = async () => {
+    throw new Error('timed out');
+  };
   assert.match((await logout(memoryStore(session(5000)), unreachable, () => 1000)).why ?? '', /could not be reached \(timed out\)/);
   assert.match((await logout(memoryStore(session(900)), unreachable, () => 1000)).why ?? '', /could not be renewed/);
   assert.deepEqual(await logout(memoryStore()), { revoked: false, why: 'nobody was logged in' });

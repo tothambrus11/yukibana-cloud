@@ -17,26 +17,26 @@ async function fixture(): Promise<Entry[]> {
 test('the starter keeps the sources and drops the hidden tests, the CI, the build output and the history', async () => {
   const plan = planStarter(await fixture(), 'calc', '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null);
   assert.deepEqual(plan.problems, []);
-  const paths = plan.entries.map((e) => e.path);
+  const paths = plan.entries.map(e => e.path);
   assert.equal(paths[0], 'calc', 'the folder comes first');
   assert.ok(paths.includes('calc/Cargo.toml'));
   assert.ok(paths.includes('calc/src/lib.rs'));
   assert.ok(paths.includes('calc/tests/public.rs'));
   assert.ok(paths.includes('calc/run.sh'));
-  assert.ok(!paths.some((p) => p.includes('tests/hidden')), 'nothing hidden');
-  assert.ok(!paths.some((p) => p.includes('.github')), 'no CI');
-  assert.ok(!paths.some((p) => p.includes('target')), 'no build output');
+  assert.ok(!paths.some(p => p.includes('tests/hidden')), 'nothing hidden');
+  assert.ok(!paths.some(p => p.includes('.github')), 'no CI');
+  assert.ok(!paths.some(p => p.includes('target')), 'no build output');
   assert.deepEqual(plan.hidden, ['tests/hidden/secret.rs']);
 });
 
 test('the starter carries its own yukibana.json with the project id and without the hidden list', async () => {
   const plan = planStarter(await fixture(), 'calc', '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', null);
-  const cfg = plan.entries.find((e) => e.path === 'calc/yukibana.json');
+  const cfg = plan.entries.find(e => e.path === 'calc/yukibana.json');
   assert.ok(cfg);
   const parsed = JSON.parse(new TextDecoder().decode(cfg.data)) as Record<string, unknown>;
   assert.equal(parsed['projectId'], '01a0b563-aeff-7c42-ae73-5aab2f2b5a01');
   assert.equal(parsed['hidden'], undefined);
-  assert.equal(plan.entries.filter((e) => e.path.endsWith('yukibana.json')).length, 1, 'the original is not also there');
+  assert.equal(plan.entries.filter(e => e.path.endsWith('yukibana.json')).length, 1, 'the original is not also there');
 });
 
 test('a repository without the contract, or with a broken one, is a failed build with a reason', () => {
@@ -50,7 +50,9 @@ test('a repository without the contract, or with a broken one, is a failed build
 test('hidden paths that match nothing are a problem: a typo would otherwise ship the tests', () => {
   const plan = planStarter(
     [file('yukibana.json', '{"version":1,"kind":"rust-cargo","hidden":["test/hiden"]}'), file('Cargo.toml', ''), dir('tests/hidden'), file('tests/hidden/s.rs', '')],
-    'x', 'p', null,
+    'x',
+    'p',
+    null,
   );
   assert.equal(plan.problems.length, 1);
   assert.match(plan.problems[0] ?? '', /nothing in the repository matches/);
@@ -59,31 +61,43 @@ test('hidden paths that match nothing are a problem: a typo would otherwise ship
 test('a symlink pointing out of the tree is refused; one inside is kept', () => {
   const link = (path: string, target: string): Entry => ({ path, type: 'symlink', mode: 0o777, mtime: 1, data: new Uint8Array(0), linkTarget: target });
   const plan = planStarter(
-    [file('yukibana.json', '{"version":1,"kind":"scala-sbt"}'), file('build.sbt', ''), link('docs/readme', '../README.md'), link('escape', '../../etc/passwd'), link('abs', '/etc/passwd')],
-    'x', 'p', null,
+    [
+      file('yukibana.json', '{"version":1,"kind":"scala-sbt"}'),
+      file('build.sbt', ''),
+      link('docs/readme', '../README.md'),
+      link('escape', '../../etc/passwd'),
+      link('abs', '/etc/passwd'),
+    ],
+    'x',
+    'p',
+    null,
   );
   assert.equal(plan.problems.length, 2);
-  assert.ok(plan.entries.some((e) => e.path === 'x/docs/readme'));
-  assert.ok(!plan.entries.some((e) => e.path === 'x/escape'));
+  assert.ok(plan.entries.some(e => e.path === 'x/docs/readme'));
+  assert.ok(!plan.entries.some(e => e.path === 'x/escape'));
 });
 
-test('the IDE\'s own state is in neither archive: everything it needs is declared in yukibana.json', () => {
+test("the IDE's own state is in neither archive: everything it needs is declared in yukibana.json", () => {
   const tree = [
-    file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["README.md"]}'), file('build.sbt', ''),
-    dir('.theia'), file('.theia/settings.json', '{}'), dir('.metals'), file('.metals/x', ''),
+    file('yukibana.json', '{"version":1,"kind":"scala-sbt","readOnly":["README.md"]}'),
+    file('build.sbt', ''),
+    dir('.theia'),
+    file('.theia/settings.json', '{}'),
+    dir('.metals'),
+    file('.metals/x', ''),
   ];
   const plan = planStarter(tree, 'x', 'p', null);
   assert.deepEqual(plan.problems, []);
-  assert.ok(!plan.entries.some((e) => e.path.includes('.theia') || e.path.includes('.metals')));
+  assert.ok(!plan.entries.some(e => e.path.includes('.theia') || e.path.includes('.metals')));
   assert.ok(plan.config);
   const teacher = planTeacher(tree, 'x', plan.config);
-  assert.ok(!teacher.some((e) => e.path.includes('.theia') || e.path.includes('.metals')));
-  assert.ok(teacher.some((e) => e.path === 'x/yukibana.json'));
+  assert.ok(!teacher.some(e => e.path.includes('.theia') || e.path.includes('.metals')));
+  assert.ok(teacher.some(e => e.path === 'x/yukibana.json'));
 });
 
-test('the starter\'s yukibana.json names the release it will be published as', async () => {
+test("the starter's yukibana.json names the release it will be published as", async () => {
   const plan = planStarter(await fixture(), 'calc', '01a0b563-aeff-7c42-ae73-5aab2f2b5a01', '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');
-  const cfg = plan.entries.find((e) => e.path === 'calc/yukibana.json');
+  const cfg = plan.entries.find(e => e.path === 'calc/yukibana.json');
   assert.ok(cfg);
   const parsed = JSON.parse(new TextDecoder().decode(cfg.data)) as Record<string, unknown>;
   assert.equal(parsed['releaseId'], '01a0b563-aeff-7c42-ae73-5aab2f2b5a5c');

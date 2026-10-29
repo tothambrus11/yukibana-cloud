@@ -15,16 +15,23 @@ export const load: LayoutServerLoad = async ({ locals }) => {
   const claims = locals.claims;
   if (claims === null) return { user: null, live: null };
   const config = workerConfig();
-  const memberships = await withContext((ctx) =>
-    asUser(ctx.sql, claims, (tx) => tx<{ edition_id: EditionId; role: EditionRole }[]>`
-      select edition_id, role::text as role from enrollment where user_id = ${claims.sub}`),
+  const memberships = await withContext(ctx =>
+    asUser(
+      ctx.sql,
+      claims,
+      tx => tx<{ edition_id: EditionId; role: EditionRole }[]>`
+      select edition_id, role::text as role from enrollment where user_id = ${claims.sub}`,
+    ),
   );
   return {
     user: { id: claims.sub, email: claims.email },
     live: {
       url: config.supabaseUrl,
       key: config.supabasePublishableKey,
-      topics: topicsFor(claims.sub, memberships.map((m) => ({ editionId: m.edition_id, role: m.role }))),
+      topics: topicsFor(
+        claims.sub,
+        memberships.map(m => ({ editionId: m.edition_id, role: m.role })),
+      ),
     },
   };
 };

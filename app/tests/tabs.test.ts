@@ -1,7 +1,10 @@
 import { test, expect } from 'vitest';
 import { actionIn, tabOf } from '../src/lib/tabs';
 
-const tabs = [{ id: 'projects', label: 'Projects' }, { id: 'roster', label: 'Roster' }];
+const tabs = [
+  { id: 'projects', label: 'Projects' },
+  { id: 'roster', label: 'Roster' },
+];
 const at = (q: string) => new URL(`https://cloud.example/editions/x${q}`);
 
 test('a page opens on its first tab, and on the one its address names', () => {

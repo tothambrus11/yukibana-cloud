@@ -50,14 +50,14 @@ test('an archive sent without the id still counts when its own yukibana.json nam
   assert.equal(c.grade, V2);
 });
 
-test('a claim naming another project\'s release is ignored and said out loud', () => {
+test("a claim naming another project's release is ignored and said out loud", () => {
   const c = chooseReleases(releases, 'own', null, ELSEWHERE);
   assert.equal(c.base, null);
   assert.equal(c.grade, V3);
   assert.match(c.notes[0] ?? '', /not a release of this project/);
 });
 
-test('when the archive and the registry disagree, the registry\'s record wins and the teacher is told', () => {
+test("when the archive and the registry disagree, the registry's record wins and the teacher is told", () => {
   const c = chooseReleases(releases, 'own', V1.releaseId, V2.releaseId);
   assert.equal(c.base, V1);
   assert.match(c.notes[0] ?? '', /sent as started from v1 \(00000000-0000-7000-8000-000000000001\), but its yukibana.json names 00000000-0000-7000-8000-000000000002;/);

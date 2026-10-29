@@ -20,12 +20,5 @@
     "skipLibCheck": true,
     "types": ["$app/types", "vite/client"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.svelte",
-    "tests/**/*.ts",
-    "vite.config.ts",
-    "vitest.config.ts",
-    "vitest.integration.config.ts"
-  ]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "vite.config.ts", "vitest.config.ts", "vitest.integration.config.ts"]
 }

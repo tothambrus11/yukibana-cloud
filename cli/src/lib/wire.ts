@@ -151,17 +151,43 @@ const role = z.enum(['student', 'assistant', 'owner']);
 const me = z.object({ userId: text, email: maybeText, fullName: maybeText, githubLogin: maybeText, platformRole: text });
 const edition = z.object({ editionId: text, courseCode: text, courseTitle: text, label: text, archived: z.boolean(), role });
 const project = z.object({
-  projectId: text, editionId: text, courseCode: text, editionLabel: text, slug: text, title: text, kind: text,
-  availableAfter: maybeText, deadline: maybeText, closesAt: maybeText, late: z.boolean(), role,
-  starterReady: z.boolean(), canSubmit: z.boolean(), mySubmissions: count, myLastSubmittedAt: maybeText,
+  projectId: text,
+  editionId: text,
+  courseCode: text,
+  editionLabel: text,
+  slug: text,
+  title: text,
+  kind: text,
+  availableAfter: maybeText,
+  deadline: maybeText,
+  closesAt: maybeText,
+  late: z.boolean(),
+  role,
+  starterReady: z.boolean(),
+  canSubmit: z.boolean(),
+  mySubmissions: count,
+  myLastSubmittedAt: maybeText,
 });
 const submission = z.object({
-  submissionId: text, projectId: text, submittedAt: text, byteSize: count, sha256: text, latest: z.boolean(), late: z.boolean(),
+  submissionId: text,
+  projectId: text,
+  submittedAt: text,
+  byteSize: count,
+  sha256: text,
+  latest: z.boolean(),
+  late: z.boolean(),
   baseReleaseId: maybeText,
   author: z.object({ userId: text, fullName: maybeText, githubLogin: maybeText, email: maybeText }),
 });
 const release = z.object({
-  releaseId: text, label: text, commit: maybeText, starterSize: count, teacherSize: count, uploadedAt: text, uploadedBy: maybeText, viaToken: z.boolean(),
+  releaseId: text,
+  label: text,
+  commit: maybeText,
+  starterSize: count,
+  teacherSize: count,
+  uploadedAt: text,
+  uploadedBy: maybeText,
+  viaToken: z.boolean(),
 });
 const member = z.object({ email: text, role, source: text, userId: maybeText, fullName: maybeText, githubLogin: maybeText });
 const accepted = z.object({ submissionId: text, byteSize: count, sha256: text });
@@ -174,7 +200,7 @@ const authConfig = z.object({ supabaseUrl: text, publishableKey: text, oauthClie
 function decode<T>(schema: z.ZodType<T>, v: unknown, where: string): T {
   const parsed = schema.safeParse(v);
   if (parsed.success) return parsed.data;
-  throw new Unexpected(parsed.error.issues.map((issue) => answered(issue, v, where)).join('; '));
+  throw new Unexpected(parsed.error.issues.map(issue => answered(issue, v, where)).join('; '));
 }
 
 /** Returns what `issue` found in `v`, naming the field from `where` down
@@ -212,7 +238,9 @@ export const decodeAuthConfig = (v: unknown, where = 'auth config'): AuthConfig 
 
 /** Returns a decoder of a list whose items `item` decodes, each named
  *  `where[i]` in an error. */
-export const decodeList = <T>(item: (v: unknown, where: string) => T, where: string) => (v: unknown): T[] => {
-  if (!Array.isArray(v)) throw new Unexpected(`the registry answered ${where} as something other than a list`);
-  return v.map((x: unknown, i) => item(x, `${where}[${i}]`));
-};
+export const decodeList =
+  <T>(item: (v: unknown, where: string) => T, where: string) =>
+  (v: unknown): T[] => {
+    if (!Array.isArray(v)) throw new Unexpected(`the registry answered ${where} as something other than a list`);
+    return v.map((x: unknown, i) => item(x, `${where}[${i}]`));
+  };

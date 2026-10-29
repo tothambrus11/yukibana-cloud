@@ -8,11 +8,11 @@ import { text, uuidIn } from '#lib/server/form.ts';
 
 /** The project's releases, newest first. Staff only, by the table's
  *  policy; a student gets an empty list. */
-export const GET: RequestHandler = async (event) => {
+export const GET: RequestHandler = async event => {
   const claims = requireClaims(event);
   const project = uuidOf<ProjectId>(event.params.project);
   if (project === null) error(404, 'No such project.');
-  return json(await withContext((ctx) => answering('api/releases', () => releases(ctx, claims, project))));
+  return json(await withContext(ctx => answering('api/releases', () => releases(ctx, claims, project))));
 };
 
 /** A release: multipart with `starter` and `teacher` (both .tar.gz), an
@@ -31,13 +31,12 @@ export const GET: RequestHandler = async (event) => {
  *  project's. The project page has no upload of its own any more (see
  *  docs/design.md): a release's id travels inside its starter, and only the
  *  CLI writes it there. */
-export const POST: RequestHandler = async (event) => {
+export const POST: RequestHandler = async event => {
   const project = uuidOf<ProjectId>(event.params.project);
   if (project === null) error(404, 'No such project.');
   const token = event.request.headers.get('authorization')?.match(/^Bearer\s+(yk_[0-9a-f]{64})$/i)?.[1];
-  const by: Publisher = token !== undefined
-    ? { kind: 'token', secret: token }
-    : { kind: 'user', claims: event.request.headers.has('authorization') ? requireBearer(event) : bearerMissing() };
+  const by: Publisher =
+    token !== undefined ? { kind: 'token', secret: token } : { kind: 'user', claims: event.request.headers.has('authorization') ? requireBearer(event) : bearerMissing() };
 
   const form = await event.request.formData().catch(() => null);
   if (form === null) error(400, 'Send the two archives as multipart form data.');
@@ -48,9 +47,7 @@ export const POST: RequestHandler = async (event) => {
   // The archives are read whole; the cap in wrangler.jsonc keeps that sane.
   const starterBytes = new Uint8Array(await starter.arrayBuffer());
   const teacherBytes = new Uint8Array(await teacher.arrayBuffer());
-  const published = await withContext((ctx) =>
-    publishRelease(ctx, by, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null, release),
-  );
+  const published = await withContext(ctx => publishRelease(ctx, by, project, starterBytes, teacherBytes, text(form, 'label'), text(form, 'commit') || null, release));
   return json(published, { status: 201 });
 };
 

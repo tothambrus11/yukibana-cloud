@@ -8,9 +8,23 @@ const H = 60 * 60 * 1000;
 const iso = (offset: number) => new Date(NOW + offset).toISOString();
 
 const project = (over: Partial<Project> = {}): Project => ({
-  projectId: 'p', editionId: 'e', courseCode: 'CS-101', editionLabel: '2026 autumn', slug: 's', title: 'Warm-up', kind: 'rust-cargo',
-  availableAfter: iso(-48 * H), deadline: iso(72 * H), closesAt: null, late: false, role: 'student',
-  starterReady: true, canSubmit: true, mySubmissions: 0, myLastSubmittedAt: null, ...over,
+  projectId: 'p',
+  editionId: 'e',
+  courseCode: 'CS-101',
+  editionLabel: '2026 autumn',
+  slug: 's',
+  title: 'Warm-up',
+  kind: 'rust-cargo',
+  availableAfter: iso(-48 * H),
+  deadline: iso(72 * H),
+  closesAt: null,
+  late: false,
+  role: 'student',
+  starterReady: true,
+  canSubmit: true,
+  mySubmissions: 0,
+  myLastSubmittedAt: null,
+  ...over,
 });
 
 test('a deadline reads as a time left, urgent under two days', () => {
@@ -28,16 +42,22 @@ test('past the deadline an exercise still open to the student says it is late, a
 });
 
 test('the list puts late work first, then the soonest deadline, and no deadline last', () => {
-  const cards = exerciseCards([
-    project({ projectId: 'none', title: 'Open-ended', deadline: null }),
-    project({ projectId: 'later', deadline: iso(100 * H) }),
-    project({ projectId: 'late', deadline: iso(-2 * H), late: true }),
-    project({ projectId: 'soon', deadline: iso(3 * H) }),
-  ], NOW);
-  assert.deepEqual(cards.map((c) => c.projectId), ['late', 'soon', 'later', 'none']);
+  const cards = exerciseCards(
+    [
+      project({ projectId: 'none', title: 'Open-ended', deadline: null }),
+      project({ projectId: 'later', deadline: iso(100 * H) }),
+      project({ projectId: 'late', deadline: iso(-2 * H), late: true }),
+      project({ projectId: 'soon', deadline: iso(3 * H) }),
+    ],
+    NOW,
+  );
+  assert.deepEqual(
+    cards.map(c => c.projectId),
+    ['late', 'soon', 'later', 'none'],
+  );
 });
 
-test('a student\'s card counts their submissions; staff see their role instead', () => {
+test("a student's card counts their submissions; staff see their role instead", () => {
   const [mine] = exerciseCards([project({ mySubmissions: 2, myLastSubmittedAt: iso(-H) })], NOW, 'en-GB');
   assert.match(mine?.mine ?? '', /^2 submissions, last /);
   const [staff] = exerciseCards([project({ role: 'owner' })], NOW);
@@ -46,12 +66,25 @@ test('a student\'s card counts their submissions; staff see their role instead',
 
 test('the latest version is marked as such, and late ones say so', () => {
   const sub = (id: string, latest: boolean, late: boolean): Submission => ({
-    submissionId: id, projectId: 'p', submittedAt: iso(-H), byteSize: 2048, sha256: 'ab', latest, late, baseReleaseId: null,
+    submissionId: id,
+    projectId: 'p',
+    submittedAt: iso(-H),
+    byteSize: 2048,
+    sha256: 'ab',
+    latest,
+    late,
+    baseReleaseId: null,
     author: { userId: 'u', fullName: null, githubLogin: 'ada', email: null },
   });
   const rows = submissionRows([sub('c', true, true), sub('b', false, true), sub('a', false, false)]);
-  assert.deepEqual(rows.map((r) => r.status), ['Latest version, submitted late', 'Submitted late', '']);
-  assert.deepEqual(rows.map((r) => r.late), [true, true, false]);
+  assert.deepEqual(
+    rows.map(r => r.status),
+    ['Latest version, submitted late', 'Submitted late', ''],
+  );
+  assert.deepEqual(
+    rows.map(r => r.late),
+    [true, true, false],
+  );
   assert.equal(rows[0]?.size, '2.0 KiB');
   assert.equal(rows[0]?.author, 'ada');
 });

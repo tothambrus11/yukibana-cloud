@@ -47,7 +47,7 @@ export async function approve(auth: ConsentAuth, authorizationId: string, expect
   if (details.error !== null) return refused(details.error.message);
   if (!('authorization_id' in details.data)) return toReturn(details.data.redirect_url, expected.returnUrl);
   const d = details.data;
-  const scopes = d.scope.split(/\s+/).filter((s) => s !== '');
+  const scopes = d.scope.split(/\s+/).filter(s => s !== '');
   if (d.client.id !== expected.clientId || d.redirect_uri !== expected.returnUrl || scopes.length !== 1 || scopes[0] !== 'email') {
     report('connect', `refused to approve an authorization for client ${d.client.id}, redirect ${d.redirect_uri}, scope "${d.scope}"`);
     return { ok: false, status: 400, message: `This is not a login request this site started. ${AGAIN}` };
@@ -119,12 +119,12 @@ export async function consent(input: {
   readonly auth: ConsentAuth;
   readonly expected: Expected;
 }): Promise<Decision> {
-  const held = input.cookies.filter((c) => c.name.startsWith(CONNECT_COOKIE_PREFIX));
+  const held = input.cookies.filter(c => c.name.startsWith(CONNECT_COOKIE_PREFIX));
   const id = input.authorizationId ?? '';
   if (!AUTHORIZATION_ID.test(id)) return fail(400, `This is not a login request. ${AGAIN}`, []);
-  const mine = held.find((c) => c.value === id);
+  const mine = held.find(c => c.value === id);
   if (mine === undefined) return fail(400, `This login was not confirmed in this browser. ${AGAIN}`, []);
-  const all = held.map((c) => c.name);
+  const all = held.map(c => c.name);
   if (!input.signedIn) return fail(401, `You are not signed in to the website any more. ${AGAIN}`, all);
   const approved = await approve(input.auth, id, input.expected);
   if (!approved.ok) return fail(approved.status, approved.message, all);
@@ -138,7 +138,7 @@ export async function consent(input: {
  *  A code is never relayed from here, and a refusal spends nothing: a page
  *  elsewhere cannot know a nonce, and must not cancel a login by guessing. */
 export function returned(query: URLSearchParams, cookies: readonly string[]): Decision {
-  const held = cookies.filter((n) => n.startsWith(CONNECT_COOKIE_PREFIX));
+  const held = cookies.filter(n => n.startsWith(CONNECT_COOKIE_PREFIX));
   return relay(query, { accept: held, refused: [], codes: false });
 }
 
@@ -220,7 +220,10 @@ export async function start(input: { readonly authorize: URL; readonly site: str
 /** A fresh nonce for the connect cookie: 16 random bytes, base64url. */
 export function nonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 /** The connect cookie's attributes: what `__Host-` demands (Secure, path

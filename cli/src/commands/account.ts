@@ -9,7 +9,7 @@ export async function login(inv: Invocation): Promise<void> {
   const url = await registryUrl(inv);
   const session = await loginWithLoopback(url, { open: openInBrowser, callbackPage });
   await inv.store.save(session);
-  const me = await clientFor(inv).then((c) => c.me());
+  const me = await clientFor(inv).then(c => c.me());
   console.log(`logged in to ${session.url} as ${me.fullName ?? me.githubLogin ?? me.email ?? me.userId}${me.platformRole === 'user' ? '' : ` (${me.platformRole})`}`);
 }
 

@@ -37,11 +37,11 @@ const editionOf = (param: string): EditionId => {
 
 /** An edition as the caller sees it: the projects the policies let them see
  *  (published ones for a student, all for staff), and for staff the roster. */
-export const load: PageServerLoad = async (event) => {
+export const load: PageServerLoad = async event => {
   const claims = requireClaims(event);
   const edition = editionOf(event.params.edition);
-  return withContext((ctx) =>
-    asUser(ctx.sql, claims, async (tx) => {
+  return withContext(ctx =>
+    asUser(ctx.sql, claims, async tx => {
       const [head] = await tx<{ edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
         select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role,
                app.may_edit_projects(e.edition_id) as can_edit
@@ -79,9 +79,12 @@ const failing = (e: unknown) => fail(statusOf(e).status, { error: statusOf(e).me
  *  each refused in words about what they typed rather than the index's. */
 const clashing = (e: unknown, label: string, code: string) => {
   switch (clashOf(e)) {
-    case 'course_edition_course_id_label_key': return fail(409, { error: `This course already has an edition called "${label}". Choose another label.` });
-    case 'course_code_key': return fail(409, { error: `Another course already has the code "${code}".` });
-    default: return failing(e);
+    case 'course_edition_course_id_label_key':
+      return fail(409, { error: `This course already has an edition called "${label}". Choose another label.` });
+    case 'course_code_key':
+      return fail(409, { error: `Another course already has the code "${code}".` });
+    default:
+      return failing(e);
   }
 };
 
@@ -90,7 +93,7 @@ export const actions: Actions = {
    *  `before` (either empty at an end of the list). The page posts this as
    *  the drop happens; app.move_project decides whether the caller may and
    *  moves one row. */
-  move: async (event) => {
+  move: async event => {
     const claims = requireClaims(event);
     editionOf(event.params.edition);
     const form = await event.request.formData();
@@ -103,28 +106,28 @@ export const actions: Actions = {
     const before = neighbour('before');
     if (project === null || after === undefined || before === undefined) return fail(400, { error: 'Not a project.' });
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.move_project(${project}, ${after}, ${before})`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.move_project(${project}, ${after}, ${before})`));
     } catch (e) {
       return failing(e);
     }
     return { moved: project };
   },
-  enrol: async (event) => {
+  enrol: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
     const email = text(form, 'email');
-    const role = (text(form, 'role') || 'student');
+    const role = text(form, 'role') || 'student';
     if (!email.includes('@')) return fail(400, { error: 'Enrol by email address.' });
     if (!['student', 'assistant', 'owner'].includes(role)) return fail(400, { error: 'Unknown role.' });
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.enrol(${edition}, ${email}, ${role}::app.edition_role)`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.enrol(${edition}, ${email}, ${role}::app.edition_role)`));
     } catch (e) {
       return failing(e);
     }
     return { ok: true };
   },
-  setRole: async (event) => {
+  setRole: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
@@ -132,25 +135,25 @@ export const actions: Actions = {
     const role = text(form, 'role');
     if (!['student', 'assistant', 'owner'].includes(role)) return fail(400, { error: 'Unknown role.' });
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.set_edition_role(${edition}, ${email}, ${role}::app.edition_role)`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.set_edition_role(${edition}, ${email}, ${role}::app.edition_role)`));
     } catch (e) {
       return failing(e);
     }
     return { ok: true };
   },
-  unenrol: async (event) => {
+  unenrol: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
     const email = text(form, 'email');
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.unenrol(${edition}, ${email})`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.unenrol(${edition}, ${email})`));
     } catch (e) {
       return failing(e);
     }
     return { ok: true };
   },
-  createProject: async (event) => {
+  createProject: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
@@ -162,8 +165,8 @@ export const actions: Actions = {
     if (!(KINDS as readonly string[]).includes(kind)) return fail(400, { error: 'Unknown project kind.' });
     let id: string;
     try {
-      id = await withContext((ctx) =>
-        asUser(ctx.sql, claims, async (tx) => {
+      id = await withContext(ctx =>
+        asUser(ctx.sql, claims, async tx => {
           const [row] = await tx<{ project_id: string }[]>`
             insert into project (edition_id, slug, title, kind) values (${edition}, ${slug}, ${title}, ${kind as Kind}::app.project_kind)
             returning project_id`;
@@ -179,7 +182,7 @@ export const actions: Actions = {
     }
     redirect(303, `/editions/${edition}/projects/${id}`);
   },
-  duplicate: async (event) => {
+  duplicate: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
@@ -187,8 +190,8 @@ export const actions: Actions = {
     if (label === '') return fail(400, { error: 'The new edition needs a label.' });
     let id: string;
     try {
-      id = await withContext((ctx) =>
-        asUser(ctx.sql, claims, async (tx) => {
+      id = await withContext(ctx =>
+        asUser(ctx.sql, claims, async tx => {
           const [row] = await tx<{ id: string }[]>`select app.duplicate_edition(${edition}, ${label}) as id`;
           if (row === undefined) throw new Error('duplicate returned nothing');
           return row.id;
@@ -204,7 +207,7 @@ export const actions: Actions = {
    *  is taken leaves the names as they were too. The code is only written
    *  when it changed: it is the course's, shared with editions this owner
    *  may not be in, and the audit log should not show it set to itself. */
-  details: async (event) => {
+  details: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
@@ -213,8 +216,8 @@ export const actions: Actions = {
     const code = text(form, 'code');
     if (label === '' || title === '' || code === '') return fail(400, { error: 'An edition needs a label, a course name and a course code.' });
     try {
-      await withContext((ctx) =>
-        asUser(ctx.sql, claims, async (tx) => {
+      await withContext(ctx =>
+        asUser(ctx.sql, claims, async tx => {
           await tx`select app.update_edition(${edition}, ${label}, ${title})`;
           const [course] = await tx<{ course_id: string; code: string }[]>`
             select c.course_id, c.code from course_edition e join course c on c.course_id = e.course_id
@@ -227,13 +230,13 @@ export const actions: Actions = {
     }
     return { ok: true };
   },
-  archive: async (event) => {
+  archive: async event => {
     const claims = requireClaims(event);
     const edition = editionOf(event.params.edition);
     const form = await event.request.formData();
     const archived = form.get('archived') === 'true';
     try {
-      await withContext((ctx) => asUser(ctx.sql, claims, (tx) => tx`select app.archive_edition(${edition}, ${archived})`));
+      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.archive_edition(${edition}, ${archived})`));
     } catch (e) {
       return failing(e);
     }

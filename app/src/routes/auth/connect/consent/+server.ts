@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ url, locals, cookies }) => {
   const decided = await consent({
     authorizationId: url.searchParams.get('authorization_id'),
     signedIn: locals.claims !== null,
-    cookies: cookies.getAll().map((c) => ({ name: c.name, value: c.value })),
+    cookies: cookies.getAll().map(c => ({ name: c.name, value: c.value })),
     auth: locals.supabase.auth.oauth,
     expected: { clientId: config.oauthClientId, returnUrl: returnUrlOf(siteOrigin(config.siteUrl, url)) },
   });

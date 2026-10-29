@@ -14,7 +14,7 @@ const refusal = (r: Reading): string => (r.ok ? 'accepted' : r.why);
 // what a time on a form means.
 const HOST_ZONES = ['UTC', 'Europe/Zurich', 'America/Los_Angeles', 'Asia/Kolkata', 'Australia/Sydney'];
 
-describe.each(HOST_ZONES)('with %s as the host’s zone', (host) => {
+describe.each(HOST_ZONES)('with %s as the host’s zone', host => {
   let saved: string | undefined;
   beforeEach(() => {
     saved = process.env.TZ;
@@ -51,9 +51,7 @@ describe.each(HOST_ZONES)('with %s as the host’s zone', (host) => {
   });
 
   test('a time the clocks skip when they go forward is refused, not quietly moved an hour on', () => {
-    expect(refusal(instantOf('2026-03-29T02:30', 'Europe/Zurich'))).toBe(
-      '2026-03-29 02:30 does not happen in Europe/Zurich: the clocks skip it that night.',
-    );
+    expect(refusal(instantOf('2026-03-29T02:30', 'Europe/Zurich'))).toBe('2026-03-29 02:30 does not happen in Europe/Zurich: the clocks skip it that night.');
     expect(refusal(instantOf('2026-03-08T02:00', 'America/New_York'))).toContain('does not happen');
     // Spring in the south is October.
     expect(refusal(instantOf('2026-10-04T02:15', 'Australia/Sydney'))).toContain('does not happen');

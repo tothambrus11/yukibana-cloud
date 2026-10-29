@@ -45,13 +45,17 @@ export function credentialProblem(cfg: Pick<S3Config, 'endpoint' | 'accessKeyId'
   }
   if (!host.endsWith('.r2.cloudflarestorage.com')) return null;
   if (!/^[0-9a-f]{32}$/.test(cfg.accessKeyId)) {
-    return `S3_ACCESS_KEY_ID is ${cfg.accessKeyId.length} characters, and an R2 Access Key ID is 32 hexadecimal ones. `
-      + 'R2 → Manage API tokens shows three values when a token is made: this is probably the first, the token value. '
-      + 'Set the Access Key ID instead (npx wrangler secret put S3_ACCESS_KEY_ID).';
+    return (
+      `S3_ACCESS_KEY_ID is ${cfg.accessKeyId.length} characters, and an R2 Access Key ID is 32 hexadecimal ones. ` +
+      'R2 → Manage API tokens shows three values when a token is made: this is probably the first, the token value. ' +
+      'Set the Access Key ID instead (npx wrangler secret put S3_ACCESS_KEY_ID).'
+    );
   }
   if (!/^[0-9a-f]{64}$/.test(cfg.secretAccessKey)) {
-    return `S3_SECRET_ACCESS_KEY is ${cfg.secretAccessKey.length} characters, and an R2 Secret Access Key is 64 hexadecimal ones. `
-      + 'Set the Secret Access Key from the page that made the token (npx wrangler secret put S3_SECRET_ACCESS_KEY).';
+    return (
+      `S3_SECRET_ACCESS_KEY is ${cfg.secretAccessKey.length} characters, and an R2 Secret Access Key is 64 hexadecimal ones. ` +
+      'Set the Secret Access Key from the page that made the token (npx wrangler secret put S3_SECRET_ACCESS_KEY).'
+    );
   }
   return null;
 }
@@ -63,7 +67,7 @@ export function s3Failure(what: string, status: number, body: string): string {
   const field = (name: string): string | null => body.match(new RegExp(`<${name}>([^<]*)</${name}>`))?.[1] ?? null;
   const code = field('Code');
   const message = field('Message');
-  const said = [code, message].filter((x) => x !== null && x !== '').join(': ');
+  const said = [code, message].filter(x => x !== null && x !== '').join(': ');
   return `storage: ${what} answered ${status}${said === '' ? '' : ` (${said})`}`;
 }
 
@@ -79,8 +83,7 @@ export function s3Bucket(cfg: S3Config, fetchFn: typeof fetch = fetch): Bucket {
     region: cfg.region,
   });
   // Path-style addressing: works for R2, MinIO and AWS alike, and needs no DNS.
-  const objectUrl = (base: string, key: ObjectKey): string =>
-    `${base.replace(/\/+$/, '')}/${cfg.bucket}/${key.split('/').map(encodeURIComponent).join('/')}`;
+  const objectUrl = (base: string, key: ObjectKey): string => `${base.replace(/\/+$/, '')}/${cfg.bucket}/${key.split('/').map(encodeURIComponent).join('/')}`;
 
   // Checked when the bucket is used rather than when it is made, so a bad
   // key fails uploads and downloads with the sentence above, and nothing

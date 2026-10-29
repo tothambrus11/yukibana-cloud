@@ -74,7 +74,7 @@ export function sessionCookieOptions(options: CookieSerializeOptions): CookieSer
  *  cannot be deleted from here, and does not need to be: it is ignored the
  *  same way. */
 export function staleSessionCookies(names: readonly string[]): string[] {
-  return names.filter((name) => /^sb-[A-Za-z0-9-]+-auth-token(?:-code-verifier|-user)?(?:\.\d+)?$/.test(name));
+  return names.filter(name => /^sb-[A-Za-z0-9-]+-auth-token(?:-code-verifier|-user)?(?:\.\d+)?$/.test(name));
 }
 
 /** A Supabase client whose session lives in this request's cookies: it
@@ -89,7 +89,7 @@ export function supabaseFor(cookies: Cookies, url: string, key: string): Supabas
     cookieOptions: SESSION_COOKIE_OPTIONS,
     cookies: {
       getAll: () => cookies.getAll(),
-      setAll: (list) => {
+      setAll: list => {
         for (const { name, value, options } of list) cookies.set(name, value, sessionCookieOptions(options));
       },
     },

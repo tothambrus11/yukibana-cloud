@@ -3,9 +3,22 @@ import assert from 'node:assert/strict';
 import { Unexpected, decodeList, decodeProject, decodeSubmission } from '../src/lib/wire.js';
 
 const project = {
-  projectId: 'p', editionId: 'e', courseCode: 'CS-101', editionLabel: '2026', slug: 'warmup', title: 'Warm up', kind: 'rust-cargo',
-  availableAfter: '2026-10-01T00:00:00Z', deadline: null, closesAt: null, late: false, role: 'student',
-  starterReady: true, canSubmit: true, mySubmissions: 0, myLastSubmittedAt: null,
+  projectId: 'p',
+  editionId: 'e',
+  courseCode: 'CS-101',
+  editionLabel: '2026',
+  slug: 'warmup',
+  title: 'Warm up',
+  kind: 'rust-cargo',
+  availableAfter: '2026-10-01T00:00:00Z',
+  deadline: null,
+  closesAt: null,
+  late: false,
+  role: 'student',
+  starterReady: true,
+  canSubmit: true,
+  mySubmissions: 0,
+  myLastSubmittedAt: null,
 };
 
 test('a project the registry answers is read as it is, and a missing optional time reads as none', () => {
@@ -28,12 +41,15 @@ test('an answer with several wrong fields names every one of them', () => {
 });
 
 test('an answer with every field wrong names every one of them, none left for a second run', () => {
-  const allWrong = Object.fromEntries(Object.keys(project).map((k) => [k, Symbol(k)]));
-  assert.throws(() => decodeProject(allWrong), (e: unknown) => {
-    const message = e instanceof Error ? e.message : '';
-    for (const field of Object.keys(project)) assert.ok(message.includes(`project.${field} as`), field);
-    return true;
-  });
+  const allWrong = Object.fromEntries(Object.keys(project).map(k => [k, Symbol(k)]));
+  assert.throws(
+    () => decodeProject(allWrong),
+    (e: unknown) => {
+      const message = e instanceof Error ? e.message : '';
+      for (const field of Object.keys(project)) assert.ok(message.includes(`project.${field} as`), field);
+      return true;
+    },
+  );
 });
 
 test('an error inside a list names the item and the field', () => {

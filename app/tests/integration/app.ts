@@ -66,7 +66,7 @@ export async function startApp(timeoutMs = 90_000): Promise<App> {
   child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
   child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
   let exited: number | null | undefined;
-  const gone = new Promise<void>((resolve) => child.once('exit', (code) => ((exited = code), resolve())));
+  const gone = new Promise<void>(resolve => child.once('exit', code => ((exited = code), resolve())));
 
   const stop = async (): Promise<void> => {
     if (exited === undefined) {
@@ -77,9 +77,12 @@ export async function startApp(timeoutMs = 90_000): Promise<App> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (exited !== undefined) throw new Error(`the app exited (${String(exited)}) before it answered:\n${output}`);
-    const answered = await fetch(`${origin}/auth/login`).then((r) => r.status, () => null);
+    const answered = await fetch(`${origin}/auth/login`).then(
+      r => r.status,
+      () => null,
+    );
     if (answered === 200) return { origin, stop };
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise(r => setTimeout(r, 250));
   }
   await stop();
   throw new Error(`the app did not answer ${origin}/auth/login within ${timeoutMs} ms:\n${output}`);

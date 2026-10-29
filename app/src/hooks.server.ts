@@ -41,7 +41,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (api) return errorResponse(500, 'The server is not configured.');
     error(500, 'The server is not configured.');
   }
-  for (const name of staleSessionCookies(event.cookies.getAll().map((c) => c.name))) event.cookies.delete(name, { path: '/' });
+  for (const name of staleSessionCookies(event.cookies.getAll().map(c => c.name))) event.cookies.delete(name, { path: '/' });
   event.locals.supabase = supabaseFor(event.cookies, config.supabaseUrl, config.supabasePublishableKey);
   event.locals.claims = await claimsFor(event.locals.supabase, event.request.headers.get('authorization'));
   if (!api) return resolve(event);
@@ -58,7 +58,7 @@ export const handle: Handle = async ({ event, resolve }) => {
  *  and the ones an operator alone can fix say what they are. The rest stay
  *  generic on purpose: an unexpected message may quote a query.
  */
-export const handleError: HandleServerError = (caught) => {
+export const handleError: HandleServerError = caught => {
   // Since SvelteKit 3 this hook runs for every error, not only unexpected
   // ones: an `error(403, …)` a route meant arrives here as `kind: 'app'`,
   // and whatever is returned replaces its body. Those, and SvelteKit's own

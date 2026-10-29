@@ -62,7 +62,7 @@ describe('an error the API sends', () => {
   });
 });
 
-describe('asking for JSON on the caller\'s behalf', () => {
+describe("asking for JSON on the caller's behalf", () => {
   test('replaces Accept and keeps the method, the session and the body', async () => {
     const original = new Request('https://cloud.example/api/projects/x/submissions', {
       method: 'POST',

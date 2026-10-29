@@ -26,7 +26,7 @@ export interface Published {
 /** Who is publishing: a person on the page, or a token from CI. */
 export type Publisher = { readonly kind: 'user'; readonly claims: Claims } | { readonly kind: 'token'; readonly secret: string };
 
-const hex = (b: Uint8Array): string => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+const hex = (b: Uint8Array): string => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
 
 /** The token's SHA-256, which is all the database ever sees of it. */
 async function tokenHash(secret: string): Promise<Uint8Array> {
@@ -43,8 +43,20 @@ async function tokenHash(secret: string): Promise<Uint8Array> {
  *  project or any other, is a 409 and both objects are deleted again. Null
  *  lets the database choose, for archives that carry no id; their
  *  submissions then record no base. */
-export async function publishRelease(ctx: Context, by: Publisher, project: ProjectId, starter: Uint8Array, teacher: Uint8Array, label: string, commit: string | null, release: ReleaseId | null): Promise<Published> {
-  for (const [name, bytes] of [['starter', starter], ['teacher', teacher]] as const) {
+export async function publishRelease(
+  ctx: Context,
+  by: Publisher,
+  project: ProjectId,
+  starter: Uint8Array,
+  teacher: Uint8Array,
+  label: string,
+  commit: string | null,
+  release: ReleaseId | null,
+): Promise<Published> {
+  for (const [name, bytes] of [
+    ['starter', starter],
+    ['teacher', teacher],
+  ] as const) {
     if (bytes.byteLength === 0) error(400, `The ${name} archive is empty.`);
     if (bytes.byteLength > ctx.config.releaseMaxBytes) error(413, `The ${name} archive is larger than ${ctx.config.releaseMaxBytes} bytes.`);
     if (!isGzip(bytes)) error(415, `The ${name} archive is not gzip; a release is two .tar.gz files.`);
@@ -58,13 +70,13 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
   const hash = by.kind === 'token' ? await tokenHash(by.secret) : null;
   try {
     if (hash !== null) {
-      const named = await asPublisher(ctx.sql, async (tx) => {
+      const named = await asPublisher(ctx.sql, async tx => {
         const [row] = await tx<{ project: string | null }[]>`select app.project_for_token(${hash as Uint8Array<ArrayBuffer>}) as project`;
         return row?.project ?? null;
       });
       if (named !== project) error(403, 'This token does not publish to this project.');
     } else if (by.kind === 'user') {
-      const allowed = await asUser(ctx.sql, by.claims, async (tx) => {
+      const allowed = await asUser(ctx.sql, by.claims, async tx => {
         const rows = await tx`select 1 from project where project_id = ${project} and app.may_edit_projects(edition_id)`;
         return rows.length === 1;
       });
@@ -81,16 +93,31 @@ export async function publishRelease(ctx: Context, by: Publisher, project: Proje
   await ctx.bucket.put(keys.teacher, teacher, 'application/gzip');
 
   try {
-    const args = [release, label, commit, keys.starter, starter.byteLength, digests.starter as Uint8Array<ArrayBuffer>, keys.teacher, teacher.byteLength, digests.teacher as Uint8Array<ArrayBuffer>] as const;
-    const id = hash !== null
-      ? await asPublisher(ctx.sql, async (tx) => {
-          const [row] = await tx<{ id: string }[]>`select app.publish_release_with_token(${hash as Uint8Array<ArrayBuffer>}, ${args[0]}::uuid, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}, ${args[8]}) as id`;
-          return row?.id ?? null;
-        })
-      : await asUser(ctx.sql, (by as { claims: Claims }).claims, async (tx) => {
-          const [row] = await tx<{ id: string }[]>`select app.publish_release(${project}, ${args[0]}::uuid, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}, ${args[8]}) as id`;
-          return row?.id ?? null;
-        });
+    const args = [
+      release,
+      label,
+      commit,
+      keys.starter,
+      starter.byteLength,
+      digests.starter as Uint8Array<ArrayBuffer>,
+      keys.teacher,
+      teacher.byteLength,
+      digests.teacher as Uint8Array<ArrayBuffer>,
+    ] as const;
+    const id =
+      hash !== null
+        ? await asPublisher(ctx.sql, async tx => {
+            const [row] = await tx<
+              { id: string }[]
+            >`select app.publish_release_with_token(${hash as Uint8Array<ArrayBuffer>}, ${args[0]}::uuid, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}, ${args[8]}) as id`;
+            return row?.id ?? null;
+          })
+        : await asUser(ctx.sql, (by as { claims: Claims }).claims, async tx => {
+            const [row] = await tx<
+              { id: string }[]
+            >`select app.publish_release(${project}, ${args[0]}::uuid, ${args[1]}, ${args[2]}, ${args[3]}, ${args[4]}, ${args[5]}, ${args[6]}, ${args[7]}, ${args[8]}) as id`;
+            return row?.id ?? null;
+          });
     if (id === null) throw new Error('publish returned nothing');
     return {
       releaseId: trustId<ReleaseId>(id),
@@ -134,7 +161,7 @@ function refuse(e: unknown): never {
 /** A URL for the caller to download one archive of `release`, if they are
  *  staff of its edition. The policy on the table is the check. */
 export async function releaseUrl(ctx: Context, claims: Claims, release: ReleaseId, archive: 'starter' | 'teacher'): Promise<URL> {
-  const row = await asUser(ctx.sql, claims, async (tx) => {
+  const row = await asUser(ctx.sql, claims, async tx => {
     const [r] = await tx<{ starter_key: string; teacher_key: string; slug: string; label: string }[]>`
       select r.starter_key, r.teacher_key, p.slug, r.label
       from project_release r join project p on p.project_id = r.project_id

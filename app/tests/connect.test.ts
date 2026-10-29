@@ -1,7 +1,5 @@
 import { test, expect } from 'vitest';
-import {
-  authorizeUrl, connectCookie, connectQuery, connectRequestOf, declinedUrl, deliveryUrl, loginCode, loopbackPort, relayOf, relayState,
-} from '../src/lib/connect';
+import { authorizeUrl, connectCookie, connectQuery, connectRequestOf, declinedUrl, deliveryUrl, loginCode, loopbackPort, relayOf, relayState } from '../src/lib/connect';
 import { approve, consent, nonce, returned, siteOrigin, start, type ConsentAuth, type Decision } from '../src/lib/server/connect';
 
 const challenge = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
@@ -16,13 +14,22 @@ test('the connect page accepts a loopback callback on 127.0.0.1 with any port, a
   expect(loopbackPort('http://127.0.0.1:4242/callback')).toBe(4242);
   expect(loopbackPort('http://127.0.0.1:65535/callback')).toBe(65535);
   for (const bad of [
-    'http://localhost:4242/callback', 'https://127.0.0.1:4242/callback', 'http://127.0.0.1/callback', 'http://127.0.0.1:0/callback',
-    'http://127.0.0.1:65536/callback', 'http://127.0.0.1:4242/callback?x=1', 'http://127.0.0.1:4242/callback#x', 'http://127.0.0.1:4242/other',
-    'http://evil@127.0.0.1:4242/callback', 'http://127.0.0.1.evil.example:4242/callback', 'http://127.0.0.1:04242/callback',
-  ]) expect(loopbackPort(bad), bad).toBeNull();
+    'http://localhost:4242/callback',
+    'https://127.0.0.1:4242/callback',
+    'http://127.0.0.1/callback',
+    'http://127.0.0.1:0/callback',
+    'http://127.0.0.1:65536/callback',
+    'http://127.0.0.1:4242/callback?x=1',
+    'http://127.0.0.1:4242/callback#x',
+    'http://127.0.0.1:4242/other',
+    'http://evil@127.0.0.1:4242/callback',
+    'http://127.0.0.1.evil.example:4242/callback',
+    'http://127.0.0.1:04242/callback',
+  ])
+    expect(loopbackPort(bad), bad).toBeNull();
 });
 
-test('a connect request needs an S256 challenge and a state of the CLI\'s own; a plain challenge would put the verifier in the browser', () => {
+test("a connect request needs an S256 challenge and a state of the CLI's own; a plain challenge would put the verifier in the browser", () => {
   expect(connectRequestOf(query())).toEqual({ port: 4242, challenge, state });
   expect(connectRequestOf(query({ code_challenge_method: 'plain' }))).toBeNull();
   expect(connectRequestOf(query({ code_challenge: 'short' }))).toBeNull();
@@ -41,17 +48,22 @@ test('the page and the terminal show the same four characters of the state', () 
   expect(loginCode(state)).toBe('C3RH');
 });
 
-test('the site is SITE_URL\'s origin when it is set, so the login always happens on Auth\'s site_url', () => {
+test("the site is SITE_URL's origin when it is set, so the login always happens on Auth's site_url", () => {
   expect(siteOrigin('https://cloud.example/', new URL('https://yukibana-cloud.workers.dev/auth/connect'))).toBe('https://cloud.example');
   expect(siteOrigin(null, new URL('http://127.0.0.1:5173/auth/connect'))).toBe('http://127.0.0.1:5173');
 });
 
-test('once confirmed, the browser goes to Auth\'s OAuth server for the registry\'s client, with the loopback and the nonce in the state', () => {
+test("once confirmed, the browser goes to Auth's OAuth server for the registry's client, with the loopback and the nonce in the state", () => {
   const url = authorizeUrl('https://auth.example', 'client-1', RETURN, { port: 4242, challenge, state }, NONCE);
   expect(url.origin + url.pathname).toBe('https://auth.example/auth/v1/oauth/authorize');
   expect(Object.fromEntries(url.searchParams)).toEqual({
-    response_type: 'code', client_id: 'client-1', redirect_uri: RETURN,
-    code_challenge: challenge, code_challenge_method: 'S256', scope: 'email', state: `4242.${state}.${NONCE}`,
+    response_type: 'code',
+    client_id: 'client-1',
+    redirect_uri: RETURN,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    scope: 'email',
+    state: `4242.${state}.${NONCE}`,
   });
   expect(relayOf(url.searchParams.get('state'))).toEqual({ port: 4242, state, nonce: NONCE });
 });
@@ -62,7 +74,7 @@ test('a state the page did not make relays nowhere', () => {
   }
 });
 
-test('the loopback receives the code and the CLI\'s state, or the error, and nothing else Auth put on the address', () => {
+test("the loopback receives the code and the CLI's state, or the error, and nothing else Auth put on the address", () => {
   const relay = { port: 4242, state, nonce: NONCE };
   const good = deliveryUrl(relay, new URLSearchParams({ code: 'abc', state: relayState(relay), extra: 'x' }));
   expect(good.toString()).toBe(`http://127.0.0.1:4242/callback?code=abc&state=${state}`);
@@ -89,12 +101,15 @@ function auth(opts: { redirect?: string; consented?: boolean; client?: string; r
       return opts.consented === true
         ? { data: { redirect_url: redirect }, error: null }
         : {
-          data: {
-            authorization_id: id, redirect_uri: opts.redirectUri ?? RETURN, scope: opts.scope ?? 'email',
-            client: { id: opts.client ?? 'client-1', name: 'n', uri: '', logo_uri: '' }, user: { id: 'u', email: 'e' },
-          },
-          error: null,
-        };
+            data: {
+              authorization_id: id,
+              redirect_uri: opts.redirectUri ?? RETURN,
+              scope: opts.scope ?? 'email',
+              client: { id: opts.client ?? 'client-1', name: 'n', uri: '', logo_uri: '' },
+              user: { id: 'u', email: 'e' },
+            },
+            error: null,
+          };
     },
     approveAuthorization: async () => {
       calls.push('approve');
@@ -104,7 +119,7 @@ function auth(opts: { redirect?: string; consented?: boolean; client?: string; r
   return { fake, calls };
 }
 
-test('approving needs the registry\'s own client, its redirect URI and the email scope, and is checked before Auth is told yes', async () => {
+test("approving needs the registry's own client, its redirect URI and the email scope, and is checked before Auth is told yes", async () => {
   const ok = auth();
   expect(await approve(ok.fake, 'auth-1', expected)).toMatchObject({ ok: true });
   expect(ok.calls).toEqual(['details', 'approve']);
@@ -119,7 +134,10 @@ test('a remembered consent, and every answer, must send the browser to the retur
   const remembered = auth({ consented: true });
   expect(await approve(remembered.fake, 'auth-1', expected)).toMatchObject({ ok: true });
   expect(remembered.calls).toEqual(['details']);
-  expect(await approve(auth({ consented: true, redirect: 'https://evil.example/auth/connect/return?code=abc' }).fake, 'auth-1', expected)).toMatchObject({ ok: false, status: 502 });
+  expect(await approve(auth({ consented: true, redirect: 'https://evil.example/auth/connect/return?code=abc' }).fake, 'auth-1', expected)).toMatchObject({
+    ok: false,
+    status: 502,
+  });
   expect(await approve(auth({ redirect: 'https://cloud.example/elsewhere?code=abc' }).fake, 'auth-1', expected)).toMatchObject({ ok: false, status: 502 });
   expect(await approve(auth({ gone: true }).fake, 'auth-1', expected)).toMatchObject({ ok: false, status: 400, message: expect.stringMatching(/Start the login again/) });
 });
@@ -129,7 +147,7 @@ const other = { name: connectCookie('b3RoZXItbG9naW4tbm9uY2U'), value: 'auth-2' 
 const session = { name: 'sb-session', value: 'x' };
 const where = (d: Decision): string => ('redirect' in d.to ? d.to.redirect.toString() : `${d.to.status}`);
 
-test('consent relays the code straight to the loopback, and spends only this login\'s cookie', async () => {
+test("consent relays the code straight to the loopback, and spends only this login's cookie", async () => {
   const a = auth();
   const d = await consent({ authorizationId: 'auth-1', signedIn: true, cookies: [session, mine, other], auth: a.fake, expected });
   expect(where(d)).toBe(`http://127.0.0.1:4242/callback?code=abc&state=${state}`);
@@ -144,7 +162,7 @@ test('a page elsewhere that names an authorization this browser did not start ch
     ['an id no cookie holds', { authorizationId: 'attackers-own', cookies: [session, mine, other] }],
     ['no id', { authorizationId: null, cookies: [mine, other] }],
     ['a bad id', { authorizationId: 'no spaces allowed', cookies: [mine, other] }],
-    ['a cookie\'s name rather than its value', { authorizationId: NONCE, cookies: [mine] }],
+    ["a cookie's name rather than its value", { authorizationId: NONCE, cookies: [mine] }],
   ];
   for (const [name, input] of cases) {
     const a = auth();
@@ -158,11 +176,14 @@ test('a page elsewhere that names an authorization this browser did not start ch
 test('once the browser comes back with its own authorization, every way consent can fail sends nothing to a loopback and spends every connect cookie', async () => {
   const cases: [string, Parameters<typeof consent>[0]][] = [
     ['signed out', { authorizationId: 'auth-1', signedIn: false, cookies: [mine, other], auth: auth().fake, expected }],
-    ['Auth\'s state names another login\'s nonce', { authorizationId: 'auth-2', signedIn: true, cookies: [mine, other], auth: auth().fake, expected }],
+    ["Auth's state names another login's nonce", { authorizationId: 'auth-2', signedIn: true, cookies: [mine, other], auth: auth().fake, expected }],
     ['Auth no longer knows it', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ gone: true }).fake, expected }],
     ['a foreign client', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ client: 'x' }).fake, expected }],
     ['a redirect elsewhere', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ redirect: 'https://evil.example/?code=abc' }).fake, expected }],
-    ['a state this site did not make', { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ redirect: `${RETURN}?code=abc&state=forged` }).fake, expected }],
+    [
+      'a state this site did not make',
+      { authorizationId: 'auth-1', signedIn: true, cookies: [mine, other], auth: auth({ redirect: `${RETURN}?code=abc&state=forged` }).fake, expected },
+    ],
   ];
   for (const [name, input] of cases) {
     const d = await consent(input);
@@ -201,15 +222,20 @@ test('a request Auth refuses after checking the client goes back to the CLI as a
   expect(s.cookie).toBeNull();
 });
 
-test('anything else Auth answers to continuing is this site\'s misconfiguration, shown as such, and sets no cookie', async () => {
+test("anything else Auth answers to continuing is this site's misconfiguration, shown as such, and sets no cookie", async () => {
   const st = relayState({ port: 4242, state, nonce: NONCE });
   const cases: [string, ReturnType<typeof authorizeEndpoint>['fetchFn']][] = [
     ['an unknown client', authorizeEndpoint(400, null, '{"error_code":"oauth_client_not_found"}').fetchFn],
     ['another site_url', authorizeEndpoint(302, 'https://elsewhere.example/auth/connect/consent?authorization_id=a').fetchFn],
     ['an id this site cannot take', authorizeEndpoint(302, `${SITE}/auth/connect/consent?authorization_id=a%20b`).fetchFn],
     ['a code at the return route', authorizeEndpoint(302, `${RETURN}?code=abc&state=${st}`).fetchFn],
-    ['another login\'s nonce', authorizeEndpoint(302, `${RETURN}?error=x&state=${relayState({ port: 4242, state, nonce: 'b3RoZXItbG9naW4tbm9uY2U' })}`).fetchFn],
-    ['no answer at all', async () => { throw new Error('connection refused'); }],
+    ["another login's nonce", authorizeEndpoint(302, `${RETURN}?error=x&state=${relayState({ port: 4242, state, nonce: 'b3RoZXItbG9naW4tbm9uY2U' })}`).fetchFn],
+    [
+      'no answer at all',
+      async () => {
+        throw new Error('connection refused');
+      },
+    ],
   ];
   for (const [name, fetchFn] of cases) {
     const s = await startWith(fetchFn);

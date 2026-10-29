@@ -43,7 +43,7 @@ export function unwrap(entries: readonly Entry[]): Entry[] {
  *  `projectId` and `releaseId` are written into the starter's
  *  `yukibana.json`. */
 export function planStarter(snapshot: readonly Entry[], folder: string, projectId: string, releaseId: string | null): Plan {
-  const byPath = new Map(snapshot.map((e) => [e.path, e] as const));
+  const byPath = new Map(snapshot.map(e => [e.path, e] as const));
   const configEntry = byPath.get(CONFIG_FILE);
   if (configEntry === undefined || configEntry.type !== 'file') {
     return { entries: [], hidden: [], config: null, problems: [`${CONFIG_FILE} is missing at the repository root`], warnings: [] };
@@ -61,7 +61,7 @@ export function planStarter(snapshot: readonly Entry[], folder: string, projectI
   const dropAlways = matcher(excludes({ ...config, hidden: [] }));
   const dropHidden = matcher(config.hidden);
   const hidden: string[] = [];
-  const mtime = Math.max(0, ...snapshot.map((e) => e.mtime));
+  const mtime = Math.max(0, ...snapshot.map(e => e.mtime));
   const entries: Entry[] = [{ path: folder, type: 'dir', mode: 0o755, mtime, data: new Uint8Array(0) }];
   for (const e of snapshot) {
     if (dropAlways(e.path)) continue;
@@ -113,7 +113,7 @@ export function escapes(path: string, target: string): boolean {
  *  never can. */
 export function planTeacher(snapshot: readonly Entry[], folder: string, config: Config): Entry[] {
   const drop = matcher(['.git', IDE_STATE, ...buildOutput(config.kind)]);
-  const mtime = Math.max(0, ...snapshot.map((e) => e.mtime));
+  const mtime = Math.max(0, ...snapshot.map(e => e.mtime));
   const entries: Entry[] = [{ path: folder, type: 'dir', mode: 0o755, mtime, data: new Uint8Array(0) }];
   for (const e of snapshot) {
     if (drop(e.path)) continue;

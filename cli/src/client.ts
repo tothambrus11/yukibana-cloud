@@ -12,8 +12,24 @@
 import type { SubmissionBundle } from './bundle.js';
 import { publish } from './publish.js';
 import {
-  Unexpected, decodeAccepted, decodeEdition, decodeList, decodeMe, decodeMember, decodeProject, decodeRelease, decodeSubmission,
-  type Accepted, type Edition, type EditionRole, type Me, type Member, type Project, type Published, type Release, type Submission,
+  Unexpected,
+  decodeAccepted,
+  decodeEdition,
+  decodeList,
+  decodeMe,
+  decodeMember,
+  decodeProject,
+  decodeRelease,
+  decodeSubmission,
+  type Accepted,
+  type Edition,
+  type EditionRole,
+  type Me,
+  type Member,
+  type Project,
+  type Published,
+  type Release,
+  type Submission,
 } from './lib/wire.js';
 
 export interface ClientOptions {
@@ -30,7 +46,10 @@ export interface ClientOptions {
  *  not visible to you (the registry does not tell those apart), 409 a
  *  conflict, 413 too large. */
 export class RegistryError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message);
   }
 }

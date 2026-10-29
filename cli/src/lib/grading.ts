@@ -46,7 +46,7 @@ export function wantedRelease(releases: readonly ReleaseRef[], given: string | u
   if (given === undefined) return { ok: true, wanted: 'own' };
   if (given === 'newest') return { ok: true, wanted: 'newest' };
   const id = given.toLowerCase();
-  if (!releases.some((r) => r.releaseId === id)) return { ok: false, problem: `${given} is not a release of this project; \`yukibana releases\` lists them` };
+  if (!releases.some(r => r.releaseId === id)) return { ok: false, problem: `${given} is not a release of this project; \`yukibana releases\` lists them` };
   return { ok: true, wanted: { releaseId: id } };
 }
 
@@ -55,7 +55,7 @@ export function wantedRelease(releases: readonly ReleaseRef[], given: string | u
  *  `recorded` is what the registry kept, `claimed` what the archive's
  *  yukibana.json says. */
 export function chooseReleases<R extends ReleaseRef>(releases: readonly R[], wanted: Wanted, recorded: string | null, claimed: string | null): Choice<R> {
-  const find = (id: string | null): R | null => (id === null ? null : releases.find((r) => r.releaseId === id.toLowerCase()) ?? null);
+  const find = (id: string | null): R | null => (id === null ? null : (releases.find(r => r.releaseId === id.toLowerCase()) ?? null));
   const newest = releases[0];
   if (newest === undefined) throw new Error('chooseReleases: no releases (wantedRelease refuses that first)');
   const notes: string[] = [];
@@ -80,7 +80,7 @@ export function behind(releases: readonly ReleaseRef[], base: string | null): st
   const [newest] = releases;
   if (newest === undefined || base === newest.releaseId) return null;
   if (base === null) return `does not say which release it started from, so it may predate the newest, ${nameOf(newest)}`;
-  const at = releases.findIndex((r) => r.releaseId === base);
+  const at = releases.findIndex(r => r.releaseId === base);
   const from = releases[at];
   if (from === undefined) return `started from ${base}, which is not a release of this project`;
   return `started from ${nameOf(from)}, ${at === 1 ? 'one release' : `${at} releases`} behind the newest, ${nameOf(newest)}`;
