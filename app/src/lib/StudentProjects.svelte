@@ -1,5 +1,6 @@
 <script lang="ts">
   import { when } from './format';
+  import { viewer } from './viewer.svelte';
   import { ideUrl } from './ide';
   import { dueIn, PROGRESS_LABEL, progressOf, type Progress, type StudentProjectRow } from './progress';
 
@@ -39,12 +40,12 @@
               {#if showCourse}<div class="muted small">{r.course_code} · {r.edition_label}</div>{/if}
             </td>
             <td>
-              {when(r.deadline)}
+              {when(r.deadline, viewer.zone)}
               {#if p === 'todo' || p === 'overdue'}<div class="muted small">{dueIn(r.deadline, now)}</div>{/if}
             </td>
             <td>
               <span class="chip {chip[p]}">{PROGRESS_LABEL[p]}</span>
-              {#if r.last_submitted_at !== null}<div class="muted small">last {when(r.last_submitted_at)}{r.submissions > 1 ? ` · ${r.submissions} versions` : ''}</div>{/if}
+              {#if r.last_submitted_at !== null}<div class="muted small">last {when(r.last_submitted_at, viewer.zone)}{r.submissions > 1 ? ` · ${r.submissions} versions` : ''}</div>{/if}
             </td>
             <td>
               <div class="actions">

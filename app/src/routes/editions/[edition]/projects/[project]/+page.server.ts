@@ -5,6 +5,7 @@ import { asUser, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 import { acceptSubmission } from '#lib/server/submissions.ts';
+import { instantOf, isZone, type Reading } from '#lib/wall-time.ts';
 
 interface ProjectRow {
   project_id: ProjectId;
@@ -124,12 +125,29 @@ const httpFailing = (e: unknown) => {
   }
   return failing(e);
 };
-const dateOf = (value: string): Date | null => {
-  if (value === '') return null;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) error(400, `Not a date: ${value}`);
-  return d;
-};
+/** The form's three times as instants, read in the zone the page wrote them
+ *  in (its hidden `zone` field), each keeping the instant it was rendered
+ *  from (its hidden `…_was` field) when its text is unchanged
+ *  (#lib/wall-time). A form without a zone is a page from before times
+ *  carried one, written in the browser's zone, which the Worker cannot
+ *  know: it is refused rather than read as UTC, which is the bug it was. */
+function timesOf(
+  form: FormData,
+): { ok: true; availableAfter: Date | null; deadline: Date | null; closesAt: Date | null } | { ok: false; why: string } {
+  const zone = text(form, 'zone');
+  if (!isZone(zone)) return { ok: false, why: 'This page is out of date: reload it and save again.' };
+  const read = (name: string): Reading => {
+    const was = new Date(text(form, `${name}_was`));
+    return instantOf(text(form, name), zone, Number.isNaN(was.getTime()) ? null : was);
+  };
+  const availableAfter = read('available_after');
+  if (!availableAfter.ok) return availableAfter;
+  const deadline = read('deadline');
+  if (!deadline.ok) return deadline;
+  const closesAt = read('closes_at');
+  if (!closesAt.ok) return closesAt;
+  return { ok: true, availableAfter: availableAfter.at, deadline: deadline.at, closesAt: closesAt.at };
+}
 
 export const actions: Actions = {
   /** The page's upload form. The API route does the same for an IDE. */
@@ -153,9 +171,9 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const title = text(form, 'title');
     if (title === '') return fail(400, { error: 'A project needs a title.' });
-    const availableAfter = dateOf(text(form, 'available_after'));
-    const deadline = dateOf(text(form, 'deadline'));
-    const closesAt = dateOf(text(form, 'closes_at'));
+    const times = timesOf(form);
+    if (!times.ok) return fail(400, { error: times.why });
+    const { availableAfter, deadline, closesAt } = times;
     try {
       await withContext((ctx) =>
         asUser(ctx.sql, claims, (tx) => tx`

@@ -20,6 +20,7 @@
   import { tick } from 'svelte';
   import { postAction } from './action';
   import { when } from './format';
+  import { viewer } from './viewer.svelte';
   import { changed, hold } from './live.svelte';
   import { move } from './order';
   import { toast } from './toast.svelte';
@@ -167,9 +168,9 @@
                 {#if p.available_after === null}<span class="chip">draft</span>{/if}
                 {#if !p.ready}<span class="chip">no starter yet</span>{/if}
               </td>
-              <td>{when(p.available_after)}</td>
-              <td>{when(p.deadline)}{#if past(p.deadline) && !past(p.closes_at)} <span class="chip late">late window</span>{/if}</td>
-              <td>{p.closes_at === null ? 'never' : when(p.closes_at)}</td>
+              <td>{when(p.available_after, viewer.zone)}</td>
+              <td>{when(p.deadline, viewer.zone)}{#if past(p.deadline) && !past(p.closes_at)} <span class="chip late">late window</span>{/if}</td>
+              <td>{p.closes_at === null ? 'never' : when(p.closes_at, viewer.zone)}</td>
               <td>{p.releases}</td>
             </tr>
           {/if}

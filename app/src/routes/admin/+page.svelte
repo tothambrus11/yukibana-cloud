@@ -1,6 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
   import Tabs from '#lib/Tabs.svelte';
+  import { when } from '#lib/format.ts';
+  import { viewer } from '#lib/viewer.svelte.ts';
   import { actionIn, tabOf, type Tab } from '#lib/tabs.ts';
   import type { PageData } from './$types';
   let { data }: { data: PageData } = $props();
@@ -69,7 +71,7 @@
           <tbody>
             {#each data.audit as a, i (i)}
               <tr>
-                <td>{new Date(a.at).toLocaleString()}</td>
+                <td>{when(a.at, viewer.zone)}</td>
                 <td><span class="chip">{a.action}</span></td>
                 <td><code>{a.subject}</code></td>
               </tr>
