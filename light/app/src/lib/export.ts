@@ -120,6 +120,38 @@ const MESON: BuildSystem = {
 	}, { extensions: ['mesonbuild.mesonbuild'], extra: { apt: ['meson'], sourcehut: { packages: ['meson'] } } }),
 };
 
+/** Conan's version in CI and the dev container: the one conanfile.txt was written for. */
+const CONAN_VERSION = '2.34.0';
+
+/**
+ * CMake, with the test framework from Conan rather than FetchContent. Conan
+ * is installed with pipx where every user can run it (CI's steps are not
+ * root); each configure detects a profile for the compiler CC and CXX name
+ * (clang in CI) unless one exists, installs the packages into the build
+ * folder, and points CMake at the toolchain file Conan writes there.
+ */
+const CONAN: BuildSystem = {
+	id: 'conan',
+	label: 'CMake with Conan',
+	paths: ['CMakeLists.txt', 'conanfile.txt'],
+	generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry, 'conan'), 'conanfile.txt': conanfile(p.files, p.language.entry) }),
+	instructions: (language, files) => conanInstructions(language, files),
+	ci: (p) => cFamilyCi(p.files, p.language.entry, {
+		configure: (dir, more) =>
+			`conan profile detect --exist-ok && conan install . --output-folder=${dir} --build=missing -s build_type=Debug && cmake -S . -B ${dir} -G Ninja -DCMAKE_TOOLCHAIN_FILE=${dir}/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug${more.warningsAsErrors ? ' -DWARNINGS_AS_ERRORS=ON' : ''}${more.sanitize ? ` -DSANITIZE=${more.sanitize}` : ''}`,
+		build: (dir) => `cmake --build ${dir}`,
+		test: (dir) => `ctest --test-dir ${dir} --output-on-failure`,
+	}, {
+		extensions: ['ms-vscode.cmake-tools'],
+		extra: {
+			// make: Conan builds a package from source with CMake's default generator.
+			apt: ['pipx', 'make'],
+			setup: [`PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install conan==${CONAN_VERSION}`],
+			sourcehut: { packages: ['python-pipx'], setup: [`PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install conan==${CONAN_VERSION}`] },
+		},
+	}),
+};
+
 /** Whether a project's tests and program would make a test executable or a program to run. */
 function cFamilyParts(files: Files, entry: string): { tests: boolean; main: boolean } {
 	const sources = Object.keys(files).filter((p) => CXX.test(p) || C.test(p));
@@ -159,8 +191,8 @@ function cFamilyCi(
 
 /** The build systems of each language, its usual one first. */
 const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
-	c: [CMAKE, MESON],
-	cpp: [CMAKE, MESON],
+	c: [CMAKE, MESON, CONAN],
+	cpp: [CMAKE, MESON, CONAN],
 	swift: [
 		{
 			id: 'swiftpm',
@@ -296,7 +328,8 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			ci: (p) => ({
 				extra: { sourcehut: { packages: ['haskell-stack'] } },
 				// --install-ghc: the haskell image tells Stack to use its own GHC, which is not the snapshot's.
-				jobs: [testJob('Build and test', steps(['Build', 'stack build --install-ghc'], ...(haskellTests(p.files) ? [['Test', 'stack test --install-ghc'] as const] : [])))],
+				// --allow-different-user: a CI container runs as root over a checkout the runner's user owns, which Stack refuses.
+				jobs: [testJob('Build and test', steps(['Build', 'stack build --install-ghc --allow-different-user'], ...(haskellTests(p.files) ? [['Test', 'stack test --install-ghc --allow-different-user'] as const] : [])))],
 			}),
 		},
 	],
@@ -584,15 +617,22 @@ function cFamilyLayout(files: Files, entry: string): CFamilyLayout {
  * compiler's default standard applies, as it does for clangd. A target
  * flag is never passed on: for a Linux target a comment at the top says
  * what cross compiling would take (crossNote).
+ *
+ * With `deps` 'conan' the test framework comes from Conan instead
+ * (conanfile.txt, conanfile), found with find_package in the toolchain
+ * `conan install` writes; RapidCheck is still fetched, at the browser's
+ * commit, which ConanCenter does not have.
  */
-export function cmakeLists(files: Files, entry: string): string {
+export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' = 'fetch'): string {
 	const { tests, program, underTest, ownMain, hasMain, flags, cxx, c, rcProgram, rcTests, testFramework } = cFamilyLayout(files, entry);
 	const languages = [...(cxx ? ['CXX'] : []), ...(c ? ['C'] : [])];
 	const list = (paths: string[]) => paths.map((p) => `\n    ${cmakeQuote(p)}`).join('');
 
 	const lines: string[] = [
 		'# Builds the project where it is, with the layout it had in Yukibana Light:',
-		'#   cmake -S . -B build && cmake --build build && ./build/app',
+		...(deps === 'conan'
+			? ['#   conan install . --output-folder=build --build=missing -s build_type=Debug', '#   cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug', '#   cmake --build build && ./build/app']
+			: ['#   cmake -S . -B build && cmake --build build && ./build/app']),
 		...(tests.length ? ['#   ctest --test-dir build --output-on-failure'] : []),
 		...crossNote(linuxTarget(files), languages),
 		'cmake_minimum_required(VERSION 3.16...3.31)',
@@ -691,7 +731,21 @@ export function cmakeLists(files: Files, entry: string): string {
 	if (tests.length) {
 		const framework = testFramework ?? 'gtest';
 		const testSources = list([...underTest, ...tests]);
-		if (framework === 'gtest') {
+		const conan = deps === 'conan';
+		if (framework === 'gtest' && conan) {
+			lines.push(
+				`# The tests: tests/ and the program's sources without its main, with GoogleTest ${GTEST_VERSION}`,
+				'# from Conan (conanfile.txt), the version the browser runs.',
+				'find_package(GTest REQUIRED CONFIG)',
+				'',
+				'enable_testing()',
+				`add_executable(app_tests${testSources}\n)`,
+				`target_link_libraries(app_tests PRIVATE project_flags ${ownMain ? 'GTest::gtest' : 'GTest::gtest_main'}${rcTests ? ' rapidcheck_gtest' : ''})`,
+				'include(GoogleTest)',
+				'gtest_discover_tests(app_tests)',
+				'',
+			);
+		} else if (framework === 'gtest') {
 			lines.push(
 				`# The tests: tests/ and the program's sources without its main, with GoogleTest ${GTEST_VERSION},`,
 				'# the version the browser runs. Downloaded once, when the build is configured.',
@@ -710,6 +764,23 @@ export function cmakeLists(files: Files, entry: string): string {
 				`target_link_libraries(app_tests PRIVATE project_flags ${ownMain ? 'GTest::gtest' : 'GTest::gtest_main'}${rcTests ? ' rapidcheck_gtest' : ''})`,
 				'include(GoogleTest)',
 				'gtest_discover_tests(app_tests)',
+				'',
+			);
+		} else if (framework === 'doctest' && conan) {
+			// Conan's doctest is the header alone, without doctest_with_main: the
+			// first test file implements doctest and its main, as under Meson.
+			const ownDoctest = ownMain || tests.some((p) => implementsDoctest(files[p] ?? ''));
+			lines.push(
+				`# The tests: tests/ and the program's sources without its main, with doctest ${DOCTEST_VERSION}`,
+				'# from Conan (conanfile.txt), the version the browser runs.',
+				'find_package(doctest REQUIRED CONFIG)',
+				'',
+				'enable_testing()',
+				`add_executable(app_tests${testSources}\n)`,
+				`target_link_libraries(app_tests PRIVATE project_flags doctest::doctest${rcTests ? ' rapidcheck' : ''})`,
+				...(ownDoctest ? [] : [`# Conan's doctest has no main of its own: ${tests[0]} implements doctest and its main.`, `set_source_files_properties(${cmakeQuote(tests[0]!)} PROPERTIES COMPILE_DEFINITIONS DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN)`]),
+				'include(doctest)',
+				'doctest_discover_tests(app_tests)',
 				'',
 			);
 		} else if (framework === 'doctest') {
@@ -732,6 +803,20 @@ export function cmakeLists(files: Files, entry: string): string {
 				`target_link_libraries(app_tests PRIVATE project_flags ${ownDoctest ? 'doctest::doctest' : 'doctest::doctest_with_main'}${rcTests ? ' rapidcheck' : ''})`,
 				'include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)',
 				'doctest_discover_tests(app_tests)',
+				'',
+			);
+		} else if (conan) {
+			lines.push(
+				`# The tests: tests/ and the program's sources without its main, with Catch2 ${CATCH2_VERSION}`,
+				'# from Conan (conanfile.txt), the version the browser runs.',
+				'find_package(Catch2 3 REQUIRED CONFIG)',
+				'',
+				'enable_testing()',
+				`add_executable(app_tests${testSources}\n)`,
+				`target_link_libraries(app_tests PRIVATE project_flags ${ownMain ? 'Catch2::Catch2' : 'Catch2::Catch2WithMain'}${rcTests ? ' rapidcheck' : ''})`,
+				...(rcTests ? ['target_include_directories(app_tests PRIVATE ${rapidcheck_SOURCE_DIR}/extras/catch/include)'] : []),
+				'include(Catch)',
+				'catch_discover_tests(app_tests)',
 				'',
 			);
 		} else {
@@ -838,6 +923,8 @@ function mesonArray(items: readonly string[], indent = ''): string {
  * A Meson standard option's value: the standard, then its draft name for a
  * compiler Meson thinks too old for the final one (clang 18 has c2x but
  * not c23 by Meson's table); Meson 1.3 and later take the first it knows.
+ * Every name must be one Meson knows, whatever the compiler: Meson 1.7
+ * refuses the whole value for c++2b, which it no longer lists.
  */
 function mesonStd(prefix: string, standard: string, drafts: Record<string, string>): string {
 	const draft = drafts[standard];
@@ -865,7 +952,7 @@ export function mesonBuild(files: Files, entry: string): string {
 	const languages = [...(cxx ? ['cpp'] : []), ...(c ? ['c'] : [])];
 	const target = linuxTarget(files);
 	const options = [
-		...(flags.cxx && cxx ? [`cpp_std=${mesonStd(`${flags.cxx.extensions ? 'gnu' : 'c'}++`, flags.cxx.standard, { '20': '2a', '23': '2b', '26': '2c' })}`] : []),
+		...(flags.cxx && cxx ? [`cpp_std=${mesonStd(`${flags.cxx.extensions ? 'gnu' : 'c'}++`, flags.cxx.standard, { '20': '2a' })}`] : []),
 		...(flags.c && c ? [`c_std=${mesonStd(flags.c.extensions ? 'gnu' : 'c', flags.c.standard, { '23': '2x' })}`] : []),
 		// compile_flags.txt's -W options say which warnings, as in the browser.
 		'warning_level=0',
@@ -971,6 +1058,42 @@ export function mesonBuild(files: Files, entry: string): string {
 		);
 	}
 	return lines.join('\n');
+}
+
+/**
+ * conanfile.txt for CMakeLists.txt with `deps` 'conan': the test framework
+ * the tests include, at the browser's version, and the generators that
+ * write the toolchain file and the packages' find_package configuration.
+ * Without tests it requires nothing, and is there so that a dependency has
+ * a place to go.
+ */
+export function conanfile(files: Files, entry: string): string {
+	const { testFramework } = cFamilyLayout(files, entry);
+	const version = testFramework && { gtest: GTEST_VERSION, doctest: DOCTEST_VERSION, catch2: CATCH2_VERSION }[testFramework];
+	return [
+		'# The packages the project builds with, from ConanCenter:',
+		'#   conan install . --output-folder=build --build=missing -s build_type=Debug',
+		'[requires]',
+		...(testFramework ? [`${testFramework}/${version}`] : ['# None yet: add a line such as fmt/12.1.0, then find_package it in CMakeLists.txt.']),
+		'',
+		'[generators]',
+		'CMakeDeps',
+		'CMakeToolchain',
+		'',
+	].join('\n');
+}
+
+/** The README's sections for a C or C++ project built with CMake and Conan. */
+function conanInstructions(language: Language, files: Files): string[] {
+	const { tests, testFramework } = cFamilyLayout(files, language.entry);
+	return [
+		`## Build and run\n\nWith Conan 2, CMake 3.16 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler (\`conan profile detect\` once, to describe it to Conan):\n\n\`\`\`sh\nconan install . --output-folder=build --build=missing -s build_type=Debug\ncmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
+		...(tests.length && testFramework
+			? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFramework]}, which \`conan install\` brings from ConanCenter (\`conanfile.txt\`):\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``]
+			: []),
+		...crossSection(linuxTarget(files)),
+		'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project once `conan install` has run; give them the toolchain file above. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
+	];
 }
 
 /** The README's sections for a C or C++ project built with Meson. */
@@ -1501,13 +1624,20 @@ const ERIS_VERSION = '1.3.0';
  * composer.json for the project where it is: PHPUnit as a development
  * dependency (the browser's version, or a later 12.x), `composer start`
  * running the entry and `composer test` running PHPUnit, and a class map of
- * every .php file outside tests/ and vendor/ as the autoloader, which is
+ * the project's .php files outside tests/ as the autoloader, which is
  * what the browser's Test uses (packs/php/src/autoload.php): the project's
  * files are not in PSR-4 folders, so a class map is the autoloading that
  * fits them without moving anything. PHP 8.3 or later, which PHPUnit 12
  * needs; the browser runs 8.4. Eris too, when a PHP file names its
  * namespace, as the browser's Test then installs it (packs/php/src/runner.js,
  * `usesEris`).
+ *
+ * The class map names the project's top-level .php files and folders
+ * rather than `./` with tests/ and vendor/ excluded: the root package's
+ * exclude-from-classmap applies to every package's class map, so excluding
+ * vendor/ took PHPUnit's own classes out of the autoloader ("Class
+ * PHPUnit\TextUI\Application not found"). A file added later in a new
+ * top-level folder needs that folder added here.
  */
 export function composerJson(entry: string, files: Files = {}): string {
 	const eris = Object.entries(files).some(([path, text]) => path.endsWith('.php') && /\bEris\\/.test(text));
@@ -1517,11 +1647,19 @@ export function composerJson(entry: string, files: Files = {}): string {
 		type: 'project',
 		require: { php: '>=8.3' },
 		'require-dev': { ...(eris ? { 'giorgiosironi/eris': `^${ERIS_VERSION}` } : {}), 'phpunit/phpunit': `^${PHPUNIT_VERSION}` },
-		autoload: { classmap: ['./'], 'exclude-from-classmap': ['tests/', 'vendor/'] },
+		autoload: { classmap: phpClassmap(files) },
 		scripts: { start: `php ${entry}`, test: 'phpunit' },
 		config: { 'sort-packages': true },
 	};
 	return JSON.stringify(json, null, 4) + '\n';
+}
+
+/** The top-level .php files and folders holding .php files, tests/ and vendor/ aside, sorted: composer.json's class map. */
+function phpClassmap(files: Files): string[] {
+	const entries = Object.keys(files)
+		.filter((p) => p.endsWith('.php') && !p.startsWith('tests/') && !p.startsWith('vendor/'))
+		.map((p) => (p.includes('/') ? `${p.slice(0, p.indexOf('/'))}/` : p));
+	return [...new Set(entries)].sort();
 }
 
 /**

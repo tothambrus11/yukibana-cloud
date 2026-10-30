@@ -10,7 +10,8 @@
 //
 // Needs Docker. Without arguments, every language with every build system
 // that fits its sample. Set KEEP=1 to keep the projects, JOBS=test,format
-// to run only those jobs.
+// to run only those jobs, DOCKER_ARGS to give every container more `docker
+// run` arguments (a mount of a package mirror's configuration, say).
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -42,7 +43,7 @@ function proxyArgs() {
 	};
 	return ['--network', 'host', '-v', `${ca}:${caIn}:ro`, ...(existsSync(javaCerts) ? ['-v', `${javaCerts}:/tmp/java-cacerts:ro`] : []), ...Object.entries(vars).flatMap(([k, v]) => ['-e', `${k}=${v}`])];
 }
-const PROXY = proxyArgs();
+const PROXY = [...proxyArgs(), ...(process.env.DOCKER_ARGS ?? '').split(' ').filter(Boolean)];
 
 const work = mkdtempSync(join(tmpdir(), 'yukibana-ci-'));
 const only = process.env.JOBS ? new Set(process.env.JOBS.split(',')) : null;
@@ -71,14 +72,15 @@ for (const [id, buildId] of targets) {
 		const copy = join(work, `${name}-${job.id}`);
 		spawnSync('cp', ['-r', dir, copy]);
 		const e = job.environment;
-		const script = [...imageSetup(e).map((s) => `${s} >/dev/null`), ...job.steps.flatMap((s) => [`echo ${JSON.stringify(`==> ${s.name}`)}`, s.run])].join('\n');
+		// One stream, in order, so that a failing step's output ends the log rather than hiding before another stream's.
+		const script = ['exec 2>&1', ...imageSetup(e).map((s) => `${s} >/dev/null`), ...job.steps.flatMap((s) => [`echo ${JSON.stringify(`==> ${s.name}`)}`, s.run])].join('\n');
 		const env = Object.entries(e.variables).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 		const started = Date.now();
-		const r = spawnSync('docker', ['run', '--rm', '-i', '-v', `${copy}:/work`, '-w', '/work', ...PROXY, ...env, e.image, 'bash', '-euo', 'pipefail', '-s'], { input: script, encoding: 'utf8', maxBuffer: 256 << 20, timeout: 40 * 60_000 });
+		const r = spawnSync('docker', ['run', '--rm', '-i', '--quiet', '-v', `${copy}:/work`, '-w', '/work', ...PROXY, ...env, e.image, 'bash', '-euo', 'pipefail', '-s'], { input: script, encoding: 'utf8', maxBuffer: 256 << 20, timeout: 40 * 60_000 });
 		const ok = r.status === 0;
 		const seconds = ((Date.now() - started) / 1000).toFixed(0);
 		console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${job.name} in ${e.image} (${seconds} s)`);
-		if (!ok) failures.push(`${name}: ${job.name}\n${`${r.stdout ?? ''}${r.stderr ?? ''}${r.error ?? ''}`.trim().split('\n').slice(-25).join('\n')}`);
+		if (!ok) failures.push(`${name}: ${job.name}\n${`${r.stdout ?? ''}${r.stderr ?? ''}${r.error ?? ''}`.trim().split('\n').slice(-40).join('\n')}`);
 		if (!process.env.KEEP) spawnSync('docker', ['run', '--rm', '-v', `${work}:/w`, 'debian:trixie', 'rm', '-rf', `/w/${name}-${job.id}`]);
 	}
 }
