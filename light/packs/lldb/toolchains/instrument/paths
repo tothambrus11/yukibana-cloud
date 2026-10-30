@@ -1,0 +1,6 @@
+# The pack files the instrument unit builds with, besides this directory:
+# the instrumenter's crate and the compressor.
+instrument/Cargo.toml
+instrument/Cargo.lock
+instrument/src/
+compress.mjs

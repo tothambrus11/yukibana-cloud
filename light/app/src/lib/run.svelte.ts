@@ -7,7 +7,7 @@
  * project, so it holds one run at a time; a docs page holds one of these
  * per snippet over the same pool.
  */
-import type { OutputStream, RunMode, RunnerOptions } from '@yukibana/protocol';
+import type { DebugChannel, DebugProgram, OutputStream, RunMode, RunnerOptions } from '@yukibana/protocol';
 import { RunnerPool, workerTransport, type RunEvent, type RunHandle, type RunState, type SessionSource } from '@yukibana/runtime';
 import { AnsiStream } from './ansi';
 import type { Files } from './languages';
@@ -78,6 +78,14 @@ export class Runner {
 	/** What the terminal shows above a source's output (`attach`), until a run replaces it; null while a runner's run is shown. */
 	#heading: string | null = null;
 
+	/**
+	 * Where a debugging runner's program goes (the debugger loads it), for
+	 * the run the terminal shows; null drops it.
+	 */
+	debugProgram: ((program: DebugProgram) => void) | null = null;
+	/** Called when the run the terminal shows ends, however it ends (the debugger ends its session then). */
+	ended: (() => void) | null = null;
+
 	/** `log` receives what the Log panel shows of a run; without it, that is dropped. */
 	constructor(private readonly log: RunnerLog | null = null) {}
 
@@ -99,16 +107,17 @@ export class Runner {
 	 * `options` go to the runner as they are (packs/CONTRACT.md: how a C++
 	 * program built for Linux is emulated, or the optimisation level a
 	 * Swift program is compiled at; a runner with no use for them ignores
-	 * them).
+	 * them). `debug`: run it under the debugger, through that channel
+	 * (debug.svelte.ts); the runner's program arrives at `debugProgram`.
 	 */
-	start(source: SessionSource, files: Files, entry: string, mode: RunMode = 'run', options?: RunnerOptions): void {
+	start(source: SessionSource, files: Files, entry: string, mode: RunMode = 'run', options?: RunnerOptions, debug?: DebugChannel): void {
 		this.chunks = [];
 		this.#chars = 0;
 		this.#kernelRest = '';
 		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 		this.#say = true;
 		this.#heading = null;
-		const request = { type: mode, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}) };
+		const request = { type: mode, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}), ...(debug ? { debug } : {}) };
 		// The handle is not known until run() returns, and the first events
 		// arrive before; they belong to the run asked for here all the same.
 		let handle: RunHandle | null = null;
@@ -238,10 +247,14 @@ export class Runner {
 			case 'test-report':
 				// Reserved for grading; the terminal already shows the report the runner printed.
 				break;
+			case 'debug':
+				this.debugProgram?.(event);
+				break;
 		}
 	}
 
 	#state(state: RunState): void {
+		if (state.kind === 'ended' || state.kind === 'stopped' || state.kind === 'unavailable' || state.kind === 'failed') this.ended?.();
 		switch (state.kind) {
 			case 'ended':
 				this.#kernel('\n');

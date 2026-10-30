@@ -54,7 +54,7 @@ export function modeFor(width: number, previous: LayoutMode | null = null): Layo
 }
 
 /** The kinds of panel the dock places. */
-export type PanelKind = 'editor-area' | 'explorer' | 'terminal' | 'view' | 'preview' | 'call-hierarchy';
+export type PanelKind = 'editor-area' | 'explorer' | 'terminal' | 'view' | 'preview' | 'call-hierarchy' | 'debug';
 
 /**
  * What a placement can be relative to, as dock.ts names its panels and
@@ -115,6 +115,7 @@ export function placeFor(mode: LayoutMode, kind: PanelKind, present: ReadonlySet
 			}
 			return has('terminal') ? { reference: 'terminal', direction: 'within', index: 1 } : fallback;
 		case 'call-hierarchy':
+		case 'debug':
 			if (has('problems')) return { reference: 'problems', direction: 'within' };
 			if (mode === 'narrow') return has('terminal') ? { reference: 'terminal', direction: 'within' } : fallback;
 			return has('editor-area') ? { reference: 'editor-area', direction: 'right' } : fallback;

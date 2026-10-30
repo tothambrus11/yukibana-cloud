@@ -1,0 +1,7 @@
+lldb-dap.js
+lldb-dap.wasm
+lldb-dap.wasm.br
+lldb-dap.wasm.gz
+LICENSE-llvm.txt
+LICENSE-libxml2.txt
+versions-lldb.json

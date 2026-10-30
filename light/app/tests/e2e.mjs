@@ -1476,7 +1476,9 @@ async function switching() {
 /**
  * Download saves <language>-project.zip, a zip that Python's zipfile reads
  * without error, holding the project's files in a folder of that name and
- * the build file generated for it. Needs no pack: nothing is compiled.
+ * the build file generated for it, and by default the CI workflow, dev
+ * container and .gitattributes the dialog offers. Needs no pack: nothing is
+ * compiled.
  */
 async function downloading() {
 	const page = await browser.newPage({ viewport: { width: 1400, height: 850 }, acceptDownloads: true });
@@ -1489,15 +1491,21 @@ async function downloading() {
 	await page.reload();
 	await chooseIn(page, LANGUAGE_PICKER, 'cpp');
 	await page.locator('.explorer .row .name', { hasText: 'geometry.h' }).waitFor({ timeout: 30_000 });
-	const [download] = await Promise.all([page.waitForEvent('download'), menuItem(page, 'Download project').then((item) => item.click())]);
+	await menuItem(page, 'Download project').then((item) => item.click());
+	const dialog = page.locator('dialog.export');
+	await dialog.waitFor({ timeout: 10_000 });
+	const builds = await dialog.locator('input[name=export-build]').count();
+	check(builds === 2 && (await dialog.locator('input[name=export-build][value=cmake]').isChecked()), `the dialog offers CMake and Meson for C++, CMake chosen (${builds} choices)`);
+	check(await dialog.locator('input[name=export-ci][value=github]').isChecked(), 'GitHub Actions is the CI chosen at first');
+	const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Download .zip' }).click()]);
 	const dir = mkdtempSync(join(tmpdir(), 'yukibana-download-'));
 	const path = join(dir, download.suggestedFilename());
 	await download.saveAs(path);
 	check(download.suggestedFilename() === 'cpp-project.zip', `the file is called ${download.suggestedFilename()}`);
 	const listing = spawnSync('python3', ['-I', '-c', 'import sys, zipfile\nz = zipfile.ZipFile(sys.argv[1])\nassert z.testzip() is None\nprint("\\n".join(z.namelist()))', path], { encoding: 'utf8' });
 	const names = listing.stdout.trim().split('\n');
-	const expected = ['cpp-project/CMakeLists.txt', 'cpp-project/README.md', 'cpp-project/.gitignore', 'cpp-project/main.cpp', 'cpp-project/geometry.h', 'cpp-project/tests/geometry_test.cpp', 'cpp-project/compile_flags.txt'];
-	check(listing.status === 0 && expected.every((n) => names.includes(n)), `the zip is valid and holds the project and its CMakeLists.txt (${names.join(', ')}${listing.stderr})`);
+	const expected = ['cpp-project/CMakeLists.txt', 'cpp-project/README.md', 'cpp-project/.gitignore', 'cpp-project/main.cpp', 'cpp-project/geometry.h', 'cpp-project/tests/geometry_test.cpp', 'cpp-project/compile_flags.txt', 'cpp-project/.github/workflows/ci.yml', 'cpp-project/.devcontainer/devcontainer.json', 'cpp-project/.devcontainer/Dockerfile', 'cpp-project/.gitattributes'];
+	check(listing.status === 0 && expected.every((n) => names.includes(n)), `the zip is valid and holds the project, its CMakeLists.txt, CI, dev container and .gitattributes (${names.join(', ')}${listing.stderr})`);
 	rmSync(dir, { recursive: true, force: true });
 	await page.close();
 }

@@ -50,6 +50,12 @@ export interface Language {
 	 */
 	mutates?: boolean;
 	/**
+	 * Whether the runner can run the program under the debugger (a run
+	 * message's `debug`, packs/lldb/README.md): the top bar offers Debug,
+	 * and the editors take breakpoints in their margin.
+	 */
+	debugs?: boolean;
+	/**
 	 * Whether the app keeps a runner started ahead of each Run (once the
 	 * language server is up, and again after each run): for a runner whose
 	 * own start-up is most of a run, as Haskell's (GHC loads in some 8 s,
@@ -402,9 +408,7 @@ export function distance(a: Point, b: Point): number {
 }
 
 /** A shape, told apart by its \`kind\`. */
-export type Shape =
-  | { kind: 'circle'; radius: number }
-  | { kind: 'square'; side: number };
+export type Shape = { kind: 'circle'; radius: number } | { kind: 'square'; side: number };
 
 /** The area of a shape; the switch covers every kind, which TypeScript checks. */
 export function area(shape: Shape): number {
@@ -734,6 +738,7 @@ function draw() {
 		extension: '.c',
 		configFiles: C_FAMILY_CONFIG,
 		runs: true,
+		debugs: true,
 		sample: {
 			'main.c': `#include <stdio.h>
 
@@ -793,6 +798,7 @@ double point_distance(struct point a, struct point b) {
 		extension: '.cpp',
 		configFiles: C_FAMILY_CONFIG,
 		runs: true,
+		debugs: true,
 		tests: true,
 		sample: {
 			'main.cpp': `#include <cstdio>
@@ -869,6 +875,7 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		entry: 'main.swift',
 		extension: '.swift',
 		runs: true,
+		debugs: true,
 		tests: true,
 		sample: {
 			'main.swift': `let a = Point(x: 0, y: 0)
@@ -1192,8 +1199,7 @@ public record Point(double x, double y) {
 
 /** Functions of points. */
 public final class Geometry {
-    private Geometry() {
-    }
+    private Geometry() {}
 
     /** Euclidean distance between two points. */
     public static double distance(Point a, Point b) {
@@ -1319,12 +1325,13 @@ main = do
 `,
 			'Geometry.hs': `-- | Points and shapes in the plane.
 module Geometry
-  ( Point (..)
-  , norm
-  , distance
-  , Shape (..)
-  , area
-  ) where
+  ( Point (..),
+    norm,
+    distance,
+    Shape (..),
+    area,
+  )
+where
 
 -- | A point in the plane.
 data Point = Point {px :: Double, py :: Double}
@@ -1357,9 +1364,9 @@ import Test.Hspec
 
 main :: IO ()
 main = hspec $ do
-  describe "norm" $
-    it "is 5 at (3, 4)" $
-      norm (Point 3 4) \`shouldBe\` 5
+  describe "norm"
+    $ it "is 5 at (3, 4)"
+    $ norm (Point 3 4) \`shouldBe\` 5
 
   describe "distance" $ do
     it "is symmetric" $ do
@@ -1370,9 +1377,9 @@ main = hspec $ do
     it "is 0 from a point to itself" $
       distance (Point 7 (-3)) (Point 7 (-3)) \`shouldBe\` 0
 
-  describe "area" $
-    it "of a square of side 3 is 9" $
-      area (Square 3) \`shouldBe\` 9
+  describe "area"
+    $ it "of a square of side 3 is 9"
+    $ area (Square 3) \`shouldBe\` 9
 `,
 		},
 	},

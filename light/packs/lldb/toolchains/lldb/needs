@@ -1,0 +1,3 @@
+# The C/C++ pack's one Emscripten, which lldb-dap and libxml2 are compiled
+# with.
+cpp/emsdk

@@ -1,0 +1,7 @@
+# The pack files the lldb unit builds with, besides this directory: the
+# build script, the helpers it shares, the patch it applies and the
+# compressor. Nothing of the instrumenter or the glue.
+lib.sh
+build-lldb.sh
+compress.mjs
+patches/lldb-browser.patch

@@ -1,0 +1,9 @@
+# What a runner and the app load from the assembled pack, checked there by
+# light-packs.yml and light-release.yml. A language pack's entry is its
+# server.js and it needs no such file; this pack has no server: the app
+# starts debugger.js, a runner imports runtime.js (README.md).
+debugger.js
+lldb-dap.js
+lldb-dap.wasm
+runtime.js
+instrument.wasm
