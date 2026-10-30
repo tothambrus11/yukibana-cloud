@@ -18,6 +18,7 @@ import { zip } from './zip';
 import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
 import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
 import { describeSanitizers, sanitizersOf, withSanitizers, type SanitizerChoice } from './cpp-sanitizers';
+import { CARGO_CONFIG, RUST_TARGETS, rustTargetOf, withRustTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
 import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } from './optimization';
 import { describeStandard, standardOf, withStandard, type Standard, type StandardChoice } from './cpp-standards';
 import { checksOf, TIDY_FILE, withChecks, type CheckGlob } from './tidy-config';
@@ -133,6 +134,11 @@ export class Workspace {
 	 */
 	target = $state<TargetChoice | null>(null);
 	/**
+	 * A Rust project's target, as its .cargo/config.toml says
+	 * (rust-targets.ts); null when the project is not Rust.
+	 */
+	rustTarget = $state<RustTargetChoice | null>(null);
+	/**
 	 * The sanitizers a C or C++ project has on, as its compile_flags.txt
 	 * says (cpp-sanitizers.ts); null when the project is not C or C++.
 	 */
@@ -159,6 +165,12 @@ export class Workspace {
 	 * project's .clang-tidy (`tidyChecks`) either way.
 	 */
 	clangTidy = $state(true);
+	/**
+	 * Whether a Rust project's Run and Test interpret it under Miri, which
+	 * checks for undefined behaviour, instead of compiling it (Project.miri):
+	 * off unless turned on.
+	 */
+	miri = $state(false);
 	/**
 	 * A C or C++ project's clang-tidy rules: the `Checks` of its .clang-tidy
 	 * (tidy-config.ts), null when the file has no such key or there is no
@@ -382,7 +394,10 @@ export class Workspace {
 		// A C or C++ runner reads its level from compile_flags.txt; Swift's is sent.
 		const cFamily = isCFamily(this.language);
 		const level = !cFamily && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
-		this.runner.start(runnerSourceOf(language), files, entry, mode, cFamily ? { ...this.runOptions } : level ? { optimization: level } : undefined);
+		const rust = this.language === 'rust';
+		// A Rust program on a Linux target runs under QEMU with the C++ pack's Run options.
+		const options = cFamily ? { ...this.runOptions } : { ...(level ? { optimization: level } : {}), ...(rust ? { ...this.runOptions, ...(this.miri ? { miri: true } : {}) } : {}) };
+		this.runner.start(runnerSourceOf(language), files, entry, mode, Object.keys(options).length ? options : undefined);
 	}
 
 	/**
@@ -541,6 +556,35 @@ export class Workspace {
 		if (!isCFamily(this.language)) return;
 		this.replaceFile(TIDY_FILE, withChecks(this.models.get(TIDY_FILE)?.getValue(), globs));
 		this.refreshTidy();
+		this.scheduleSave();
+	}
+
+	/**
+	 * Puts a Rust project on target `id` (rust-targets.ts): the `[build]`
+	 * table's `target` of .cargo/config.toml is rewritten (or the file
+	 * created) as one edit, which Undo takes back, then saved; Run, Test
+	 * and Download follow the file. The Log panel says what changed.
+	 */
+	chooseRustTarget(id: RustTarget['id']): void {
+		if (this.language !== 'rust') return;
+		const target = RUST_TARGETS.find((t) => t.id === id);
+		if (!target) return;
+		this.replaceFile(CARGO_CONFIG, withRustTarget(this.models.get(CARGO_CONFIG)?.getValue(), id));
+		this.refreshTarget();
+		const how = target.default ? `no [build] target in ${CARGO_CONFIG}` : `target = "${target.triple}" in ${CARGO_CONFIG}`;
+		this.write('info', `Target: ${target.label} (${how}).${target.runtime === 'linux' ? ' Run and Test compile for Linux and run the program under QEMU; the first build downloads the cross compiler.' : ''}`);
+		this.scheduleSave();
+	}
+
+	/**
+	 * Turns Miri on or off for a Rust project: saved with the project (and
+	 * its link); the next Run or Test interprets the program under Miri,
+	 * or compiles it.
+	 */
+	setMiri(on: boolean): void {
+		if (this.language !== 'rust' || on === this.miri) return;
+		this.miri = on;
+		this.write('info', on ? 'Miri is on: Run and Test interpret the program and stop at undefined behaviour (much slower than the compiled program).' : 'Miri is off: Run and Test compile the program.');
 		this.scheduleSave();
 	}
 
@@ -743,6 +787,7 @@ export class Workspace {
 		this.runOptionsChosen = project.runOptions !== undefined;
 		this.chosenLevel = project.optimization ?? null;
 		this.clangTidy = project.clangTidy !== false;
+		this.miri = project.miri === true;
 		this.host?.closeAll();
 		const entry = languageOf(this.language).entry;
 		const open = project.open.length ? project.open : this.models.has(entry) ? [entry] : this.files.slice(0, 1);
@@ -972,6 +1017,7 @@ export class Workspace {
 		this.target = cFamily ? targetOf(flags) : null;
 		this.sanitizers = cFamily ? sanitizersOf(flags) : null;
 		this.standard = cFamily ? standardOf(flags, language) : null;
+		this.rustTarget = language === 'rust' ? rustTargetOf(this.models.get(CARGO_CONFIG)?.getValue()) : null;
 	}
 
 	/** The clang-tidy rules, which .clang-tidy says. */
@@ -999,7 +1045,7 @@ export class Workspace {
 	private scheduleSave(edited?: string, change = true): void {
 		if (change) this.changed = true;
 		if (edited === undefined || edited.startsWith(TESTS_DIR)) this.refreshTestFramework();
-		if (edited === undefined || edited === COMPILE_FLAGS) {
+		if (edited === undefined || edited === COMPILE_FLAGS || edited === CARGO_CONFIG) {
 			this.refreshTarget();
 			this.refreshOptimization();
 		}
@@ -1018,7 +1064,7 @@ export class Workspace {
 	/** The project as it is now, as it is saved. */
 	private currentProject(): Project {
 		const files = this.currentFiles();
-		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}) };
+		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: true as const } : {}) };
 	}
 
 	/**

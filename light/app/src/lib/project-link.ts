@@ -86,6 +86,8 @@ const V2 = type({
 	'optimization?': 'string',
 	/** false: clang-tidy's checks do not run (and clangd-tidy.wasm is not downloaded). */
 	'clangTidy?': 'boolean',
+	/** true: a Rust project's Run and Test interpret it under Miri, which checks for undefined behaviour. */
+	'miri?': 'boolean',
 });
 
 /** The current version of the document, which `encodeProject` writes and `readDocument` returns. */

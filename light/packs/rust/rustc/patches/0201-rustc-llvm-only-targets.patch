@@ -1,0 +1,56 @@
+--- a/compiler/rustc_llvm/build.rs
++++ b/compiler/rustc_llvm/build.rs
+@@ -222,6 +222,20 @@
+     let components = output(Command::new(&llvm_config).arg("--components"));
+     let mut components = components.split_whitespace().collect::<Vec<_>>();
+     components.retain(|c| OPTIONAL_COMPONENTS.contains(c) || REQUIRED_COMPONENTS.contains(c));
++    // Yukibana builds two compilers from one LLVM: rustc-cross.wasm with
++    // every target LLVM was built with, and rustc.wasm with WebAssembly
++    // alone (RUSTC_LLVM_ONLY_TARGETS=webassembly), whose other code
++    // generators are then neither initialised nor linked.
++    // Read for the WASI host only, so that changing it never rebuilds the
++    // native compiler that builds this one.
++    let only = if target.contains("wasi") {
++        tracked_env_var_os("RUSTC_LLVM_ONLY_TARGETS").map(|v| v.into_string().unwrap())
++    } else {
++        None
++    };
++    if let Some(only) = &only {
++        components.retain(|c| REQUIRED_COMPONENTS.contains(c) || only.split(',').any(|t| t == *c));
++    }
+ 
+     for component in REQUIRED_COMPONENTS {
+         if !components.contains(component) {
+@@ -311,6 +325,9 @@
+         cfg.flag("-D_WASI_EMULATED_MMAN");
+         cfg.flag("--target=wasm32-wasip1-threads");
+         cfg.file("llvm-wrapper/LLD.cpp");
++        if !components.iter().any(|c| ["x86", "aarch64", "riscv"].contains(c)) {
++            cfg.define("RUST_LLD_WASM_ONLY", None);
++        }
+     }
+ 
+     rerun_if_changed_anything_in_dir(Path::new("llvm-wrapper"));
+--- a/compiler/rustc_llvm/llvm-wrapper/LLD.cpp
++++ b/compiler/rustc_llvm/llvm-wrapper/LLD.cpp
+@@ -1,11 +1,19 @@
+ #include "lld/Common/Driver.h"
+ 
++// rustc-cross.wasm links ELF programs (the Linux targets) and WebAssembly
++// ones with the lld it carries; rustc.wasm WebAssembly ones only.
++#ifndef RUST_LLD_WASM_ONLY
+ LLD_HAS_DRIVER(elf)
++#endif
+ LLD_HAS_DRIVER(wasm)
+ 
+ extern "C" int RustRunLld(int argc, const char **argv) {
+     llvm::ArrayRef<const char *> args(argv, argv + argc);
+     auto result = lld::lldMain(args, llvm::outs(), llvm::errs(),
+-                               {{lld::Gnu, &lld::elf::link}, {lld::Wasm, &lld::wasm::link}});
++                               {
++#ifndef RUST_LLD_WASM_ONLY
++                                   {lld::Gnu, &lld::elf::link},
++#endif
++                                   {lld::Wasm, &lld::wasm::link}});
+     return result.retCode;
+ }

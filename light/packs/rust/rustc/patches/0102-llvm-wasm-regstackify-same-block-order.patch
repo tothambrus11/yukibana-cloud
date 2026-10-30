@@ -1,0 +1,94 @@
+From 8956179fa43cc7ad0913295c4ed57448500b50f4 Mon Sep 17 00:00:00 2001
+From: Frank Denis <124872+jedisct1@users.noreply.github.com>
+Date: Tue, 25 Aug 2026 20:10:43 +0200
+Subject: [PATCH] [WebAssembly] Avoid same-block dominance walks in RegStackify
+ (NFCI) (#218369)
+
+RegStackify asks whether one use dominates the others.
+
+But when both uses are in the same block, MachineDominatorTree answers
+that by walking the block from the start.
+
+Use the SlotIndexes already available here instead.
+
+This avoids repeatedly walking over DBG_VALUEs and other instructions in
+large blocks.
+
+(cherry picked from commit fad811bffe33b7858a46ccb76259e989d780b6b0)
+---
+ .../WebAssembly/WebAssemblyRegStackify.cpp    | 13 +++++++--
+ llvm/test/CodeGen/WebAssembly/reg-stackify.ll | 27 +++++++++++++++++++
+ 2 files changed, 38 insertions(+), 2 deletions(-)
+
+diff --git a/llvm/lib/Target/WebAssembly/WebAssemblyRegStackify.cpp b/llvm/lib/Target/WebAssembly/WebAssemblyRegStackify.cpp
+index 2b34e2cf5c..1bdaa2309a 100644
+--- a/llvm/lib/Target/WebAssembly/WebAssemblyRegStackify.cpp
++++ b/llvm/lib/Target/WebAssembly/WebAssemblyRegStackify.cpp
+@@ -460,7 +460,16 @@ static bool oneUseDominatesOtherUses(unsigned Reg, const MachineOperand &OneUse,
+   const LiveInterval &LI = LIS.getInterval(Reg);
+ 
+   const MachineInstr *OneUseInst = OneUse.getParent();
+-  VNInfo *OneUseVNI = LI.getVNInfoBefore(LIS.getInstructionIndex(*OneUseInst));
++  SlotIndex OneUseIdx = LIS.getInstructionIndex(*OneUseInst);
++  VNInfo *OneUseVNI = LI.getVNInfoBefore(OneUseIdx);
++
++  auto OneUseDominates = [&](const MachineInstr *UseI) {
++    if (OneUseInst->getParent() != UseI->getParent())
++      return MDT.dominates(OneUseInst->getParent(), UseI->getParent());
++    if (OneUseInst == UseI)
++      return true;
++    return SlotIndex::isEarlierInstr(OneUseIdx, LIS.getInstructionIndex(*UseI));
++  };
+ 
+   for (const MachineOperand &Use : MRI.use_nodbg_operands(Reg)) {
+     if (&Use == &OneUse)
+@@ -479,7 +488,7 @@ static bool oneUseDominatesOtherUses(unsigned Reg, const MachineOperand &OneUse,
+         return false;
+     } else {
+       // Test that the use is dominated by the one selected use.
+-      while (!MDT.dominates(OneUseInst, UseInst)) {
++      while (!OneUseDominates(UseInst)) {
+         // Actually, dominating is over-conservative. Test that the use would
+         // happen after the one selected use in the stack evaluation order.
+         //
+diff --git a/llvm/test/CodeGen/WebAssembly/reg-stackify.ll b/llvm/test/CodeGen/WebAssembly/reg-stackify.ll
+index f9c233d1be..6c97f41d85 100644
+--- a/llvm/test/CodeGen/WebAssembly/reg-stackify.ll
++++ b/llvm/test/CodeGen/WebAssembly/reg-stackify.ll
+@@ -345,6 +345,33 @@ define void @simple_multiple_use(i32 %x, i32 %y) {
+   ret void
+ }
+ 
++; Multiple uses in the same block with a debug value between them.
++
++; CHECK-LABEL: same_block_use_with_dbg_value:
++; CHECK:       .functype same_block_use_with_dbg_value (i32, i32) -> (){{$}}
++; CHECK-NEXT:  i32.mul     $push[[NUM0:[0-9]+]]=, $1, $0{{$}}
++; CHECK-NEXT:  local.tee   $push[[NUM1:[0-9]+]]=, $[[NUM2:[0-9]+]]=, $pop[[NUM0]]{{$}}
++; CHECK-NEXT:  call        use_a, $pop[[NUM1]]{{$}}
++; CHECK-NEXT:  call        use_b, $[[NUM2]]{{$}}
++; CHECK-NEXT:  return{{$}}
++; NOREGS-LABEL: same_block_use_with_dbg_value:
++; NOREGS:       .functype same_block_use_with_dbg_value (i32, i32) -> (){{$}}
++; NOREGS-NEXT:  local.get 1{{$}}
++; NOREGS-NEXT:  local.get 0{{$}}
++; NOREGS-NEXT:  i32.mul
++; NOREGS-NEXT:  local.tee   0{{$}}
++; NOREGS-NEXT:  call        use_a{{$}}
++; NOREGS-NEXT:  local.get   0{{$}}
++; NOREGS-NEXT:  call        use_b{{$}}
++; NOREGS-NEXT:  return{{$}}
++define void @same_block_use_with_dbg_value(i32 %x, i32 %y) {
++  %mul = mul i32 %y, %x
++  call void @use_a(i32 %mul)
++  call void @llvm.dbg.value(metadata i32 %mul, i64 0, metadata !7, metadata !9), !dbg !10
++  call void @use_b(i32 %mul)
++  ret void
++}
++
+ ; Multiple uses of the same value in one instruction.
+ 
+ ; CHECK-LABEL: multiple_uses_in_same_insn:
+-- 
+2.43.0
+

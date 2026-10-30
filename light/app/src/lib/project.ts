@@ -40,6 +40,13 @@ export interface Project {
 	 * .clang-tidy either way; other languages ignore it.
 	 */
 	clangTidy?: false;
+	/**
+	 * true when a Rust project runs and tests under Miri (packs/rust
+	 * README, "Miri"), which checks for undefined behaviour: absent (the
+	 * program is compiled and run) until the user turns it on. Other
+	 * languages ignore it.
+	 */
+	miri?: true;
 }
 
 /**
@@ -195,6 +202,7 @@ function documentOf(language: LanguageId, project: Project): ProjectDocument {
 		...(project.runOptions ? { runOptions: project.runOptions } : {}),
 		...(project.optimization !== undefined ? { optimization: project.optimization } : {}),
 		...(project.clangTidy === false ? { clangTidy: false } : {}),
+		...(project.miri === true ? { miri: true } : {}),
 	};
 }
 
@@ -219,5 +227,6 @@ function projectOf(document: ProjectDocument, language: LanguageId): Project {
 		...(document.runOptions ? { runOptions: { ...document.runOptions } } : {}),
 		...(savedLevelOf(language, document.optimization) !== null ? { optimization: document.optimization as string } : {}),
 		...(document.clangTidy === false ? { clangTidy: false as const } : {}),
+		...(document.miri === true ? { miri: true as const } : {}),
 	};
 }

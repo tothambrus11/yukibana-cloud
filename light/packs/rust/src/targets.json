@@ -1,0 +1,6 @@
+[
+    { "id": "wasm32-wasi", "label": "WebAssembly (WASI)", "triple": "wasm32-wasip1", "runtime": "wasi", "compiler": "rustc", "miri": "wasm32-wasip1", "default": true },
+    { "id": "x86_64-linux", "label": "x86-64 Linux", "triple": "x86_64-unknown-linux-musl", "runtime": "linux", "arch": "x86_64", "compiler": "rustc-cross", "miri": "x86_64-unknown-linux-gnu" },
+    { "id": "aarch64-linux", "label": "AArch64 Linux", "triple": "aarch64-unknown-linux-musl", "runtime": "linux", "arch": "aarch64", "compiler": "rustc-cross", "miri": "aarch64-unknown-linux-gnu" },
+    { "id": "riscv64-linux", "label": "RISC-V 64 Linux", "triple": "riscv64gc-unknown-linux-musl", "runtime": "linux", "arch": "riscv64", "compiler": "rustc-cross", "miri": "riscv64gc-unknown-linux-gnu" }
+]
