@@ -3,6 +3,8 @@
 # documents. An edit to any of these rebuilds no toolchain.
 glue.paths
 glue.sh
+build.sh
+entries
 package.json
 package-lock.json
 compress.mjs

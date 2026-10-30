@@ -18,6 +18,10 @@
 //   runs over the pack it assembled (`test.sh --setup` first, and
 //   `test.sh --inputs` among the job's once inputs), so a split pack never
 //   ships tested only by its glue's versions check.
+// * Every entry point of a split pack (the lines of its `entries` file, or a
+//   language pack's server.js) is a file a unit's outputs declare or its
+//   glue.sh writes, which the assemble job and a release check again over
+//   the pack as assembled, hours later for a unit that is new.
 // * Every unit has a toolchain.sh, an outputs file and a pins.sh of plain
 //   `NAME=value` lines a reader can trust without running them, and the
 //   pack's glue.sh and build.sh assign no pin (the pin rule,
@@ -210,12 +214,43 @@ export function problemsOf(/** @type {string} */ root, /** @type {string} */ pac
     const tests = path.join(root, dir, 'test.sh');
     if (!fs.existsSync(tests)) problems.push(`${dir} has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped`);
     else if ((fs.statSync(tests).mode & 0o111) === 0) problems.push(`${dir}/test.sh is not executable`);
+    // The assemble job and a release refuse a pack without its entry points
+    // (light-packs.yml, light-release.yml), but only after its units are
+    // built, which for a new unit is hours after its pull request was green:
+    // the LLDB pack, which has no server.js, was merged that way. So each
+    // entry is checked here, in seconds, as a file a unit declares in its
+    // outputs or the glue writes into $OUT.
+    const entriesFile = path.join(root, dir, 'entries');
+    const entries = fs.existsSync(entriesFile) ? entriesOf(fs.readFileSync(entriesFile, 'utf8')) : ['server.js'];
+    const made = new Set();
+    for (const unit of owners.units.keys()) {
+        const outputs = path.join(root, 'light/packs', pack, 'toolchains', unit.slice(pack.length + 1), 'outputs');
+        if (fs.existsSync(outputs)) for (const line of entriesOf(fs.readFileSync(outputs, 'utf8'))) made.add(line);
+    }
+    // Without a glue.sh that is the problem, named above, not every entry.
+    const glueText = fs.existsSync(glue) ? fs.readFileSync(glue, 'utf8') : null;
+    for (const entry of glueText === null ? [] : entries) {
+        if (!made.has(entry) && !glueText.includes(`$OUT/${entry}"`)) {
+            problems.push(`${dir}: its entry point ${entry} is in no unit's outputs and glue.sh writes no "$OUT/${entry}"${fs.existsSync(entriesFile) ? '' : '; a pack that is no language server lists what it serves in an entries file'}`);
+        }
+    }
     for (const name of ['glue.sh', 'build.sh']) {
         const file = path.join(root, dir, name);
         if (!fs.existsSync(file)) continue;
         for (const [n, pin] of pinAssignments(fs.readFileSync(file, 'utf8'))) problems.push(`${dir}/${name}:${n}: assigns the pin ${pin}; pins live in a unit's pins.sh`);
     }
     return problems;
+}
+
+/**
+ * The lines of an `entries` or `outputs` file: one path each, `#` to the end
+ * of a line a comment, blank lines none.
+ */
+export function entriesOf(/** @type {string} */ text) {
+    return text
+        .split('\n')
+        .map((line) => line.replace(/#.*/, '').trim())
+        .filter(Boolean);
 }
 
 /** The split packs of the repository at `root`: those with a toolchains/ directory. */
@@ -289,6 +324,24 @@ test("a split pack without its tests is named, and they are glue, which no unit'
         const gluePaths = path.join(dir, 'light/packs/stub/glue.paths');
         fs.writeFileSync(gluePaths, fs.readFileSync(gluePaths, 'utf8').replace(/^test\.sh\n/m, ''));
         assert.deepEqual(problemsOf(dir, 'stub'), ["light/packs/stub has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped"]);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('a split pack without the entry point it is loaded by is named before any unit is built', () => {
+    const dir = scratch();
+    try {
+        const pack = path.join(dir, 'light/packs/stub');
+        assert.deepEqual(problemsOf(dir, 'stub'), [], 'the stub serves a server.js');
+        const glue = path.join(pack, 'glue.sh');
+        fs.writeFileSync(glue, fs.readFileSync(glue, 'utf8').replace('"$OUT/server.js"', '"$OUT/debugger.js"'));
+        assert.deepEqual(problemsOf(dir, 'stub'), [
+            'light/packs/stub: its entry point server.js is in no unit\'s outputs and glue.sh writes no "$OUT/server.js"; a pack that is no language server lists what it serves in an entries file',
+        ]);
+        fs.writeFileSync(path.join(pack, 'entries'), '# what the app loads\ndebugger.js\nruntime.js\n');
+        fs.appendFileSync(path.join(pack, 'glue.paths'), 'entries\n');
+        assert.deepEqual(problemsOf(dir, 'stub'), ['light/packs/stub: its entry point runtime.js is in no unit\'s outputs and glue.sh writes no "$OUT/runtime.js"']);
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

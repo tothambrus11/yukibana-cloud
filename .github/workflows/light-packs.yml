@@ -668,7 +668,10 @@ jobs:
 
       # The pack's own check of the units it was assembled over (glue.sh
       # --check-versions, with each unit at TOOLCHAIN_DIR_<UNIT>, as
-      # pack-toolchain.sh documents), and that it has its entry point.
+      # pack-toolchain.sh documents), and that it has its entry points: the
+      # lines of its `entries` file, or a language pack's server.js
+      # (light/packs/contract.test.mjs checks each is a file the pack makes,
+      # on every pull request, in seconds).
       - name: Test the pack
         if: steps.assemble.outcome == 'success'
         run: |
@@ -683,8 +686,12 @@ jobs:
             names+=("$unit")
           done < "$RUNNER_TEMP/dirs"
           (cd "light/packs/$PACK" && env -u OUT "${vars[@]}" bash glue.sh --check-versions)
-          test -f "light/app/static/packs/$PACK/server.js" ||
-            { echo "::error::pack $PACK has no server.js" >&2; exit 1; }
+          entries=server.js
+          [ ! -f "light/packs/$PACK/entries" ] || entries="$(sed 's/#.*//; /^[[:space:]]*$/d' "light/packs/$PACK/entries")"
+          for entry in $entries; do
+            test -f "light/app/static/packs/$PACK/$entry" ||
+              { echo "::error::pack $PACK has no $entry" >&2; exit 1; }
+          done
           echo "$PACK: $(du -sh "light/app/static/packs/$PACK" | cut -f1), assembled over ${names[*]}" >> "$GITHUB_STEP_SUMMARY"
 
       # What the pack's tests need on this runner (a browser, an emulator),

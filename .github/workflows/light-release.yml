@@ -143,7 +143,8 @@ jobs:
           path: ${{ runner.temp }}/keys
 
       # Every pack in the tree (a directory with a build.sh, as the pack
-      # workflow's matrix has it), so a new pack needs no edit here. Each
+      # workflow's matrix has it), so a new pack needs no edit here, with
+      # its entry points (its `entries` file, or server.js). Each
       # problem is named before the step fails, not only the first. A pack
       # whose tree is not this commit's (a deploy's newest stored build) is
       # listed in the run's summary, so what went live is said where it is
@@ -153,7 +154,11 @@ jobs:
           missing=()
           for d in ../packs/*/build.sh; do
             p=$(basename "$(dirname "$d")")
-            [ -f "static/packs/$p/server.js" ] || missing+=("$p has no server.js")
+            entries=server.js
+            [ ! -f "../packs/$p/entries" ] || entries="$(sed 's/#.*//; /^[[:space:]]*$/d' "../packs/$p/entries")"
+            for entry in $entries; do
+              [ -f "static/packs/$p/$entry" ] || missing+=("$p has no $entry")
+            done
             key="$RUNNER_TEMP/keys/$p"
             if [ ! -f "$key" ]; then
               missing+=("$p has no key file (toolchain-key-$p)")
