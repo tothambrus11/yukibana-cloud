@@ -16,7 +16,7 @@ and LLVM's, under their own licences.
 | 0004 | lld's ELF and wasm linkers in rustc (`RustRunLld`), called instead of spawning `rust-lld`; rustc_driver as an rlib too |
 | 0005 | bootstrap builds LLVM for wasm32-wasip1-threads |
 | 0006 | the sysroot from `RUSTC_SYSROOT` (WASI has no path of the running program) |
-| 0007 | LLVM's endianness headers on WASI |
+| 0007 | LLVM's endianness headers on WASI (without its hunk for orc-rt, which Rust's source tarball does not have) |
 | 0008 | bootstrap configures LLVM as a Unix for WASI |
 | 0009 | LLVM's support library without signals, processes and dynamic libraries |
 | 0010 | no `dlopen` (codegen backends, Enzyme) |
