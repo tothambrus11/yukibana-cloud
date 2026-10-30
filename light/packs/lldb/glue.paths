@@ -11,3 +11,5 @@ src/
 test*.mjs
 test.sh
 tests/
+# The instrumenter crate's formatting, which nothing builds with.
+instrument/rustfmt.toml
