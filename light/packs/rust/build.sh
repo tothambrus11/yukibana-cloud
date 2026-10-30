@@ -25,8 +25,8 @@ set -euo pipefail
 RUST_TOOLCHAIN=1.98.0          # ra_ap_* 0.0.358 needs rustc >= 1.98
 # The standard library rust-analyzer reads: the release the server is built
 # with (see README).
-RUST_SRC_VERSION=1.98.0
-RUST_SRC_SHA256=0e977492aed5ff137815bf9b4b796e8a85b80fb2367ed64e82d5c5839870f2bf
+RA_STD_VERSION=1.98.0
+RA_STD_SHA256=0e977492aed5ff137815bf9b4b796e8a85b80fb2367ed64e82d5c5839870f2bf
 # The release rustc.wasm is built from (rustc/pins.sh): its rust-std, and
 # the toolchain whose Miri builds Miri's standard library and whose Cargo
 # builds the crates, since a crate loads only into a compiler of the same
@@ -57,13 +57,13 @@ fi
 cp "$CACHE/target/wasm32-wasip1/release/yukibana_rust_analyzer.wasm" "$OUT/rust-analyzer.wasm"
 
 # 3. The standard library's sources, for rust-analyzer.
-SRC_TAR="$CACHE/rust-src-$RUST_SRC_VERSION.tar.xz"
+SRC_TAR="$CACHE/rust-src-$RA_STD_VERSION.tar.xz"
 if [ ! -f "$SRC_TAR" ]; then
-    curl -sSfL -o "$SRC_TAR.part" "https://static.rust-lang.org/dist/rust-src-$RUST_SRC_VERSION.tar.xz"
+    curl -sSfL -o "$SRC_TAR.part" "https://static.rust-lang.org/dist/rust-src-$RA_STD_VERSION.tar.xz"
     mv "$SRC_TAR.part" "$SRC_TAR"
 fi
-echo "$RUST_SRC_SHA256  $SRC_TAR" | sha256sum -c --quiet
-LIBRARY="$CACHE/rust-src-$RUST_SRC_VERSION/rust-src/lib/rustlib/src/rust/library"
+echo "$RA_STD_SHA256  $SRC_TAR" | sha256sum -c --quiet
+LIBRARY="$CACHE/rust-src-$RA_STD_VERSION/rust-src/lib/rustlib/src/rust/library"
 if [ ! -d "$LIBRARY/core" ]; then
     tar -xJf "$SRC_TAR" -C "$CACHE"
 fi

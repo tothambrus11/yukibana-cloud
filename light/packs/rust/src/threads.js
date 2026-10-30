@@ -122,7 +122,6 @@ export function runProcess({ module, limits, wasi, threadUrl, signal }) {
                 if (over) return;
                 switch (data.type) {
                     case 'call': {
-                        if (globalThis.YK_TRACE) console.log(`T${tid} ${data.fn}(${data.args.join(',')})`);
                         let result;
                         try {
                             result = imports[data.fn](...data.args);
@@ -135,7 +134,6 @@ export function runProcess({ module, limits, wasi, threadUrl, signal }) {
                     }
                     case 'spawn': {
                         const id = nextTid++;
-                        if (globalThis.YK_TRACE) console.log(`T${tid} spawn -> ${id}`);
                         start(id, data.arg);
                         answer(id);
                         break;
