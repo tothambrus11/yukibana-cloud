@@ -32,8 +32,10 @@ for arch in $LINUX_TARGETS; do
   rm -rf "${stage}/usr/include/"{c++,curl,libxml2,openssl,archive.h,archive_entry.h,bzlib.h,lzma,lzma.h,zlib.h,zconf.h,mimalloc*}
 
   # The C side of a static link: musl, libc++ for the runtime's C++, libunwind.
+  # The Musl module's map links fts and resolv, so any program that imports it
+  # (Synchronization does) names them; dropping them once broke every such link.
   for f in Scrt1.o crt1.o crti.o crtn.o rcrt1.o libc.a libm.a libpthread.a libdl.a librt.a libutil.a \
-           libc++.a libc++abi.a libunwind.a; do
+           libresolv.a libcrypt.a libxnet.a libfts.a libc++.a libc++abi.a libunwind.a; do
     cp -a "${src}/usr/lib/${f}" "${stage}/usr/lib/"
   done
 
@@ -63,6 +65,13 @@ for arch in $LINUX_TARGETS; do
   # it (41 MB against 10.5 MB for hello world); the program keeps its own. The SDK has
   # empty crtbeginT.o and crtend.o placeholders, which are not objects at all.
   find "$stage" \( -name '*.a' -o -name '*.o' \) -size +0 -print0 | xargs -0 -n 1 -P "$JOBS" "$OBJCOPY" --strip-debug
+
+  # Every library a module map names must be in the tar, or importing that module
+  # fails at link time in the browser, long after this build said it was fine.
+  while read -r lib; do
+    [[ -n "$(find "$stage" -name "lib${lib}.a" -print -quit)" ]] ||
+      die "the ${arch} sysroot has a module map that links ${lib}, and no lib${lib}.a"
+  done < <(grep -rhoE --include='*.modulemap' 'link "[^"]+"' "$stage" | sed -E 's/link "(.*)"/\1/' | sort -u)
 
   links="$(find "$stage" -type l)"
   [[ -z "$links" ]] || die "symbolic links in the ${arch} sysroot: ${links}"
