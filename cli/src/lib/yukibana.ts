@@ -88,11 +88,6 @@ export interface Layout {
   readonly views: Readonly<Record<string, boolean>>;
 }
 
-export enum Mode {
-  LAB = 'lab',
-  EXAM = 'exam',
-}
-
 /** What a student's folder is set up with: the fields the IDE reads, each
  *  with its default when the file leaves it out. */
 export interface Settings {
@@ -110,7 +105,6 @@ export interface Settings {
   /** The registry project this folder submits to. Only a starter's copy has
    *  one (`starterConfig` writes it); in a course repository it is null. */
   readonly projectId: string | null;
-  readonly mode: Mode;
 }
 
 /** The whole file, as a course repository and a starter carry it. */
@@ -271,11 +265,19 @@ const settingsShape = {
     ),
     'What a submission from this folder holds, and where the IDE sends it.',
   ),
+  telemetry: about(
+    z.prefault(
+      z.object({
+        liveTypingStats: about(withDefault(bool, false), 'Whether to send live stats about what the user is typing in the IDE.'),
+      }),
+      {},
+    ),
+    'What kind of telemetry should be sent.',
+  ),
   projectId: about(
     withDefault(z.nullable(projectIdSchema), null),
     "Written by yukibana build and publish into the starter's copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.",
   ),
-  mode: about(withDefault(z.enum(Mode), Mode.LAB), 'Whether the assignment is a simple lab exercise or an exam.'),
 };
 
 /** What the IDE reads from the file: every field optional, so a folder whose
