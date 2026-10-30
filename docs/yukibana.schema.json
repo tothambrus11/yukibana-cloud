@@ -210,6 +210,15 @@
           "type": "null"
         }
       ]
+    },
+    "mode": {
+      "default": "lab",
+      "description": "Whether the assignment is a simple lab exercise or an exam.",
+      "type": "string",
+      "enum": [
+        "lab",
+        "exam"
+      ]
     }
   },
   "required": [
