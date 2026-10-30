@@ -10,7 +10,8 @@
 //
 // Needs Docker. Without arguments, every language with every build system
 // that fits its sample. Set KEEP=1 to keep the projects, JOBS=test,format
-// to run only those jobs.
+// to run only those jobs, DOCKER_ARGS to give every container more `docker
+// run` arguments (a mount of a package mirror's configuration, say).
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -42,7 +43,7 @@ function proxyArgs() {
 	};
 	return ['--network', 'host', '-v', `${ca}:${caIn}:ro`, ...(existsSync(javaCerts) ? ['-v', `${javaCerts}:/tmp/java-cacerts:ro`] : []), ...Object.entries(vars).flatMap(([k, v]) => ['-e', `${k}=${v}`])];
 }
-const PROXY = proxyArgs();
+const PROXY = [...proxyArgs(), ...(process.env.DOCKER_ARGS ?? '').split(' ').filter(Boolean)];
 
 const work = mkdtempSync(join(tmpdir(), 'yukibana-ci-'));
 const only = process.env.JOBS ? new Set(process.env.JOBS.split(',')) : null;

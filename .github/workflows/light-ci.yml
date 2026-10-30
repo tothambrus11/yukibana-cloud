@@ -23,6 +23,11 @@
 # - hylo-example: light/examples/hylo, a docs page of Hylo snippets on
 #   Hylo's own compiler through one runner pool: type-check, its unit tests,
 #   a Vite build and the page driven in Chromium with the real compiler.
+# - exports: a smoke test of every build system Download offers. The sample
+#   project of a language it builds is downloaded with it, and the CI job
+#   that builds and tests it (tests/export-ci.mjs) runs in the image the
+#   download names, with Docker, as the user's CI would. exports-done
+#   records them as passed together.
 #
 # Each job runs only when what it reads changed since it last passed
 # (.github/actions/once): its inputs are listed in the plan job.
@@ -78,6 +83,8 @@ jobs:
       pack-units-key: ${{ steps.pack-units.outputs.key }}
       hylo-example-done: ${{ steps.hylo-example.outputs.done }}
       hylo-example-key: ${{ steps.hylo-example.outputs.key }}
+      exports-done: ${{ steps.exports.outputs.done }}
+      exports-key: ${{ steps.exports.outputs.key }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -160,6 +167,20 @@ jobs:
           paths: |
             light/examples/hylo
             light/modules
+            .github/workflows/light-ci.yml
+      # What a download is made of: the generators, the samples, and what
+      # they read of the C++ pack (export.ts's pins of its libraries).
+      - id: exports
+        uses: ./.github/actions/once
+        with:
+          name: light-exports
+          paths: |
+            light/app/src/lib/export.ts
+            light/app/src/lib/export-tooling.ts
+            light/app/src/lib/languages.ts
+            light/app/src/lib/cpp-*.ts
+            light/app/src/lib/optimization.ts
+            light/app/tests/export-ci.mjs
             .github/workflows/light-ci.yml
 
   app:
@@ -371,3 +392,71 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.hylo-example-key }}
+
+  # One job per build system, each with a language whose sample it builds
+  # (tests/unit/export-options.test.mjs checks that every build system is
+  # here). Only the build-and-test job: the format and lint jobs depend on
+  # the language, not the build system, and tests/export-ci.mjs runs them
+  # all by hand.
+  exports:
+    name: Download builds with ${{ matrix.target }}
+    needs: plan
+    if: needs.plan.outputs.exports-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - c:cmake
+          - cpp:cmake
+          - cpp:meson
+          - cpp:conan
+          - python:pyproject
+          - javascript:npm
+          - typescript:npm
+          - web:vite
+          - swift:swiftpm
+          - scala:sbt
+          - rust:cargo
+          - php:composer
+          - java:maven
+          - java:gradle
+          - kotlin:gradle
+          - kotlin:maven
+          - haskell:cabal
+          - haskell:stack
+          - go:go
+          - zig:zig
+    defaults:
+      run:
+        working-directory: light/app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 24 loads export.ts as it is, without the app's dependencies.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Build and test the download
+        env:
+          JOBS: test
+          TARGET: ${{ matrix.target }}
+        run: node tests/export-ci.mjs "$TARGET"
+
+  exports-done:
+    name: Downloads build
+    needs: [plan, exports]
+    if: needs.plan.outputs.exports-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.exports-key }}
