@@ -1,0 +1,13 @@
+# The LLDB pack's glue and what no unit builds with: glue.sh, the workers'
+# sources it bundles, the pack's tests and their fixtures, and its
+# documents. An edit to any of these rebuilds no toolchain.
+glue.paths
+glue.sh
+package.json
+package-lock.json
+compress.mjs
+README.md
+src/
+test*.mjs
+test.sh
+tests/
