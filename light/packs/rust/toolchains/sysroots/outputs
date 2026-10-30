@@ -1,0 +1,25 @@
+# For each triple of src/targets.json and each of src/miri-targets.json.
+sysroot-wasm32-wasip1.tar
+sysroot-x86_64-unknown-linux-musl.tar
+sysroot-aarch64-unknown-linux-musl.tar
+sysroot-riscv64gc-unknown-linux-musl.tar
+miri-sysroot-x86_64-unknown-linux-gnu.tar
+miri-sysroot-aarch64-unknown-linux-gnu.tar
+miri-sysroot-riscv64gc-unknown-linux-gnu.tar
+miri-sysroot-i686-unknown-linux-gnu.tar
+miri-sysroot-armv7-unknown-linux-gnueabihf.tar
+miri-sysroot-s390x-unknown-linux-gnu.tar
+quickcheck-1.0.3-wasm32-wasip1.tar
+quickcheck-1.0.3-x86_64-unknown-linux-musl.tar
+quickcheck-1.0.3-aarch64-unknown-linux-musl.tar
+quickcheck-1.0.3-riscv64gc-unknown-linux-musl.tar
+quickcheck-1.0.3-miri-x86_64-unknown-linux-gnu.tar
+quickcheck-1.0.3-miri-aarch64-unknown-linux-gnu.tar
+quickcheck-1.0.3-miri-riscv64gc-unknown-linux-gnu.tar
+quickcheck-1.0.3-miri-i686-unknown-linux-gnu.tar
+quickcheck-1.0.3-miri-armv7-unknown-linux-gnueabihf.tar
+quickcheck-1.0.3-miri-s390x-unknown-linux-gnu.tar
+quickcheck-1.0.3-src.tar
+*.tar.br
+*.tar.gz
+versions-sysroots.json

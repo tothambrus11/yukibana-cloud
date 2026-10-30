@@ -1,0 +1,6 @@
+# Debian/Ubuntu packages the compilers unit builds with, beyond git, curl,
+# python3, xz, gcc/g++ and Node (CI installs them for this unit's job;
+# light/setup.sh for a local build). Bootstrap configures both LLVMs with
+# cmake and builds them with ninja.
+cmake
+ninja-build

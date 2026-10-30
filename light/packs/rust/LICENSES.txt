@@ -16,11 +16,11 @@ std-src.tar
 
 rustc.wasm, rustc-cross.wasm, miri.wasm
   rustc and Miri 1.98.1 with LLVM 22 and lld inside, compiled for a
-  wasm32-wasip1-threads host from Rust's source tarball by rustc/build.sh,
+  wasm32-wasip1-threads host from Rust's source tarball by the compilers unit,
   https://github.com/rust-lang/rust and https://github.com/llvm/llvm-project.
   Copyright the Rust Project Developers, MIT OR Apache-2.0; LLVM and lld:
   Copyright the LLVM Project, Apache-2.0 WITH LLVM-exception. Built with
-  patches (rustc/patches, its README) from homescoop
+  patches (toolchains/compilers/patches, its README) from homescoop
   (https://github.com/homescoop, Apache-2.0, LICENSE-homescoop.txt), from
   LLVM, and of ours. Their crates.io dependencies are MIT and/or Apache-2.0
   (Cargo.lock in the source tarball lists them). wasi-libc and libc++ of

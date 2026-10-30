@@ -307,7 +307,7 @@ jobs:
         working-directory: light/packs/swift
         run: node --test test-emit.mjs
 
-      - name: Rust pack (the MIR view)
+      - name: Rust pack (the compiler output views and the demangler)
         working-directory: light/packs/rust
         run: node --test test-mir.mjs
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck source-path=SCRIPTDIR
 # Builds the Rust pack's compilers unit into $OUT, run by
 # light/scripts/pack-toolchain.sh from this directory of its stage: rustc
 # and Miri from Rust's source, for a wasm32-wasip1-threads host (../../
@@ -11,6 +12,8 @@
 #                       targets (musl, static)
 #   miri.wasm           Miri, of the same tree
 #   versions-compilers.json
+#   build-only/pins.sh  this unit's pins, which the sysroots unit reads: its
+#                       rust-std, native Miri and crates are of this release
 #
 # each .wasm with .gz and .br siblings. The standard libraries, Rust's own
 # and Miri's, are the sysroots unit's.
@@ -175,5 +178,7 @@ step "strip and compress"
 for c in rustc rustc-cross miri; do "$SDK/bin/llvm-strip" --strip-all -o "$OUT/$c.wasm" "$WORK/$c.wasm"; done
 node "$PACK/scripts/compress.mjs" "$OUT/rustc.wasm" "$OUT/rustc-cross.wasm" "$OUT/miri.wasm" >&2
 cp "$HERE/patches/LICENSE-homescoop.txt" "$OUT/LICENSE-homescoop.txt"
+mkdir -p "$OUT/build-only"
+cp "$HERE/pins.sh" "$OUT/build-only/pins.sh"
 printf '{"rust":"%s","llvm":"%s","wasi-sdk":"%s"}\n' "$RUST_VERSION" "$(sed -n 's/^ *set(LLVM_VERSION_\(MAJOR\|MINOR\|PATCH\) \([0-9]*\))$/\2/p' "$SRC/src/llvm-project/cmake/Modules/LLVMVersion.cmake" | paste -sd.)" "$WASI_SDK_VERSION" > "$OUT/versions-compilers.json"
 cat "$OUT/versions-compilers.json" >&2

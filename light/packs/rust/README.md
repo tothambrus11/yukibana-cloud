@@ -4,7 +4,7 @@
 |---|---|---|
 | `server.js` + `rust-analyzer.wasm` | **rust-analyzer's IDE crates** (`ra_ap_ide` and friends, **0.0.358**, from crates.io) with a small LSP layer written for this pack (`server/src/lib.rs`), compiled to wasm32-wasip1 with Rust 1.98.0 | diagnostics, completion (with auto-import), hover, signature help, definition, type definition, implementations, references, highlights, outline, rename, quick fixes and assists, semantic tokens, inlay hints |
 | `std-src.tar` | `core`, `alloc` and `std` sources from **rust-src 1.98.0** | what rust-analyzer reads for the standard library: types, completion, docs |
-| `runner.js` + `rustc.wasm` + `sysroot-wasm32-wasip1.tar` | **rustc 1.98.1** with **LLVM 22**'s WebAssembly code generator and lld inside, compiled for a wasm32-wasip1-threads host (`rustc/build.sh`), and Rust's own rust-std for wasm32-wasip1 | **Run** and **Test** of the default target, WebAssembly (WASI): a real compile, with full debug info at opt-level 0, and the program run in the browser |
+| `runner.js` + `rustc.wasm` + `sysroot-wasm32-wasip1.tar` | **rustc 1.98.1** with **LLVM 22**'s WebAssembly code generator and lld inside, compiled for a wasm32-wasip1-threads host (`toolchains/compilers`), and Rust's own rust-std for wasm32-wasip1 | **Run** and **Test** of the default target, WebAssembly (WASI): a real compile, with full debug info at opt-level 0, and the program run in the browser |
 | `rustc-cross.wasm` + `sysroot-<triple>.tar` | the same rustc with the x86-64, AArch64 and RISC-V code generators and lld's ELF linker too, and rust-std for `x86_64`, `aarch64` and `riscv64gc-unknown-linux-musl` | Run and Test of a **Linux target**: a static ELF, run under the C/C++ pack's QEMU-Wasm |
 | `miri.wasm` + `miri-sysroot-<triple>.tar` | **Miri** of the same tree, and std built for Miri on six targets | Run and Test **under Miri** (Build settings), which stops at undefined behaviour, as if on the Miri target chosen: x86-64, AArch64, RISC-V 64, i686, ARMv7, s390x |
 | `explorer.js` | the same rustc, compiling only | the **MIR**, **LLVM IR** and **assembly** views, each line mapped to its source line |
@@ -120,9 +120,9 @@ last word.
   workspace symbol search, no call hierarchy, no folding ranges from the
   server (Monaco folds by indentation).
 
-## The compiler (rustc/)
+## The compiler (toolchains/compilers)
 
-`rustc/build.sh` builds rustc 1.98.1 from Rust's source tarball for a
+The compilers unit builds rustc 1.98.1 from Rust's source tarball for a
 **wasm32-wasip1-threads host**, with wasi-sdk 34's clang, in one bootstrap
 tree:
 
@@ -135,24 +135,25 @@ tree:
    LLVM with `RUSTC_LLVM_ONLY_TARGETS=webassembly`, so only WebAssembly's
    code generator is in it (a third smaller), and Miri, of the same tree.
 
-The patches (`rustc/patches`, their README) are mostly homescoop's work
-on rustc for WASI hosts (threads, no `dlopen`, the LLVM wrapper, lld
+The patches (`toolchains/compilers/patches`, their README) are mostly
+homescoop's work on rustc for WASI hosts (threads, no `dlopen`, the LLVM wrapper, lld
 in-process), three LLVM fixes backported (one makes debug info for
-WebAssembly survive LLVM's wasm host), and two of ours: the version string
-and a bootstrap fix that gives Miri a `rustc_driver` to link on a host
-without shared libraries. `[build] description = ""` makes the version
-string exactly that of the official release, `rustc 1.98.1 (48a229cea
-2026-09-01)`, and that is the point of the release: crates load only into
+WebAssembly survive LLVM's wasm host), and three of ours: one that links
+rustc.wasm against WebAssembly's code generator alone, a bootstrap fix
+that gives Miri a `rustc_driver` to link on a host without shared
+libraries, and one that builds Miri for a WASI host and gives it its
+target's features without asking LLVM, which in that compiler knows only
+WebAssembly. `[build] description = ""` makes the version string exactly
+that of the official release, `rustc 1.98.1 (48a229cea 2026-09-01)`, and
+that is the point of building that release: crates load only into
 a compiler of the same version string, so **Rust's own rust-std for each
 target loads into these compilers unchanged**, and stable 1.98.1's Cargo
 builds the crates (below).
 
-It is far past a pack's CI job (90 minutes): about 4 hours on 4 cores,
-some 40 GB of build tree. `.github/workflows/light-rust-toolchain.yml`
-runs it by hand and publishes the three files as a release; the pack's
-`build.sh` fetches them from that release, pinned by sha256
-(`RUSTC_RELEASE`, `RUSTC_SHA256`), or takes them from `RUSTC_OUT`, or
-builds them (`RUSTC_BUILD=1`).
+It is about 4 hours on 4 cores and some 25 GB of build tree (kept in
+`$TMPDIR`, not in the CI cache): a toolchain unit (below), built by
+light-packs.yml's unit job when its inputs change and kept in the
+toolchain store, so a change to the pack's JavaScript never rebuilds it.
 
 Each compiler is a wasm32-wasip1-threads program: `threads.js` gives it
 `wasi-threads` (each thread a worker, `thread.js`, on one shared memory)
@@ -446,7 +447,7 @@ than Linux (`scripts/make-sysroot-src.py`).
 | rust-analyzer IDE crates (`ra_ap_*`) | 0.0.358 | crates.io, locked in `server/Cargo.lock` | MIT OR Apache-2.0 |
 | Rust toolchain that builds the server | 1.98.0 | rustup | MIT OR Apache-2.0 |
 | rust-src (std sources for analysis) | 1.98.0, sha256 `0e977492...870f2bf` | static.rust-lang.org | MIT OR Apache-2.0 |
-| rustc, Miri, LLVM, lld (`rustc.wasm`, `rustc-cross.wasm`, `miri.wasm`) | 1.98.1, LLVM 22.1.8 | Rust's source tarball (`rustc/pins.sh`), built by `rustc/build.sh` with wasi-sdk 34; patches in `rustc/patches` (homescoop's, Apache-2.0, and ours) | MIT OR Apache-2.0; LLVM: Apache-2.0 WITH LLVM-exception |
+| rustc, Miri, LLVM, lld (`rustc.wasm`, `rustc-cross.wasm`, `miri.wasm`) | 1.98.1, LLVM 22.1.8 | Rust's source tarball (`toolchains/compilers/pins.sh`), built by the compilers unit with wasi-sdk 34; patches in `toolchains/compilers/patches` (homescoop's, Apache-2.0, and ours) | MIT OR Apache-2.0; LLVM: Apache-2.0 WITH LLVM-exception |
 | rust-std per target | 1.98.1, sha256 pinned in `build.sh` | static.rust-lang.org | MIT OR Apache-2.0 |
 | Miri's std per Miri target | 1.98.1 | `cargo miri setup` by native Miri of the same tarball | MIT OR Apache-2.0 |
 | browser_wasi_shim | 0.4.2 | npm | MIT OR Apache-2.0 |
@@ -457,20 +458,29 @@ Full notices: `LICENSES.txt`, shipped next to the pack's files.
 
 ## Building and testing
 
+A split pack (`light/scripts/pack-toolchain.sh`): three units and glue.
+
+| Unit | Builds | Needs | Time |
+| --- | --- | --- | --- |
+| `compilers` | `rustc.wasm`, `rustc-cross.wasm`, `miri.wasm` from Rust's source tarball (`toolchains/compilers`) | | about 4 hours on four cores from nothing |
+| `server` | `rust-analyzer.wasm`, `std-src.tar` | | 5 minutes |
+| `sysroots` | rust-std for each target, Miri's std for each Miri target (`cargo miri setup` by the release's own Miri, built natively), the crates for both | `compilers`, for its release's pins | 25 minutes, most of it brotli |
+
+The glue (`glue.sh`) bundles the workers over them, in seconds; an edit to
+`src/`, the tests or this file rebuilds no unit.
+
 ```sh
 cd packs/rust
 npm install
-./build.sh        # writes ../../app/static/packs/rust/
-node test.mjs     # the language server in headless Chromium
-node test-run.mjs # the runner in headless Chromium
+./build.sh        # the units, then the pack, into ../../app/static/packs/rust/
+./test.sh         # test-mir.mjs, test.mjs, test-run.mjs over the pack as assembled
 ```
 
-`build.sh` installs Rust 1.98.0 (minimal profile, wasm32-wasip1) with
-rustup if needed, caches everything under `$PACK_CACHE/rust` (default
-`~/.cache/yukibana-packs/rust`): the cargo target directory (about 1 GB),
-rust-src, and rubri's files. A first build takes about 10 minutes on 4
-cores: 4 for rust-analyzer's crates, most of the rest compressing the
-sysroot with brotli. A rebuild with a warm cache is a few minutes.
+`build.sh` takes each unit from the local toolchain cache, the toolchain
+store, or builds it (`pack-toolchain.sh ensure rust --build-dirty`).
+Building the compilers needs cmake and ninja (`toolchains/compilers/deps.apt`),
+gcc, git, python3 and about 30 GB of disk; the server and sysroots units
+need rustup, which installs the pinned toolchains.
 
 `test.mjs` serves the static directory with cross-origin isolation and
 drives the server through the sample from `app/src/lib/languages.ts`: clean

@@ -1,7 +1,7 @@
 // Writes the fixtures test-mir.mjs reads: the MIR, LLVM IR and assembly of
 // sample.json's crates, unfiltered, as explorer.js asks rustc for them,
 // from Rust 1.98.1's own rustc, which is rustc.wasm's release and prints
-// what it prints (rustc/build.sh, "description").
+// what it prints (toolchains/compilers/toolchain.sh, "description").
 //
 //   node tests/fixtures/gen.mjs     (rustup with 1.98.1 and its wasm32-wasip1,
 //                                    x86_64- and aarch64-unknown-linux-musl targets)

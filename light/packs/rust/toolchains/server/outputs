@@ -1,0 +1,7 @@
+rust-analyzer.wasm
+rust-analyzer.wasm.br
+rust-analyzer.wasm.gz
+std-src.tar
+std-src.tar.br
+std-src.tar.gz
+versions-server.json

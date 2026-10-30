@@ -27,10 +27,10 @@
 // Cargo builds them, with Rust's own release of the version the pack's
 // rustc.wasm and miri.wasm are (the toolchain argument): a crate is loaded
 // only by a compiler whose version string is the same to the byte, and
-// ours is built to say what the release says (rustc/build.sh). `cargo
-// build --target <triple>` for rustc; `cargo miri build` for Miri, as
-// `cargo miri test` builds a project's dependencies (metadata only, with
-// MIR, cfg miri). Cargo.lock pins every version and checksum.
+// ours is built to say what the release says (the compilers unit).
+// `cargo build --target <triple>` for rustc; `cargo miri build` for Miri,
+// as `cargo miri test` builds a project's dependencies (rlibs of metadata
+// with MIR, no code, cfg miri). Cargo.lock pins every version and checksum.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
