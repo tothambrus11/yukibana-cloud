@@ -76,7 +76,7 @@ for (const [id, buildId] of targets) {
 		const script = ['exec 2>&1', ...imageSetup(e).map((s) => `${s} >/dev/null`), ...job.steps.flatMap((s) => [`echo ${JSON.stringify(`==> ${s.name}`)}`, s.run])].join('\n');
 		const env = Object.entries(e.variables).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 		const started = Date.now();
-		const r = spawnSync('docker', ['run', '--rm', '-i', '-v', `${copy}:/work`, '-w', '/work', ...PROXY, ...env, e.image, 'bash', '-euo', 'pipefail', '-s'], { input: script, encoding: 'utf8', maxBuffer: 256 << 20, timeout: 40 * 60_000 });
+		const r = spawnSync('docker', ['run', '--rm', '-i', '--quiet', '-v', `${copy}:/work`, '-w', '/work', ...PROXY, ...env, e.image, 'bash', '-euo', 'pipefail', '-s'], { input: script, encoding: 'utf8', maxBuffer: 256 << 20, timeout: 40 * 60_000 });
 		const ok = r.status === 0;
 		const seconds = ((Date.now() - started) / 1000).toFixed(0);
 		console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${job.name} in ${e.image} (${seconds} s)`);
