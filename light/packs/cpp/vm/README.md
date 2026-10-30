@@ -253,8 +253,11 @@ default.
     opening a port not yet added fails with ENODEV (`hvc_install`). With one vCPU,
     init could reach the fourth port at any of the three stages: of 150 boots under
     load, 4 failed with ENOENT and 1 with ENODEV, and a first version of the fix that
-    waited out only those two met ENXIO once. This is how
-    the kernel means it (ports are hot-pluggable; a real system waits for udev), so
+    waited out only those two met ENXIO once. Ports are hot-pluggable, so waiting
+    for them is init's job (a real system waits for udev). The ENXIO window is a
+    kernel bug: a fix that adds the char device first was posted in May 2025 ("tty:
+    Register device *after* creating the cdev for a tty", Max Staudt) and has not
+    landed as of this change. Either way
     `guest/init.c` (`open_port`) waits for each port, polling every 2 ms for up to
     10 s, rather than the kernel being changed. With three busy loops on a 4-core
     machine and six VMs at once, 300 riscv64 boots then all passed; 8 of them waited,
