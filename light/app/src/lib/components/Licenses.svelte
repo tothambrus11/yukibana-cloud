@@ -4,7 +4,9 @@
   licenses/app.txt (scripts/licenses.mjs); each pack's are the files its
   build put beside it (LICENSE-*.txt, NOTICE*, and SOURCES*.txt where a
   licence asks for the source to be offered), found in offline.json, so a
-  pack that adds one is listed without a change here.
+  pack that adds one is listed without a change here. A pack no language is
+  served by (the debugger, packs/lldb) has a row of its own: the first
+  release with it failed e2e.mjs's licences check for want of one.
 -->
 <script lang="ts">
 	import { LANGUAGES } from '../languages';
@@ -24,21 +26,25 @@
 	const href = (path: string) => new URL(path, new URL('./', document.baseURI)).href;
 	const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 
-	/** Each installed pack once, with the languages it serves and its legal files. */
+	/** What a pack no language is served by is, by its directory; others show their directory's name. */
+	const TOOLS: Record<string, string> = { lldb: 'Debugger (C, C++, Swift)' };
+
+	/** Each installed pack once, with the languages it serves (or what it is) and its legal files. */
 	const packs = $derived.by(() => {
+		const legal = (pack: string) =>
+			offline
+				.packFiles(pack)
+				.map((f) => f.path)
+				.filter((p) => LEGAL.test(nameOf(p)));
 		const byPack = new Map<string, { labels: string[]; files: string[] }>();
 		for (const l of LANGUAGES) {
 			const pack = packOf(l);
 			const entry = byPack.get(pack);
-			if (entry) {
-				entry.labels.push(l.label);
-				continue;
-			}
-			const files = offline
-				.packFiles(pack)
-				.map((f) => f.path)
-				.filter((p) => LEGAL.test(nameOf(p)));
-			byPack.set(pack, { labels: [l.label], files });
+			if (entry) entry.labels.push(l.label);
+			else byPack.set(pack, { labels: [l.label], files: legal(pack) });
+		}
+		for (const pack of offline.packs) {
+			if (!byPack.has(pack)) byPack.set(pack, { labels: [TOOLS[pack] ?? pack], files: legal(pack) });
 		}
 		return [...byPack].filter(([, e]) => e.files.length > 0);
 	});
@@ -61,7 +67,7 @@
 	{:else}
 		<table>
 			<thead>
-				<tr><th>Language</th><th>Licences</th></tr>
+				<tr><th>Part</th><th>Licences</th></tr>
 			</thead>
 			<tbody>
 				{#each packs as [pack, { labels, files }] (pack)}
