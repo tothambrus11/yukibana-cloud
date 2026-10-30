@@ -1011,3 +1011,39 @@ header.bar-host {
 	color: var(--white);
 	font-weight: 600;
 }
+
+/* The debugger in the editors (debug.svelte.ts, decorate): a breakpoint is a
+   red dot in the glyph margin; the line the program stopped at is yellow, and
+   the line of another frame of its call stack, selected in the Debug panel,
+   green, as in VS Code. */
+.monaco-editor .debug-breakpoint::before,
+.monaco-editor .debug-stopped::after,
+.monaco-editor .debug-frame::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	margin: auto;
+}
+.monaco-editor .debug-breakpoint::before {
+	width: 0.6rem;
+	height: 0.6rem;
+	border-radius: 50%;
+	background: #e5534b;
+}
+.monaco-editor .debug-stopped::after,
+.monaco-editor .debug-frame::after {
+	width: 0;
+	height: 0;
+	border-top: 0.35rem solid transparent;
+	border-bottom: 0.35rem solid transparent;
+	border-left: 0.5rem solid #e2c541;
+}
+.monaco-editor .debug-frame::after {
+	border-left-color: #57ab5a;
+}
+.monaco-editor .debug-stopped-line {
+	background: rgb(226 197 65 / 0.18);
+}
+.monaco-editor .debug-frame-line {
+	background: rgb(87 171 90 / 0.16);
+}

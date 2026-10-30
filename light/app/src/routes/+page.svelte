@@ -53,6 +53,8 @@
 	let applyUpdate = $state<(() => void) | null>(null);
 
 	onMount(() => {
+		// Tests read the debugger's session through this, as they read Monaco (startEditor).
+		if (new URLSearchParams(location.search).has('trace')) Object.assign(globalThis, { yukibanaDebugger: workspace.debugger });
 		dock = createDock(dockElement, workspace);
 		workspace.attach(dock);
 		registerServiceWorker({
@@ -159,7 +161,27 @@
 		const label = languageOf(workspace.language).label;
 		if (confirm(`Replace your ${label} project with the sample? Your changes to it will be lost.`)) void workspace.resetProject();
 	}
+
+	/**
+	 * The debugger's keys anywhere on the page while a session runs (the
+	 * editors bind them too, and a key an editor handled is not handled
+	 * again): after Debug is clicked, focus is on the button, not an editor.
+	 */
+	function debugKeys(e: KeyboardEvent) {
+		const dbg = workspace.debugger;
+		if (e.defaultPrevented || !dbg.active || e.ctrlKey || e.metaKey || e.altKey) return;
+		const act =
+			e.key === 'F5' ? (e.shiftKey ? () => dbg.end() : () => dbg.continue())
+			: e.key === 'F10' && !e.shiftKey ? () => dbg.next()
+			: e.key === 'F11' ? (e.shiftKey ? () => dbg.stepOut() : () => dbg.stepIn())
+			: null;
+		if (!act) return;
+		e.preventDefault();
+		act();
+	}
 </script>
+
+<svelte:window onkeydown={debugKeys} />
 
 <header class="bar-host">
 	<div class="bar">
@@ -187,6 +209,9 @@
 		{/if}
 		{#if language.tests}
 			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+		{/if}
+		{#if language.debugs}
+			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
 		{/if}
 		{#if language.mutates}
 			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
@@ -227,8 +252,13 @@
 		</button>
 
 		<MoreMenu>
+			{#if language.debugs}
+				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || workspace.debugger.active} onclick={() => workspace.debug()}>Debug</button>
+			{/if}
 			{#if language.mutates}
 				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
+			{/if}
+			{#if language.debugs || language.mutates}
 				<div class="menu-divider" role="separator" data-fold="70"></div>
 			{/if}
 			{#if hasBuild}

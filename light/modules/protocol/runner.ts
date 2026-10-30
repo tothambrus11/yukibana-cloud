@@ -68,6 +68,34 @@ export interface RunMessage {
 	stdin: SharedArrayBuffer | null;
 	/** Absent: the runner's defaults. A runner with no use for them ignores them. */
 	options?: RunnerOptions;
+	/**
+	 * Present: debug the program with LLDB (packs/lldb/README.md). The
+	 * runner builds it with debug info, posts it as linked ({@link
+	 * DebugProgram}) and runs it under the stub, which talks to LLDB through
+	 * this channel. A runner that cannot debug ignores it and runs.
+	 */
+	debug?: DebugChannel;
+}
+
+/**
+ * Where LLDB listens for a debugged program's stub: its WebAssembly
+ * memory and the address of the two rings in it (packs/lldb/src/channel.js).
+ * Made by the debugger's worker, in the same agent cluster as the runner.
+ */
+export interface DebugChannel {
+	buffer: SharedArrayBuffer;
+	address: number;
+}
+
+/**
+ * A debugging runner's program, as linked, with its DWARF: the host hands
+ * it to the debugger, which loads it from `name` in its own file system,
+ * the path the stub tells LLDB the module is at.
+ */
+export interface DebugProgram {
+	type: 'debug';
+	name: string;
+	wasm: Uint8Array;
 }
 
 /**
@@ -188,6 +216,7 @@ export type FromRunner =
 	/** A timing, in milliseconds since the run message arrived. */
 	| { type: 'mark'; name: string; ms: number }
 	| TestReport
+	| DebugProgram
 	| Page;
 
 /**
@@ -263,6 +292,8 @@ export function readFromRunner(data: unknown): RunnerMessage {
 		}
 		case 'page':
 			return fine(isPage(data), 'needs an id, html (text or null), and lists of styles and errors');
+		case 'debug':
+			return fine(isString(data['name']) && data['wasm'] instanceof Uint8Array, 'needs a name and the program as bytes');
 		default:
 			return { kind: 'unknown', type };
 	}

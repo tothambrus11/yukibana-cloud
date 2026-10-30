@@ -50,6 +50,12 @@ export interface Language {
 	 */
 	mutates?: boolean;
 	/**
+	 * Whether the runner can run the program under the debugger (a run
+	 * message's `debug`, packs/lldb/README.md): the top bar offers Debug,
+	 * and the editors take breakpoints in their margin.
+	 */
+	debugs?: boolean;
+	/**
 	 * Whether the app keeps a runner started ahead of each Run (once the
 	 * language server is up, and again after each run): for a runner whose
 	 * own start-up is most of a run, as Haskell's (GHC loads in some 8 s,
@@ -732,6 +738,7 @@ function draw() {
 		extension: '.c',
 		configFiles: C_FAMILY_CONFIG,
 		runs: true,
+		debugs: true,
 		sample: {
 			'main.c': `#include <stdio.h>
 
@@ -791,6 +798,7 @@ double point_distance(struct point a, struct point b) {
 		extension: '.cpp',
 		configFiles: C_FAMILY_CONFIG,
 		runs: true,
+		debugs: true,
 		tests: true,
 		sample: {
 			'main.cpp': `#include <cstdio>
@@ -867,6 +875,7 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		entry: 'main.swift',
 		extension: '.swift',
 		runs: true,
+		debugs: true,
 		tests: true,
 		sample: {
 			'main.swift': `let a = Point(x: 0, y: 0)

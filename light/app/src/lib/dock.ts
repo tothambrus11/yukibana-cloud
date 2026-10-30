@@ -49,6 +49,9 @@ import Problems from './components/Problems.svelte';
 import Log from './components/Log.svelte';
 import Terminal from './components/Terminal.svelte';
 import CallHierarchy from './components/CallHierarchy.svelte';
+import Debug from './components/Debug.svelte';
+import { decorate } from './debug.svelte';
+import { languageOf } from './languages';
 
 const EDITOR_PREFIX = 'file:';
 const editorId = (path: string) => EDITOR_PREFIX + path;
@@ -80,6 +83,7 @@ const ICONS: Record<string, string> = {
 	problems: '<path d="M8 2.5 14 13H2zM8 6.5v3M8 11.2v.1"/>',
 	preview: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c2.2 2.4 2.2 8.6 0 11M8 2.5c-2.2 2.4-2.2 8.6 0 11"/>',
 	'call-hierarchy': '<path d="M4.5 3v10M4.5 5h6M4.5 11h6"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="11" r="1.5"/>',
+	debug: '<circle cx="8" cy="9" r="3.5"/><path d="M8 5.5v-2M4.5 9H2.5M13.5 9h-2M5 6 3.5 4.5M11 6l1.5-1.5"/>',
 };
 
 /** A mark on a tab: a view's compile state, or the problem count. `busy` shows a spinner instead of text. */
@@ -180,6 +184,8 @@ class EditorRenderer implements IContentRenderer {
 	editor: monaco.editor.IStandaloneCodeEditor | null = null;
 	/** The project file shown. */
 	path = '';
+	/** Takes the debugger's breakpoints and stopped line off the editor (debug.svelte.ts, decorate). */
+	private undecorate: (() => void) | null = null;
 
 	constructor(
 		private readonly workspace: Workspace,
@@ -192,8 +198,11 @@ class EditorRenderer implements IContentRenderer {
 		const path = String(params.params['path']);
 		this.path = path;
 		const model = this.workspace.model(path);
+		const debugs = languageOf(this.workspace.language).debugs === true;
 		this.editor = monaco.editor.create(this.element, {
 			model: model ?? null,
+			// The breakpoints' margin, for a language the debugger runs.
+			glyphMargin: debugs,
 			automaticLayout: true,
 			fontFamily: EDITOR_FONT,
 			fontSize: 13.5,
@@ -242,6 +251,21 @@ class EditorRenderer implements IContentRenderer {
 			keybindings: [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter],
 			run: () => this.workspace.run('test'),
 		});
+		if (debugs) {
+			this.undecorate = decorate(editor, path, this.workspace.debugger, monaco);
+			const dbg = this.workspace.debugger;
+			// VS Code's keys: F9 a breakpoint, F5 debug or continue, F10 step over, F11 in, Shift+F11 out.
+			editor.addAction({ id: 'yukibana.breakpoint', label: 'Toggle Breakpoint', keybindings: [KeyCode.F9], run: () => dbg.toggleBreakpoint(path, editor.getPosition()?.lineNumber ?? 1) });
+			editor.addAction({
+				id: 'yukibana.debug',
+				label: 'Debug Project / Continue',
+				keybindings: [KeyCode.F5],
+				run: () => (dbg.status.kind === 'stopped' ? dbg.continue() : dbg.active ? undefined : this.workspace.debug()),
+			});
+			editor.addAction({ id: 'yukibana.stepOver', label: 'Step Over', keybindings: [KeyCode.F10], run: () => dbg.next() });
+			editor.addAction({ id: 'yukibana.stepInto', label: 'Step Into', keybindings: [KeyCode.F11], run: () => dbg.stepIn() });
+			editor.addAction({ id: 'yukibana.stepOut', label: 'Step Out', keybindings: [KeyMod.Shift | KeyCode.F11], run: () => dbg.stepOut() });
+		}
 		editor.addAction({
 			id: 'yukibana.mutate',
 			label: 'Mutation Test Project',
@@ -264,6 +288,7 @@ class EditorRenderer implements IContentRenderer {
 	}
 
 	dispose(): void {
+		this.undecorate?.();
 		this.editor?.dispose();
 	}
 }
@@ -441,6 +466,8 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 					return new PreviewRenderer(workspace);
 				case 'call-hierarchy':
 					return new SvelteRenderer(CallHierarchy, workspace);
+				case 'debug':
+					return new SvelteRenderer(Debug, workspace);
 				default: {
 					const view = VIEW_KINDS.find((k) => VIEWS[k].component === name);
 					if (view) return new CompilerViewRenderer(view, workspace, () => viewHost);
@@ -591,7 +618,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 		mode = next;
 		element.dataset['layoutMode'] = next;
 		const fronts = dock.groups.map((g) => g.activePanel).filter((p): p is IDockviewPanel => p !== undefined && !isEditor(p));
-		const bottomish = ['terminal', 'log', 'problems', 'call-hierarchy'].map(panel).filter((p): p is IDockviewPanel => p !== undefined);
+		const bottomish = ['terminal', 'log', 'problems', 'call-hierarchy', 'debug'].map(panel).filter((p): p is IDockviewPanel => p !== undefined);
 		const views = viewPanels();
 		arranging = true;
 		try {
@@ -896,6 +923,15 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			// A tab of the problems' group, where VS Code puts its view's
 			// results too; closable, since it is opened by asking for it.
 			addPlaced('call-hierarchy', { id: 'call-hierarchy', component: 'call-hierarchy', title: 'Call Hierarchy' });
+		},
+		showDebug(): void {
+			const existing = panel('debug');
+			if (existing) {
+				reveal(existing);
+				return;
+			}
+			// Where the Call Hierarchy goes: beside Problems, closable.
+			addPlaced('debug', { id: 'debug', component: 'debug', title: 'Debug' });
 		},
 		setProblemCount(n: number): void {
 			tabs.get('problems')?.setBadge(n ? { text: String(n), kind: 'count', says: n === 1 ? '1 problem' : `${n} problems` } : null);
