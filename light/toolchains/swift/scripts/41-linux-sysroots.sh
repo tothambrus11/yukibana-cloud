@@ -38,13 +38,17 @@ for arch in $LINUX_TARGETS; do
   done
 
   # Swift's static resource directory. Two of its parts live in the dynamic one,
-  # usr/lib/swift, and the frontend looks for them there: swift_static/clang is a
-  # symlink to swift/clang (the clang resource directory: headers and
-  # compiler-rt), and SwiftShims is found as <sdk>/usr/lib/swift/shims. The rest of
-  # usr/lib/swift (the modules again, for dynamic linking) stays out.
+  # usr/lib/swift: SwiftShims, which the frontend finds as <sdk>/usr/lib/swift/shims,
+  # and the clang resource directory (headers and compiler-rt), which
+  # swift_static/clang links to. The tar has no symbolic links, because the Swift
+  # pack's tar reader cannot follow one to a directory, so the clang directory moves
+  # in under swift_static. The rest of usr/lib/swift (the modules again, for
+  # dynamic linking) stays out.
   cp -a "${src}/usr/lib/swift_static" "${stage}/usr/lib/"
+  rm "${stage}/usr/lib/swift_static/clang"
+  cp -a "${src}/usr/lib/swift/clang" "${stage}/usr/lib/swift_static/clang"
   mkdir -p "${stage}/usr/lib/swift"
-  cp -a "${src}/usr/lib/swift/clang" "${src}/usr/lib/swift/shims" "${stage}/usr/lib/swift/"
+  cp -a "${src}/usr/lib/swift/shims" "${stage}/usr/lib/swift/"
 
   res="${stage}/usr/lib/swift_static"
   # Foundation (and the ICU data that is most of it) is out, as in the wasm core
@@ -59,6 +63,9 @@ for arch in $LINUX_TARGETS; do
   # it (41 MB against 10.5 MB for hello world); the program keeps its own. The SDK has
   # empty crtbeginT.o and crtend.o placeholders, which are not objects at all.
   find "$stage" \( -name '*.a' -o -name '*.o' \) -size +0 -print0 | xargs -0 -n 1 -P "$JOBS" "$OBJCOPY" --strip-debug
+
+  links="$(find "$stage" -type l)"
+  [[ -z "$links" ]] || die "symbolic links in the ${arch} sysroot: ${links}"
 
   out="${TC_OUT}/swift-sysroot-linux-${arch}.tar"
   tar --owner=0 --group=0 --numeric-owner -cf "$out" -C "$stage" .

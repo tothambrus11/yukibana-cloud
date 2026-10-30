@@ -103,7 +103,7 @@ SWIFT
 
   log "linking for ${arch}"
   lib=/sysroot/usr/lib/swift_static/linux-static
-  crt=/sysroot/usr/lib/swift/clang/lib/linux
+  crt=/sysroot/usr/lib/swift_static/clang/lib/linux
   linker "$root" --sysroot=/sysroot -z relro --hash-style=gnu --eh-frame-hdr \
     -m "$(emulation "$arch")" -static -o /work/main \
     /sysroot/usr/lib/crt1.o /sysroot/usr/lib/crti.o "${crt}/clang_rt.crtbegin-${arch}.o" \
