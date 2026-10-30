@@ -265,6 +265,15 @@ const settingsShape = {
     ),
     'What a submission from this folder holds, and where the IDE sends it.',
   ),
+  telemetry: about(
+    z.prefault(
+      z.object({
+        liveTypingStats: about(withDefault(bool, false), 'Whether to send live stats about what the user is typing in the IDE.'),
+      }),
+      {},
+    ),
+    'What kind of telemetry should be sent.',
+  ),
   projectId: about(
     withDefault(z.nullable(projectIdSchema), null),
     "Written by yukibana build and publish into the starter's copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.",

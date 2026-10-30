@@ -197,6 +197,18 @@
         }
       }
     },
+    "telemetry": {
+      "description": "What kind of telemetry should be sent.",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "liveTypingStats": {
+          "default": false,
+          "description": "Whether to send live stats about what the user is typing in the IDE.",
+          "type": "boolean"
+        }
+      }
+    },
     "projectId": {
       "default": null,
       "description": "Written by yukibana build and publish into the starter's copy of this file: the registry project a submission from this folder goes to. A course repository leaves it out.",
