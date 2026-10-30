@@ -27,7 +27,7 @@ export { ConsoleStdout, Directory, Fd, File, OpenFile, PreopenDirectory, WASI, W
 
 export const SWIFT_VERSION = '6.3.3';
 
-import { MACRO_MODULES, MACRO_PLUGIN_PATH, MACRO_PLUGINS_WASM, MODULE_CACHE, RESOURCES, SYSROOT, WASI_SYSROOT, commonFrontendArgs, macroPluginArgs } from './frontend-args.js';
+import { MACRO_MODULES, MACRO_PLUGIN_PATH, MACRO_PLUGINS_WASM, MODULE_CACHE, RESOURCES, SYSROOT, WASI_SYSROOT, commonFrontendArgs, linuxSysroot, macroPluginArgs } from './frontend-args.js';
 
 export * from './frontend-args.js';
 
@@ -171,13 +171,24 @@ export function linkArgs(objects, output, stackSize = 1 << 20, autolink = []) {
 }
 
 /**
- * What swift-autolink-extract does, for wasm objects: the NUL-separated
- * linker flags in the `.swift1_autolink_entries` custom section (for example
- * `-lswiftSynchronization` after `import Synchronization`). Only `-l` flags
- * are kept.
+ * What swift-autolink-extract does, for wasm objects and 64-bit
+ * little-endian ELF objects (the Linux targets): the NUL-separated linker
+ * flags in the `.swift1_autolink_entries` section (a custom section in
+ * wasm), for example `-lswiftSynchronization` after `import
+ * Synchronization`. Only `-l` flags are kept.
  */
 export function autolinkEntries(object) {
     const out = [];
+    const keep = (bytes) => {
+        for (const flag of new TextDecoder().decode(bytes).split('\0')) {
+            if (/^-l[\w.+-]+$/.test(flag) && !out.includes(flag)) out.push(flag);
+        }
+    };
+    if (object && object[0] === 0x7f && object[1] === 0x45 && object[2] === 0x4c && object[3] === 0x46) {
+        const elf = elfSection(object, '.swift1_autolink_entries');
+        if (elf) keep(elf);
+        return out;
+    }
     if (!object || object[0] !== 0 || object[1] !== 0x61) return out;
     let p = 8;
     const leb = () => {
@@ -196,15 +207,39 @@ export function autolinkEntries(object) {
         if (id === 0) {
             const n = leb();
             const name = new TextDecoder().decode(object.subarray(p, p + n));
-            if (name === '.swift1_autolink_entries') {
-                for (const flag of new TextDecoder().decode(object.subarray(p + n, end)).split('\0')) {
-                    if (/^-l[\w.+-]+$/.test(flag) && !out.includes(flag)) out.push(flag);
-                }
-            }
+            if (name === '.swift1_autolink_entries') keep(object.subarray(p + n, end));
         }
         p = end;
     }
     return out;
+}
+
+/**
+ * The contents of the section called `name` in a 64-bit little-endian ELF
+ * object (every Linux target here), or null: no such section, or not that
+ * kind of ELF.
+ */
+export function elfSection(object, name) {
+    if (object.length < 64 || object[4] !== 2 || object[5] !== 1) return null;
+    const view = new DataView(object.buffer, object.byteOffset, object.byteLength);
+    const shoff = Number(view.getBigUint64(0x28, true));
+    const shentsize = view.getUint16(0x3a, true);
+    const shnum = view.getUint16(0x3c, true);
+    const shstrndx = view.getUint16(0x3e, true);
+    const header = (i) => {
+        const at = shoff + i * shentsize;
+        return { name: view.getUint32(at, true), offset: Number(view.getBigUint64(at + 24, true)), size: Number(view.getBigUint64(at + 32, true)) };
+    };
+    if (shoff === 0 || shstrndx >= shnum || shoff + shnum * shentsize > object.length) return null;
+    const names = header(shstrndx);
+    const decoder = new TextDecoder();
+    for (let i = 0; i < shnum; i++) {
+        const h = header(i);
+        let end = names.offset + h.name;
+        while (end < object.length && object[end] !== 0) end++;
+        if (decoder.decode(object.subarray(names.offset + h.name, end)) === name) return object.subarray(h.offset, h.offset + h.size);
+    }
+    return null;
 }
 
 /** autolinkEntries() of every wasm object in an `ar` archive, in member order, each flag once. */
@@ -439,6 +474,27 @@ export async function runFrontend(module, { args, root, stdout, stderr, env = ['
     }
 }
 
+/**
+ * Runs swift-toolchain-wasm's cross compiler (CROSS_FRONTEND_WASM) as
+ * runFrontend runs the default one, and returns its exit status. It is a
+ * WASI command, not the reactor the language server shares: `_start` with
+ * `args` as its command line, in a fresh instance, the macro plugins in
+ * `root` as for runFrontend.
+ */
+export async function runFrontendCommand(module, { args, root, stdout, stderr, env = ['TMPDIR=/tmp', 'HOME=/tmp'] }) {
+    const fds = [new OpenFile(new File(new Uint8Array())), stdout, stderr, preopenRoot(root)];
+    const wasi = new WASI(args, env, fds, { debug: false });
+    const host = pluginHost(root, (text) => stderr.fd_write(new TextEncoder().encode(text)));
+    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: wasi.wasiImport, ...host.imports });
+    host.attach(instance.exports.memory);
+    try {
+        return wasi.start(instance);
+    } catch (e) {
+        if (e instanceof WASIProcExit) return e.code;
+        throw e;
+    }
+}
+
 /** `file:line:col: severity: message`, as the frontend prints diagnostics. */
 export function parseDiagnostics(text) {
     const out = [];
@@ -492,15 +548,29 @@ export async function loadTool(name, onLoading) {
 
 /** Fetches the sysroot tar and unpacks it under /sysroot of a new root directory. */
 export async function loadSysroot(onLoading) {
-    const response = await fetchArtifact(SYSROOT_TAR, onLoading);
-    const tar = new Uint8Array(await response.arrayBuffer());
     const root = new Directory(new Map());
-    untar(root, tar, SYSROOT);
     mkdirp(root, '/tmp');
+    await loadWasmSysroot(root, onLoading);
     return root;
 }
 
+/** Fetches the sysroot tar and unpacks it under /sysroot of `root`. */
+export async function loadWasmSysroot(root, onLoading) {
+    const response = await fetchArtifact(SYSROOT_TAR, onLoading);
+    untar(root, new Uint8Array(await response.arrayBuffer()), SYSROOT);
+}
+
 export const FRONTEND_WASM = 'swift-frontend-lsp.wasm';
+/**
+ * The cross compiler: the same Swift 6.3.3 frontend with LLVM's X86,
+ * AArch64 and RISCV backends too, from swift-toolchain-wasm's cross build
+ * (SWIFT_CROSS=1). Only a project with a Linux target downloads it; the
+ * default module has the WebAssembly backend alone because most projects
+ * never need the others.
+ */
+export const CROSS_FRONTEND_WASM = 'swift-frontend-cross.wasm';
+/** A Linux target's sysroot: the Static Linux SDK for `arch`, trimmed (build.sh). */
+export const linuxSysrootTar = (arch) => `swift-sysroot-linux-${arch}.tar`;
 export const LINKER_WASM = 'wasm-ld.wasm';
 export const SYSROOT_TAR = 'swift-sysroot.tar';
 export const XCTEST_TAR = 'swift-xctest.tar';
@@ -530,6 +600,17 @@ export async function loadXCTest(root, onLoading) {
 export async function loadSwiftTesting(root, onLoading) {
     const response = await fetchArtifact(TESTING_TAR, onLoading);
     untar(root, new Uint8Array(await response.arrayBuffer()), SYSROOT);
+}
+
+/**
+ * Adds a Linux target's sysroot (linuxSysrootTar) to a root from
+ * loadSysroot, at linuxSysroot(arch), for linuxCompileArgs and
+ * linuxLinkArgs. About 11 MB brotli, per architecture, fetched the first
+ * time a run builds for it.
+ */
+export async function loadLinuxSysroot(root, arch, onLoading) {
+    const response = await fetchArtifact(linuxSysrootTar(arch), onLoading);
+    untar(root, new Uint8Array(await response.arrayBuffer()), linuxSysroot(arch));
 }
 
 /** Removes `path` (a file or a whole directory) if it exists. */

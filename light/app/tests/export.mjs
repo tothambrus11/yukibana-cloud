@@ -105,6 +105,10 @@ for (const language of LANGUAGES) {
 	check(settings(exportProject(swift, swift.sample).files['Package.swift']).every((f) => !/"-O/.test(f)), 'swift: at the default level (-Onone), Package.swift sets none');
 	const osize = settings(exportProject(swift, swift.sample, '-Osize').files['Package.swift']);
 	check(osize.length === 2 && osize.every((f) => f.startsWith('"-Osize"')), `swift: a chosen level goes to the program and to the tests (${osize.join(' | ')})`);
+	check(!exportProject(swift, swift.sample).files['README.md'].includes('## Target'), 'swift: the sample, with TARGET commented out in swift.env, gets no Target section');
+	const linux = exportProject(swift, { ...swift.sample, 'swift.env': 'TARGET=aarch64-linux\n' }).files;
+	check(linux['README.md'].includes('## Target') && linux['README.md'].includes('swift build --swift-sdk aarch64-swift-linux-musl'), 'swift on aarch64-linux: README.md says how to build with the Static Linux SDK');
+	check(/exclude: \[[^\]]*"swift.env"/.test(linux['Package.swift']), 'swift: Package.swift excludes swift.env from the program');
 }
 
 // ---- Sanitizers: Download links what Run links

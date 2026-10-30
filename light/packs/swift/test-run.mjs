@@ -606,6 +606,25 @@ await c.runTest()
     } else {
         console.log('skip  optimisation at -O and -Osize (SWIFT_OPTIMIZED=1, with a compiler that has swift-toolchain-wasm patch 0004)');
     }
+
+    // 10. Linux targets (README, "Linux targets"): swift.env refusals cost
+    //     no download; a run needs the cross compiler and its sysroot in the
+    //     pack and the C++ pack's emulator next to it.
+    const bad = await run({ ...SAMPLE, 'swift.env': 'TARGET=riscv64-linux\n' });
+    check('linux: TARGET=riscv64-linux is refused by its line, exit 1, nothing loaded',
+        bad.code === 1 && /^swift\.env:1: Swift has no SDK for riscv64-linux/.test(bad.stderr) && bad.phases.length === 0, `code=${bad.code} ${JSON.stringify(bad.stderr)} ${timeline(bad)}`);
+    const linuxTest = await run({ ...CALC, 'swift.env': 'TARGET=aarch64-linux\n' }, { type: 'test' });
+    check('linux: Test with a Linux target says tests run on WebAssembly only, exit 1, nothing loaded',
+        linuxTest.code === 1 && /tests run on WebAssembly only/.test(linuxTest.stderr) && linuxTest.phases.length === 0, `code=${linuxTest.code} ${JSON.stringify(linuxTest.stderr)}`);
+    const has = async (p) => !!(await stat(join(STATIC, p)).catch(() => null));
+    if ((await has('packs/swift/swift-frontend-cross.wasm')) && (await has('packs/cpp/vm.js'))) {
+        for (const target of ['x86_64-linux', 'aarch64-linux']) {
+            const r = await run({ ...SAMPLE, 'swift.env': `TARGET=${target}\n` });
+            check(`linux: the sample built for ${target} prints the same under QEMU`, r.code === 0 && r.stdout === EXPECTED, `code=${r.code} in ${r.ms} ms; ${timeline(r)}\n${r.stderr.slice(0, 2000)}`);
+        }
+    } else {
+        console.log('skip  linux runs (needs swift-frontend-cross.wasm in the pack and the C++ pack built next to it)');
+    }
 } finally {
     await browser.close();
     server.close();

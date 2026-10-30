@@ -869,6 +869,11 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		runs: true,
 		tests: true,
 		sample: {
+			'swift.env': `# The target Run builds for. With nothing set it is WebAssembly, run in
+# the browser; TARGET=x86_64-linux or TARGET=aarch64-linux builds a static
+# Linux program with a larger compiler and runs it under QEMU.
+# TARGET=aarch64-linux
+`,
 			'main.swift': `let a = Point(x: 0, y: 0)
 let b = Point(x: 3, y: 4)
 print("\\(a) to \\(b): \\(distance(a, b))")

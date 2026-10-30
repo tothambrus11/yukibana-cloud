@@ -2185,6 +2185,25 @@ function goTargetSection(env: string): string[] {
 	];
 }
 
+/**
+ * The README's section for a Swift project whose swift.env names a Linux
+ * target (packs/swift: the runner reads it, SwiftPM does not); none for the
+ * default, WebAssembly, or a target the pack refuses. Read as the pack reads
+ * it: KEY=value, # comments.
+ */
+function swiftTargetSection(env: string): string[] {
+	let target: string | undefined;
+	for (const line of env.split('\n').map((l) => l.trim())) {
+		const [key, value] = line.split('=', 2);
+		if (line && !line.startsWith('#') && key?.trim() === 'TARGET' && value !== undefined) target = value.trim();
+	}
+	const arch = target === 'x86_64-linux' ? 'x86_64' : target === 'aarch64-linux' ? 'aarch64' : undefined;
+	if (arch === undefined) return [];
+	return [
+		`## Target\n\nIn Yukibana Light this project is built for Linux on ${arch} (\`swift.env\`): a static executable, linked against Swift's Static Linux SDK, run under QEMU. SwiftPM does not read \`swift.env\`; install the same SDK (swift.org, "Static Linux SDK") and name it:\n\n\`\`\`sh\nswift build --swift-sdk ${arch}-swift-linux-musl\n\`\`\`\n\nThe program in \`.build/${arch}-swift-linux-musl/debug/\` then runs on any ${arch} Linux machine, or elsewhere under \`qemu-${arch}\`.`,
+	];
+}
+
 /** Whether a Swift project has tests: .swift files in Tests/. */
 function swiftTests(files: Files): boolean {
 	return Object.keys(files).some((p) => p.startsWith(SWIFT_TESTS) && p.endsWith('.swift'));
@@ -2224,6 +2243,7 @@ function instructions(language: Language, files: Files): string[] {
 			return [
 				'## Build and run\n\nWith Swift 6 (Xcode 16, or the toolchain from swift.org):\n\n```sh\nswift build\nswift run\n```',
 				...(tests ? ['## Test\n\nThe tests in `Tests/` use XCTest:\n\n```sh\nswift test\n```'] : []),
+				...swiftTargetSection(files['swift.env'] ?? ''),
 				'## Editors\n\nXcode opens `Package.swift`; VS Code needs the Swift extension, which runs SourceKit-LSP.',
 			];
 		}

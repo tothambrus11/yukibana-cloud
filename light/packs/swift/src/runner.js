@@ -32,12 +32,21 @@
 // `options.optimization` (either type) is the level the module is compiled
 // at, one of toolchain.js's OPTIMIZATION_LEVELS; absent, `-Onone` (README,
 // "Optimization").
+//
+// The target is the project's swift.env (target.js): WebAssembly by
+// default, as above. A Linux target (x86_64-linux, aarch64-linux) compiles
+// with swift-frontend-cross.wasm against that target's Static Linux SDK
+// sysroot, links a static musl executable with the same wasm-ld.wasm acting
+// as ld.lld, and runs it under the C++ pack's QEMU-Wasm in a worker of its
+// own (linux-worker.js), as the Go pack does (README, "Linux targets").
+// Neither the default compiler nor the WebAssembly sysroot is loaded for it.
 
 import {
-    Directory, Fd, FRONTEND_WASM, LINKER_WASM, OPTIMIZATION_LEVELS, autolinkEntries, compileArgs, linkArgs, linkLibraries, loadMacroPlugins, loadSwiftTesting,
-    loadSysroot, loadTool, loadXCTest, mkdirp, readFile, remove, runFrontend, runWasi, textSink, usesMacroPlugins, wasiDefs,
-    writeFile, writeProject,
+    CROSS_FRONTEND_WASM, Directory, Fd, FRONTEND_WASM, LINKER_WASM, OPTIMIZATION_LEVELS, autolinkEntries, compileArgs, linkArgs, linkLibraries, linuxCompileArgs,
+    linuxLinkArgs, loadLinuxSysroot, loadMacroPlugins, loadSwiftTesting, loadTool, loadWasmSysroot, loadXCTest, mkdirp, readFile, remove, runFrontend,
+    runFrontendCommand, runWasi, textSink, usesMacroPlugins, wasiDefs, writeFile, writeProject,
 } from './toolchain.js';
+import { ENV_FILE, TARGETS, linuxTarget, settingsOf } from './target.js';
 import { dropOwnModuleImportWarnings, importsTesting, importsXCTest, isTestFile, planTestRun, projectModuleName } from './xctest.js';
 
 const post = (msg) => self.postMessage(msg);
@@ -98,6 +107,16 @@ const TEST_MAIN = '/build/xctest/main.swift';
 
 async function run({ files, entry, stdin, options }, testing) {
     const t0 = performance.now();
+    const settings = settingsOf(files[ENV_FILE]);
+    if (settings.problems.length) {
+        for (const p of settings.problems) post({ type: 'stderr', text: `${ENV_FILE}:${p.line}: ${p.message}\n` });
+        return 1;
+    }
+    const linux = linuxTarget(settings.target);
+    if (linux && testing) {
+        post({ type: 'stderr', text: `error: tests run on WebAssembly only; ${TARGETS[settings.target]} has no XCTest or swift-testing here yet (comment out TARGET in ${ENV_FILE} to test)\n` });
+        return 1;
+    }
     // The optimisation level (OPTIMIZATION_LEVELS); anything else is refused
     // before a byte is downloaded, rather than handed to the frontend.
     const optimization = options?.optimization ?? OPTIMIZATION_LEVELS[0];
@@ -124,16 +143,18 @@ async function run({ files, entry, stdin, options }, testing) {
     phase('Loading the Swift compiler');
     const tools = toolchain();
     const [frontend, root] = await Promise.all([
-        tools.frontend,
-        tools.root.then(async (root) => {
-            await Promise.all([
-                needsXCTest && tools.extra('xctest', loadXCTest),
-                needsTesting && tools.extra('testing', loadSwiftTesting),
-                needsPlugins && tools.extra('plugins', loadMacroPlugins),
-            ]);
-            return root;
-        }),
+        linux ? tools.tool(CROSS_FRONTEND_WASM) : tools.tool(FRONTEND_WASM),
+        Promise.all([
+            linux ? tools.extra(`linux-${linux.arch}`, (r) => loadLinuxSysroot(r, linux.arch, onLoading)) : tools.extra('wasm', (r) => loadWasmSysroot(r, onLoading)),
+            needsXCTest && tools.extra('xctest', loadXCTest),
+            needsTesting && tools.extra('testing', loadSwiftTesting),
+            needsPlugins && tools.extra('plugins', loadMacroPlugins),
+        ]).then(() => tools.root),
     ]);
+    // The linker is awaited only after compiling, so a failed download
+    // must not be an unhandled rejection meanwhile.
+    const linkerLoaded = tools.tool(LINKER_WASM);
+    linkerLoaded.catch(() => {});
 
     // The last run's build, if it failed before cleaning up.
     remove(root, '/build');
@@ -157,9 +178,9 @@ async function run({ files, entry, stdin, options }, testing) {
     // The frontend's diagnostics, posted when it ends (they all come at the
     // end anyway), less the warnings that projectModuleName causes.
     const diagnostics = textSink();
-    let code = await runFrontend(frontend, {
-        args: compileArgs(sources, '/build/main.o', moduleName, optimization), root,
-        stdout: diagnostics, stderr: diagnostics,
+    let code = await (linux ? runFrontendCommand : runFrontend)(frontend, {
+        args: linux ? linuxCompileArgs(linux, sources, '/build/main.o', moduleName, optimization) : compileArgs(sources, '/build/main.o', moduleName, optimization),
+        root, stdout: diagnostics, stderr: diagnostics,
     });
     const shown = relative(moduleName === 'main' ? diagnostics.text : dropOwnModuleImportWarnings(diagnostics.text));
     if (shown.trim()) post({ type: 'stderr', text: shown });
@@ -168,7 +189,17 @@ async function run({ files, entry, stdin, options }, testing) {
 
     phase('Linking');
     const object = readFile(root, '/build/main.o');
-    const linker = await tools.linker;
+    const linker = await linkerLoaded;
+    if (linux) {
+        // An object's autolink entries name every Swift library its imports
+        // need, transitively, so on Linux they are the whole list.
+        code = await runWasi(linker, { args: linuxLinkArgs(linux, ['/build/main.o'], '/build/main', autolinkEntries(object)), root, stdout: errors, stderr: errors });
+        if (code !== 0) return code;
+        const program = readFile(root, '/build/main');
+        remove(root, '/build');
+        console.debug(`swift runner: compiled and linked for ${linux.triple} in ${ms()}`);
+        return runOnLinux(linux, program, stdin, options, t0);
+    }
     code = await runWasi(linker, {
         args: [...linkArgs(['/build/main.o'], '/build/main.wasm', 1 << 20, linkLibraries(root, autolinkEntries(object))),
             // So the runner can flush the program's stdout before it waits for input.
@@ -225,34 +256,79 @@ async function run({ files, entry, stdin, options }, testing) {
     return status;
 }
 
+/** The Linux run in progress ({ finish }), which cancel ends. */
+let linuxRun = null;
+
 /**
- * What runs load, once per worker: the frontend and the linker, compiled,
- * and the root with the sysroot unpacked, to which the optional parts
- * (XCTest, swift-testing, the macro plugins) are added the first time a run
- * needs them. The root also keeps Clang's module cache (MODULE_CACHE), so
- * only the first compile builds SwiftShims. A worker used to load all of it
- * for every run, as the app started one per run: some 260 MB read again
- * (from the offline cache, but shown as a download) and 180 MB of wasm
- * compiled again, every time Run was pressed.
+ * Runs a linked Linux program under the C++ pack's emulator, in a worker
+ * of its own (linux-worker.js), which is terminated when the program ends;
+ * resolves to its exit status. `options` are the run's, with the
+ * emulator's defaults (CONTRACT.md: system emulation, one CPU).
+ */
+function runOnLinux(target, program, stdin, options, t0) {
+    phase('Running');
+    return new Promise((resolve) => {
+        const worker = new Worker(new URL('linux-worker.js', import.meta.url), { type: 'module' });
+        const finish = (code) => {
+            worker.terminate();
+            linuxRun = null;
+            resolve(code);
+        };
+        linuxRun = { finish };
+        worker.onmessage = ({ data }) => {
+            if (data?.type === 'done') finish(data.code);
+            else post(data);
+        };
+        worker.onerror = (e) => {
+            post({ type: 'stderr', text: `The emulator's worker failed: ${e.message ?? e}\n` });
+            finish(1);
+        };
+        worker.postMessage({
+            arch: target.arch,
+            label: target.label,
+            program,
+            args: [],
+            env: {},
+            stdin,
+            options: { emulation: 'system', cpus: 1, strace: false, ...options },
+            base: new URL('../cpp/', import.meta.url).href,
+            t0,
+            timeOrigin: performance.timeOrigin,
+        });
+    });
+}
+
+/**
+ * What runs load, once per worker: the tools, compiled, each the first time
+ * a run needs it (the default compiler, the cross compiler, the linker),
+ * and one root, to which the sysroots and the optional parts (the
+ * WebAssembly or a Linux sysroot, XCTest, swift-testing, the macro plugins)
+ * are added the first time a run needs them. The root also keeps Clang's
+ * module cache (MODULE_CACHE), so only the first compile builds SwiftShims.
+ * A worker used to load all of it for every run, as the app started one per
+ * run: some 260 MB read again (from the offline cache, but shown as a
+ * download) and 180 MB of wasm compiled again, every time Run was pressed.
  */
 let tools = null;
 function toolchain() {
     if (tools) return tools;
-    const root = loadSysroot(onLoading);
+    const root = new Directory(new Map());
+    mkdirp(root, '/tmp');
+    const modules = new Map();
     const extras = new Map();
     tools = {
-        frontend: loadTool(FRONTEND_WASM, onLoading),
-        linker: loadTool(LINKER_WASM, onLoading),
         root,
+        /** The compiled module of the tool called `name`, fetched once per worker. */
+        tool: (name) => {
+            if (!modules.has(name)) modules.set(name, loadTool(name, onLoading));
+            return modules.get(name);
+        },
         /** `load(root, onLoading)` once per worker, under `name`. */
         extra: (name, load) => {
-            if (!extras.has(name)) extras.set(name, root.then((r) => load(r, onLoading)));
+            if (!extras.has(name)) extras.set(name, load(root, onLoading));
             return extras.get(name);
         },
     };
-    // The linker is awaited only after compiling, so a failed download
-    // must not be an unhandled rejection meanwhile.
-    tools.linker.catch(() => {});
     return tools;
 }
 
@@ -265,6 +341,10 @@ function toolchain() {
  */
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {
+    // Only a Linux run leaves this worker free to hear a cancel; a compile
+    // or a WebAssembly program holds the thread, and the app terminates the
+    // worker instead (CONTRACT.md, "Cancelling"). The run then exits 130.
+    if (data?.type === 'cancel') return linuxRun?.finish(130);
     if (data?.type !== 'run' && data?.type !== 'test') return;
     queue = queue.then(() => run(data, data.type === 'test').then(
         (code) => post({ type: 'exit', code, reusable: true }),

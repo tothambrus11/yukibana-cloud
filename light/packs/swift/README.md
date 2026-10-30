@@ -152,6 +152,50 @@ compiler that is not in the pack yet). With `swift-6.3.3-wasm-3` the first
 two fail at both levels; with `swift-6.3.3-wasm-4` all of `test-run.mjs`
 passes, these cases included, and XCTest compiles at `-O` and `-Osize`.
 
+## Linux targets
+
+A project chooses its target in `swift.env` (the sample has one, all
+comments): `TARGET=x86_64-linux` or `TARGET=aarch64-linux` builds a static
+Linux executable instead of a WebAssembly program, and Run runs it under the
+C++ pack's QEMU-Wasm (`packs/cpp/vm.js`, system emulation, one CPU), in a
+worker of its own (`src/linux-worker.js`), as the Go pack does. Nothing set
+is WebAssembly, which stays the default: it needs no emulator and nothing
+more to download. `src/target.js` reads the file; a line it does not
+understand is printed as `swift.env:<line>: <message>` and the run stops.
+
+What a Linux run uses, all fetched on its first run and kept by the worker:
+
+| file | what | brotli |
+|---|---|---|
+| `swift-frontend-cross.wasm` | the same Swift 6.3.3 frontend, built by swift-toolchain-wasm with `SWIFT_CROSS=1`: LLVM's X86, AArch64 and RISCV backends besides WebAssembly. A WASI command (`runFrontendCommand`), not the reactor the language server shares, and with the same macro plugin imports | (pending the first build) |
+| `wasm-ld.wasm` | the linker WebAssembly programs use; lld is one multiplexed driver, and called `ld.lld` (argv[0]) it links ELF | already loaded |
+| `swift-sysroot-linux-<arch>.tar` | Swift's Static Linux SDK for that architecture (musl 1.2.5, libc++, Dispatch, compiler-rt), trimmed by the toolchain's Stage 41: no Foundation, no C++ headers, the runtime's archives without their debug info | about 11 MB |
+
+The vectors are `linuxCompileArgs` and `linuxLinkArgs` (`src/frontend-args.js`):
+what `swiftc -v -static-executable -static-stdlib` runs for the SDK,
+replayed by hand, the program compiled with DWARF (`-g`). The libraries come
+from the object's `.swift1_autolink_entries` ELF section (`elfSection`), which
+names every Swift library its imports reach, plus the SDK's
+`static-executable-args.lnk`. The toolchain's Stage 58 runs the same vectors
+natively and with the wasm tools, and `test-linux.mjs` with this pack's code.
+
+A hello world is about 10 MB, the size of the static Swift runtime; with the
+runtime's debug info it would be 41 MB, which is why the sysroot drops it.
+
+Not on Linux yet:
+
+* **Test.** The browser's XCTest is built for WebAssembly and the Static
+  Linux SDK has no swift-testing, so Test with a Linux target says so and
+  stops.
+* **RISC-V.** C, C++, Go and Rust build for riscv64-linux; Swift has no SDK
+  for it, so `TARGET=riscv64-linux` is refused with that reason. The cross
+  compiler has the RISCV backend: a riscv64 musl build of the runtime is all
+  that is missing.
+* **The editor** checks every project as WebAssembly, so `#if os(Linux)`
+  code is greyed out and `import Musl` is an error there while Run builds it.
+* **Foundation** is not in the sysroot, as it is not in the WebAssembly one.
+* The compiler output views show WebAssembly.
+
 ## Macros
 
 Swift runs a macro by sending its syntax to a *plugin*, a program or
