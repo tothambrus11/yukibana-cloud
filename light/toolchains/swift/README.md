@@ -51,6 +51,29 @@ workflow saves its build trees and resumes on the next run.
 | `52-sourcekitd-smoke-test` | asks `sourcekitd-request.wasm` for a completion and a cursor info, under wasmtime |
 | `53-sourcekit-lsp-lite-smoke-test` | LSP scenarios against `sourcekit-lsp-lite.wasm` under wasmtime, both reactors from Node, and a compile with `swift-frontend-lsp.wasm` |
 | `57-macros-smoke-test` | compiles a file using `#stringify`, `@Observable`, `@Test` and `#expect` with the macro plugins, links it and runs its tests |
+| `41-linux-sysroots` | cross build only: one sysroot per Linux target, from Swift's Static Linux SDK |
+| `58-cross-smoke-test` | cross build only: compiles, links and runs a program for every Linux sysroot (`NATIVE=1`: the same vectors with the native toolchain) |
+
+### The cross compiler
+
+`SWIFT_CROSS=1 ./scripts/build-all.sh` builds a second compiler,
+`swift-frontend-cross.wasm`: the same frontend, with LLVM's X86, AArch64 and
+RISCV backends besides WebAssembly, so it compiles for Linux too. It is the
+compiler alone (Stages 00 to 30, plus 41): sourcekitd, the macro plugins and
+the wasm sysroot of the default build serve it unchanged, and the default
+compiler stays WebAssembly-only, because most programs run in the browser and
+should not pay for three more backends. Linking needs nothing new:
+`wasm-ld.wasm` is lld's multiplexed driver, which links ELF when called
+`ld.lld` (or given `-flavor gnu`).
+
+The target side is Swift's [Static Linux SDK][static-sdk] (musl, static
+executables; `env.sh` pins it by checksum), packed per architecture by Stage 41
+as `swift-sysroot-linux-<arch>.tar`: x86_64 and aarch64, the two it ships.
+Stage 58 builds and runs a program for each under qemu-user; the argument
+vectors are in that script. The workflow's `cross` input runs this build under
+its own cache keys and publishes it as `swift-<version>-wasm-cross`.
+
+[static-sdk]: https://www.swift.org/documentation/articles/static-linux-getting-started.html
 
 Macro support is on by default (`SWIFT_MACROS=1`); `SWIFT_MACROS=0` builds the smaller
 compiler without it. [docs/status.md](docs/status.md#macros) says what it costs and what an
