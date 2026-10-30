@@ -4,7 +4,7 @@
 
 ## 00xx: homescoop's WASI-hosted rustc
 
-Copied unchanged from [homescoop](https://github.com/ai-ecoverse/homescoop)
+Copied (unchanged but for 0007, see below) from [homescoop](https://github.com/ai-ecoverse/homescoop)
 at commit `15880c4c69796878f507e0028d507d657f92b82d` (2026-10-28),
 `packages/wasi-rustc/patches/`. Copyright 2026 ai-ecoverse, licensed under the
 Apache License 2.0 (`LICENSE-homescoop.txt`); the files they patch are Rust's
