@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Builds the Rust pack's compilers and Miri from Rust's source, for a
-# wasm32-wasip1-threads host (../README.md, "The compiler"), into $OUT:
+# Builds the Rust pack's compilers unit into $OUT, run by
+# light/scripts/pack-toolchain.sh from this directory of its stage: rustc
+# and Miri from Rust's source, for a wasm32-wasip1-threads host (../../
+# README.md, "The compiler"):
 #
 #   rustc.wasm          rustc with LLVM's WebAssembly code generator and
 #                       lld's wasm linker: the default target, wasm32-wasip1
@@ -8,26 +10,32 @@
 #                       code generators and lld's ELF linker too: the Linux
 #                       targets (musl, static)
 #   miri.wasm           Miri, of the same tree
+#   versions-compilers.json
 #
-# The standard libraries, Rust's own and Miri's, are ../build.sh's.
+# each .wasm with .gz and .br siblings. The standard libraries, Rust's own
+# and Miri's, are the sysroots unit's.
 #
 # From nothing this is hours (on 4 cores: about 55 minutes of native LLVM,
-# 65 of LLVM for wasm, then rustc twice, native and wasm); everything is
-# kept under $CACHE, so a rebuild redoes what changed. Needs curl, xz,
-# python3, cmake, ninja, gcc/g++ and about 40 GB of disk.
+# 65 of LLVM for wasm, then rustc twice, native and wasm). Downloads are
+# kept in $PACK_CACHE; the build tree (some 25 GB) in $TMPDIR, which is not
+# saved between CI runs, so a rebuild on the same machine redoes only what
+# changed. Needs curl, xz, python3, cmake, ninja (deps.apt), gcc/g++ and
+# git.
 #
 #   pins.sh             the release whose source tarball is built, and wasi-sdk
-#   rustc/patches/      applied in order: 00xx homescoop's patches for a
+#   patches/            applied in order: 00xx homescoop's patches for a
 #                       WASI-hosted rustc (Apache-2.0, see patches/README.md),
 #                       01xx LLVM fixes backported from LLVM 23.1.1, 02xx ours
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACK="$(cd "$HERE/../.." && pwd)"
 # shellcheck source=pins.sh
 . "$HERE/pins.sh"
-CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/rust/rustc"
-: "${OUT:=$CACHE/out}"
-mkdir -p "$CACHE" "$OUT"
+: "${OUT:?OUT is the toolchain directory of this unit (pack-toolchain.sh sets it)}"
+CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/rust/compilers"
+WORK="${TMPDIR:-/tmp}/yukibana-rust-compilers"
+mkdir -p "$CACHE" "$WORK"
 step() { printf '\n== %s\n' "$*" >&2; }
 fetch() { # url sha256 file
     [ -f "$3" ] || { curl -sSfL --retry 4 -o "$3.part" "$1" && mv "$3.part" "$3"; }
@@ -37,19 +45,19 @@ fetch() { # url sha256 file
 step "sources"
 fetch "https://static.rust-lang.org/dist/rustc-$RUST_VERSION-src.tar.xz" "$RUST_SRC_SHA256" "$CACHE/rustc-$RUST_VERSION-src.tar.xz"
 fetch "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION%%.*}/wasi-sdk-$WASI_SDK_VERSION-x86_64-linux.tar.gz" "$WASI_SDK_SHA256" "$CACHE/wasi-sdk-$WASI_SDK_VERSION.tar.gz"
-SDK="$CACHE/wasi-sdk-$WASI_SDK_VERSION-x86_64-linux"
-[ -d "$SDK" ] || tar -xzf "$CACHE/wasi-sdk-$WASI_SDK_VERSION.tar.gz" -C "$CACHE"
+SDK="$WORK/wasi-sdk-$WASI_SDK_VERSION-x86_64-linux"
+[ -d "$SDK" ] || tar -xzf "$CACHE/wasi-sdk-$WASI_SDK_VERSION.tar.gz" -C "$WORK"
 
 # The tree is extracted again when the patches change; its build/ (hours of
 # LLVM and rustc) is moved across, so only what the patches touch rebuilds.
-SRC="$CACHE/rustc-$RUST_VERSION-src"
-STAMP="$(cat "$HERE"/patches/*.patch "$HERE/build.sh" "$HERE/pins.sh" | sha256sum | cut -c1-16)"
+SRC="$WORK/rustc-$RUST_VERSION-src"
+STAMP="$(cat "$HERE"/patches/*.patch "$HERE/toolchain.sh" "$HERE/pins.sh" | sha256sum | cut -c1-16)"
 if [ "$(cat "$SRC/.yukibana-patches" 2>/dev/null)" != "$STAMP" ]; then
     step "extract and patch"
-    [ -d "$SRC/build" ] && mv "$SRC/build" "$CACHE/build.keep"
+    if [ -d "$SRC/build" ]; then mv "$SRC/build" "$WORK/build.keep"; fi
     rm -rf "$SRC"
-    tar -xJf "$CACHE/rustc-$RUST_VERSION-src.tar.xz" -C "$CACHE"
-    [ -d "$CACHE/build.keep" ] && mv "$CACHE/build.keep" "$SRC/build"
+    tar -xJf "$CACHE/rustc-$RUST_VERSION-src.tar.xz" -C "$WORK"
+    if [ -d "$WORK/build.keep" ]; then mv "$WORK/build.keep" "$SRC/build"; fi
     for p in "$HERE"/patches/*.patch; do
         case "$(basename "$p")" in
             # LLVM's own commits: paths from llvm-project's root; their
@@ -58,7 +66,7 @@ if [ "$(cat "$SRC/.yukibana-patches" 2>/dev/null)" != "$STAMP" ]; then
             *) dir=() ;;
         esac
         echo "patch $(basename "$p")" >&2
-        (cd "$SRC" && GIT_CEILING_DIRECTORIES="$CACHE" git apply "${dir[@]}" "$p")
+        (cd "$SRC" && GIT_CEILING_DIRECTORIES="$WORK" git apply "${dir[@]}" "$p")
     done
     echo "$STAMP" > "$SRC/.yukibana-patches"
 fi
@@ -66,7 +74,7 @@ fi
 step "bootstrap config"
 S="$SDK/share/wasi-sysroot"
 cat > "$SRC/config.yukibana.toml" <<EOF
-# Written by packs/rust/rustc/build.sh.
+# Written by packs/rust/toolchains/compilers/toolchain.sh.
 profile = "compiler"
 change-id = "ignore"
 
@@ -146,20 +154,26 @@ X() { (cd "$SRC" && ./x.py "$@" --config config.yukibana.toml); }
 STAGE2="$SRC/build/wasm32-wasip1-threads/stage2/bin"
 
 # The standard library is not built for the browser's targets: Rust's own
-# (rust-std, ../build.sh) loads, since the version string is the same.
+# (rust-std, the sysroots unit) loads, since the version string is the same.
 step "rustc-cross.wasm (every target)"
 X build --stage 2 compiler/rustc
-cp "$STAGE2/rustc.wasm" "$CACHE/rustc-cross.wasm"
+cp "$STAGE2/rustc.wasm" "$WORK/rustc-cross.wasm"
 
 # Miri needs no code generator at all; it is linked with the smaller LLVM.
+# `miri`, not src/tools/miri: bootstrap takes a path for every step whose
+# path starts with it, and src/tools/miri/cargo-miri, which needs serde's
+# OsString of a Unix or Windows host, has no use in a browser.
 step "rustc.wasm and miri.wasm (WebAssembly only)"
-RUSTC_LLVM_ONLY_TARGETS=webassembly X build --stage 2 compiler/rustc src/tools/miri
-cp "$STAGE2/rustc.wasm" "$CACHE/rustc.wasm"
-cp "$SRC/build/wasm32-wasip1-threads/stage2-tools-bin/miri.wasm" "$CACHE/miri.wasm"
+RUSTC_LLVM_ONLY_TARGETS=webassembly X build --stage 2 compiler/rustc miri
+cp "$STAGE2/rustc.wasm" "$WORK/rustc.wasm"
+cp "$STAGE2/miri.wasm" "$WORK/miri.wasm"
 
 # Without the name section a crash of the compiler has no function names in
 # its trap, but rustc prints its own message before it aborts, and the
 # files are a third smaller.
-step "strip"
-for c in rustc rustc-cross miri; do "$SDK/bin/llvm-strip" --strip-all -o "$OUT/$c.wasm" "$CACHE/$c.wasm"; done
-echo "built $(cd "$OUT" && ls -l --block-size=M rustc.wasm rustc-cross.wasm miri.wasm | awk '{ print $9, $5 }' | paste -sd' ')" >&2
+step "strip and compress"
+for c in rustc rustc-cross miri; do "$SDK/bin/llvm-strip" --strip-all -o "$OUT/$c.wasm" "$WORK/$c.wasm"; done
+node "$PACK/scripts/compress.mjs" "$OUT/rustc.wasm" "$OUT/rustc-cross.wasm" "$OUT/miri.wasm" >&2
+cp "$HERE/patches/LICENSE-homescoop.txt" "$OUT/LICENSE-homescoop.txt"
+printf '{"rust":"%s","llvm":"%s","wasi-sdk":"%s"}\n' "$RUST_VERSION" "$(sed -n 's/^ *set(LLVM_VERSION_\(MAJOR\|MINOR\|PATCH\) \([0-9]*\))$/\2/p' "$SRC/src/llvm-project/cmake/Modules/LLVMVersion.cmake" | paste -sd.)" "$WASI_SDK_VERSION" > "$OUT/versions-compilers.json"
+cat "$OUT/versions-compilers.json" >&2

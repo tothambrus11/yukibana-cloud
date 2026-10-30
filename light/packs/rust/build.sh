@@ -32,7 +32,7 @@ RA_STD_SHA256=0e977492aed5ff137815bf9b4b796e8a85b80fb2367ed64e82d5c5839870f2bf
 # builds the crates, since a crate loads only into a compiler of the same
 # version string.
 # shellcheck source=rustc/pins.sh
-. "$(dirname "${BASH_SOURCE[0]}")/rustc/pins.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/toolchains/compilers/pins.sh"
 # rust-std-1.98.1-<triple>.tar.xz, as static.rust-lang.org's .sha256 say.
 declare -A RUST_STD_SHA256=(
     [wasm32-wasip1]=b5e91be9ed75c632a4c576d3c4c725ab143cd48c27c345133b97ccdf217b23e7
@@ -157,7 +157,7 @@ rm -f "$OUT"/miri-sysroot-*.tar*
 for triple in "${MIRI_TRIPLES[@]}"; do
     RUSTUP_TOOLCHAIN="$RUST_VERSION" MIRI_SYSROOT="$MIRI_SYSROOTS/$triple" $NICE "$CARGO_MIRI" miri setup --target "$triple"
     work="$(mktemp -d)"
-    (cd "$MIRI_SYSROOTS/$triple" && find lib -name '*.rmeta' -print0 | tar --format=ustar --owner=0 --group=0 --numeric-owner --mtime=@0 --null -T - -cf "$work/s.tar")
+    (cd "$MIRI_SYSROOTS/$triple" && find lib -name '*.rlib' -print0 | tar --format=ustar --owner=0 --group=0 --numeric-owner --mtime=@0 --null -T - -cf "$work/s.tar")
     # In name order, so that the archive is the same every time.
     mkdir "$work/x" && tar -xf "$work/s.tar" -C "$work/x"
     tar --format=ustar --owner=0 --group=0 --numeric-owner --mtime=@0 --sort=name -C "$work/x" -cf "$OUT/miri-sysroot-$triple.tar" lib

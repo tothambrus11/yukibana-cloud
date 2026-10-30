@@ -12,8 +12,9 @@
 //   <name>-<triple>.tar        for each rustc triple: the crates' rlibs
 //                              (lib<crate>.rlib), for the runner's
 //                              `--extern` and `-L dependency=`
-//   <name>-miri-<triple>.tar   for each Miri triple: their .rmeta files with
-//                              every function's MIR, for Miri's
+//   <name>-miri-<triple>.tar   for each Miri triple: their rlibs as Miri
+//                              makes them (metadata with every function's
+//                              MIR, no code), for Miri's
 //   <name>-src.tar             their sources (<package>-<version>/**.rs,
 //                              without tests, benches, examples and build
 //                              scripts) and crates.json, which tells
@@ -210,7 +211,7 @@ for (const triple of miriTriples) {
         stdio: ['ignore', 'pipe', 'inherit'],
         maxBuffer: 1 << 28,
     }).toString();
-    const files = collect(out, 'rmeta');
+    const files = collect(out, 'rlib');
     writeFileSync(join(outDir, `${name}-miri-${triple}.tar`), tar(files));
     console.log(`${name}-miri-${triple}.tar: ${files.map(([n, d]) => `${n} ${d.length}`).join(', ')}`);
 }

@@ -315,7 +315,7 @@ try {
     check('quickcheck: without the declaration in Cargo.toml it is unresolved (E0432) and not downloaded, as with Cargo',
         undeclared.code !== 0 && /E0432|E0433/.test(plain(undeclared.stderr)) && /quickcheck/.test(plain(undeclared.stderr)) &&
             undeclared.loading[QC_WASM] === undefined,
-        `code=${undeclared.code} ${Object.keys(undeclared.loading).join(', ')}`);
+        `code=${undeclared.code} ${Object.keys(undeclared.loading).join(', ')} ${plain(undeclared.stderr).split('\n').filter((l) => /^error/.test(l)).join(' | ')}`);
     const old = await run({
         'Cargo.toml': '[package]\nname = "old"\nedition = "2021"\n\n[dependencies]\nquickcheck = { version = "0.9", default-features = false }\n',
         'src/main.rs': 'fn main() {\n    let mut g = quickcheck::Gen::new(10);\n    let v: Vec<u8> = quickcheck::Arbitrary::arbitrary(&mut g);\n    println!("{}", v.len() <= 10);\n}\n',
@@ -352,10 +352,12 @@ try {
 
     // 5. Runtime: a panic exits 101 with Rust's message; process::exit's code.
     const panic = await run(PANIC);
-    check('panic: index out of bounds is reported, exit 101',
-        panic.code === 101 && panic.stdout === 'before\n' && /index out of bounds: the len is 0 but the index is 1/.test(plain(panic.stderr)),
+    // WebAssembly's std is panic=abort: abort() traps, which exits 134 as
+    // under wasmtime (SIGABRT's 128 + 6). On a Linux target it is 101.
+    check('panic: index out of bounds is reported, and the program aborts (exit 134)',
+        panic.code === 134 && panic.stdout === 'before\n' && /index out of bounds: the len is 0 but the index is 1/.test(plain(panic.stderr)),
         `code=${panic.code} ${JSON.stringify(panic.stdout)} ${plain(panic.stderr).split('\n').slice(0, 2).join(' | ')}`);
-    if (panic.code !== 101) console.log(plain(panic.stderr));
+    if (panic.code !== 134) console.log(plain(panic.stderr));
     const exit = await run(EXIT);
     check('std::process::exit(3) exits 3', exit.code === 3 && exit.stdout === 'leaving\n', `code=${exit.code}`);
     const single = await run(SINGLE);
@@ -365,7 +367,7 @@ try {
     // 6. Optimization: Cargo's levels; 0 is the dev profile, with debug info.
     const o3 = await run(SAMPLE, { options: { optimization: '3' } });
     check('opt-level 3: the same output, built as Cargo\'s release profile',
-        o3.code === 0 && o3.stdout === EXPECTED && /release \[optimized\] target/.test(plain(o3.stderr)) && /dev \[unoptimized \+ debuginfo\] target/.test(plain(cold.stderr)),
+        o3.code === 0 && o3.stdout === EXPECTED && /`release` profile \[optimized\] target/.test(plain(o3.stderr)) && /`dev` profile \[unoptimized \+ debuginfo\] target/.test(plain(cold.stderr)),
         `code=${o3.code} in ${o3.ms} ms ${plain(o3.stderr).split('\n').filter((l) => /Finished/.test(l)).join('')}`);
     const badLevel = await run(SAMPLE, { options: { optimization: '4' } });
     check('an optimization level Cargo does not have is refused', badLevel.code === 1 && /no optimization level 4/.test(badLevel.stderr), `code=${badLevel.code}`);
@@ -406,10 +408,18 @@ fn main() {
     const miriCaught = await run(CAUGHT, { options: { miri: 'aarch64' } });
     check('Miri: a panic unwinds, and catch_unwind catches it', miriCaught.code === 0 && miriCaught.stdout === 'caught: true\n' && /inner/.test(miriCaught.stderr),
         `code=${miriCaught.code} ${JSON.stringify(miriCaught.stdout)} ${plain(miriCaught.stderr).slice(0, 200)}`);
-    const miriTests = await run(SAMPLE, { type: 'test', options: { miri: 'riscv64' } });
+    // Not the sample: Miri gives hypot and sqrt the small errors their
+    // documentation allows, at random, so its exact assert_eq! on an f64
+    // fails under Miri now and then, as it may on some target.
+    const GCD = {
+        'Cargo.toml': '[package]\nname = "gcd"\nversion = "0.1.0"\nedition = "2021"\n\n[dev-dependencies]\nquickcheck = "1"\n',
+        'src/lib.rs': 'pub fn gcd(a: u32, b: u32) -> u32 {\n    if b == 0 { a } else { gcd(b, a % b) }\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn gcd_of_12_and_18_is_6() {\n        assert_eq!(super::gcd(12, 18), 6);\n    }\n\n    #[test]\n    fn a_panic_is_caught_by_libtest() {\n        let r = std::panic::catch_unwind(|| super::gcd(1, 0) / std::hint::black_box(0));\n        assert!(r.is_err());\n    }\n}\n',
+        'tests/properties.rs': 'use gcd::gcd;\nuse quickcheck::quickcheck;\n\nquickcheck! {\n    fn gcd_divides_both(a: u16, b: u16) -> bool {\n        let g = gcd(a as u32, b as u32);\n        g == 0 || (a as u32 % g == 0 && b as u32 % g == 0)\n    }\n}\n',
+    };
+    const miriTests = await run(GCD, { type: 'test', options: { miri: 'riscv64' } });
     const miriResults = [...miriTests.stdout.matchAll(/^test (\S+) \.\.\. (ok|FAILED)$/gm)].map((m) => `${m[1]} ${m[2]}`).sort();
-    check('Miri: cargo miri test runs the sample\'s tests under libtest, quickcheck property included',
-        miriTests.code === 0 && miriResults.length === 4 && miriResults.every((r) => r.endsWith(' ok')),
+    check('Miri: cargo miri test runs unit and integration tests under libtest, a quickcheck property and a caught panic included',
+        miriTests.code === 0 && JSON.stringify(miriResults) === JSON.stringify(['gcd_divides_both ok', 'tests::a_panic_is_caught_by_libtest ok', 'tests::gcd_of_12_and_18_is_6 ok']),
         `code=${miriTests.code} in ${miriTests.ms} ms ${JSON.stringify(miriResults)}`);
     if (miriTests.code !== 0) console.log(plain(miriTests.stderr), miriTests.stdout);
     const noMiri = await run(SAMPLE, { options: { miri: 'wasm32' } });
@@ -434,7 +444,34 @@ fn main() {
             `code=${caught.code} ${JSON.stringify(caught.stdout)}`);
     }
 
-    // 9. A program that never ends: the page terminates the worker.
+    // 9. The compiler output views (explorer.js), for the project's target.
+    const emit = (files, emitKind, options = {}, path = 'src/lib.rs') =>
+        page.evaluate(([f, e, o, p]) => new Promise((done) => {
+            const worker = new Worker('/packs/rust/explorer.js', { type: 'module' });
+            worker.onmessage = ({ data: m }) => {
+                if (m.type !== 'result') return;
+                worker.terminate();
+                done(m);
+            };
+            worker.postMessage({ type: 'emit', id: 1, emit: e, files: f, path: p, options: o });
+        }), [files, emitKind, options, path]);
+    const VIEW = { ...MANIFEST, 'src/lib.rs': 'pub fn square(x: i32) -> i32 {\n    x * x\n}\n\npub fn sum(v: &[i32]) -> i32 {\n    v.iter().map(|&x| square(x)).sum()\n}\n' };
+    const mir = await emit(VIEW, 'mir');
+    check('MIR view: the library\'s functions, each line mapped to its source line', mir.ok && /fn square\(/.test(mir.text) && mir.lines.some((l) => l?.line === 2),
+        `ok=${mir.ok} ${mir.ms} ms ${mir.ok ? '' : mir.error}`);
+    const ir = await emit(VIEW, 'llvm-ir', { demangle: true });
+    check('LLVM IR view on WebAssembly: demangled names, wasm32 data layout', ir.ok && /define .*demo::square/.test(ir.text) && ir.triple === 'wasm32-wasip1',
+        `ok=${ir.ok} ${ir.ms} ms ${ir.ok ? ir.text.split('\n').find((l) => l.startsWith('define')) : ir.error}`);
+    const asmViews = {};
+    // Optimised, square is inlined into sum (and, small, not emitted alone:
+    // rustc leaves it to the crates that call it), so sum multiplies.
+    for (const [triple, op] of [['x86_64-unknown-linux-musl', /\b(imul|pmulld)/], ['aarch64-unknown-linux-musl', /\b(mul|mla)\b/], ['riscv64gc-unknown-linux-musl', /\bmulw?\b/]]) {
+        const a = await emit({ ...VIEW, '.cargo/config.toml': `[build]\ntarget = "${triple}"\n` }, 'asm', { demangle: true, optimization: '2' });
+        asmViews[triple] = a.ok && op.test(a.text) && /^demo::sum:/m.test(a.text) ? `ok ${a.ms} ms` : `${a.ok ? a.text.slice(0, 200) : a.error}`;
+    }
+    check('assembly view: x86-64, AArch64 and RISC-V at opt-level 2, demangled, each with its own multiply', Object.values(asmViews).every((v) => v.startsWith('ok')), JSON.stringify(asmViews));
+
+    // 10. A program that never ends: the page terminates the worker.
     const t = Date.now();
     const forever = await run(FOREVER, { stopAfter: 'looping' });
     const alive = await page.evaluate(() => 1 + 1);

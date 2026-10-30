@@ -48,6 +48,7 @@ tests (the tarball has none):
 |---|---|
 | 0201 | `RUSTC_LLVM_ONLY_TARGETS=webassembly` links rustc_llvm against LLVM's WebAssembly target alone and lld's wasm driver alone, so one LLVM build gives both rustc.wasm and rustc-cross.wasm; read for WASI targets only, so the native stage 1 never sees it |
 | 0202 | bootstrap keeps the rustc crates' rlibs in a WASI host's sysroot, where there is no `librustc_driver.so` for a tool (Miri) to link against |
+| 0203 | Miri on a WASI host: target features from rustc's dummy backend (the ABI's required ones), since an LLVM with only WebAssembly's code generator cannot make another target's machine; and the host code Miri has only for Unix and Windows (`OsStr` bytes, links, sockets, Windows paths) built for WASI too, failing where a browser has no such thing |
 
 `config.yukibana.toml`'s `description = ""` is not a patch but matters as
 much: without it the version string says "(built from a source tarball)",

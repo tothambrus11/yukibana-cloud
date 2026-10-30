@@ -1,0 +1,107 @@
+--- a/src/tools/miri/src/bin/miri.rs
++++ b/src/tools/miri/src/bin/miri.rs
+@@ -115,6 +115,21 @@
+ /// use the dummy backend, except that we put the LLVM backend in charge of
+ /// target features.
+ fn make_miri_codegen_backend(sess: &Session) -> Box<dyn CodegenBackend> {
++    // On a WASI host (Miri in a browser) rustc's LLVM has only the code
++    // generator its own target needs, and LLVM cannot make a target machine
++    // for any other: the target features are the dummy backend's, those the
++    // target's ABI requires (x87 and SSE2 on x86, NEON on AArch64, the
++    // floating-point registers of a hard-float ABI).
++    if cfg!(target_os = "wasi") {
++        return Box::new(DummyCodegenBackend {
++            target_config_override: Some(Box::new(|sess| {
++                let mut cfg = DummyCodegenBackend { target_config_override: None }.target_config(sess);
++                cfg.has_reliable_f16_math = cfg!(target_has_reliable_f16_math);
++                cfg.has_reliable_f128_math = false;
++                cfg
++            })),
++        });
++    }
+     let early_dcx = EarlyDiagCtxt::new(sess.opts.error_format);
+ 
+     // Use the target_config method of the default codegen backend (eg LLVM) to ensure the
+--- a/src/tools/miri/src/shims/os_str.rs
++++ b/src/tools/miri/src/shims/os_str.rs
+@@ -2,6 +2,8 @@
+ use std::ffi::{OsStr, OsString};
+ #[cfg(unix)]
+ use std::os::unix::ffi::{OsStrExt, OsStringExt};
++#[cfg(target_os = "wasi")]
++use std::os::wasi::ffi::{OsStrExt, OsStringExt};
+ #[cfg(windows)]
+ use std::os::windows::ffi::{OsStrExt, OsStringExt};
+ use std::path::{Path, PathBuf};
+--- a/src/tools/miri/src/shims/unix/fs.rs
++++ b/src/tools/miri/src/shims/unix/fs.rs
+@@ -580,6 +580,12 @@
+             if src.is_dir() { fs::symlink_dir(src, dst) } else { fs::symlink_file(src, dst) }
+         }
+ 
++        // A WASI host: a browser's file system, which has no links.
++        #[cfg(target_os = "wasi")]
++        fn create_link(_src: &Path, _dst: &Path) -> std::io::Result<()> {
++            Err(std::io::ErrorKind::Unsupported.into())
++        }
++
+         let this = self.eval_context_mut();
+         let target = this.read_path_from_c_str(this.read_pointer(target_op)?)?;
+         let linkpath = this.read_path_from_c_str(this.read_pointer(linkpath_op)?)?;
+--- a/src/tools/miri/src/shims/unix/socket.rs
++++ b/src/tools/miri/src/shims/unix/socket.rs
+@@ -18,6 +18,25 @@
+ use crate::shims::unix::socket_address::EvalContextExt as _;
+ use crate::*;
+ 
++// mio has no `bind` or `connect` on a WASI host (WASI preview 1 has no
++// sockets to make): there a socket can only fail to listen or connect.
++#[cfg(not(target_os = "wasi"))]
++fn host_listen(addr: SocketAddr) -> io::Result<TcpListener> {
++    TcpListener::bind(addr)
++}
++#[cfg(target_os = "wasi")]
++fn host_listen(_addr: SocketAddr) -> io::Result<TcpListener> {
++    Err(io::ErrorKind::Unsupported.into())
++}
++#[cfg(not(target_os = "wasi"))]
++fn host_connect(addr: SocketAddr) -> io::Result<TcpStream> {
++    TcpStream::connect(addr)
++}
++#[cfg(target_os = "wasi")]
++fn host_connect(_addr: SocketAddr) -> io::Result<TcpStream> {
++    Err(io::ErrorKind::Unsupported.into())
++}
++
+ #[derive(Debug, PartialEq)]
+ enum SocketFamily {
+     // IPv4 internet protocols
+@@ -471,7 +490,7 @@
+ 
+         match *state {
+             SocketState::Bound(socket_addr) =>
+-                match TcpListener::bind(socket_addr) {
++                match host_listen(socket_addr) {
+                     Ok(listener) => {
+                         *state = SocketState::Listening(listener);
+                         drop(state);
+@@ -653,7 +672,7 @@
+ 
+         // This begins establishing the connection, but does not block until the stream is fully connected.
+         // We deal with that below.
+-        match TcpStream::connect(address) {
++        match host_connect(address) {
+             Ok(stream) => {
+                 *socket.state.borrow_mut() = SocketState::Connecting(stream);
+                 // Register the socket to the blocking I/O manager because
+--- a/src/tools/miri/src/shims/windows/foreign_items.rs
++++ b/src/tools/miri/src/shims/windows/foreign_items.rs
+@@ -27,7 +27,7 @@
+     interp_ok(path::absolute(path))
+ }
+ 
+-#[cfg(unix)]
++#[cfg(not(windows))]
+ #[expect(clippy::get_first, clippy::arithmetic_side_effects)]
+ fn win_get_full_path_name<'tcx>(path: &Path) -> InterpResult<'tcx, io::Result<PathBuf>> {
+     use std::sync::LazyLock;

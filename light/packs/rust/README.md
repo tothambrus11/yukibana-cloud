@@ -179,7 +179,9 @@ The contract's runner (`../CONTRACT.md`, "Running a program").
    the worker blocks on the SharedArrayBuffer; Ctrl-D is end of file). A
    Linux program runs in `linux-worker.js` on the C/C++ pack's QEMU-Wasm,
    with the C++ pack's Run options (user or system emulation, CPUs,
-   strace). A panic prints Rust's own `thread 'main' panicked at ...`;
+   strace). A panic prints Rust's own `thread 'main' panicked at ...` and
+   exits 101 on Linux; on WebAssembly, whose std is `panic=abort`, the
+   abort traps and the program exits 134, as under wasmtime.
    `process::exit(n)` exits n; Stop ends the worker (an endless loop is
    fine).
 

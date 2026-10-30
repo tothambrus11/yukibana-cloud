@@ -10,7 +10,7 @@
 //                              compilers, for a wasm32-wasip1-threads host
 //   miri-sysroot-<triple>.tar  the standard library built for Miri (cfg
 //                              miri, every function's MIR in its metadata;
-//                              rmeta only, no object code) for one target
+//                              its rlibs, which hold no object code) for one target
 //
 // Miri interprets the program for a target as if it ran there: size_of,
 // align_of, the layout of structs and enums, pointer width, endianness
@@ -111,7 +111,7 @@ export async function runMiri({ type, files, entry, stdin, triple, post, downloa
     const wantsCrates = normalDeps.length + devDeps.length > 0 && CRATES[triple];
     const crates = wantsCrates ? once(`miri-crates ${triple}`, async () => tree(untar(await download(CRATES[triple])))) : null;
     const [miri, sysroot, deps] = await Promise.all([tool, root, crates]);
-    const crateArgs = (list) => list.flatMap(([n]) => ['--extern', `${n}=/deps/lib${n}.rmeta`]).concat(list.length && deps ? ['-L', 'dependency=/deps'] : []);
+    const crateArgs = (list) => list.flatMap(([n]) => ['--extern', `${n}=/deps/lib${n}.rlib`]).concat(list.length && deps ? ['-L', 'dependency=/deps'] : []);
     const normal = deps ? crateArgs(normalDeps) : [];
     const dev = deps ? crateArgs([...normalDeps, ...devDeps.filter(([n]) => !cargo.dependencies.has(n))]) : [];
 
@@ -137,9 +137,12 @@ export async function runMiri({ type, files, entry, stdin, triple, post, downloa
     if (lib && (bin || test)) {
         phase('Compiling');
         status('Checking', `${name} (src/lib.rs) for Miri on ${triple}`);
-        const code = await run(['--crate-name', name, '--crate-type', 'lib', '--emit=metadata', '-Zalways-encode-mir', '-o', `/out/lib${name}.rmeta`, `/project/${lib}`, ...normal, ...rustc], { beRustc: true });
+        // An rlib (Miri's holds metadata and every function's MIR, no
+        // code): a test crate's harness takes its dependencies only as
+        // rlibs ("required to be available in rlib format").
+        const code = await run(['--crate-name', name, '--crate-type', 'lib', '-Zalways-encode-mir', '-o', `/out/lib${name}.rlib`, `/project/${lib}`, ...normal, ...rustc], { beRustc: true });
         if (code !== 0) return code;
-        externs.push('--extern', `${name}=/out/lib${name}.rmeta`);
+        externs.push('--extern', `${name}=/out/lib${name}.rlib`);
     }
     if (!test) {
         if (!bin) {
