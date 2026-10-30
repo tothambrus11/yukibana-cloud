@@ -7,15 +7,21 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { RUST_TARGETS, rustTargetOf, withRustTarget } from '../../src/lib/rust-targets.ts';
+import { MIRI_TARGETS, RUST_TARGETS, rustTargetOf, withRustTarget } from '../../src/lib/rust-targets.ts';
 import { targetOf as packTargetOf } from '../../../packs/rust/src/targets.js';
 
 const json = JSON.parse(readFileSync(new URL('../../../packs/rust/src/targets.json', import.meta.url), 'utf8'));
+const miriJson = JSON.parse(readFileSync(new URL('../../../packs/rust/src/miri-targets.json', import.meta.url), 'utf8'));
 const said = (c) => (c.kind === 'unsupported' ? `unsupported ${c.triple}` : c.target.id);
 const packSaid = (c) => (c.unsupported !== undefined ? `unsupported ${c.unsupported}` : c.target.id);
 
 test("the app's target table is the pack's targets.json, field for field", () => {
 	assert.deepEqual(RUST_TARGETS, json);
+});
+
+test("the app's Miri targets are the pack's miri-targets.json, and every target starts Miri on one of them", () => {
+	assert.deepEqual(MIRI_TARGETS, miriJson);
+	for (const t of RUST_TARGETS) assert.ok(MIRI_TARGETS.some((m) => m.id === t.miri), t.id);
 });
 
 test('a project without .cargo/config.toml, or without [build] target, builds for WebAssembly', () => {

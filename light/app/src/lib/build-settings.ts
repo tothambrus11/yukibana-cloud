@@ -7,6 +7,7 @@
  * bundling the component.
  */
 import { TARGET_SHORT } from './cpp-targets';
+import { MIRI_TARGETS } from './rust-targets';
 import type { Workspace } from './workspace.svelte';
 
 /**
@@ -42,7 +43,7 @@ export function buildSummary(workspace: Pick<Workspace, 'target' | 'optimization
 	// A C or C++ project says so when none is on, so that a run without
 	// them is a choice the summary shows (Ambrus asked for it).
 	if (s) parts.push(s.address && s.undefined ? 'ASan + UBSan' : s.address ? 'ASan' : s.undefined ? 'UBSan' : 'no sanitizers');
-	if (workspace.miri && rust) parts.push('Miri');
+	if (workspace.miri && rust) parts.push(`Miri on ${MIRI_TARGETS.find((t) => t.id === workspace.miri)?.label ?? workspace.miri}`);
 	if ((target?.kind === 'target' && target.target.runtime === 'linux') || (rust?.kind === 'target' && rust.target.runtime === 'linux' && !workspace.miri)) {
 		const r = workspace.runOptions;
 		if (r.emulation === 'user') parts.push('user mode');

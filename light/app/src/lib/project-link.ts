@@ -86,18 +86,37 @@ const V2 = type({
 	'optimization?': 'string',
 	/** false: clang-tidy's checks do not run (and clangd-tidy.wasm is not downloaded). */
 	'clangTidy?': 'boolean',
-	/** true: a Rust project's Run and Test interpret it under Miri, which checks for undefined behaviour. */
-	'miri?': 'boolean',
+});
+
+/**
+ * Version 3: version 2 and whether a Rust project runs and tests under
+ * Miri (packs/rust README, "Miri"), and as if on which target: one of
+ * rust-targets.ts's MIRI_TARGETS, by id. Absent: compiled and run, as in
+ * every project of version 2, which had no such field.
+ */
+const V3 = type({
+	'+': 'delete',
+	v: '3',
+	language: 'string',
+	files: 'Record<string, string>',
+	'folders?': 'string[]',
+	'open?': 'string[]',
+	'active?': 'string | null',
+	'runOptions?': RUN_OPTIONS,
+	'optimization?': 'string',
+	'clangTidy?': 'boolean',
+	/** The Miri target a Rust project's Run and Test interpret it for; absent: Miri is off. A copy of MIRI_TARGETS' ids (tests/unit/project-link.test.mjs). */
+	'miri?': "'x86_64' | 'aarch64' | 'riscv64' | 'i686' | 'armv7' | 's390x'",
 });
 
 /** The current version of the document, which `encodeProject` writes and `readDocument` returns. */
-export const CURRENT = 2;
+export const CURRENT = 3;
 
 /** A project, in the current schema. */
-export type ProjectDocument = typeof V2.infer;
+export type ProjectDocument = typeof V3.infer;
 
 /** Every version's schema; `v` absent is version 0. */
-const SCHEMAS = { 0: V0, 1: V1, 2: V2 } as const;
+const SCHEMAS = { 0: V0, 1: V1, 2: V2, 3: V3 } as const;
 
 /** What a migration may need that its document does not say. */
 export interface MigrationContext {
@@ -125,6 +144,8 @@ const MIGRATIONS: { readonly [from: number]: (document: never, context: Migratio
 	},
 	// Nothing to change: clang-tidy was not a setting, and runs.
 	1: (d: typeof V1.infer) => ({ ...d, v: 2 }),
+	// Nothing to change: Miri was not a setting, and is off.
+	2: (d: typeof V2.infer) => ({ ...d, v: 3 }),
 };
 
 /**

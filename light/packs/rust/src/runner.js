@@ -20,9 +20,10 @@
 //
 // The level is `options.optimization`, Cargo's opt-level (0, 1, 2, 3, s,
 // z); 0, the default, is Cargo's dev profile and compiles with full debug
-// info, as `cargo build` does, for the debugger. `options.miri` runs the
-// program under Miri instead (miri-runner.js), which checks it for
-// undefined behaviour.
+// info, as `cargo build` does, for the debugger. `options.miri`, the id of
+// a Miri target (miri-targets.json), runs the program under Miri instead
+// (miri-runner.js), which checks it for undefined behaviour, as if on that
+// target.
 //
 // The project is laid out as Cargo lays it out: src/main.rs is the binary,
 // src/lib.rs (if any) a library the binary and the tests use under the
@@ -39,7 +40,7 @@ import { ConsoleStdout, Directory, File, OpenFile, PreopenDirectory, WASI } from
 import HARNESS from './harness.rs';
 import { EDITIONS, manifest, satisfies, stem, untar } from './cargo.js';
 import { tree } from './tree.js';
-import { targetOf } from './targets.js';
+import { miriTarget, MIRI_TARGETS, targetOf } from './targets.js';
 import { memoryImport, runProcess, Trap } from './threads.js';
 import { Stdin, runProgram } from './program.js';
 import { runTests } from './tests.js';
@@ -149,7 +150,10 @@ async function rustc(tool, args, fs) {
     if (fs.deps) fds[7].dir = fs.deps;
     // RUSTC_BOOTSTRAP: the test harness is a custom test framework, a
     // nightly feature (-Zcrate-attr), as the Miri runner's always was.
-    const env = ['RUSTC_BOOTSTRAP=1', 'TMPDIR=/tmp', 'PWD=/project', 'CARGO=cargo'];
+    // RUSTC_SYSROOT: rustc finds its sysroot from its own path, which WASI
+    // has not got; without it even `rustc -vV` is an internal compiler
+    // error ("current_dll_path is not supported on WASI"), --sysroot or not.
+    const env = ['RUSTC_BOOTSTRAP=1', 'RUSTC_SYSROOT=/sysroot', 'TMPDIR=/tmp', 'PWD=/project', 'CARGO=cargo'];
     const wasi = new WASI(['rustc', ...args], env, fds, { debug: false });
     try {
         return await runProcess({ ...tool, wasi, threadUrl: new URL('thread.js', import.meta.url), signal: current?.abort.signal });
@@ -249,7 +253,14 @@ async function main({ type, files, entry, stdin, options = {} }, t0) {
         return 1;
     }
     const target = chosen.target;
-    if (options.miri === true) return runMiri({ type, files, entry, stdin, target, post, download, once, signal: current?.abort.signal });
+    if (options.miri !== undefined) {
+        const on = miriTarget(options.miri);
+        if (!on) {
+            post({ type: 'stderr', text: `error: no Miri target ${options.miri}; there are ${MIRI_TARGETS.map((t) => t.id).join(', ')}\n` });
+            return 1;
+        }
+        return runMiri({ type, files, entry, stdin, triple: on.triple, post, download, once, signal: current?.abort.signal });
+    }
 
     const level = options.optimization ?? '0';
     if (!LEVELS.includes(String(level))) {
@@ -282,7 +293,10 @@ async function main({ type, files, entry, stdin, options = {} }, t0) {
         '-L', '/out',
         // The linker is the lld inside rustc (there is no process to start).
         '-C', 'linker=rust-lld',
-        ...(linux ? ['-C', 'linker-flavor=gnu-lld', '-C', 'link-self-contained=yes', '-C', 'target-feature=+crt-static'] : []),
+        // gnu-lld, lld called as ld.lld rather than through a C compiler,
+        // is an unstable linker flavor; link-self-contained takes musl's
+        // crt1.o, libc.a and libunwind.a from the target's rust-std.
+        ...(linux ? ['-Zunstable-options', '-C', 'linker-flavor=gnu-lld', '-C', 'link-self-contained=yes', '-C', 'target-feature=+crt-static'] : []),
     ];
     const bin = files[entry] !== undefined && entry.endsWith('.rs') && !entry.startsWith('tests/') ? (entry === 'src/lib.rs' ? null : entry) : null;
     const main = bin ?? (files['src/main.rs'] !== undefined ? 'src/main.rs' : files['main.rs'] !== undefined ? 'main.rs' : null);

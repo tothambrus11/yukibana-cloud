@@ -8,10 +8,8 @@
 #                       code generators and lld's ELF linker too: the Linux
 #                       targets (musl, static)
 #   miri.wasm           Miri, of the same tree
-#   sysroot-<triple>.tar          the standard library of each target, for
-#                                 rustc (rlibs and their .rmeta)
-#   miri-sysroot-<triple>.tar     the standard library built for Miri (cfg
-#                                 miri, MIR of everything; .rmeta only)
+#
+# The standard libraries, Rust's own and Miri's, are ../build.sh's.
 #
 # From nothing this is hours (on 4 cores: about 55 minutes of native LLVM,
 # 65 of LLVM for wasm, then rustc twice, native and wasm); everything is
@@ -84,6 +82,12 @@ compiler-docs = false
 extended = false
 tools = []
 cargo-native-static = true
+# Rust's release says "rustc 1.98.1 (48a229cea 2026-09-01)" and nothing
+# more; a crate made by a compiler whose version differs by a byte is
+# refused (E0514), so the standard library Rust ships for each target
+# (rust-std) works with ours only if ours says the same. A source tarball
+# would add "(built from a source tarball)".
+description = ""
 
 [rust]
 codegen-backends = ["llvm"]
@@ -144,13 +148,21 @@ unset RUSTFLAGS CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS CARGO_TARGET_WASM32_WASIP1_
 X() { (cd "$SRC" && ./x.py "$@" --config config.yukibana.toml); }
 STAGE2="$SRC/build/wasm32-wasip1-threads/stage2/bin"
 
-step "rustc-cross.wasm (every target) and the standard library"
-X build --stage 2 compiler/rustc library
+# The standard library is not built for the browser's targets: Rust's own
+# (rust-std, ../build.sh) loads, since the version string is the same.
+step "rustc-cross.wasm (every target)"
+X build --stage 2 compiler/rustc
 cp "$STAGE2/rustc.wasm" "$CACHE/rustc-cross.wasm"
 
-step "rustc.wasm (WebAssembly only)"
-RUSTC_LLVM_ONLY_TARGETS=webassembly X build --stage 2 compiler/rustc
+# Miri needs no code generator at all; it is linked with the smaller LLVM.
+step "rustc.wasm and miri.wasm (WebAssembly only)"
+RUSTC_LLVM_ONLY_TARGETS=webassembly X build --stage 2 compiler/rustc src/tools/miri
 cp "$STAGE2/rustc.wasm" "$CACHE/rustc.wasm"
+cp "$SRC/build/wasm32-wasip1-threads/stage2-tools-bin/miri.wasm" "$CACHE/miri.wasm"
 
-for c in rustc rustc-cross; do cp "$CACHE/$c.wasm" "$OUT/$c.wasm"; done
-echo "built $(ls "$OUT")" >&2
+# Without the name section a crash of the compiler has no function names in
+# its trap, but rustc prints its own message before it aborts, and the
+# files are a third smaller.
+step "strip"
+for c in rustc rustc-cross miri; do "$SDK/bin/llvm-strip" --strip-all -o "$OUT/$c.wasm" "$CACHE/$c.wasm"; done
+echo "built $(cd "$OUT" && ls -l --block-size=M rustc.wasm rustc-cross.wasm miri.wasm | awk '{ print $9, $5 }' | paste -sd' ')" >&2

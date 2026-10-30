@@ -5,10 +5,10 @@
  * pack's runner reads the same file. No file or no key is the default,
  * WebAssembly (WASI).
  *
- * `RUST_TARGETS` and the parse rule are copies of the pack's
- * (packs/rust/src/targets.json and targets.js); tests/unit/rust-targets.test.mjs
- * checks that the table is equal to the JSON and that both read the same
- * cases alike.
+ * `RUST_TARGETS`, `MIRI_TARGETS` and the parse rule are copies of the
+ * pack's (packs/rust/src/targets.json, miri-targets.json and targets.js);
+ * tests/unit/rust-targets.test.mjs checks that the tables are equal to the
+ * JSON and that both read the same cases alike.
  *
  * Imports nothing, so `node` can load this file directly.
  */
@@ -27,8 +27,8 @@ export interface RustTarget {
 	readonly runtime: 'wasi' | 'linux';
 	/** Which of the pack's two compilers builds for it. */
 	readonly compiler: 'rustc' | 'rustc-cross';
-	/** The target Miri interprets the program for. */
-	readonly miri: string;
+	/** The Miri target a project on this target starts with when Miri is turned on. */
+	readonly miri: MiriTarget['id'];
 	/** A Linux target's architecture. */
 	readonly arch?: 'x86_64' | 'aarch64' | 'riscv64';
 	/** True on the default only. */
@@ -37,11 +37,42 @@ export interface RustTarget {
 
 /** Every target, the default first: packs/rust/src/targets.json, field for field. */
 export const RUST_TARGETS: readonly RustTarget[] = [
-	{ id: 'wasm32-wasi', label: 'WebAssembly (WASI)', triple: 'wasm32-wasip1', runtime: 'wasi', compiler: 'rustc', miri: 'wasm32-wasip1', default: true },
-	{ id: 'x86_64-linux', label: 'x86-64 Linux', triple: 'x86_64-unknown-linux-musl', runtime: 'linux', arch: 'x86_64', compiler: 'rustc-cross', miri: 'x86_64-unknown-linux-gnu' },
-	{ id: 'aarch64-linux', label: 'AArch64 Linux', triple: 'aarch64-unknown-linux-musl', runtime: 'linux', arch: 'aarch64', compiler: 'rustc-cross', miri: 'aarch64-unknown-linux-gnu' },
-	{ id: 'riscv64-linux', label: 'RISC-V 64 Linux', triple: 'riscv64gc-unknown-linux-musl', runtime: 'linux', arch: 'riscv64', compiler: 'rustc-cross', miri: 'riscv64gc-unknown-linux-gnu' },
+	{ id: 'wasm32-wasi', label: 'WebAssembly (WASI)', triple: 'wasm32-wasip1', runtime: 'wasi', compiler: 'rustc', miri: 'armv7', default: true },
+	{ id: 'x86_64-linux', label: 'x86-64 Linux', triple: 'x86_64-unknown-linux-musl', runtime: 'linux', arch: 'x86_64', compiler: 'rustc-cross', miri: 'x86_64' },
+	{ id: 'aarch64-linux', label: 'AArch64 Linux', triple: 'aarch64-unknown-linux-musl', runtime: 'linux', arch: 'aarch64', compiler: 'rustc-cross', miri: 'aarch64' },
+	{ id: 'riscv64-linux', label: 'RISC-V 64 Linux', triple: 'riscv64gc-unknown-linux-musl', runtime: 'linux', arch: 'riscv64', compiler: 'rustc-cross', miri: 'riscv64' },
 ];
+
+/**
+ * A target Miri interprets a program for (packs/rust/src/miri-targets.json):
+ * chosen apart from the build's, so that one program can be seen on
+ * several. Sizes, alignments, layouts, pointer width and endianness are
+ * its. All are glibc Linux, whose shims Miri has; Miri cannot run std's
+ * WASI, so WebAssembly's projects start on ARMv7, whose pointers are
+ * 32-bit and whose u64 is 8-aligned, as wasm32's.
+ */
+export interface MiriTarget {
+	readonly id: 'x86_64' | 'aarch64' | 'riscv64' | 'i686' | 'armv7' | 's390x';
+	/** Its name, as the Build settings show it. */
+	readonly label: string;
+	/** What sets its layouts apart, shown beside the name. */
+	readonly detail: string;
+	/** rustc's name for it. */
+	readonly triple: string;
+}
+
+/** Every Miri target: packs/rust/src/miri-targets.json, field for field. */
+export const MIRI_TARGETS: readonly MiriTarget[] = [
+	{ id: 'x86_64', label: 'x86-64', detail: '64-bit, little-endian', triple: 'x86_64-unknown-linux-gnu' },
+	{ id: 'aarch64', label: 'AArch64', detail: '64-bit, little-endian', triple: 'aarch64-unknown-linux-gnu' },
+	{ id: 'riscv64', label: 'RISC-V 64', detail: '64-bit, little-endian', triple: 'riscv64gc-unknown-linux-gnu' },
+	{ id: 'i686', label: 'x86 (i686)', detail: '32-bit; u64 and f64 aligned to 4', triple: 'i686-unknown-linux-gnu' },
+	{ id: 'armv7', label: 'ARMv7', detail: "32-bit, as WebAssembly's pointers", triple: 'armv7-unknown-linux-gnueabihf' },
+	{ id: 's390x', label: 's390x', detail: '64-bit, big-endian', triple: 's390x-unknown-linux-gnu' },
+];
+
+/** Whether `value` is a Miri target's id. */
+export const isMiriTarget = (value: unknown): value is MiriTarget['id'] => MIRI_TARGETS.some((t) => t.id === value);
 
 /** What `.cargo/config.toml` puts a project on: a target of the table, or a triple the pack does not build for. */
 export type RustTargetChoice = { kind: 'target'; target: RustTarget } | { kind: 'unsupported'; triple: string };

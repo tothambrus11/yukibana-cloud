@@ -15,8 +15,8 @@
 // Miri interprets the program for a target as if it ran there: size_of,
 // align_of, the layout of structs and enums, pointer width, endianness
 // and the target's cfgs are that target's (README, "Miri"). The target is
-// the project's (targets.js `miri`: the glibc triple of a Linux target's
-// architecture, whose shims Miri implements best).
+// the Build settings' Miri target (targets.js, miri-targets.json), apart
+// from the one the project compiles for.
 //
 // The standard library was built for Miri, so a panic unwinds as natively:
 // catch_unwind works, and tests run under libtest itself, as with
@@ -92,13 +92,12 @@ const textOut = (onText) => {
 };
 
 /**
- * Runs and tests a project under Miri; resolves to the exit status. `ctx`
- * is the runner's: the message's fields, the target's row, `post`, and its
+ * Runs and tests a project under Miri; resolves to the exit status. The
+ * message's fields, the Miri target's triple, and the runner's `post`,
  * `download` and `once`.
  */
-export async function runMiri({ type, files, entry, stdin, target, post, download, once, signal }) {
+export async function runMiri({ type, files, entry, stdin, triple, post, download, once, signal }) {
     const test = type === 'test';
-    const triple = target.miri;
     const phase = (text) => post({ type: 'phase', text });
     const status = (verb, rest) => post({ type: 'stderr', text: `\u001b[1;32m${verb.padStart(12)}\u001b[0m ${rest}\n` });
     const cargo = manifest(files);
@@ -143,7 +142,7 @@ export async function runMiri({ type, files, entry, stdin, target, post, downloa
         fds[4].dir = project;
         fds[5].dir = out;
         if (deps) fds[7].dir = deps;
-        const env = ['RUSTC_BOOTSTRAP=1', 'TMPDIR=/tmp', 'PWD=/project', ...(beRustc ? ['MIRI_BE_RUSTC=target'] : [])];
+        const env = ['RUSTC_BOOTSTRAP=1', 'RUSTC_SYSROOT=/sysroot', 'MIRI_SYSROOT=/sysroot', 'TMPDIR=/tmp', 'PWD=/project', ...(beRustc ? ['MIRI_BE_RUSTC=target'] : [])];
         const wasi = new WASI(['miri', ...args], env, fds, { debug: false });
         try {
             return await runProcess({ ...miri, wasi, threadUrl: new URL('thread.js', import.meta.url), signal });

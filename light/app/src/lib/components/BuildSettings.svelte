@@ -24,7 +24,7 @@
 	import type { Workspace } from '../workspace.svelte';
 	import Sanitizers from './Sanitizers.svelte';
 	import { TARGETS, type CppTargetId } from '../cpp-targets';
-	import { RUST_TARGETS, type RustTarget } from '../rust-targets';
+	import { MIRI_TARGETS, RUST_TARGETS, type MiriTarget, type RustTarget } from '../rust-targets';
 	import { TEST_FRAMEWORKS, type TestFramework } from '../cpp-tests';
 	import { levelsOf } from '../optimization';
 	import { isCFamily } from '../languages';
@@ -69,6 +69,13 @@
 		...RUST_TARGETS.map((t) => ({ value: t.id, label: t.label })),
 		...(workspace.rustTarget?.kind === 'unsupported' ? [{ value: 'other', label: `Other (${workspace.rustTarget.triple})`, disabled: true }] : []),
 	]);
+	/** The Miri target closest to the one the project compiles for (WebAssembly's: ARMv7, 32-bit as wasm32 is), which says so. */
+	const nearestMiri = $derived(workspace.rustTarget?.kind === 'target' ? workspace.rustTarget.target.miri : null);
+	const miriOptions = $derived<SelectOption[]>([
+		{ value: 'off', label: 'Off', detail: 'compile and run' },
+		...MIRI_TARGETS.map((t) => ({ value: t.id, label: t.label, detail: t.id === nearestMiri ? `${t.detail}; nearest the target` : t.detail, keywords: t.triple })),
+	]);
+	const chooseMiri = (value: string) => workspace.setMiri(value === 'off' ? null : (value as MiriTarget['id']));
 	const rustTargetValue = $derived(!workspace.rustTarget ? '' : workspace.rustTarget.kind === 'unsupported' ? 'other' : workspace.rustTarget.target.id);
 	/** A C, C++ or (compiled) Rust project on a Linux target: Run options apply (to Run and Test). */
 	const linuxTarget = $derived(
@@ -182,15 +189,15 @@
 			</div>
 		{/if}
 		{#if rust}
-			<!-- Saved with the project: Run and Test interpret the program under Miri instead of compiling it. -->
-			<div class="row" role="group" aria-label="Miri">
+			<!-- Saved with the project: Run and Test interpret the program under Miri, as if on the target chosen here, instead of compiling it. -->
+			<div class="row miri">
 				<span class="name">Miri</span>
 				<span class="field">
-					<label class="check">
-						<input type="checkbox" checked={workspace.miri} onchange={(e) => workspace.setMiri(e.currentTarget.checked)} />
-						Run and test under Miri
-					</label>
-					<small>Interprets the program instead of compiling it, and stops at undefined behaviour (an out-of-bounds pointer, a dangling reference, a data race). Much slower. Sizes and layouts are the target's.</small>
+					<Select label="Miri" value={workspace.miri ?? 'off'} options={miriOptions} onchange={chooseMiri} />
+					<small
+						>Interprets the program instead of compiling it, and stops at undefined behaviour (an out-of-bounds pointer, a dangling reference, a data race). Much slower. Sizes, alignments, layouts and byte order are those of the
+						target chosen here, whatever the program is compiled for: run one program on several to compare.</small
+					>
 				</span>
 			</div>
 		{/if}

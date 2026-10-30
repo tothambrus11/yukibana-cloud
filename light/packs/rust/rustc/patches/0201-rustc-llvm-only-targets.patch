@@ -33,7 +33,7 @@
      rerun_if_changed_anything_in_dir(Path::new("llvm-wrapper"));
 --- a/compiler/rustc_llvm/llvm-wrapper/LLD.cpp
 +++ b/compiler/rustc_llvm/llvm-wrapper/LLD.cpp
-@@ -1,11 +1,19 @@
+@@ -1,11 +1,35 @@
  #include "lld/Common/Driver.h"
  
 +// rustc-cross.wasm links ELF programs (the Linux targets) and WebAssembly
@@ -43,6 +43,22 @@
 +#endif
  LLD_HAS_DRIVER(wasm)
  
++#ifdef RUST_LLD_WASM_ONLY
++// lld's drivers initialise every target LLVM was built with, for LTO
++// (llvm/Config/Targets.def is LLVM's, not this compiler's). rustc.wasm
++// links only the WebAssembly code generator, so the others are nothing:
++// rustc never asks LLVM for them, it refuses a target it has no backend for.
++#define YK_NO_TARGET(T)                                                        \
++  extern "C" void LLVMInitialize##T##TargetInfo() {}                          \
++  extern "C" void LLVMInitialize##T##Target() {}                              \
++  extern "C" void LLVMInitialize##T##TargetMC() {}                            \
++  extern "C" void LLVMInitialize##T##AsmPrinter() {}                          \
++  extern "C" void LLVMInitialize##T##AsmParser() {}
++YK_NO_TARGET(X86)
++YK_NO_TARGET(AArch64)
++YK_NO_TARGET(RISCV)
++#endif
++
  extern "C" int RustRunLld(int argc, const char **argv) {
      llvm::ArrayRef<const char *> args(argv, argv + argc);
      auto result = lld::lldMain(args, llvm::outs(), llvm::errs(),

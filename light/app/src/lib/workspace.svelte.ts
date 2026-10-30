@@ -18,7 +18,7 @@ import { zip } from './zip';
 import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
 import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
 import { describeSanitizers, sanitizersOf, withSanitizers, type SanitizerChoice } from './cpp-sanitizers';
-import { CARGO_CONFIG, RUST_TARGETS, rustTargetOf, withRustTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
+import { CARGO_CONFIG, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, withRustTarget, type MiriTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
 import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } from './optimization';
 import { describeStandard, standardOf, withStandard, type Standard, type StandardChoice } from './cpp-standards';
 import { checksOf, TIDY_FILE, withChecks, type CheckGlob } from './tidy-config';
@@ -166,11 +166,11 @@ export class Workspace {
 	 */
 	clangTidy = $state(true);
 	/**
-	 * Whether a Rust project's Run and Test interpret it under Miri, which
-	 * checks for undefined behaviour, instead of compiling it (Project.miri):
-	 * off unless turned on.
+	 * The target a Rust project's Run and Test interpret it for under Miri,
+	 * which checks for undefined behaviour, instead of compiling it
+	 * (Project.miri), or null when Miri is off, as it is unless turned on.
 	 */
-	miri = $state(false);
+	miri = $state<MiriTarget['id'] | null>(null);
 	/**
 	 * A C or C++ project's clang-tidy rules: the `Checks` of its .clang-tidy
 	 * (tidy-config.ts), null when the file has no such key or there is no
@@ -396,7 +396,7 @@ export class Workspace {
 		const level = !cFamily && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
 		const rust = this.language === 'rust';
 		// A Rust program on a Linux target runs under QEMU with the C++ pack's Run options.
-		const options = cFamily ? { ...this.runOptions } : { ...(level ? { optimization: level } : {}), ...(rust ? { ...this.runOptions, ...(this.miri ? { miri: true } : {}) } : {}) };
+		const options = cFamily ? { ...this.runOptions } : { ...(level ? { optimization: level } : {}), ...(rust ? { ...this.runOptions, ...(this.miri ? { miri: this.miri } : {}) } : {}) };
 		this.runner.start(runnerSourceOf(language), files, entry, mode, Object.keys(options).length ? options : undefined);
 	}
 
@@ -577,14 +577,21 @@ export class Workspace {
 	}
 
 	/**
-	 * Turns Miri on or off for a Rust project: saved with the project (and
-	 * its link); the next Run or Test interprets the program under Miri,
-	 * or compiles it.
+	 * Turns Miri on for a Rust project, on Miri target `id`, or off (null):
+	 * saved with the project (and its link); the next Run or Test
+	 * interprets the program under Miri as if on that target, or compiles
+	 * it.
 	 */
-	setMiri(on: boolean): void {
-		if (this.language !== 'rust' || on === this.miri) return;
-		this.miri = on;
-		this.write('info', on ? 'Miri is on: Run and Test interpret the program and stop at undefined behaviour (much slower than the compiled program).' : 'Miri is off: Run and Test compile the program.');
+	setMiri(id: MiriTarget['id'] | null): void {
+		if (this.language !== 'rust' || id === this.miri) return;
+		this.miri = id;
+		const target = MIRI_TARGETS.find((t) => t.id === id);
+		this.write(
+			'info',
+			target
+				? `Miri is on, as on ${target.label} (${target.detail}): Run and Test interpret the program and stop at undefined behaviour (much slower than the compiled program).`
+				: 'Miri is off: Run and Test compile the program.',
+		);
 		this.scheduleSave();
 	}
 
@@ -787,7 +794,7 @@ export class Workspace {
 		this.runOptionsChosen = project.runOptions !== undefined;
 		this.chosenLevel = project.optimization ?? null;
 		this.clangTidy = project.clangTidy !== false;
-		this.miri = project.miri === true;
+		this.miri = project.miri ?? null;
 		this.host?.closeAll();
 		const entry = languageOf(this.language).entry;
 		const open = project.open.length ? project.open : this.models.has(entry) ? [entry] : this.files.slice(0, 1);
@@ -1064,7 +1071,7 @@ export class Workspace {
 	/** The project as it is now, as it is saved. */
 	private currentProject(): Project {
 		const files = this.currentFiles();
-		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: true as const } : {}) };
+		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: this.miri } : {}) };
 	}
 
 	/**

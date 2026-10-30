@@ -7,13 +7,26 @@
 // targets.json: each target's triple (what rustc and Cargo call it), what
 // runs a program built for it (the runner's own WASI, or Linux under the
 // C/C++ pack's QEMU), which of the pack's two compilers builds for it, and
-// the target Miri interprets the program for: the glibc triple of the same
-// architecture, since Miri's shims are glibc's (its musl support is
-// partial); the layout of every type is the same.
+// the Miri target a project on it starts with when Miri is turned on.
+//
+// miri-targets.json: the targets Miri interprets a program for, chosen in
+// the Build settings apart from the build's (`options.miri`), so that one
+// program can be seen on several: the size, alignment and layout of every
+// type, pointer width and endianness are the target's. All are glibc
+// Linux triples, since Miri's shims are glibc's (its musl support is
+// partial, and it cannot run WASI's: std on wasm32-wasip1 prints through
+// a foreign function Miri does not have); the layout is the same as musl's
+// of the same architecture. WebAssembly's starts on ARMv7, whose pointers
+// are 32-bit and whose u64 and f64 are 8-aligned, as wasm32's are (i686's
+// are 4-aligned; wasm32's u128 is 16-aligned and ARMv7's 8).
 
 import TARGETS from './targets.json' with { type: 'json' };
+import MIRI_TARGETS from './miri-targets.json' with { type: 'json' };
 
-export { TARGETS };
+export { TARGETS, MIRI_TARGETS };
+
+/** The Miri target with this id, or undefined. */
+export const miriTarget = (id) => MIRI_TARGETS.find((t) => t.id === id);
 
 /** The default target's row. */
 export const DEFAULT_TARGET = TARGETS.find((t) => t.default);
