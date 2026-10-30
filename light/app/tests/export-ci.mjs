@@ -72,14 +72,15 @@ for (const [id, buildId] of targets) {
 		const copy = join(work, `${name}-${job.id}`);
 		spawnSync('cp', ['-r', dir, copy]);
 		const e = job.environment;
-		const script = [...imageSetup(e).map((s) => `${s} >/dev/null`), ...job.steps.flatMap((s) => [`echo ${JSON.stringify(`==> ${s.name}`)}`, s.run])].join('\n');
+		// One stream, in order, so that a failing step's output ends the log rather than hiding before another stream's.
+		const script = ['exec 2>&1', ...imageSetup(e).map((s) => `${s} >/dev/null`), ...job.steps.flatMap((s) => [`echo ${JSON.stringify(`==> ${s.name}`)}`, s.run])].join('\n');
 		const env = Object.entries(e.variables).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
 		const started = Date.now();
 		const r = spawnSync('docker', ['run', '--rm', '-i', '-v', `${copy}:/work`, '-w', '/work', ...PROXY, ...env, e.image, 'bash', '-euo', 'pipefail', '-s'], { input: script, encoding: 'utf8', maxBuffer: 256 << 20, timeout: 40 * 60_000 });
 		const ok = r.status === 0;
 		const seconds = ((Date.now() - started) / 1000).toFixed(0);
 		console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}: ${job.name} in ${e.image} (${seconds} s)`);
-		if (!ok) failures.push(`${name}: ${job.name}\n${`${r.stdout ?? ''}${r.stderr ?? ''}${r.error ?? ''}`.trim().split('\n').slice(-25).join('\n')}`);
+		if (!ok) failures.push(`${name}: ${job.name}\n${`${r.stdout ?? ''}${r.stderr ?? ''}${r.error ?? ''}`.trim().split('\n').slice(-40).join('\n')}`);
 		if (!process.env.KEEP) spawnSync('docker', ['run', '--rm', '-v', `${work}:/w`, 'debian:trixie', 'rm', '-rf', `/w/${name}-${job.id}`]);
 	}
 }

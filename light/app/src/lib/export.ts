@@ -328,7 +328,8 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			ci: (p) => ({
 				extra: { sourcehut: { packages: ['haskell-stack'] } },
 				// --install-ghc: the haskell image tells Stack to use its own GHC, which is not the snapshot's.
-				jobs: [testJob('Build and test', steps(['Build', 'stack build --install-ghc'], ...(haskellTests(p.files) ? [['Test', 'stack test --install-ghc'] as const] : [])))],
+				// --allow-different-user: a CI container runs as root over a checkout the runner's user owns, which Stack refuses.
+				jobs: [testJob('Build and test', steps(['Build', 'stack build --install-ghc --allow-different-user'], ...(haskellTests(p.files) ? [['Test', 'stack test --install-ghc --allow-different-user'] as const] : [])))],
 			}),
 		},
 	],
@@ -922,6 +923,8 @@ function mesonArray(items: readonly string[], indent = ''): string {
  * A Meson standard option's value: the standard, then its draft name for a
  * compiler Meson thinks too old for the final one (clang 18 has c2x but
  * not c23 by Meson's table); Meson 1.3 and later take the first it knows.
+ * Every name must be one Meson knows, whatever the compiler: Meson 1.7
+ * refuses the whole value for c++2b, which it no longer lists.
  */
 function mesonStd(prefix: string, standard: string, drafts: Record<string, string>): string {
 	const draft = drafts[standard];
@@ -949,7 +952,7 @@ export function mesonBuild(files: Files, entry: string): string {
 	const languages = [...(cxx ? ['cpp'] : []), ...(c ? ['c'] : [])];
 	const target = linuxTarget(files);
 	const options = [
-		...(flags.cxx && cxx ? [`cpp_std=${mesonStd(`${flags.cxx.extensions ? 'gnu' : 'c'}++`, flags.cxx.standard, { '20': '2a', '23': '2b', '26': '2c' })}`] : []),
+		...(flags.cxx && cxx ? [`cpp_std=${mesonStd(`${flags.cxx.extensions ? 'gnu' : 'c'}++`, flags.cxx.standard, { '20': '2a' })}`] : []),
 		...(flags.c && c ? [`c_std=${mesonStd(flags.c.extensions ? 'gnu' : 'c', flags.c.standard, { '23': '2x' })}`] : []),
 		// compile_flags.txt's -W options say which warnings, as in the browser.
 		'warning_level=0',
