@@ -46,6 +46,15 @@ const onLoading = (label, loaded, total) => post({ type: 'loading', label, loade
 
 /** Paths in messages are relative to the project, as the editor shows them. */
 const WORK = '/workspace';
+/**
+ * What a debugged program is compiled with (packs/lldb/README.md): DWARF
+ * with its types as DWARF too, which LLDB's C type system reads (the build
+ * has no Swift type system, which would read Swift's own type references),
+ * and no optimisation.
+ */
+const DEBUG_FLAGS = ['-g', '-gdwarf-types'];
+/** The path LLDB loads a debugged program from, in its own file system. */
+const DEBUG_MODULE = '/debug/program.wasm';
 const relative = (text) => text.replaceAll(`${WORK}/`, '');
 
 /**
@@ -96,11 +105,13 @@ class Stdin extends Fd {
 /** Where a generated test main.swift is compiled from (outside the project). */
 const TEST_MAIN = '/build/xctest/main.swift';
 
-async function run({ files, entry, stdin, options }, testing) {
+async function run({ files, entry, stdin, options, debug }, testing) {
     const t0 = performance.now();
     // The optimisation level (OPTIMIZATION_LEVELS); anything else is refused
     // before a byte is downloaded, rather than handed to the frontend.
-    const optimization = options?.optimization ?? OPTIMIZATION_LEVELS[0];
+    // A debugged program is not optimised, whatever the project says: its
+    // variables live where the DWARF says they do only at -Onone.
+    const optimization = debug ? '-Onone' : options?.optimization ?? OPTIMIZATION_LEVELS[0];
     if (!OPTIMIZATION_LEVELS.includes(optimization)) {
         post({ type: 'stderr', text: `error: unsupported optimisation level ${JSON.stringify(optimization)}; supported: ${OPTIMIZATION_LEVELS.join(', ')}\n` });
         return 1;
@@ -158,7 +169,7 @@ async function run({ files, entry, stdin, options }, testing) {
     // end anyway), less the warnings that projectModuleName causes.
     const diagnostics = textSink();
     let code = await runFrontend(frontend, {
-        args: compileArgs(sources, '/build/main.o', moduleName, optimization), root,
+        args: [...compileArgs(sources, '/build/main.o', moduleName, optimization), ...(debug ? DEBUG_FLAGS : [])], root,
         stdout: diagnostics, stderr: diagnostics,
     });
     const shown = relative(moduleName === 'main' ? diagnostics.text : dropOwnModuleImportWarnings(diagnostics.text));
@@ -176,8 +187,25 @@ async function run({ files, entry, stdin, options }, testing) {
         root, stdout: errors, stderr: errors,
     });
     if (code !== 0) return code;
-    const program = await WebAssembly.compile(readFile(root, '/build/main.wasm'));
+    const linked = readFile(root, '/build/main.wasm');
     remove(root, '/build');
+    // Debugging: LLDB gets the program as linked; this worker runs it
+    // instrumented, stopping where LLDB asks (packs/lldb/README.md).
+    let stub = null;
+    let program;
+    if (debug && !testing) {
+        phase('Preparing the debugger');
+        const { debugProgram } = await import(new URL('../lldb/runtime.js', import.meta.url).href);
+        try {
+            ({ stub, module: program } = await debugProgram(linked, { channel: debug, name: DEBUG_MODULE, beforeStop: () => flush() }));
+        } catch (error) {
+            post({ type: 'stderr', text: `The program cannot be debugged: ${error?.message ?? error}\n` });
+            return 1;
+        }
+        post({ type: 'debug', name: DEBUG_MODULE, wasm: linked });
+    } else {
+        program = await WebAssembly.compile(linked);
+    }
     // The program gets a root of its own: an empty /tmp and its project
     // directory. The toolchain's root, which the next run compiles in, is
     // out of its reach (it used to be this root with /sysroot removed,
@@ -211,10 +239,23 @@ async function run({ files, entry, stdin, options }, testing) {
         try {
             code = await runWasi(program, {
                 args, env: [], root: own, stdin: input, stdout: out, stderr: err,
-                onInstance: (instance) => (exports = instance.exports),
+                imports: stub?.imports(),
+                onInstance: (instance) => {
+                    exports = instance.exports;
+                    stub?.attach(instance);
+                },
             });
         } catch (e) {
             flush();
+            // The debugger's Stop.
+            if (e?.name === 'Killed') return 137;
+            // Under the debugger, LLDB sees the crash where it happened first.
+            try {
+                stub?.crashed(e instanceof WebAssembly.RuntimeError ? 4 : 6, String(e?.message ?? e));
+            } catch (stopped) {
+                if (stopped?.name === 'Killed') return 137;
+                throw stopped;
+            }
             // A Swift runtime error (fatalError, a failed `!`, an overflow) has
             // already printed its message; the trap itself is `unreachable`.
             post({ type: 'stderr', text: `\nProgram crashed: ${e instanceof WebAssembly.RuntimeError ? e.message : e}\n` });
@@ -222,6 +263,7 @@ async function run({ files, entry, stdin, options }, testing) {
         }
         if (status === 0) status = code;
     }
+    stub?.exited(status);
     return status;
 }
 

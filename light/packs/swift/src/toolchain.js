@@ -384,9 +384,10 @@ export function textSink(forward) {
 /**
  * Runs one wasm32-wasip1 command module to completion against `root`
  * (mounted at `/`), returning its exit code. Ported from yukibana-swift
- * run.ts. `stdin` is an fd object (OpenFile of empty bytes by default).
+ * run.ts. `stdin` is an fd object (OpenFile of empty bytes by default);
+ * `imports` are more import modules beside WASI's (the debugger's stub).
  */
-export async function runWasi(module, { args, root, stdout, stderr, stdin, env = ['TMPDIR=/tmp', 'HOME=/tmp'], onInstance }) {
+export async function runWasi(module, { args, root, stdout, stderr, stdin, env = ['TMPDIR=/tmp', 'HOME=/tmp'], onInstance, imports = {} }) {
     const fds = [
         stdin ?? new OpenFile(new File(new Uint8Array())),
         stdout,
@@ -394,7 +395,7 @@ export async function runWasi(module, { args, root, stdout, stderr, stdin, env =
         preopenRoot(root),
     ];
     const wasi = new WASI(args, env, fds, { debug: false });
-    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: wasi.wasiImport });
+    const instance = await WebAssembly.instantiate(module, { wasi_snapshot_preview1: wasi.wasiImport, ...imports });
     onInstance?.(instance);
     try {
         return wasi.start(instance);

@@ -90,6 +90,10 @@ const WASI_EMULATED = ['-lwasi-emulated-signal', '-lwasi-emulated-mman', '-lwasi
  * the runtime reads as the shadow's end).
  */
 const ASAN_MEMORY = 2 ** 31;
+/** What a debugged program is compiled with, after the project's flags (packs/lldb/README.md). */
+const DEBUG_FLAGS = ['-g', '-O0'];
+/** The path LLDB loads a debugged program from, in its own file system. */
+const DEBUG_MODULE = '/debug/program.wasm';
 /** Where a project keeps its tests (type 'test'); left out of a plain run. */
 const TESTS = /^tests\//;
 
@@ -205,11 +209,13 @@ async function run(request) {
     }
 }
 
-async function build({ type, files, entry, stdin, options }) {
+async function build({ type, files, entry, stdin, options, debug }) {
     const which = targetOf(files);
     if (which.kind === 'unsupported') throw new UserError(unsupportedMessage(which.triple));
     const target = which.target;
     const linux = target.runtime === 'linux';
+    if (debug && linux)
+        throw new UserError(`The debugger runs programs for WebAssembly only, for now: remove the --target line (${target.label}) from compile_flags.txt to debug.\n`);
     const testing = type === 'test';
     const all = Object.keys(files)
         .filter((p) => CXX.test(p) || C.test(p))
@@ -266,7 +272,10 @@ async function build({ type, files, entry, stdin, options }) {
         const { code, out } = await toolchain.tool(
             target,
             'clang',
-            [...compileArgs(target, files, source), '-fno-color-diagnostics', '-c', source, '-o', object],
+            // Debugging: full debug info, and -O0 after the project's flags,
+            // so every variable has a home in memory LLDB can read
+            // (packs/lldb/README.md).
+            [...compileArgs(target, files, source), ...(debug ? DEBUG_FLAGS : []), '-fno-color-diagnostics', '-c', source, '-o', object],
             files,
             [object],
             { archives: linux ? [] : archives }
@@ -340,11 +349,31 @@ async function build({ type, files, entry, stdin, options }) {
     );
     if (code !== 0 || !out['.yukibana/program.wasm']) return code || 1;
 
+    const linked = out['.yukibana/program.wasm'];
+    // Debugging: LLDB gets the program as linked (its DWARF describes that
+    // one); this worker runs it instrumented, stopping where LLDB asks
+    // (packs/lldb/README.md, "For a runner").
+    let stub = null;
+    let program;
+    if (debug) {
+        phase('Preparing the debugger');
+        const { debugProgram } = await import(new URL('../lldb/runtime.js', import.meta.url).href);
+        let prepared;
+        try {
+            prepared = await debugProgram(linked, { channel: debug, name: DEBUG_MODULE, beforeStop: () => flushStdout() });
+        } catch (error) {
+            throw new UserError(`The program cannot be debugged: ${error?.message ?? error}\n`);
+        }
+        stub = prepared.stub;
+        program = prepared.module;
+        post({ type: 'debug', name: DEBUG_MODULE, wasm: linked });
+    } else {
+        program = await WebAssembly.compile(linked);
+    }
     phase(testing ? 'Running the tests' : 'Running');
-    const program = await WebAssembly.compile(out['.yukibana/program.wasm']);
     // A sanitized program's runtime asks the host for its stacks and their
     // source lines (sanitizer.js, fetched only for one).
-    const sanitizer = sanitize.runtime ? (await import('./sanitizer.js')).createSanitizerHost(out['.yukibana/program.wasm']) : null;
+    const sanitizer = sanitize.runtime ? (await import('./sanitizer.js')).createSanitizerHost(linked) : null;
     let instance = null;
     const flushStdout = () => {
         const { fflush, stdout, memory } = instance?.exports ?? {};
@@ -362,28 +391,47 @@ async function build({ type, files, entry, stdin, options }) {
         // program waits. Flush it here, as glibc would.
         beforeWait: flushStdout,
     });
-    instance = await WebAssembly.instantiate(program, { ...wasi.importsFor(program), ...sanitizer?.imports() });
+    instance = await WebAssembly.instantiate(program, { ...wasi.importsFor(program), ...sanitizer?.imports(), ...stub?.imports() });
     wasi.setMemory(instance.exports.memory);
     sanitizer?.setMemory(instance.exports.memory);
+    stub?.attach(instance);
+    let status;
     try {
-        instance.exports._start();
-        return 0;
+        status = execute();
     } catch (error) {
-        if (error instanceof ProcExit) return error.code;
-        if (typeof WebAssembly.Exception === 'function' && error instanceof WebAssembly.Exception)
-            return uncaught(error);
-        const message = String(error?.message ?? error);
-        // V8 runs wasm on the worker's native stack (about 1 MB), which holds
-        // a few thousand nested calls, far fewer than a native process.
-        const hint = error instanceof RangeError && /call stack/i.test(message)
-            ? ' (stack overflow: the browser allows only a few thousand nested calls)'
-            : /^unreachable/.test(message)
-              ? ' (abort(), or a failed check: in C++, for example, an index out of range on a vector, string, array or span)'
-              : '';
-        stderr(`\nThe program crashed: ${message}${hint}\n`);
-        return 134;
-    } finally {
-        wasi.flush();
+        // The debugger's Stop while LLDB showed a crash (stub.crashed).
+        if (error?.name !== 'Killed') throw error;
+        status = 137;
+    }
+    stub?.exited(status);
+    return status;
+
+    /** Runs the program to its end; the exit status. */
+    function execute() {
+        try {
+            instance.exports._start();
+            return 0;
+        } catch (error) {
+            if (error instanceof ProcExit) return error.code;
+            if (error?.name === 'Killed') return 137;
+            if (typeof WebAssembly.Exception === 'function' && error instanceof WebAssembly.Exception) {
+                stub?.crashed(6, 'an exception nobody caught');
+                return uncaught(error);
+            }
+            const message = String(error?.message ?? error);
+            // V8 runs wasm on the worker's native stack (about 1 MB), which holds
+            // a few thousand nested calls, far fewer than a native process.
+            const hint = error instanceof RangeError && /call stack/i.test(message)
+                ? ' (stack overflow: the browser allows only a few thousand nested calls)'
+                : /^unreachable/.test(message)
+                  ? ' (abort(), or a failed check: in C++, for example, an index out of range on a vector, string, array or span)'
+                  : '';
+            stub?.crashed(/^unreachable/.test(message) ? 4 : 11, `${message}${hint}`);
+            stderr(`\nThe program crashed: ${message}${hint}\n`);
+            return 134;
+        } finally {
+            wasi.flush();
+        }
     }
 
     /**
