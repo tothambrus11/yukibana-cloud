@@ -36,133 +36,32 @@
 //
 // Everything loaded is kept for the next run (`reusable`).
 
-import { ConsoleStdout, Directory, File, OpenFile, PreopenDirectory, WASI } from '@bjorn3/browser_wasi_shim';
+import { Directory, File } from '@bjorn3/browser_wasi_shim';
 import HARNESS from './harness.rs';
-import { EDITIONS, manifest, satisfies, stem, untar } from './cargo.js';
+import { EDITIONS, manifest, satisfies, stem } from './cargo.js';
 import { tree } from './tree.js';
 import { miriTarget, MIRI_TARGETS, targetOf } from './targets.js';
-import { memoryImport, runProcess, Trap } from './threads.js';
+import { runRustc, textOut, toolchain } from './toolchain.js';
 import { Stdin, runProgram } from './program.js';
 import { runTests } from './tests.js';
 import { runMiri } from './miri-runner.js';
 
-/* global SIZES_JSON, CRATES_FILES, CRATES_DIRECT */
-/** Download sizes for the progress bar, by file name (build.sh). */
-const SIZES = typeof SIZES_JSON === 'object' ? SIZES_JSON : {};
+/* global CRATES_DIRECT */
 /** The crates a project may depend on, and the version of each that is here. */
 const DIRECT = typeof CRATES_DIRECT === 'object' ? CRATES_DIRECT : {};
-/** The crates' archive for each target triple, by name (build.sh), or none. */
-const CRATES = typeof CRATES_FILES === 'object' ? CRATES_FILES : {};
 
 const LEVELS = ['0', '1', '2', '3', 's', 'z'];
 
 const post = (msg) => self.postMessage(msg);
 const phase = (text) => post({ type: 'phase', text });
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
-
-// ---- downloads
-
-/** A file of the pack, with `loading` messages as it arrives; resolves to its bytes. */
-async function download(name) {
-    const response = await fetch(new URL(name, import.meta.url));
-    if (!response.ok || !response.body) throw new Error(`${name}: HTTP ${response.status}`);
-    const total = SIZES[name] ?? 0;
-    let loaded = 0;
-    post({ type: 'loading', label: name, loaded, total });
-    const chunks = [];
-    const reader = response.body.getReader();
-    for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        loaded += value.length;
-        post({ type: 'loading', label: name, loaded, total: Math.max(total, loaded) });
-    }
-    const bytes = new Uint8Array(loaded);
-    let at = 0;
-    for (const c of chunks) {
-        bytes.set(c, at);
-        at += c.length;
-    }
-    return bytes;
-}
-
-const cache = new Map();
-/** `make()` once per key; a failure is forgotten, so the next run tries again. */
-function once(key, make) {
-    if (!cache.has(key)) {
-        const p = make();
-        cache.set(key, p);
-        p.catch(() => cache.delete(key));
-    }
-    return cache.get(key);
-}
-
-/** A compiler (`rustc` or `rustc-cross`), compiled once: { module, limits }. */
-const compiler = (name) =>
-    once(name, async () => {
-        const bytes = await download(`${name}.wasm`);
-        return { module: await WebAssembly.compile(bytes), limits: memoryImport(bytes) };
-    });
-
-/** The standard library of `triple`, as the directory that is the sysroot. */
-const sysroot = (triple) => once(`sysroot ${triple}`, async () => tree(untar(await download(`sysroot-${triple}.tar`))));
-
-/** The crates.io packages compiled for `triple` (lib<crate>.rlib), or null when there are none. */
-const crates = (triple) => (CRATES[triple] ? once(`crates ${triple}`, async () => tree(untar(await download(CRATES[triple])))) : Promise.resolve(null));
-
-// ---- rustc
-
-/** An fd that hands what is written to `onText`, as text. */
-const textOut = (onText) => {
-    const d = new TextDecoder();
-    return new ConsoleStdout((bytes) => {
-        const text = d.decode(bytes, { stream: true });
-        if (text) onText(text);
-    });
-};
+const { download, once, compiler, sysroot, crates } = toolchain(post);
 
 /** The run in progress: the AbortController that ends its rustc, and the Linux worker. */
 let current = null;
 
-/**
- * Runs rustc once to its end with `args` (argv[0] excluded) on the file
- * system `fs` ({ sysroot, project, out, deps }); its diagnostics go to the
- * app's stderr as they come. Resolves to the exit status; a crash of the
- * compiler (a trap) is reported and is status 101, as rustc's own internal
- * compiler errors are.
- */
-async function rustc(tool, args, fs) {
-    const fds = [
-        new OpenFile(new File([])),
-        textOut((text) => post({ type: 'stderr', text })),
-        textOut((text) => post({ type: 'stderr', text })),
-        new PreopenDirectory('/sysroot', new Map()),
-        new PreopenDirectory('/project', new Map()),
-        new PreopenDirectory('/out', new Map()),
-        new PreopenDirectory('/tmp', new Map()),
-        new PreopenDirectory('/deps', new Map()),
-    ];
-    fds[3].dir = fs.sysroot;
-    fds[4].dir = fs.project;
-    fds[5].dir = fs.out;
-    if (fs.deps) fds[7].dir = fs.deps;
-    // RUSTC_BOOTSTRAP: the test harness is a custom test framework, a
-    // nightly feature (-Zcrate-attr), as the Miri runner's always was.
-    // RUSTC_SYSROOT: rustc finds its sysroot from its own path, which WASI
-    // has not got; without it even `rustc -vV` is an internal compiler
-    // error ("current_dll_path is not supported on WASI"), --sysroot or not.
-    const env = ['RUSTC_BOOTSTRAP=1', 'RUSTC_SYSROOT=/sysroot', 'TMPDIR=/tmp', 'PWD=/project', 'CARGO=cargo'];
-    const wasi = new WASI(['rustc', ...args], env, fds, { debug: false });
-    try {
-        return await runProcess({ ...tool, wasi, threadUrl: new URL('thread.js', import.meta.url), signal: current?.abort.signal });
-    } catch (e) {
-        if (!(e instanceof Trap)) throw e;
-        post({ type: 'stderr', text: `error: rustc crashed (${e.message})\n` });
-        return 101;
-    }
-}
+/** rustc run once on `fs`, its diagnostics on the app's stderr as they come (toolchain.js runRustc). */
+const rustc = (tool, args, fs) => runRustc(tool, args, fs, { stderr: (text) => post({ type: 'stderr', text }), signal: current?.abort.signal });
 
 /** A cargo status line ("   Compiling x"), on stderr. */
 const status = (verb, rest) => post({ type: 'stderr', text: `\u001b[1;32m${verb.padStart(12)}\u001b[0m ${rest}\n` });

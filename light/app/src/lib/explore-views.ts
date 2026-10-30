@@ -99,6 +99,7 @@ const optimize = (flag: string): ExploreToggle => ({ key: 'optimize', label: '-O
 
 const CPP_LIBRARY = library("Keep functions that come only from headers outside the project, such as the standard library's");
 const SWIFT_LIBRARY = library('Keep functions the file does not define: the standard library’s and other files’, which the compiler copies in to inline or specialise');
+const RUST_LIBRARY = library('Keep functions none of whose code comes from the project: the standard library’s and the crates’, which rustc instantiates or inlines here');
 const GHC_TICKS: ExploreToggle = { key: 'ticks', label: 'Source notes', name: 'Source notes', does: 'Keep GHC’s source notes (src<Main.hs:6:12>) in the text; the colours show the same', on: false };
 const GHC_DETAILS: ExploreToggle = { key: 'details', label: 'Details', name: 'Details', does: 'Keep the binders’ IdInfo, the coercions, the module prefixes and the size reports', on: false, shared: true };
 
@@ -141,8 +142,13 @@ export const LANGUAGE_VIEWS: Readonly<Record<string, LanguageViews>> = {
 		compiler: 'rustc',
 		isSource: (path) => path.endsWith('.rs'),
 		sources: 'a .rs file',
-		buildSettings: false,
-		views: [{ kind: 'mir', monaco: 'mir', toggles: [optimize('-C opt-level=3'), library('Keep the items none of whose code comes from the project')] }],
+		buildSettings: true,
+		// The project's target and optimisation level (Build settings), as Run compiles it.
+		views: [
+			{ kind: 'mir', monaco: 'mir', toggles: [library('Keep the items none of whose code comes from the project')] },
+			{ kind: 'llvm-ir', monaco: 'llvm-ir', toggles: [demangle(true, 'Rust paths, without the hash'), directives, RUST_LIBRARY] },
+			{ kind: 'asm', monaco: 'asm', toggles: [demangle(true, 'Rust paths, without the hash'), directives, RUST_LIBRARY] },
+		],
 	},
 	java: {
 		compiler: 'javap',

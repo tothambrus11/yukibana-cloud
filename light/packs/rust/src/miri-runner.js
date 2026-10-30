@@ -23,10 +23,11 @@
 // `cargo miri test`. Each step is a fresh Miri process (rustc keeps global
 // state); Miri's own threads are threads.js's.
 
-import { ConsoleStdout, Directory, Fd, File, OpenFile, PreopenDirectory, WASI, wasi as defs } from '@bjorn3/browser_wasi_shim';
+import { Directory, Fd, wasi as defs } from '@bjorn3/browser_wasi_shim';
 import { EDITIONS, manifest, satisfies, stem, untar } from './cargo.js';
 import { tree } from './tree.js';
-import { memoryImport, runProcess, Trap } from './threads.js';
+import { memoryImport } from './threads.js';
+import { runRustc } from './toolchain.js';
 
 /* global MIRI_CRATES_FILES, CRATES_DIRECT */
 const CRATES = typeof MIRI_CRATES_FILES === 'object' ? MIRI_CRATES_FILES : {};
@@ -83,14 +84,6 @@ class Input extends Fd {
     }
 }
 
-const textOut = (onText) => {
-    const d = new TextDecoder();
-    return new ConsoleStdout((bytes) => {
-        const text = d.decode(bytes, { stream: true });
-        if (text) onText(text);
-    });
-};
-
 /**
  * Runs and tests a project under Miri; resolves to the exit status. The
  * message's fields, the Miri target's triple, and the runner's `post`,
@@ -127,31 +120,15 @@ export async function runMiri({ type, files, entry, stdin, triple, post, downloa
     const input = new Input(stdin, post);
 
     /** One Miri process; `beRustc` makes it rustc (cargo-miri's MIRI_BE_RUSTC), for a library. */
-    const run = async (args, { beRustc = false } = {}) => {
-        const fds = [
-            input,
-            textOut((text) => post({ type: 'stdout', text })),
-            textOut((text) => post({ type: 'stderr', text })),
-            new PreopenDirectory('/sysroot', new Map()),
-            new PreopenDirectory('/project', new Map()),
-            new PreopenDirectory('/out', new Map()),
-            new PreopenDirectory('/tmp', new Map()),
-            new PreopenDirectory('/deps', new Map()),
-        ];
-        fds[3].dir = sysroot;
-        fds[4].dir = project;
-        fds[5].dir = out;
-        if (deps) fds[7].dir = deps;
-        const env = ['RUSTC_BOOTSTRAP=1', 'RUSTC_SYSROOT=/sysroot', 'MIRI_SYSROOT=/sysroot', 'TMPDIR=/tmp', 'PWD=/project', ...(beRustc ? ['MIRI_BE_RUSTC=target'] : [])];
-        const wasi = new WASI(['miri', ...args], env, fds, { debug: false });
-        try {
-            return await runProcess({ ...miri, wasi, threadUrl: new URL('thread.js', import.meta.url), signal });
-        } catch (e) {
-            if (!(e instanceof Trap)) throw e;
-            post({ type: 'stderr', text: `error: Miri crashed (${e.message})\n` });
-            return 101;
-        }
-    };
+    const run = (args, { beRustc = false } = {}) =>
+        runRustc(miri, args, { sysroot, project, out, deps }, {
+            argv0: 'miri',
+            stdin: input,
+            stdout: (text) => post({ type: 'stdout', text }),
+            stderr: (text) => post({ type: 'stderr', text }),
+            env: ['MIRI_SYSROOT=/sysroot', ...(beRustc ? ['MIRI_BE_RUSTC=target'] : [])],
+            signal,
+        });
     const rustc = ['--sysroot', '/sysroot', '--target', triple, '--edition', edition, '--color=always', '--remap-path-prefix=/project/=', '-L', '/out'];
 
     const bin = files[entry] !== undefined && entry.endsWith('.rs') && !entry.startsWith('tests/') && entry !== 'src/lib.rs' ? entry : files['src/main.rs'] !== undefined ? 'src/main.rs' : null;
