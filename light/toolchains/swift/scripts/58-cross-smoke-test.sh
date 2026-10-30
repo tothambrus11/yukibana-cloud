@@ -115,6 +115,8 @@ SWIFT
     --start-group "${crt}/libclang_rt.builtins-${arch}.a" -l:libunwind.a -lc --end-group \
     "${crt}/clang_rt.crtend-${arch}.o" /sysroot/usr/lib/crtn.o
   [[ -f "${root}/work/main" ]] || die "the linker wrote no program for ${arch}"
+  # WASI has no file modes: what wasm-ld.wasm writes is not executable.
+  chmod +x "${root}/work/main"
 
   want="${arch/aarch64/arm64}: squares [1, 4, 9, 16, 25], Padded is 18 bytes"
   got="$(run_program "$arch" "${root}/work/main")"
