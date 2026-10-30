@@ -241,6 +241,24 @@ default.
     `-march=rv64gc_zbb` got wrong counts (1 bit in `0x00f0123400000100`). The fix is a
     hunk of `patches/qemu-wasm-tcg.patch`. x86-64 (`qemu64` reports no POPCNT) and AArch64
     guests did not reach the op in any test.
+12. **About one riscv64 boot in a hundred "rebooted" before the program ran**, failing
+    a different test of `test-run-linux.mjs` each time, with `yk-init: cannot open
+    /dev/hvc3: errno 19` in the kernel log. The virtio console ports are not there
+    when init starts: `virtio_console` asks QEMU for them at probe (`DEVICE_READY`)
+    and adds each one as QEMU's answer arrives, from a workqueue. Until the first port
+    is added `/dev/hvc*` does not exist (ENOENT). Adding it registers the hvc driver,
+    which makes all eight nodes, each a moment before its char device, so a node can
+    exist and still fail with ENXIO (`tty_register_device_attr` calls
+    `device_register`, which devtmpfs follows, before `tty_cdev_add`). After that,
+    opening a port not yet added fails with ENODEV (`hvc_install`). With one vCPU,
+    init could reach the fourth port at any of the three stages: of 150 boots under
+    load, 4 failed with ENOENT and 1 with ENODEV, and a first version of the fix that
+    waited out only those two met ENXIO once. This is how
+    the kernel means it (ports are hot-pluggable; a real system waits for udev), so
+    `guest/init.c` (`open_port`) waits for each port, polling every 2 ms for up to
+    10 s, rather than the kernel being changed. With three busy loops on a 4-core
+    machine and six VMs at once, 300 riscv64 boots then all passed; 8 of them waited,
+    at most 22 ms, each going through the stages in order.
 
 ## The patches
 
