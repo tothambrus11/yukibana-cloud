@@ -1624,13 +1624,20 @@ const ERIS_VERSION = '1.3.0';
  * composer.json for the project where it is: PHPUnit as a development
  * dependency (the browser's version, or a later 12.x), `composer start`
  * running the entry and `composer test` running PHPUnit, and a class map of
- * every .php file outside tests/ and vendor/ as the autoloader, which is
+ * the project's .php files outside tests/ as the autoloader, which is
  * what the browser's Test uses (packs/php/src/autoload.php): the project's
  * files are not in PSR-4 folders, so a class map is the autoloading that
  * fits them without moving anything. PHP 8.3 or later, which PHPUnit 12
  * needs; the browser runs 8.4. Eris too, when a PHP file names its
  * namespace, as the browser's Test then installs it (packs/php/src/runner.js,
  * `usesEris`).
+ *
+ * The class map names the project's top-level .php files and folders
+ * rather than `./` with tests/ and vendor/ excluded: the root package's
+ * exclude-from-classmap applies to every package's class map, so excluding
+ * vendor/ took PHPUnit's own classes out of the autoloader ("Class
+ * PHPUnit\TextUI\Application not found"). A file added later in a new
+ * top-level folder needs that folder added here.
  */
 export function composerJson(entry: string, files: Files = {}): string {
 	const eris = Object.entries(files).some(([path, text]) => path.endsWith('.php') && /\bEris\\/.test(text));
@@ -1640,11 +1647,19 @@ export function composerJson(entry: string, files: Files = {}): string {
 		type: 'project',
 		require: { php: '>=8.3' },
 		'require-dev': { ...(eris ? { 'giorgiosironi/eris': `^${ERIS_VERSION}` } : {}), 'phpunit/phpunit': `^${PHPUNIT_VERSION}` },
-		autoload: { classmap: ['./'], 'exclude-from-classmap': ['tests/', 'vendor/'] },
+		autoload: { classmap: phpClassmap(files) },
 		scripts: { start: `php ${entry}`, test: 'phpunit' },
 		config: { 'sort-packages': true },
 	};
 	return JSON.stringify(json, null, 4) + '\n';
+}
+
+/** The top-level .php files and folders holding .php files, tests/ and vendor/ aside, sorted: composer.json's class map. */
+function phpClassmap(files: Files): string[] {
+	const entries = Object.keys(files)
+		.filter((p) => p.endsWith('.php') && !p.startsWith('tests/') && !p.startsWith('vendor/'))
+		.map((p) => (p.includes('/') ? `${p.slice(0, p.indexOf('/'))}/` : p));
+	return [...new Set(entries)].sort();
 }
 
 /**
