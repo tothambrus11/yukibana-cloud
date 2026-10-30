@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Cache GHC's wasm toolchain and the package store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.ghc-wasm

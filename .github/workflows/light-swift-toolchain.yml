@@ -125,7 +125,7 @@ jobs:
       # macros patches onto it with new mtimes, and rebuilt the compiler from scratch
       # (runs 25-28, two hours each).
       - name: Restore sources
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: light/toolchains/swift/src
           key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
@@ -138,7 +138,7 @@ jobs:
       # next run picks it up and continues.
       - name: Restore build trees
         id: build-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: light/toolchains/swift/build
           key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
@@ -170,7 +170,7 @@ jobs:
       # discard the compiled tree, or every retry pays the full rebuild again.
       - name: Save sources
         if: always()
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: light/toolchains/swift/src
           key: src-${{ env.SWIFT_VERSION }}-wasi${{ env.WASI_SDK_VERSION }}-${{ env.BUILD_CACHE }}-${{ hashFiles('light/toolchains/swift/patches/**') }}
@@ -178,7 +178,7 @@ jobs:
 
       - name: Save build trees
         if: always()
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: light/toolchains/swift/build
           key: ${{ env.BUILD_CACHE }}-${{ env.SWIFT_VERSION }}-${{ hashFiles('light/toolchains/swift/patches/**', 'light/toolchains/swift/scripts/**', 'light/toolchains/swift/env.sh') }}-${{ github.run_id }}
