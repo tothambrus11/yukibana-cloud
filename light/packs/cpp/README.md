@@ -1043,6 +1043,20 @@ Time on this machine (4 cores shared with another agent's clangd build,
 rest (mostly brotli on `cc.wasm`). The build tree `build-wasm-cc` is
 449 MB.
 
+## Debugging
+
+A run message with `debug` (CONTRACT.md, "Debugging") runs the program
+under LLDB (packs/lldb). The runner compiles each file with `-g -O0` after
+the project's own flags, so a project at `-O2` is debugged unoptimised
+without changing its `compile_flags.txt`, posts the program as linked
+(`{ type: 'debug' }`), and runs it instrumented, with the stub's imports
+beside WASI's. A program that traps or ends with an uncaught exception
+stops in LLDB where it happened first (`stub.crashed`), and ends as it would
+have once LLDB continues; the debugger's Stop ends it with 137.
+`printf` output is flushed before every stop, so the terminal shows what
+the program printed up to the line it stopped at. Debug is refused for a
+Linux target, which runs under QEMU: its gdbstub is the plan for those.
+
 ## Targets
 
 A project runs on **WebAssembly (WASI)** unless its `compile_flags.txt`

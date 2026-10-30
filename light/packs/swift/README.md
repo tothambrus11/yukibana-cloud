@@ -107,6 +107,18 @@ service worker's cache every time, which the app showed as a download.
 The app's service worker caches `/packs/**`, and the test uses a service
 worker that does the same.
 
+## Debugging
+
+A run message with `debug` (CONTRACT.md, "Debugging") runs the program
+under LLDB (packs/lldb). The program is compiled with `-g -gdwarf-types
+-Onone` whatever the project's level: `-gdwarf-types` writes the types as
+DWARF, which LLDB's C type system reads, since upstream LLDB has no Swift
+type system (it is swiftlang's, and would need the Swift compiler inside
+LLDB). So a `Point` shows its `x` and `y`, a `Double` its `_value`, and a
+`String` or an `Array` their storage rather than their text or elements;
+functions are shown by their source names (`distance(_:_:)`). A test run is
+never debugged.
+
 ## Optimization
 
 The toolbar's Optimization select (the app's `optimization.ts`) lists
