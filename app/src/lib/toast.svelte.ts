@@ -9,6 +9,8 @@ import { untrack } from 'svelte';
 export interface Toast {
   readonly id: number;
   readonly message: string;
+  /** Text to offer under "Copy details" (an incident's report), or null. */
+  readonly details: string | null;
 }
 
 /** The notices on screen now, oldest first. Read by Toasts.svelte only. */
@@ -23,15 +25,18 @@ let next = 0;
 /** Shows `message` once. Repeating the message already on screen restarts
  *  nothing and adds nothing: two refusals for the same reason are one.
  *
+ *  With `details`, the notice offers them under "Copy details" and stays
+ *  until it is dismissed: nobody copies a report in seven seconds.
+ *
  *  Safe to call from an `$effect`: looking for the repeat is untracked, so
  *  the caller does not come to depend on `toasts`. It once did, and the
  *  layout's effect re-raised a refusal the moment it was dismissed or timed
  *  out, so the notice could not be closed. */
-export function toast(message: string): void {
+export function toast(message: string, details: string | null = null): void {
   if (untrack(() => toasts.some(t => t.message === message))) return;
   const id = next++;
-  toasts.push({ id, message });
-  setTimeout(() => dismiss(id), SHOWN_MS);
+  toasts.push({ id, message, details });
+  if (details === null) setTimeout(() => dismiss(id), SHOWN_MS);
 }
 
 /** Takes notice `id` away now, before its time; one already gone is

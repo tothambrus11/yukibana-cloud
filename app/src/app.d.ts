@@ -22,9 +22,19 @@ declare global {
       supabase: Supabase;
       /** The verified identity, or null when nobody is logged in. */
       claims: Claims | null;
+      /** Why this browser's session cookie did not count, as Auth said it,
+       *  or null when it did or there was none. Set by the hook; the root
+       *  layout tells the person, rather than only asking them to log in. */
+      sessionRefused: string | null;
     }
+    /** What an error page and an error answer carry. An expected error, one
+     *  a route raised with `error(…)`, is its sentence alone. An unexpected
+     *  one also carries the incident a person can copy into a report
+     *  (#lib/incident), made by `handleError` in hooks.server.ts or
+     *  hooks.client.ts. */
     interface Error {
       message: string;
+      incident?: import('#lib/incident.ts').Incident;
     }
   }
 }

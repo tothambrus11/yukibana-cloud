@@ -1,9 +1,11 @@
 import type { Handle, HandleServerError } from '@sveltejs/kit/hooks';
 import { error } from '@sveltejs/kit';
+import { version } from '$app/env';
+import { incidentOf, serverMessage } from '#lib/incident.ts';
 import { workerConfig } from '#lib/server/worker.ts';
 import { Misconfigured } from '#lib/server/db.ts';
 import { forgery } from '#lib/server/forgery.ts';
-import { claimsFor, staleSessionCookies, supabaseFor } from '#lib/server/session.ts';
+import { identify, staleSessionCookies, supabaseFor } from '#lib/server/session.ts';
 import { report } from '#lib/report.ts';
 import { asJsonError, errorResponse, isApiPath, preferringJson, unmatched } from '#lib/server/errors.ts';
 
@@ -43,7 +45,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   for (const name of staleSessionCookies(event.cookies.getAll().map(c => c.name))) event.cookies.delete(name, { path: '/' });
   event.locals.supabase = supabaseFor(event.cookies, config.supabaseUrl, config.supabasePublishableKey);
-  event.locals.claims = await claimsFor(event.locals.supabase, event.request.headers.get('authorization'));
+  const who = await identify(event.locals.supabase, event.request.headers.get('authorization'));
+  event.locals.claims = who.claims;
+  event.locals.sessionRefused = null;
+  if (who.claims === null && who.refused !== null) {
+    report('session', `${event.request.method} ${event.url.pathname}: the ${who.by === 'bearer' ? 'bearer token' : 'session cookie'} was refused: ${who.refused}`);
+    if (who.by === 'cookie') event.locals.sessionRefused = who.refused;
+  }
   if (!api) return resolve(event);
   return asJsonError(await resolve({ ...event, request: preferringJson(event.request) }));
 };
@@ -55,21 +63,29 @@ export const handle: Handle = async ({ event, resolve }) => {
  *  got for a day while the Worker was connected to the database as the wrong
  *  role: a 500 with no sentence anywhere, on a platform whose logs need a
  *  `wrangler tail` to read. So every unexpected error is written down here,
- *  and the ones an operator alone can fix say what they are. The rest stay
- *  generic on purpose: an unexpected message may quote a query.
+ *  whole, under a fresh incident id, and the caller gets that id and an
+ *  incident to copy into a report (#lib/incident). The ones an operator
+ *  alone can fix also say what they are. The rest keep their message out of
+ *  the answer on purpose: an unexpected message may quote a query.
  */
-export const handleError: HandleServerError = caught => {
+export const handleError: HandleServerError = ({ kind, error: thrown, event }) => {
   // Since SvelteKit 3 this hook runs for every error, not only unexpected
   // ones: an `error(403, …)` a route meant arrives here as `kind: 'app'`,
   // and whatever is returned replaces its body. Those, and SvelteKit's own
   // (`framework`: a 404 for an unknown route) and `validation`, already say
   // what they should; returning nothing keeps them.
-  if (caught.kind !== 'unknown') return;
-  const thrown = caught.error;
-  if (thrown instanceof Misconfigured) {
-    report('unexpected', thrown.message);
-    return { message: thrown.message };
-  }
-  report('unexpected', thrown instanceof Error ? (thrown.stack ?? thrown.message) : String(thrown));
-  return { message: 'Something went wrong on the server. The Worker log has the sentence, under "unexpected:".' };
+  if (kind !== 'unknown') return;
+  const incident = incidentOf(thrown, {
+    id: crypto.randomUUID(),
+    at: new Date(),
+    side: 'server',
+    version,
+    method: event.request.method,
+    url: event.url,
+    route: event.route.id,
+  });
+  const whole = thrown instanceof Error ? (thrown.stack ?? `${thrown.name}: ${thrown.message}`) : String(thrown);
+  report('unexpected', `${incident.id} ${incident.where} (route ${incident.route ?? 'none'}, version ${incident.version})\n${whole}`);
+  const message = thrown instanceof Misconfigured ? `${thrown.message} (incident ${incident.id})` : serverMessage(incident.id);
+  return { message, incident };
 };

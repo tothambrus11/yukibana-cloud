@@ -10,10 +10,18 @@ import { topicsFor } from '#lib/topics.ts';
  *  Realtime address, the publishable key (public by design), and the topics
  *  their enrolments give them. Whether they may actually join a topic is the
  *  database's decision when they try; this only saves asking for ones they
- *  could not. */
-export const load: LayoutServerLoad = async ({ locals }) => {
+ *  could not.
+ *
+ *  Runs again on every navigation, so the header and the page always
+ *  describe the same request. Reading only `locals`, it ran once per full
+ *  load: when a session ended in an open tab, the header kept the address it
+ *  had at first while every page said "log in". `sessionRefused` says why a
+ *  session that was there stopped counting, for the layout to tell. */
+export const load: LayoutServerLoad = async ({ locals, url }) => {
+  // Reading the URL is what makes SvelteKit rerun this load when it changes.
+  void url.href;
   const claims = locals.claims;
-  if (claims === null) return { user: null, live: null };
+  if (claims === null) return { user: null, live: null, sessionRefused: locals.sessionRefused };
   const config = workerConfig();
   const memberships = await withContext(ctx =>
     asUser(
@@ -24,6 +32,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
     ),
   );
   return {
+    sessionRefused: null,
     user: { id: claims.sub, email: claims.email },
     live: {
       url: config.supabaseUrl,

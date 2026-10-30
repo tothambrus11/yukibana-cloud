@@ -100,8 +100,30 @@ export function supabaseFor(cookies: Cookies, url: string, key: string): Supabas
  *  cookies when both are present: the IDE extension is explicit about who
  *  it is. */
 export async function claimsFor(supabase: Supabase, authorization: string | null): Promise<Claims | null> {
+  return (await identify(supabase, authorization)).claims;
+}
+
+/** Who is asking, as `claimsFor` finds out, and, when they are nobody, why.
+ *  `refused` is null for a request that brought no session and no token,
+ *  which is simply nobody. Otherwise it says what Auth said about the one
+ *  it brought, and `by` says which: a bearer (the CLI, the IDE) or the
+ *  browser's session cookie.
+ *
+ *  A session that stops counting while a tab is open, its refresh token
+ *  revoked or already used, or Auth out of reach, used to read as "not
+ *  logged in" with no word anywhere, and a page told a signed-in person to
+ *  log in. The hook reports `refused` and the layout says it. */
+export async function identify(
+  supabase: Supabase,
+  authorization: string | null,
+): Promise<{ claims: Claims; refused: null } | { claims: null; refused: string | null; by: 'bearer' | 'cookie' }> {
   const bearer = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1];
   const { data, error } = await supabase.auth.getClaims(bearer);
-  if (error !== null || data === null) return null;
-  return claimsOf(data.claims);
+  const by = bearer === undefined ? 'cookie' : 'bearer';
+  if (error === null && data !== null) {
+    const claims = claimsOf(data.claims);
+    return claims === null ? { claims: null, refused: 'the token describes no logged-in person (it is anonymous or malformed)', by } : { claims, refused: null };
+  }
+  const refused = error === null ? null : `${error.message}${error.code === undefined ? '' : ` (${error.code})`}`;
+  return { claims: null, refused, by };
 }
