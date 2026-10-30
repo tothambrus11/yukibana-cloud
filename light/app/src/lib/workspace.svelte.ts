@@ -419,7 +419,6 @@ export class Workspace {
 			stopRun: () => this.runner.stop(false),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
 			log: (text) => this.write('info', text, 'run'),
-			console: (text) => this.runner.print('info', text),
 		});
 	}
 
