@@ -1,0 +1,431 @@
+diff --git a/lldb/cmake/modules/AddLLDB.cmake b/lldb/cmake/modules/AddLLDB.cmake
+index b6ad8d4..c990e75 100644
+--- a/lldb/cmake/modules/AddLLDB.cmake
++++ b/lldb/cmake/modules/AddLLDB.cmake
+@@ -495,7 +495,8 @@ endfunction()
+ # Mach-O uses two-level namespaces and PE/COFF does not export symbols by
+ # default.
+ function(lldb_prevent_liblldb_symbol_interposition name)
+-  if(UNIX AND NOT APPLE)
++  # Emscripten links liblldb statically and has no dynamic linker.
++  if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+     target_link_options(${name} PRIVATE "LINKER:--exclude-libs,ALL")
+   endif()
+ endfunction()
+diff --git a/lldb/source/API/CMakeLists.txt b/lldb/source/API/CMakeLists.txt
+index 15c52aa..b1d23e3 100644
+--- a/lldb/source/API/CMakeLists.txt
++++ b/lldb/source/API/CMakeLists.txt
+@@ -33,7 +33,15 @@ add_custom_target(lldb-sbapi-dwarf-enums
+   DEPENDS ${sb_languages_file})
+ set_target_properties(lldb-sbapi-dwarf-enums PROPERTIES FOLDER "LLDB/Tablegenning")
+ 
+-add_lldb_library(liblldb SHARED ${option_framework}
++# A browser has no shared libraries: Emscripten would build liblldb as a
++# static archive anyway, but with -fPIC, which the precompiled headers it
++# shares with LLVM were not built with.
++if(EMSCRIPTEN)
++  set(liblldb_kind STATIC)
++else()
++  set(liblldb_kind SHARED)
++endif()
++add_lldb_library(liblldb ${liblldb_kind} ${option_framework}
+   SBAddress.cpp
+   SBAddressRange.cpp
+   SBAddressRangeList.cpp
+diff --git a/lldb/source/Host/CMakeLists.txt b/lldb/source/Host/CMakeLists.txt
+index 57a833a..723de2f 100644
+--- a/lldb/source/Host/CMakeLists.txt
++++ b/lldb/source/Host/CMakeLists.txt
+@@ -137,7 +137,8 @@ else()
+     endif()
+ 
+ 
+-  elseif (CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
++  # Emscripten is a Linux as far as its libc goes (HostInfo.h agrees).
++  elseif (CMAKE_SYSTEM_NAME MATCHES "Linux|Android|Emscripten")
+     add_host_subdirectory(linux
+       linux/AbstractSocket.cpp
+       linux/Host.cpp
+diff --git a/lldb/source/Host/common/Host.cpp b/lldb/source/Host/common/Host.cpp
+index c4e1500..a7c398c 100644
+--- a/lldb/source/Host/common/Host.cpp
++++ b/lldb/source/Host/common/Host.cpp
+@@ -362,7 +362,7 @@ FileSpec Host::GetModuleFileSpecForHostAddress(const void *host_addr) {
+ 
+ #endif
+ 
+-#if !defined(__linux__)
++#if !defined(__linux__) && !defined(__EMSCRIPTEN__) // Emscripten builds linux/Host.cpp
+ bool Host::FindProcessThreads(const lldb::pid_t pid, TidMap &tids_to_attach) {
+   return false;
+ }
+diff --git a/lldb/source/Host/posix/ProcessLauncherPosixFork.cpp b/lldb/source/Host/posix/ProcessLauncherPosixFork.cpp
+index a5f5cc5..daa69eb 100644
+--- a/lldb/source/Host/posix/ProcessLauncherPosixFork.cpp
++++ b/lldb/source/Host/posix/ProcessLauncherPosixFork.cpp
+@@ -16,6 +16,19 @@
+ #include "lldb/Utility/Log.h"
+ #include "llvm/Support/Errno.h"
+ 
++#ifdef __EMSCRIPTEN__
++// Yukibana Light: a browser starts no processes. LLDB attaches to a stub
++// over ConnectionSharedRing instead, and never launches one.
++using namespace lldb;
++using namespace lldb_private;
++
++HostProcess
++ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
++                                        Status &error) {
++  error = Status::FromErrorString("a browser cannot start processes");
++  return HostProcess();
++}
++#else
+ #include <climits>
+ #include <fcntl.h>
+ #include <sys/ptrace.h>
+@@ -298,3 +311,4 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
+ 
+   return HostProcess();
+ }
++#endif // __EMSCRIPTEN__
+diff --git a/lldb/source/Plugins/Platform/Linux/PlatformLinux.cpp b/lldb/source/Plugins/Platform/Linux/PlatformLinux.cpp
+index 799fe5e..b5f268b 100644
+--- a/lldb/source/Plugins/Platform/Linux/PlatformLinux.cpp
++++ b/lldb/source/Plugins/Platform/Linux/PlatformLinux.cpp
+@@ -102,7 +102,9 @@ void PlatformLinux::Initialize() {
+   PlatformPOSIX::Initialize();
+ 
+   if (g_initialize_count++ == 0) {
+-#if defined(__linux__) && !defined(__ANDROID__)
++// Emscripten's host is a Linux too (HostInfo.h): without a host platform,
++// creating a target dereferences a null one.
++#if (defined(__linux__) || defined(__EMSCRIPTEN__)) && !defined(__ANDROID__)
+     PlatformSP default_platform_sp(new PlatformLinux(true));
+     default_platform_sp->SetSystemArchitecture(HostInfo::GetArchitecture());
+     Platform::SetHostPlatform(default_platform_sp);
+diff --git a/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt b/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt
+index 00a59f8..83047ae 100644
+--- a/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt
++++ b/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt
+@@ -23,6 +23,7 @@ if(LLVM_ENABLE_ZLIB)
+ endif()
+ 
+ add_lldb_library(lldbPluginProcessGDBRemote PLUGIN
++  ConnectionSharedRing.cpp
+   GDBRemoteClientBase.cpp
+   GDBRemoteCommunication.cpp
+   GDBRemoteCommunicationClient.cpp
+diff --git a/lldb/source/Plugins/Process/gdb-remote/ConnectionSharedRing.cpp b/lldb/source/Plugins/Process/gdb-remote/ConnectionSharedRing.cpp
+new file mode 100644
+index 0000000..a41b979
+--- /dev/null
++++ b/lldb/source/Plugins/Process/gdb-remote/ConnectionSharedRing.cpp
+@@ -0,0 +1,183 @@
++//===-- ConnectionSharedRing.cpp ------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++
++#ifdef __EMSCRIPTEN__
++
++#include "ConnectionSharedRing.h"
++#include "lldb/Utility/Status.h"
++#include "lldb/Utility/Timeout.h"
++
++#include <emscripten/emscripten.h>
++#include <emscripten/threading.h>
++
++#include <algorithm>
++#include <cerrno>
++#include <cmath>
++#include <chrono>
++#include <cstring>
++
++using namespace lldb;
++using namespace lldb_private;
++
++namespace {
++
++// The layout the stub reads (light/packs/lldb/src/channel.js): a header of
++// four u32 (magic, ring size, offset of the ring to the stub, offset of the
++// ring to LLDB), then the two rings. A ring is head (bytes ever written),
++// tail (bytes ever read), closed (nonzero once its writer is gone) and the
++// data, a power of two long; both counters wrap at 2^32, so the bytes waiting
++// are head - tail in unsigned arithmetic. Each side waits on the word the
++// other changes: a reader on head, a writer with a full ring on tail.
++constexpr uint32_t kMagic = 0x796b6462; // "bdky"
++constexpr uint32_t kRingSize = 1u << 16;
++
++struct Ring {
++  std::atomic<uint32_t> head;
++  std::atomic<uint32_t> tail;
++  std::atomic<uint32_t> closed;
++  uint32_t reserved;
++  uint8_t data[kRingSize];
++};
++
++struct Channel {
++  uint32_t magic;
++  uint32_t ring_size;
++  uint32_t to_stub_offset;
++  uint32_t to_lldb_offset;
++  Ring to_stub;
++  Ring to_lldb;
++};
++
++alignas(16) Channel g_channel;
++
++void Wake(std::atomic<uint32_t> &word) {
++  emscripten_futex_wake(reinterpret_cast<volatile void *>(&word), INT32_MAX);
++}
++
++// Waits while word == seen, for at most ms (negative: without end).
++void WaitWhile(std::atomic<uint32_t> &word, uint32_t seen, double ms) {
++  emscripten_futex_wait(reinterpret_cast<volatile void *>(&word), seen,
++                        ms < 0 ? INFINITY : ms);
++}
++
++} // namespace
++
++/// The channel's address, for the page to give the stub with this module's
++/// memory. It is a static: one LLDB debugs one program at a time.
++extern "C" EMSCRIPTEN_KEEPALIVE void *yukibana_debug_channel() {
++  if (g_channel.magic != kMagic) {
++    g_channel.ring_size = kRingSize;
++    g_channel.to_stub_offset = offsetof(Channel, to_stub);
++    g_channel.to_lldb_offset = offsetof(Channel, to_lldb);
++    g_channel.magic = kMagic;
++  }
++  return &g_channel;
++}
++
++ConnectionStatus ConnectionSharedRing::Connect(llvm::StringRef url,
++                                               Status *error_ptr) {
++  if (url != kURL) {
++    if (error_ptr)
++      *error_ptr = Status::FromErrorStringWithFormatv(
++          "unsupported connection URL: '{0}'", url);
++    return eConnectionStatusError;
++  }
++  // The page resets the rings before each session (channel.js, reset), so
++  // nothing from an earlier program is read as this one's.
++  yukibana_debug_channel();
++  m_interrupted = false;
++  m_connected = true;
++  return eConnectionStatusSuccess;
++}
++
++ConnectionStatus ConnectionSharedRing::Disconnect(Status *error_ptr) {
++  if (m_connected.exchange(false)) {
++    g_channel.to_stub.closed.store(1);
++    Wake(g_channel.to_stub.head);
++  }
++  return eConnectionStatusSuccess;
++}
++
++size_t ConnectionSharedRing::Read(void *dst, size_t dst_len,
++                                  const Timeout<std::micro> &timeout,
++                                  ConnectionStatus &status,
++                                  Status *error_ptr) {
++  Ring &ring = g_channel.to_lldb;
++  auto deadline = timeout ? std::chrono::steady_clock::now() + *timeout
++                          : std::chrono::steady_clock::time_point::max();
++  while (true) {
++    uint32_t head = ring.head.load();
++    uint32_t tail = ring.tail.load();
++    if (head != tail) {
++      size_t n = std::min<size_t>(dst_len, head - tail);
++      for (size_t i = 0; i < n; ++i)
++        static_cast<uint8_t *>(dst)[i] = ring.data[(tail + i) & (kRingSize - 1)];
++      ring.tail.store(tail + n);
++      Wake(ring.tail);
++      status = eConnectionStatusSuccess;
++      return n;
++    }
++    if (ring.closed.load() || !m_connected) {
++      status = eConnectionStatusEndOfFile;
++      return 0;
++    }
++    if (m_interrupted.exchange(false)) {
++      status = eConnectionStatusInterrupted;
++      return 0;
++    }
++    double ms = -1;
++    if (timeout) {
++      auto left = deadline - std::chrono::steady_clock::now();
++      if (left <= std::chrono::steady_clock::duration::zero()) {
++        status = eConnectionStatusTimedOut;
++        return 0;
++      }
++      ms = std::chrono::duration<double, std::milli>(left).count();
++    }
++    WaitWhile(ring.head, head, ms);
++  }
++}
++
++size_t ConnectionSharedRing::Write(const void *src, size_t src_len,
++                                   ConnectionStatus &status,
++                                   Status *error_ptr) {
++  Ring &ring = g_channel.to_stub;
++  size_t done = 0;
++  while (done < src_len) {
++    if (!m_connected || g_channel.to_lldb.closed.load()) {
++      status = eConnectionStatusLostConnection;
++      if (error_ptr)
++        *error_ptr = Status::FromErrorString("the program is gone");
++      return done;
++    }
++    uint32_t head = ring.head.load();
++    uint32_t tail = ring.tail.load();
++    uint32_t space = kRingSize - (head - tail);
++    if (space == 0) {
++      WaitWhile(ring.tail, tail, 100);
++      continue;
++    }
++    size_t n = std::min<size_t>(space, src_len - done);
++    for (size_t i = 0; i < n; ++i)
++      ring.data[(head + i) & (kRingSize - 1)] =
++          static_cast<const uint8_t *>(src)[done + i];
++    ring.head.store(head + n);
++    Wake(ring.head);
++    done += n;
++  }
++  status = eConnectionStatusSuccess;
++  return done;
++}
++
++bool ConnectionSharedRing::InterruptRead() {
++  m_interrupted = true;
++  Wake(g_channel.to_lldb.head);
++  return true;
++}
++
++#endif // __EMSCRIPTEN__
+diff --git a/lldb/source/Plugins/Process/gdb-remote/ConnectionSharedRing.h b/lldb/source/Plugins/Process/gdb-remote/ConnectionSharedRing.h
+new file mode 100644
+index 0000000..c5e7850
+--- /dev/null
++++ b/lldb/source/Plugins/Process/gdb-remote/ConnectionSharedRing.h
+@@ -0,0 +1,53 @@
++//===-- ConnectionSharedRing.h ----------------------------------*- C++ -*-===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
++//
++// Yukibana Light: the gdb-remote connection of an LLDB compiled to
++// WebAssembly with Emscripten, to a stub running in another Web Worker. A
++// browser has no sockets and no pipes between workers, so the bytes go
++// through two rings in this module's own memory (a SharedArrayBuffer): the
++// page posts that buffer and the address of yukibana_debug_channel() to the
++// stub, which reads and writes the rings with Atomics, and blocks with
++// Atomics.wait while the program it debugs is stopped. Connect to it with the
++// URL "yukibana://".
++//
++//===----------------------------------------------------------------------===//
++
++#ifndef LLDB_SOURCE_PLUGINS_PROCESS_GDB_REMOTE_CONNECTIONSHAREDRING_H
++#define LLDB_SOURCE_PLUGINS_PROCESS_GDB_REMOTE_CONNECTIONSHAREDRING_H
++
++#ifdef __EMSCRIPTEN__
++
++#include "lldb/Utility/Connection.h"
++#include <atomic>
++
++namespace lldb_private {
++
++class ConnectionSharedRing : public Connection {
++public:
++  static constexpr llvm::StringLiteral kURL = "yukibana://";
++
++  lldb::ConnectionStatus Connect(llvm::StringRef url,
++                                 Status *error_ptr) override;
++  lldb::ConnectionStatus Disconnect(Status *error_ptr) override;
++  bool IsConnected() const override { return m_connected; }
++  size_t Read(void *dst, size_t dst_len, const Timeout<std::micro> &timeout,
++              lldb::ConnectionStatus &status, Status *error_ptr) override;
++  size_t Write(const void *src, size_t src_len, lldb::ConnectionStatus &status,
++               Status *error_ptr) override;
++  std::string GetURI() override { return kURL.str(); }
++  bool InterruptRead() override;
++
++private:
++  std::atomic<bool> m_connected{false};
++  std::atomic<bool> m_interrupted{false};
++};
++
++} // namespace lldb_private
++
++#endif // __EMSCRIPTEN__
++#endif
+diff --git a/lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemote.cpp b/lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemote.cpp
+index c80e7e4..8542a39 100644
+--- a/lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemote.cpp
++++ b/lldb/source/Plugins/Process/gdb-remote/ProcessGDBRemote.cpp
+@@ -39,6 +39,7 @@
+ #include "lldb/Core/Value.h"
+ #include "lldb/DataFormatters/FormatManager.h"
+ #include "lldb/Host/ConnectionFileDescriptor.h"
++#include "ConnectionSharedRing.h"
+ #include "lldb/Host/FileSystem.h"
+ #include "lldb/Host/HostInfo.h"
+ #include "lldb/Host/HostThread.h"
+@@ -947,6 +948,14 @@ Status ProcessGDBRemote::ConnectToDebugserver(llvm::StringRef connect_url) {
+   // Only connect if we have a valid connect URL
+   Log *log = GetLog(GDBRLog::Process);
+ 
++#ifdef __EMSCRIPTEN__
++  // Yukibana Light: a stub in another Web Worker, over shared memory.
++  if (connect_url == ConnectionSharedRing::kURL) {
++    auto conn_up = std::make_unique<ConnectionSharedRing>();
++    if (conn_up->Connect(connect_url, &error) == eConnectionStatusSuccess)
++      m_gdb_comm.SetConnection(std::move(conn_up));
++  } else
++#endif
+   if (!connect_url.empty()) {
+     LLDB_LOGF(log, "ProcessGDBRemote::%s Connecting to %s", __FUNCTION__,
+               connect_url.str().c_str());
+diff --git a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
+index b60f1d9..85b0197 100644
+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
+@@ -2479,8 +2479,15 @@ Function *DWARFASTParserClang::ParseFunctionFromDWARF(
+                                decl_line, decl_column, call_file, call_line,
+                                call_column, &frame_base)) {
+     Mangled func_name;
++    // A Swift linkage name is shown the same way: upstream LLDB cannot
++    // demangle one (the demangler is swiftlang's), and would show the frame
++    // as an address.
++    Mangled::ManglingScheme scheme =
++        mangled ? Mangled::GetManglingScheme(mangled)
++                : Mangled::eManglingSchemeNone;
+     if (mangled && name &&
+-        Mangled::GetManglingScheme(mangled) == Mangled::eManglingSchemeNone) {
++        (scheme == Mangled::eManglingSchemeNone ||
++         scheme == Mangled::eManglingSchemeSwift)) {
+       // The linkage name is present but is not actually a mangled name (e.g.
+       // wasi-libc renames `main` to its `__main_argc_argv` argv-passing
+       // wrapper). Display the source name (DW_AT_name) and keep the linkage
+diff --git a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
+index 2bfa187..c18ab52 100644
+--- a/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
++++ b/lldb/source/Plugins/TypeSystem/Clang/TypeSystemClang.cpp
+@@ -120,7 +120,11 @@ TypeSystemClangSupportsLanguage(lldb::LanguageType language) {
+          // Use Clang for D until there is a proper language plugin for it
+          language == eLanguageTypeD ||
+          // Open Dylan compiler debug info is designed to be Clang-compatible
+-         language == eLanguageTypeDylan;
++         language == eLanguageTypeDylan ||
++         // Yukibana Light: Swift compiled with -gdwarf-types describes its
++         // types in plain DWARF, which Clang's type system can show until
++         // swiftlang's LLDB (TypeSystemSwift) runs in the browser.
++         language == eLanguageTypeSwift;
+ }
+ 
+ // Checks whether m1 is an overload of m2 (as opposed to an override). This is

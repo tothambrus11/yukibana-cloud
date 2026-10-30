@@ -262,6 +262,35 @@ does not allow (no `type`, or a known type with a wrong field) is named in
 the app's Log panel and ignored; one of a type the app does not know is
 ignored without a word.
 
+## Debugging (optional)
+
+A runner that can run its program under the debugger (the app offers Debug
+for languages with `debugs: true` in `app/src/lib/languages.ts`) takes the
+run message with one more field:
+
+```ts
+debug?: { buffer: SharedArrayBuffer, address: number }
+```
+
+the memory and address of the channel to LLDB (packs/lldb/README.md): the
+app starts the debugger's worker first and passes on what it said it is
+listening on. The runner then builds the program with debug information and
+without optimisation, imports `../lldb/runtime.js` by URL (only a debug run
+fetches it), and before running posts
+
+```ts
+{ type: 'debug', name: string, wasm: Uint8Array }
+```
+
+the program as linked, which the app writes into LLDB's file system at
+`name` before it attaches. It runs the instrumented module `debugProgram`
+returns, with `stub.imports()` beside its own, calls `stub.attach` with the
+instance and `stub.exited(code)` or `stub.crashed(signal, description)`
+when it ends; LLDB's Stop (`k`) throws `Killed` out of the program, which
+the runner reports as exit 137. Everything else is a run's: output as it is
+printed, `exit` last. A run without `debug` is a run, and a runner that
+cannot debug a project (a Linux target) says so on stderr and exits 1.
+
 ## Output
 
 A runner posts each piece of output as the program produces it, one

@@ -1,0 +1,7 @@
+# Debian/Ubuntu packages the lldb unit builds with, beyond git, curl,
+# python3, make and Node: the host's clang builds the native tablegens,
+# cmake and ninja drive both builds.
+clang
+cmake
+ninja-build
+xz-utils

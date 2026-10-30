@@ -1,0 +1,4 @@
+instrument.wasm
+instrument.wasm.br
+instrument.wasm.gz
+versions-instrument.json

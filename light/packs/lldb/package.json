@@ -1,0 +1,14 @@
+{
+    "name": "yukibana-pack-lldb",
+    "private": true,
+    "description": "Yukibana LLDB pack: lldb-dap (LLVM 23.1.4, Emscripten) in a module Web Worker, and the stub a runner's WebAssembly program is debugged through. This file holds the workers' minifier and the test's browser driver.",
+    "type": "module",
+    "scripts": {
+        "test": "node --test test-*.mjs",
+        "test:browser": "node test.mjs"
+    },
+    "devDependencies": {
+        "esbuild": "0.25.10",
+        "playwright-core": "1.56.1"
+    }
+}
