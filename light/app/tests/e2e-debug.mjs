@@ -125,6 +125,9 @@ async function run(language, c) {
 
 	// Breakpoints stay where they are; the program passes them no more.
 	await page.keyboard.press('F5');
+	await debugState(page, /exited|ended/, 60_000);
+	// The terminal shares the bottom group with the Debug panel.
+	await page.locator('.dv-tab', { hasText: 'Terminal' }).first().click();
 	const status = page.locator('.terminal .status');
 	const done = await status.filter({ hasText: /Exited/ }).waitFor({ timeout: 60_000 }).then(() => true, () => false);
 	const shown = (await page.locator('.terminal pre').textContent({ timeout: 5000 }).catch(() => '')) ?? '';

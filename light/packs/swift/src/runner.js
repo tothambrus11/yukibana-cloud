@@ -50,9 +50,11 @@ const WORK = '/workspace';
  * What a debugged program is compiled with (packs/lldb/README.md): DWARF
  * with its types as DWARF too, which LLDB's C type system reads (the build
  * has no Swift type system, which would read Swift's own type references),
- * and no optimisation.
+ * and no optimisation. No breadcrumbs to Clang's modules: they name the
+ * module cache's .pcm files, which nothing reads (LLDB has no Clang module
+ * importer here), and the frontend warns that each does not exist.
  */
-const DEBUG_FLAGS = ['-g', '-gdwarf-types'];
+const DEBUG_FLAGS = ['-g', '-gdwarf-types', '-no-clang-module-breadcrumbs'];
 /** The path LLDB loads a debugged program from, in its own file system. */
 const DEBUG_MODULE = '/debug/program.wasm';
 const relative = (text) => text.replaceAll(`${WORK}/`, '');

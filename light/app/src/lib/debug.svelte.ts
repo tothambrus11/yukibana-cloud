@@ -59,10 +59,8 @@ export interface DebugHost {
 	stopRun(): void;
 	/** Shows a project file at a line: the frame the user picked, or where the program stopped. */
 	reveal(path: string, line: number): void;
-	/** A line for the Log panel. */
+	/** A line for the Log panel: everything LLDB says, its warnings among them. */
 	log(text: string): void;
-	/** The program's text the debugger printed (lldb-dap's console output). */
-	console(text: string): void;
 }
 
 interface Pending {
@@ -331,10 +329,12 @@ export class Debugger {
 			case 'output': {
 				const category = str(body['category']);
 				const text = str(body['output']);
-				// The program's own output reaches the terminal from its runner.
+				// The program's own output reaches the terminal from its runner;
+				// what LLDB says goes to the Log, its warnings too (the terminal
+				// is the program's: "no plugin for the language swift" there
+				// would read as the program's output).
 				if (category === 'stdout' || category === 'stderr') break;
-				if (category === 'important') this.#host?.console(text);
-				else this.#host?.log(text.replace(/\n$/, ''));
+				this.#host?.log(text.replace(/\n$/, ''));
 				break;
 			}
 			case 'exited':
