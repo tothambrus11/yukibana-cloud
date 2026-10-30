@@ -16,18 +16,15 @@
 # kept under $CACHE, so a rebuild redoes what changed. Needs curl, xz,
 # python3, cmake, ninja, gcc/g++ and about 40 GB of disk.
 #
-#   RUST_VERSION        the release whose source tarball is built
+#   pins.sh             the release whose source tarball is built, and wasi-sdk
 #   rustc/patches/      applied in order: 00xx homescoop's patches for a
 #                       WASI-hosted rustc (Apache-2.0, see patches/README.md),
 #                       01xx LLVM fixes backported from LLVM 23.1.1, 02xx ours
 set -euo pipefail
 
-RUST_VERSION=1.98.1
-RUST_SRC_SHA256=be1816e7f6c40abb90245ad6e024bed2a7e88d7dda4561e4d5470207df616b9f
-WASI_SDK_VERSION=34.0
-WASI_SDK_SHA256=b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4
-
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=pins.sh
+. "$HERE/pins.sh"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/rust/rustc"
 : "${OUT:=$CACHE/out}"
 mkdir -p "$CACHE" "$OUT"
@@ -46,7 +43,7 @@ SDK="$CACHE/wasi-sdk-$WASI_SDK_VERSION-x86_64-linux"
 # The tree is extracted again when the patches change; its build/ (hours of
 # LLVM and rustc) is moved across, so only what the patches touch rebuilds.
 SRC="$CACHE/rustc-$RUST_VERSION-src"
-STAMP="$(cat "$HERE"/patches/*.patch "$HERE/build.sh" | sha256sum | cut -c1-16)"
+STAMP="$(cat "$HERE"/patches/*.patch "$HERE/build.sh" "$HERE/pins.sh" | sha256sum | cut -c1-16)"
 if [ "$(cat "$SRC/.yukibana-patches" 2>/dev/null)" != "$STAMP" ]; then
     step "extract and patch"
     [ -d "$SRC/build" ] && mv "$SRC/build" "$CACHE/build.keep"

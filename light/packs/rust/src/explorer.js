@@ -26,8 +26,8 @@ import { Directory, File } from '@bjorn3/browser_wasi_shim';
 import { manifest } from './cargo.js';
 import { tree } from './tree.js';
 import { crateOf, filterMir } from './mir.js';
-import { demangleLines, filterAsm, filterIr, linesWithCode } from './emit-filter.js';
-import { demangleAll } from './demangle.js';
+import { filterAsm, filterIr, linesWithCode } from './emit-filter.js';
+import { demangleText } from './demangle.js';
 import { targetOf } from './targets.js';
 import { runRustc, toolchain } from './toolchain.js';
 
@@ -87,17 +87,26 @@ async function emit({ id, emit: kind, files, path, options = {} }) {
     const common = ['--sysroot', '/sysroot', '--target', target.triple, '--edition', cargo.edition, '--remap-path-prefix=/project/=', ...(depsDir ? deps : [])];
 
     // A binary or a test crate sees the library under the package's name,
-    // as with Cargo: its metadata first, as the runner builds it.
+    // as with Cargo: its metadata first, with every function's MIR
+    // (-Zalways-encode-mir), which code generation needs of the functions
+    // it may inline across crates (small ones, even at opt-level 0), and
+    // which is much faster to make than the rlib.
     const externs = [];
     if (crate.kind !== 'lib' && files['src/lib.rs'] !== undefined) {
-        const lib = await rustc(tool, ['--crate-type=lib', `--crate-name=${cargo.name}`, '--emit=metadata', '-C', `opt-level=${level}`, '-o', `/out/lib${cargo.name}.rmeta`, '/project/src/lib.rs', ...common], fs);
+        const lib = await rustc(tool, ['--crate-type=lib', `--crate-name=${cargo.name}`, '--emit=metadata', '-Zalways-encode-mir', '-C', `opt-level=${level}`, '-o', `/out/lib${cargo.name}.rmeta`, '/project/src/lib.rs', ...common], fs);
         if (lib.code !== 0) return fail(lib.stderr || `rustc exited with status ${lib.code} building src/lib.rs\n`);
         externs.push('--extern', `${cargo.name}=/out/lib${cargo.name}.rmeta`, '-L', '/out');
     }
     const kindFlags = [...(crate.kind === 'lib' ? ['--crate-type=lib'] : []), ...(test ? ['--test'] : [])];
     /** The crate compiled to `emit` at opt-level `o`: its text, or { error }. */
     const compile = async (emitKind, o) => {
-        const codegen = emitKind === 'mir' ? ['-Zunpretty=mir', '-Zmir-include-spans'] : [`--emit=${emitKind}`, '-o', `/out/view`, '-C', 'debuginfo=line-tables-only', '-C', 'codegen-units=1'];
+        // -Zverbose-asm: LLVM's comments, among them the `-- Begin function`
+        // and `-- End function` that emit-filter.js finds functions by (clang
+        // writes them by default, rustc only when asked).
+        const codegen =
+            emitKind === 'mir'
+                ? ['-Zunpretty=mir', '-Zmir-include-spans']
+                : [`--emit=${emitKind}`, '-o', `/out/view`, '-C', 'debuginfo=line-tables-only', '-C', 'codegen-units=1', ...(emitKind === 'asm' ? ['-Zverbose-asm'] : [])];
         const args = [`--crate-name=${crate.name}`, `/project/${crate.root}`, ...kindFlags, '-C', `opt-level=${o}`, ...codegen, ...externs, ...common];
         const result = await rustc(tool, args, fs);
         const text = emitKind === 'mir' ? result.stdout : output(out, 'view');
@@ -114,7 +123,7 @@ async function emit({ id, emit: kind, files, path, options = {} }) {
     const result = await compile(kind === 'asm' ? 'asm' : 'llvm-ir', level);
     if (result.error) return fail(result.error);
     let filtered = (kind === 'llvm-ir' ? filterIr : filterAsm)(result.text, { library: !!options.library, directives: !!options.directives });
-    if (options.demangle) filtered = { ...filtered, text: demangleLines(filtered.text, demangleAll) };
+    if (options.demangle) filtered = { ...filtered, text: demangleText(filtered.text) };
     // Which lines have code at all without optimisation, for the view to
     // show which the optimiser removed.
     let unoptimized = null;

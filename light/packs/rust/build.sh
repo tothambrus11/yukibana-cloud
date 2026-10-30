@@ -2,16 +2,15 @@
 # Builds the Rust pack into ../../app/static/packs/rust/. Idempotent: each
 # step is skipped when its output is in the cache ($PACK_CACHE, default
 # ~/.cache/yukibana-packs). Needs curl, python3, node 22, npm, xz and
-# rustup (the pinned toolchains are installed by this script), and for
-# the compilers what rustc/build.sh needs. From nothing: hours, nearly all
-# of it rustc/build.sh (README, "The compiler"); after that about 15
-# minutes, most of it brotli.
+# rustup (the pinned toolchains are installed by this script). About 20
+# minutes from nothing, most of it brotli; the compilers are downloaded,
+# not built (step 4).
 #
 #   server     rust-analyzer's IDE crates (ra_ap_ide, crates.io) and our LSP
 #              layer (server/), compiled to wasm32-wasip1 with Rust 1.98.0
 #   std-src    core, alloc and std from rust-src 1.98.0, for rust-analyzer
-#   compilers  rustc.wasm, rustc-cross.wasm and miri.wasm (rustc/build.sh),
-#              or the ones in $RUSTC_OUT when it is set
+#   compilers  rustc.wasm, rustc-cross.wasm and miri.wasm, from the release
+#              light-rust-toolchain.yml made with rustc/build.sh (step 4)
 #   sysroots   for each target, the standard library Rust ships for it
 #              (rust-std 1.98.1, static.rust-lang.org, sha256 pinned), and
 #              for each of Miri's the standard library built for Miri by
@@ -28,11 +27,12 @@ RUST_TOOLCHAIN=1.98.0          # ra_ap_* 0.0.358 needs rustc >= 1.98
 # with (see README).
 RUST_SRC_VERSION=1.98.0
 RUST_SRC_SHA256=0e977492aed5ff137815bf9b4b796e8a85b80fb2367ed64e82d5c5839870f2bf
-# The release rustc.wasm is built from (rustc/build.sh): its rust-std, and
+# The release rustc.wasm is built from (rustc/pins.sh): its rust-std, and
 # the toolchain whose Miri builds Miri's standard library and whose Cargo
 # builds the crates, since a crate loads only into a compiler of the same
 # version string.
-RUST_VERSION=1.98.1
+# shellcheck source=rustc/pins.sh
+. "$(dirname "${BASH_SOURCE[0]}")/rustc/pins.sh"
 # rust-std-1.98.1-<triple>.tar.xz, as static.rust-lang.org's .sha256 say.
 declare -A RUST_STD_SHA256=(
     [wasm32-wasip1]=b5e91be9ed75c632a4c576d3c4c725ab143cd48c27c345133b97ccdf217b23e7
@@ -69,12 +69,35 @@ if [ ! -d "$LIBRARY/core" ]; then
 fi
 python3 -I "$HERE/scripts/make-sysroot-src.py" "$LIBRARY" "$OUT/std-src.tar"
 
-# 4. The compilers.
+# 4. The compilers: the release light-rust-toolchain.yml published from
+#    rustc/build.sh, each file checked against its pin; or, with RUSTC_OUT
+#    set, the ones in that directory (a local rustc/build.sh's $OUT); or,
+#    with RUSTC_BUILD=1, rustc/build.sh run here (hours).
+RUSTC_RELEASE=""   # rust-1.98.1-wasm-<n>, once the workflow has published one
+declare -A RUSTC_SHA256=(
+    [rustc.wasm]=""
+    [rustc-cross.wasm]=""
+    [miri.wasm]=""
+)
 if [ -n "${RUSTC_OUT:-}" ]; then
     COMPILERS="$RUSTC_OUT"
-else
+elif [ "${RUSTC_BUILD:-}" = 1 ]; then
     COMPILERS="$CACHE/rustc/out"
     OUT="$COMPILERS" PACK_CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}" $NICE "$HERE/rustc/build.sh"
+elif [ -n "$RUSTC_RELEASE" ]; then
+    COMPILERS="$CACHE/$RUSTC_RELEASE"
+    mkdir -p "$COMPILERS"
+    for c in "${!RUSTC_SHA256[@]}"; do
+        if [ ! -f "$COMPILERS/$c" ]; then
+            curl -sSfL --retry 4 -o "$COMPILERS/$c.part" "https://github.com/tothambrus11/yukibana-cloud/releases/download/$RUSTC_RELEASE/$c"
+            mv "$COMPILERS/$c.part" "$COMPILERS/$c"
+        fi
+        echo "${RUSTC_SHA256[$c]}  $COMPILERS/$c" | sha256sum -c --quiet
+    done
+else
+    echo "build.sh: no compilers: set RUSTC_OUT to a directory with rustc.wasm, rustc-cross.wasm and miri.wasm," >&2
+    echo "RUSTC_BUILD=1 to build them here (rustc/build.sh, hours), or pin a release of light-rust-toolchain.yml" >&2
+    exit 1
 fi
 for c in rustc rustc-cross miri; do cp "$COMPILERS/$c.wasm" "$OUT/$c.wasm"; done
 
@@ -116,8 +139,15 @@ if ! rustup run "$RUST_VERSION" rustc --print sysroot >/dev/null 2>&1 \
     || ! rustup component list --toolchain "$RUST_VERSION" --installed | grep -q '^rustc-dev'; then
     rustup toolchain install "$RUST_VERSION" --profile minimal --component rustc-dev,llvm-tools,rust-src
 fi
-MIRI_SRC="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/rust/rustc/rustc-$RUST_VERSION-src/src/tools/miri"
-[ -n "${RUSTC_SRC:-}" ] && MIRI_SRC="$RUSTC_SRC/src/tools/miri"
+# Miri's sources, from the release's source tarball (only src/tools/miri).
+SRC_TARBALL="$CACHE/rustc-$RUST_VERSION-src.tar.xz"
+if [ ! -f "$SRC_TARBALL" ]; then
+    curl -sSfL --retry 4 -o "$SRC_TARBALL.part" "https://static.rust-lang.org/dist/rustc-$RUST_VERSION-src.tar.xz"
+    mv "$SRC_TARBALL.part" "$SRC_TARBALL"
+fi
+echo "$RUST_SRC_SHA256  $SRC_TARBALL" | sha256sum -c --quiet
+MIRI_SRC="$CACHE/rustc-$RUST_VERSION-src/src/tools/miri"
+[ -f "$MIRI_SRC/Cargo.toml" ] || tar -xJf "$SRC_TARBALL" -C "$CACHE" "rustc-$RUST_VERSION-src/src/tools/miri"
 # Miri links the release's librustc_driver, which is in its sysroot's lib.
 export RUSTC_BOOTSTRAP=1 LD_LIBRARY_PATH="$(rustup run "$RUST_VERSION" rustc --print sysroot)/lib"
 (cd "$MIRI_SRC" && CARGO_TARGET_DIR="$CACHE/miri-target" $NICE cargo "+$RUST_VERSION" build --release --locked)

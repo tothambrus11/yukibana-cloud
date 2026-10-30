@@ -1,0 +1,97 @@
+name: Yukibana Light Rust toolchain
+
+# Builds the Rust pack's compilers for a wasm32-wasip1-threads host from
+# Rust's source tarball (light/packs/rust/rustc/build.sh; the pack's README,
+# "The compiler"): rustc.wasm (LLVM's WebAssembly code generator), rustc-cross.wasm
+# (x86-64, AArch64 and RISC-V too) and miri.wasm, and publishes them as a
+# release that the pack's build.sh fetches, pinned by sha256. The pack's own
+# CI job (light-packs.yml) never builds them: that is hours, two LLVMs and
+# rustc twice, against its 90 minutes.
+#
+# It runs only by hand. A new toolchain is a new tag (rust-<version>-wasm-<n>):
+# the pack pins each file's sha256, so replacing the assets of a tag in use
+# would break every build of the pack until the pins change.
+#
+# Expected to take about 4 of its 6 hours on a 4-core runner: on 4 cores
+# elsewhere native LLVM took 55 minutes, LLVM for wasm 65, rustc twice 80.
+# Nothing is cached between runs (the build tree is some 40 GB).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Tag to publish under, a new one for each build (rust-1.98.1-wasm-1, -2, …); empty builds without publishing
+        default: ''
+
+concurrency:
+  group: light-rust-toolchain
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    # Publishing the release needs write access; nothing else here does.
+    permissions:
+      contents: write
+    env:
+      PACK_CACHE: ${{ github.workspace }}/../pack-cache
+      OUT: ${{ github.workspace }}/../rust-toolchain
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Free disk space
+        working-directory: /
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force >/dev/null || true
+          df -h /
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3 xz-utils
+
+      - name: Build rustc.wasm, rustc-cross.wasm and miri.wasm
+        run: light/packs/rust/rustc/build.sh
+
+      - name: Checksums
+        working-directory: ${{ env.OUT }}
+        run: |
+          sha256sum rustc.wasm rustc-cross.wasm miri.wasm | tee SHA256SUMS
+          {
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rust-toolchain
+          path: ${{ env.OUT }}
+          retention-days: 14
+
+      - name: Publish release
+        if: inputs.release_tag != ''
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: Rust toolchain for WebAssembly hosts (${{ inputs.release_tag }})
+          make_latest: false
+          files: ${{ env.OUT }}/*
+          fail_on_unmatched_files: true
+          body: |
+            rustc and Miri for a wasm32-wasip1-threads host, built from Rust's source tarball by light/packs/rust/rustc/build.sh at ${{ github.sha }}.
+
+            | File | What |
+            | --- | --- |
+            | `rustc.wasm` | rustc with LLVM's WebAssembly code generator and lld's wasm linker inside |
+            | `rustc-cross.wasm` | the same with LLVM's x86-64, AArch64 and RISC-V code generators and lld's ELF linker too |
+            | `miri.wasm` | Miri, of the same tree |
+            | `SHA256SUMS` | their sha256 |
+
+            Each reports the release's own version string, so Rust's rust-std for a target loads into it. Licences: MIT OR Apache-2.0 (Rust, LLVM: Apache-2.0 WITH LLVM-exception); the patches are listed in light/packs/rust/rustc/patches.
