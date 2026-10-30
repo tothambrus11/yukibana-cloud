@@ -40,7 +40,7 @@
  */
 import { isLoadingProgress, type LoadingProgress } from '../protocol/loading.ts';
 import type { RequirementProblem } from '../protocol/requirements.ts';
-import { readFromRunner, type FromRunner, type OutputStream, type TestReport } from '../protocol/runner.ts';
+import { readFromRunner, type DebugProgram, type FromRunner, type OutputStream, type TestReport } from '../protocol/runner.ts';
 import { loadFailure, sourceLimitation, sourceProblem, type SessionSource } from './packs.ts';
 import type { RunnerHandle, RunnerTransport, RunRequest } from './transport.ts';
 
@@ -136,6 +136,7 @@ export type RunEvent =
 	| { type: 'trace' | 'kernel'; text: string }
 	| { type: 'mark'; name: string; ms: number }
 	| TestReport
+	| DebugProgram
 	| { type: 'notice'; text: string }
 	| { type: 'problem'; text: string };
 
@@ -638,6 +639,7 @@ export class RunSession {
 				current.emit({ type: 'mark', name: message.name, ms: message.ms });
 				break;
 			case 'test-report':
+			case 'debug':
 				current.emit(message);
 				break;
 			case 'exit':
