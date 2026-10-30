@@ -88,6 +88,12 @@ export interface Layout {
   readonly views: Readonly<Record<string, boolean>>;
 }
 
+/** What kind of telemetry should be sent. */
+export interface Telemetry {
+  /** Whether to send live stats about what the user is typing in the IDE. */
+  readonly liveTypingStats: boolean;
+}
+
 /** What a student's folder is set up with: the fields the IDE reads, each
  *  with its default when the file leaves it out. */
 export interface Settings {
@@ -102,6 +108,7 @@ export interface Settings {
    *  when the two differ. */
   readonly readOnly: readonly string[];
   readonly submission: SubmissionRules;
+  readonly telemetry: Telemetry;
   /** The registry project this folder submits to. Only a starter's copy has
    *  one (`starterConfig` writes it); in a course repository it is null. */
   readonly projectId: string | null;
