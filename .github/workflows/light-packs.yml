@@ -814,9 +814,6 @@ jobs:
             timeout: 30
           - pack: python
             timeout: 60
-          - pack: rust
-            timeout: 90
-            free-disk: true
           - pack: scala
             timeout: 90
             java: true

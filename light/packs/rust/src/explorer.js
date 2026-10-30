@@ -1,174 +1,140 @@
-// The Rust pack's compiler output worker (README, "The MIR view";
-// ../../CONTRACT.md, "Showing compiler output"): the MIR of the crate a
-// file of the project is in, as rustc's front end in the runner's Miri
-// (rustc 1.78) builds it, borrow checked and, with the view's -O toggle,
-// optimised, each line mapped to the source span it came from (mir.js).
-// rustc has no code generator here (README, "Run does not compile the
-// program"), so MIR is the last form the program takes, and the one Miri
-// runs.
+// The Rust pack's compiler output worker (README, "Compiler output views";
+// ../../CONTRACT.md, "Showing compiler output"): the crate a file of the
+// project is in, compiled by the runner's rustc for the project's target
+// at its optimisation level, shown as MIR (borrow checked, as the
+// optimisation level leaves it), LLVM IR or the target's assembly, each
+// line mapped to the source line it came from (mir.js, emit-filter.js).
+// Compile only: nothing is linked.
 //
 // App to worker:
-//   { type: 'emit', id, emit: 'mir', files, path, options: { optimize?, library? } }
+//   { type: 'emit', id, emit: 'mir' | 'llvm-ir' | 'asm', files, path,
+//     options: { optimization?, demangle?, directives?, library? } }
 // Worker to app:
 //   { type: 'loading', label, loaded, total }
-//   { type: 'result', id, emit, ok: true, text, lines, target, triple, flags, ms }
+//   { type: 'result', id, emit, ok: true, text, lines, unoptimized?, target, triple, flags, ms }
 //   { type: 'result', id, emit, ok: false, error, target, ms }
 //
-// Miri runs as rustc (MIRI_BE_RUSTC), as the runner builds a library with
-// it, a fresh instance of the compiled module per compile (rustc keeps
-// global state). Only the newest request is answered.
+// The target is the runner's (.cargo/config.toml, targets.js), so the
+// views and Run download the same compiler and standard library, and the
+// assembly is WebAssembly's, x86-64's, AArch64's or RISC-V's. LLVM IR and
+// assembly are made with line tables only (-C debuginfo=line-tables-only),
+// enough to map every line and much less to read than Run's full debug
+// info; one codegen unit, so the output is one file. Only the newest
+// request of each kind is answered.
 
-import { Directory, Fd, PreopenDirectory, WASI, WASIProcExit, wasi as defs } from '@bjorn3/browser_wasi_shim';
-import { manifest, untar } from './cargo.js';
+import { Directory, File } from '@bjorn3/browser_wasi_shim';
+import { manifest } from './cargo.js';
 import { tree } from './tree.js';
 import { crateOf, filterMir } from './mir.js';
+import { filterAsm, filterIr, linesWithCode } from './emit-filter.js';
+import { demangleText } from './demangle.js';
+import { targetOf } from './targets.js';
+import { runRustc, toolchain } from './toolchain.js';
 
-/* global MIRI_WASM_SIZE, SYSROOT_SIZE, CRATES_FILE, CRATES_SIZE, CRATES_DIRECT */
-const CRATES = typeof CRATES_FILE === 'string' ? CRATES_FILE : null;
+/* global CRATES_DIRECT */
 const DIRECT = typeof CRATES_DIRECT === 'object' ? CRATES_DIRECT : {};
-const SIZES = {
-    'miri.wasm': typeof MIRI_WASM_SIZE === 'number' ? MIRI_WASM_SIZE : 0,
-    'sysroot.tar': typeof SYSROOT_SIZE === 'number' ? SYSROOT_SIZE : 0,
-    ...(CRATES ? { [CRATES]: typeof CRATES_SIZE === 'number' ? CRATES_SIZE : 0 } : {}),
-};
-/** The target the sysroot was built for, the runner's. */
-const TARGET = { id: 'x86_64-linux', triple: 'x86_64-unknown-linux-gnu' };
+
+const LEVELS = ['0', '1', '2', '3', 's', 'z'];
+const VIEWS = ['mir', 'llvm-ir', 'asm'];
 
 const post = (msg) => self.postMessage(msg);
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
+const { compiler, sysroot, crates } = toolchain(post);
 
-async function download(name) {
-    const response = await fetch(new URL(name, import.meta.url));
-    if (!response.ok || !response.body) throw new Error(`${name}: HTTP ${response.status}`);
-    const total = SIZES[name] ?? 0;
-    let loaded = 0;
-    post({ type: 'loading', label: name, loaded, total });
-    const reader = response.clone().body.getReader();
-    (async () => {
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            loaded += value.length;
-            post({ type: 'loading', label: name, loaded, total: Math.max(total, loaded) });
-        }
-    })().catch(() => {});
-    return response;
+/** rustc once, its stdout and stderr collected: `{ code, stdout, stderr }`. */
+async function rustc(tool, args, fs) {
+    let stdout = '';
+    let stderr = '';
+    const code = await runRustc(tool, args, fs, { stdout: (t) => (stdout += t), stderr: (t) => (stderr += t) });
+    return { code, stdout, stderr: plain(stderr) };
 }
 
-let toolchain = null;
-/** Miri, compiled, and the sysroot, loaded once (the runner's URLs, so the browser holds one copy). */
-function load() {
-    toolchain ??= (async () => {
-        const [wasm, tar] = await Promise.all([download('miri.wasm'), download('sysroot.tar')]);
-        const [module, bytes] = await Promise.all([WebAssembly.compileStreaming(wasm), tar.arrayBuffer()]);
-        return { module, sysroot: tree(untar(new Uint8Array(bytes))) };
-    })();
-    toolchain.catch(() => {
-        toolchain = null;
-    });
-    return toolchain;
-}
-let registry = null;
-function loadCrates() {
-    registry ??= (async () => tree(untar(new Uint8Array(await (await download(CRATES)).arrayBuffer()))))();
-    registry.catch(() => {
-        registry = null;
-    });
-    return registry;
+/** The rustc arguments that give the crate its crates.io dependencies (the runner's, without its warnings). */
+function dependencyArgs(cargo, test) {
+    const names = [...new Set([...cargo.dependencies.keys(), ...(test ? cargo.devDependencies.keys() : [])])].filter((n) => DIRECT[n] !== undefined);
+    return names.length ? names.flatMap((n) => ['--extern', `${n}=/deps/lib${n}.rlib`]).concat(['-L', 'dependency=/deps']) : [];
 }
 
-/** An fd that collects what is written to it. */
-class Collect extends Fd {
-    constructor() {
-        super();
-        this.text = '';
-        this.decoder = new TextDecoder();
-    }
-    fd_fdstat_get() {
-        const stat = new defs.Fdstat(defs.FILETYPE_CHARACTER_DEVICE, 0);
-        stat.fs_rights_base = BigInt(defs.RIGHTS_FD_WRITE);
-        return { ret: 0, fdstat: stat };
-    }
-    fd_write(data) {
-        this.text += this.decoder.decode(data, { stream: true });
-        return { ret: 0, nwritten: data.byteLength };
-    }
-}
-
-/** One instance of Miri as rustc with `args`; returns `{ code, stdout, stderr }`. */
-function rustc({ module, sysroot }, args, { project, out, deps }) {
-    const stdout = new Collect();
-    const stderr = new Collect();
-    const fds = [new Collect(), stdout, stderr, ...['/sysroot', '/project', '/out', '/tmp', '/deps'].map((p) => new PreopenDirectory(p, []))];
-    fds[3].dir = sysroot;
-    fds[4].dir = project;
-    fds[5].dir = out;
-    if (deps) fds[7].dir = deps;
-    const wasi = new WASI(['miri', ...args], ['MIRI_BE_RUSTC=target'], fds);
-    const imports = { wasi_snapshot_preview1: wasi.wasiImport };
-    for (const { module: from, name, kind } of WebAssembly.Module.imports(module)) {
-        if (from === 'wasi_snapshot_preview1' || kind !== 'function') continue;
-        imports[from] ??= {};
-        imports[from][name] ??= () => {
-            throw new Error(`${from}.${name} is not available`);
-        };
-    }
-    let code;
-    try {
-        code = wasi.start(new WebAssembly.Instance(module, imports));
-    } catch (e) {
-        if (e instanceof WASIProcExit) code = e.code;
-        // rustc leaves through a panic (an abort here) after reporting an error.
-        else if (e instanceof WebAssembly.RuntimeError) code = 1;
-        else throw e;
-    }
-    return { code, stdout: stdout.text, stderr: plain(stderr.text) };
-}
-
-/** The rustc arguments that give the crate its crates.io dependencies (the runner's crateArgs, without its warnings), and their directory. */
-async function dependencies(cargo, test) {
-    const names = [...cargo.dependencies.keys(), ...(test ? cargo.devDependencies.keys() : [])].filter((n) => DIRECT[n] !== undefined);
-    if (!CRATES || names.length === 0) return { args: [], dir: null };
-    return { args: [...new Set(names)].flatMap((n) => ['--extern', `${n}=/deps/lib${n}.rmeta`]).concat(['-L', 'dependency=/deps']), dir: await loadCrates() };
-}
+/** The text of /out/<name>, or null. */
+const output = (out, name) => {
+    const file = out.contents.get(name);
+    return file instanceof File ? decoder.decode(file.data) : null;
+};
 
 /** Compiles one request; resolves to its result message. */
 async function emit({ id, emit: kind, files, path, options = {} }) {
     const started = performance.now();
+    const chosen = targetOf(files['.cargo/config.toml']);
+    const targetId = chosen.target?.id ?? null;
     const done = (fields) => ({ type: 'result', id, emit: kind, ...fields, ms: Math.round(performance.now() - started) });
-    const fail = (error) => done({ ok: false, error, target: TARGET.id });
-    if (kind !== 'mir') return fail(`Unknown output "${kind}".\n`);
+    const fail = (error) => done({ ok: false, error, target: targetId });
+    if (!VIEWS.includes(kind)) return fail(`Unknown output "${kind}".\n`);
+    if (chosen.unsupported !== undefined) return fail(`Target ${chosen.unsupported} (.cargo/config.toml) is not one this rustc builds for.\n`);
+    const target = chosen.target;
+    const level = String(options.optimization ?? '0');
+    if (!LEVELS.includes(level)) return fail(`No optimization level ${level}; Cargo's are ${LEVELS.join(', ')}.\n`);
     const cargo = manifest(files);
     const crate = typeof files[path] === 'string' ? crateOf(files, path, cargo.name) : null;
-    if (!crate) return fail(`${path} is not a Rust file of a crate of the project (src/main.rs, src/lib.rs, tests/*.rs, or a module of one): open one to see its MIR.\n`);
+    if (!crate) return fail(`${path} is not a Rust file of a crate of the project (src/main.rs, src/lib.rs, tests/*.rs, or a module of one): open one to see its compiler output.\n`);
     const test = crate.kind === 'test';
-    const [tools, deps] = await Promise.all([load(), dependencies(cargo, test)]);
+    const deps = dependencyArgs(cargo, test);
+    const [tool, root, depsDir] = await Promise.all([compiler(target.compiler), sysroot(target.triple), deps.length ? crates(target.triple) : null]);
     const project = tree(Object.entries(files).map(([p, text]) => [p, encoder.encode(text)]));
-    const io = { project, out: new Directory([]), deps: deps.dir };
-    const common = ['--sysroot', '/sysroot', '--target', TARGET.triple, '--edition', cargo.edition, '--remap-path-prefix=/project/=', ...deps.args];
-    // A binary or a test crate sees the library under the package's name, as
-    // with Cargo: its metadata first, as the runner builds it.
+    const out = new Directory(new Map());
+    const fs = { sysroot: root, project, out, deps: depsDir };
+    const common = ['--sysroot', '/sysroot', '--target', target.triple, '--edition', cargo.edition, '--remap-path-prefix=/project/=', ...(depsDir ? deps : [])];
+
+    // A binary or a test crate sees the library under the package's name,
+    // as with Cargo: its metadata first, with every function's MIR
+    // (-Zalways-encode-mir), which code generation needs of the functions
+    // it may inline across crates (small ones, even at opt-level 0), and
+    // which is much faster to make than the rlib.
     const externs = [];
     if (crate.kind !== 'lib' && files['src/lib.rs'] !== undefined) {
-        const lib = rustc(tools, ['--crate-type=lib', `--crate-name=${cargo.name}`, '--emit=metadata', '-o', `/out/lib${cargo.name}.rmeta`, '/project/src/lib.rs', ...common], io);
+        const lib = await rustc(tool, ['--crate-type=lib', `--crate-name=${cargo.name}`, '--emit=metadata', '-Zalways-encode-mir', '-C', `opt-level=${level}`, '-o', `/out/lib${cargo.name}.rmeta`, '/project/src/lib.rs', ...common], fs);
         if (lib.code !== 0) return fail(lib.stderr || `rustc exited with status ${lib.code} building src/lib.rs\n`);
         externs.push('--extern', `${cargo.name}=/out/lib${cargo.name}.rmeta`, '-L', '/out');
     }
-    const flags = [
-        ...(crate.kind === 'lib' ? ['--crate-type=lib'] : []),
-        ...(test ? ['--test'] : []),
-        ...(options.optimize ? ['-Copt-level=3'] : []),
-        '-Zunpretty=mir',
-    ];
-    const args = [`--crate-name=${crate.name}`, `/project/${crate.root}`, ...flags, '-Zmir-include-spans', ...externs, ...common];
-    const result = rustc(tools, args, io);
-    if (result.code !== 0 || !result.stdout.trim()) return fail(result.stderr || `rustc exited with status ${result.code}\n`);
-    const { text, lines } = filterMir(result.stdout, { library: !!options.library });
-    return done({ ok: true, text, lines, target: TARGET.id, triple: TARGET.triple, flags: [`--edition=${cargo.edition}`, ...flags, crate.root] });
+    const kindFlags = [...(crate.kind === 'lib' ? ['--crate-type=lib'] : []), ...(test ? ['--test'] : [])];
+    /** The crate compiled to `emit` at opt-level `o`: its text, or { error }. */
+    const compile = async (emitKind, o) => {
+        // -Zverbose-asm: LLVM's comments, among them the `-- Begin function`
+        // and `-- End function` that emit-filter.js finds functions by (clang
+        // writes them by default, rustc only when asked).
+        const codegen =
+            emitKind === 'mir'
+                ? ['-Zunpretty=mir', '-Zmir-include-spans']
+                : [`--emit=${emitKind}`, '-o', `/out/view`, '-C', 'debuginfo=line-tables-only', '-C', 'codegen-units=1', ...(emitKind === 'asm' ? ['-Zverbose-asm'] : [])];
+        const args = [`--crate-name=${crate.name}`, `/project/${crate.root}`, ...kindFlags, '-C', `opt-level=${o}`, ...codegen, ...externs, ...common];
+        const result = await rustc(tool, args, fs);
+        const text = emitKind === 'mir' ? result.stdout : output(out, 'view');
+        if (result.code !== 0 || !text?.trim()) return { error: result.stderr || `rustc exited with status ${result.code}\n` };
+        return { text };
+    };
+    const shown = [`--edition=${cargo.edition}`, ...kindFlags, `-C opt-level=${level}`, crate.root];
+    if (kind === 'mir') {
+        const result = await compile('mir', level);
+        if (result.error) return fail(result.error);
+        const { text, lines } = filterMir(result.text, { library: !!options.library });
+        return done({ ok: true, text, lines, target: target.id, triple: target.triple, flags: shown });
+    }
+    const result = await compile(kind === 'asm' ? 'asm' : 'llvm-ir', level);
+    if (result.error) return fail(result.error);
+    let filtered = (kind === 'llvm-ir' ? filterIr : filterAsm)(result.text, { library: !!options.library, directives: !!options.directives });
+    if (options.demangle) filtered = { ...filtered, text: demangleText(filtered.text) };
+    // Which lines have code at all without optimisation, for the view to
+    // show which the optimiser removed.
+    let unoptimized = null;
+    if (level !== '0') {
+        const unopt = await compile('llvm-ir', '0');
+        if (!unopt.error) unoptimized = linesWithCode(unopt.text);
+    }
+    return done({ ok: true, text: filtered.text, lines: filtered.lines, ...(unoptimized && { unoptimized }), target: target.id, triple: target.triple, flags: shown });
 }
 
-/** The newest request not yet started (one view, so one kind). */
+/** The newest request of each kind not yet started. */
 const pending = new Map();
 let busy = false;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -187,6 +153,7 @@ async function pump() {
             } catch (error) {
                 message = { type: 'result', id: request.id, emit: kind, ok: false, error: `${error?.message ?? error}\n`, target: null, ms: 0 };
             }
+            // Superseded while it compiled: the app keeps only the newest.
             await settle();
             if (!pending.has(kind)) post(message);
         }

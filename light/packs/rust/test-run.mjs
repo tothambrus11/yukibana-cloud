@@ -18,6 +18,17 @@
 // quickcheck (declared in Cargo.toml): one that holds, one whose shrunk
 // counterexample is reported, the crates' archive fetched only for a project
 // that declares them, and a version requirement it does not meet.
+// Optimization levels and the debug info of opt-level 0. Under Miri:
+// a type's layout on three Miri targets (i686's 4-aligned u64, s390x's
+// byte order), undefined behaviour reported where it happens,
+// catch_unwind, and tests under libtest. On the Linux targets (x86-64,
+// AArch64, RISC-V), when the C/C++ pack's emulator is there: the sample,
+// its tests under libtest, and a caught panic.
+//
+// The Linux cases need packs/cpp/vm.js and its files. Without them in
+// app/static they are skipped, unless CPP_PACK_ORIGIN names a Light that
+// has them (https://light.yukibana.dev), whose /packs/cpp/ this server
+// then forwards.
 //
 // Adapted from ../swift/test-run.mjs.
 
@@ -41,8 +52,16 @@ const ISOLATION = {
 // browser accepts brotli, as the app's host does; cacheable, so the second
 // run measures a warm cache.
 let bytesSent = 0;
+const CPP_ORIGIN = process.env.CPP_PACK_ORIGIN?.replace(/\/$/, '') ?? null;
 const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (CPP_ORIGIN && path.startsWith('/packs/cpp/')) {
+        const upstream = await fetch(CPP_ORIGIN + path);
+        const body = Buffer.from(await upstream.arrayBuffer());
+        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream', 'cache-control': 'max-age=3600', 'cross-origin-resource-policy': 'same-origin', ...ISOLATION });
+        res.end(body);
+        return;
+    }
     if (path === '/__test.html') {
         res.writeHead(200, { 'content-type': 'text/html', ...ISOLATION });
         res.end('<!doctype html><link rel=icon href="data:,"><title>rust runner test</title>');
@@ -92,6 +111,7 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
 const SAMPLE = sampleOf(languages, 'rust');
 const MANIFEST = { 'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n' };
+const QC_WASM = 'quickcheck-1.0.3-wasm32-wasip1.tar';
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
 
 const STDIN = {
@@ -180,7 +200,7 @@ try {
     // line each, then end of file), optionally terminate it after the program
     // printed `stopAfter`. Resolves with what came back and when.
     await page.evaluate(() => {
-        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'src/main.rs', type = 'run' } = {}) =>
+        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'src/main.rs', type = 'run', options = {} } = {}) =>
             new Promise((done) => {
                 const t0 = performance.now();
                 const result = { stdout: '', stderr: '', code: null, phases: [], loading: {}, stdinRequests: 0, stdoutBeforeInput: [], terminated: false };
@@ -230,7 +250,7 @@ try {
                         }, 1000);
                     }
                 };
-                worker.postMessage({ type, files, entry, stdin: sab });
+                worker.postMessage({ type, files, entry, stdin: sab, options });
             });
     });
 
@@ -249,7 +269,9 @@ try {
     );
     if (cold.code !== 0) console.log(plain(cold.stderr));
     const loads = Object.entries(cold.loading).map(([k, [l, t]]) => `${k} ${l}/${t}`);
-    check('loading messages for each download', loads.length === 2 && Object.values(cold.loading).every(([l, t]) => l === t && l > 0), loads.join(', '));
+    check('loading messages for the WebAssembly compiler and standard library only: the default target needs neither the cross compiler nor an emulator',
+        loads.length === 2 && cold.loading['rustc.wasm'] !== undefined && cold.loading['sysroot-wasm32-wasip1.tar'] !== undefined && Object.values(cold.loading).every(([l, t]) => l === t && l > 0),
+        loads.join(', '));
     bytesSent = 0;
     const warm = await run(SAMPLE);
     check('sample project (warm): same output from the browser cache', warm.code === 0 && warm.stdout === EXPECTED,
@@ -266,7 +288,8 @@ try {
         `code=${tests.code} in ${tests.ms} ms ${JSON.stringify(results)}`,
     );
     if (tests.code !== 0) console.log(plain(tests.stderr), tests.stdout);
-    const failing = await run({ ...SAMPLE, 'tests/geometry.rs': SAMPLE['tests/geometry.rs'].replace('"(1, 2.5)"', '"(1.0, 2.5)"') }, { type: 'test' });
+    const failingSample = () => ({ ...SAMPLE, 'tests/geometry.rs': SAMPLE['tests/geometry.rs'].replace('"(1, 2.5)"', '"(1.0, 2.5)"') });
+    const failing = await run(failingSample(), { type: 'test' });
     check(
         'cargo test: a failing assert_eq! is reported with both values, the others still run, exit 101',
         failing.code === 101 && /test points_print_as_pairs \.\.\. FAILED/.test(failing.stdout) && /test distance_is_symmetric \.\.\. ok/.test(failing.stdout) &&
@@ -274,7 +297,7 @@ try {
         `code=${failing.code} ${failing.stdout.split('\n').filter((l) => /left|right|test result/.test(l)).join(' | ')}`,
     );
     check('cargo test: quickcheck, a dev-dependency of the sample, is downloaded for Test (not for Run)',
-        tests.loading['quickcheck-1.0.3.tar'] !== undefined && cold.loading['quickcheck-1.0.3.tar'] === undefined, Object.keys(tests.loading).join(', '));
+        tests.loading[QC_WASM] !== undefined && cold.loading[QC_WASM] === undefined, Object.keys(tests.loading).join(', '));
 
     // 2b. Property-based tests with quickcheck, a dev-dependency.
     const props = await run(PROPERTIES, { type: 'test' });
@@ -291,8 +314,8 @@ try {
     const undeclared = await run({ ...PROPERTIES, 'Cargo.toml': MANIFEST['Cargo.toml'].replace('demo', 'props') }, { type: 'test' });
     check('quickcheck: without the declaration in Cargo.toml it is unresolved (E0432) and not downloaded, as with Cargo',
         undeclared.code !== 0 && /E0432|E0433/.test(plain(undeclared.stderr)) && /quickcheck/.test(plain(undeclared.stderr)) &&
-            undeclared.loading['quickcheck-1.0.3.tar'] === undefined,
-        `code=${undeclared.code} ${Object.keys(undeclared.loading).join(', ')}`);
+            undeclared.loading[QC_WASM] === undefined,
+        `code=${undeclared.code} ${Object.keys(undeclared.loading).join(', ')} ${plain(undeclared.stderr).split('\n').filter((l) => /^error/.test(l)).join(' | ')}`);
     const old = await run({
         'Cargo.toml': '[package]\nname = "old"\nedition = "2021"\n\n[dependencies]\nquickcheck = { version = "0.9", default-features = false }\n',
         'src/main.rs': 'fn main() {\n    let mut g = quickcheck::Gen::new(10);\n    let v: Vec<u8> = quickcheck::Arbitrary::arbitrary(&mut g);\n    println!("{}", v.len() <= 10);\n}\n',
@@ -329,17 +352,126 @@ try {
 
     // 5. Runtime: a panic exits 101 with Rust's message; process::exit's code.
     const panic = await run(PANIC);
-    check('panic: index out of bounds is reported, exit 101',
-        panic.code === 101 && panic.stdout === 'before\n' && /index out of bounds: the len is 0 but the index is 1/.test(plain(panic.stderr)),
+    // WebAssembly's std is panic=abort: abort() traps, which exits 134 as
+    // under wasmtime (SIGABRT's 128 + 6). On a Linux target it is 101.
+    check('panic: index out of bounds is reported, and the program aborts (exit 134)',
+        panic.code === 134 && panic.stdout === 'before\n' && /index out of bounds: the len is 0 but the index is 1/.test(plain(panic.stderr)),
         `code=${panic.code} ${JSON.stringify(panic.stdout)} ${plain(panic.stderr).split('\n').slice(0, 2).join(' | ')}`);
-    if (panic.code !== 101) console.log(plain(panic.stderr));
+    if (panic.code !== 134) console.log(plain(panic.stderr));
     const exit = await run(EXIT);
     check('std::process::exit(3) exits 3', exit.code === 3 && exit.stdout === 'leaving\n', `code=${exit.code}`);
     const single = await run(SINGLE);
     check('a project without Cargo.toml: crate "app", edition 2021, HashMap and sorting from std',
         single.code === 0 && single.stdout === '[("a", 3), ("b", 2), ("c", 1)]\n', `code=${single.code} ${JSON.stringify(single.stdout)} ${plain(single.stderr).slice(0, 300)}`);
 
-    // 6. A program that never ends: the page terminates the worker.
+    // 6. Optimization: Cargo's levels; 0 is the dev profile, with debug info.
+    const o3 = await run(SAMPLE, { options: { optimization: '3' } });
+    check('opt-level 3: the same output, built as Cargo\'s release profile',
+        o3.code === 0 && o3.stdout === EXPECTED && /`release` profile \[optimized\] target/.test(plain(o3.stderr)) && /`dev` profile \[unoptimized \+ debuginfo\] target/.test(plain(cold.stderr)),
+        `code=${o3.code} in ${o3.ms} ms ${plain(o3.stderr).split('\n').filter((l) => /Finished/.test(l)).join('')}`);
+    const badLevel = await run(SAMPLE, { options: { optimization: '4' } });
+    check('an optimization level Cargo does not have is refused', badLevel.code === 1 && /no optimization level 4/.test(badLevel.stderr), `code=${badLevel.code}`);
+
+    // 7. Miri: interpreted as if on the Miri target, with its checks on.
+    const LAYOUT = {
+        ...MANIFEST,
+        'src/main.rs': `use std::mem::{align_of, size_of};
+
+#[allow(dead_code)]
+struct S(u8, u64);
+
+fn main() {
+    println!("usize {} u64 align {} S {} bytes {:?}", size_of::<usize>(), align_of::<u64>(), size_of::<S>(), 0x0102u16.to_ne_bytes());
+}
+`,
+    };
+    const layouts = {};
+    for (const miri of ['x86_64', 'i686', 's390x', 'armv7']) {
+        const r = await run(LAYOUT, { options: { miri } });
+        layouts[miri] = r.code === 0 ? r.stdout.trim() : `exit ${r.code}: ${plain(r.stderr).split('\n').slice(0, 3).join(' | ')}`;
+    }
+    check('Miri: a type\'s layout is the Miri target\'s (x86-64 16 bytes, i686 12 with u64 aligned to 4, ARMv7 32-bit with u64 aligned to 8, s390x big-endian)',
+        layouts.x86_64 === 'usize 8 u64 align 8 S 16 bytes [2, 1]' && layouts.i686 === 'usize 4 u64 align 4 S 12 bytes [2, 1]' &&
+            layouts.armv7 === 'usize 4 u64 align 8 S 16 bytes [2, 1]' && layouts.s390x === 'usize 8 u64 align 8 S 16 bytes [1, 2]',
+        JSON.stringify(layouts));
+    const ub = await run({
+        ...MANIFEST,
+        'src/main.rs': 'fn main() {\n    let v = vec![1u8, 2, 3];\n    let p = v.as_ptr();\n    drop(v);\n    println!("before");\n    println!("{}", unsafe { *p });\n}\n',
+    }, { options: { miri: 'x86_64' } });
+    check('Miri: a use after free stops the program where it happens, as undefined behaviour, with the line',
+        ub.code !== 0 && ub.stdout === 'before\n' && /Undefined Behavior/.test(plain(ub.stderr)) && /src\/main\.rs:6/.test(plain(ub.stderr)),
+        `code=${ub.code} ${plain(ub.stderr).split('\n').filter((l) => /Undefined|main\.rs/.test(l)).slice(0, 2).join(' | ')}`);
+    const CAUGHT = {
+        ...MANIFEST,
+        'src/main.rs': 'fn main() {\n    let r = std::panic::catch_unwind(|| -> i32 { panic!("inner") });\n    println!("caught: {}", r.is_err());\n}\n',
+    };
+    const miriCaught = await run(CAUGHT, { options: { miri: 'aarch64' } });
+    check('Miri: a panic unwinds, and catch_unwind catches it', miriCaught.code === 0 && miriCaught.stdout === 'caught: true\n' && /inner/.test(miriCaught.stderr),
+        `code=${miriCaught.code} ${JSON.stringify(miriCaught.stdout)} ${plain(miriCaught.stderr).slice(0, 200)}`);
+    // Not the sample: Miri gives hypot and sqrt the small errors their
+    // documentation allows, at random, so its exact assert_eq! on an f64
+    // fails under Miri now and then, as it may on some target.
+    const GCD = {
+        'Cargo.toml': '[package]\nname = "gcd"\nversion = "0.1.0"\nedition = "2021"\n\n[dev-dependencies]\nquickcheck = "1"\n',
+        'src/lib.rs': 'pub fn gcd(a: u32, b: u32) -> u32 {\n    if b == 0 { a } else { gcd(b, a % b) }\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn gcd_of_12_and_18_is_6() {\n        assert_eq!(super::gcd(12, 18), 6);\n    }\n\n    #[test]\n    fn a_panic_is_caught_by_libtest() {\n        let r = std::panic::catch_unwind(|| super::gcd(1, 0) / std::hint::black_box(0));\n        assert!(r.is_err());\n    }\n}\n',
+        'tests/properties.rs': 'use gcd::gcd;\nuse quickcheck::quickcheck;\n\nquickcheck! {\n    fn gcd_divides_both(a: u16, b: u16) -> bool {\n        let g = gcd(a as u32, b as u32);\n        g == 0 || (a as u32 % g == 0 && b as u32 % g == 0)\n    }\n}\n',
+    };
+    const miriTests = await run(GCD, { type: 'test', options: { miri: 'riscv64' } });
+    const miriResults = [...miriTests.stdout.matchAll(/^test (\S+) \.\.\. (ok|FAILED)$/gm)].map((m) => `${m[1]} ${m[2]}`).sort();
+    check('Miri: cargo miri test runs unit and integration tests under libtest, a quickcheck property and a caught panic included',
+        miriTests.code === 0 && JSON.stringify(miriResults) === JSON.stringify(['gcd_divides_both ok', 'tests::a_panic_is_caught_by_libtest ok', 'tests::gcd_of_12_and_18_is_6 ok']),
+        `code=${miriTests.code} in ${miriTests.ms} ms ${JSON.stringify(miriResults)}`);
+    if (miriTests.code !== 0) console.log(plain(miriTests.stderr), miriTests.stdout);
+    const noMiri = await run(SAMPLE, { options: { miri: 'wasm32' } });
+    check('Miri: a Miri target that is not one is refused', noMiri.code === 1 && /no Miri target wasm32/.test(noMiri.stderr), `code=${noMiri.code}`);
+
+    // 8. Linux targets, under the C/C++ pack's QEMU-Wasm, when it is here.
+    const vm = await page.evaluate(async () => (await fetch('/packs/cpp/vm.js', { method: 'HEAD' })).ok);
+    if (!vm) console.log('SKIP  Linux targets: no packs/cpp/vm.js (build the C/C++ pack, or set CPP_PACK_ORIGIN)');
+    else {
+        const on = (triple, files) => ({ ...files, '.cargo/config.toml': `[build]\ntarget = "${triple}"\n` });
+        for (const triple of ['x86_64-unknown-linux-musl', 'aarch64-unknown-linux-musl', 'riscv64gc-unknown-linux-musl']) {
+            const r = await run(on(triple, SAMPLE));
+            check(`${triple}: the sample, compiled by rustc-cross.wasm, runs under QEMU`, r.code === 0 && r.stdout === EXPECTED && r.loading['rustc-cross.wasm'] !== undefined,
+                `code=${r.code} in ${r.ms} ms ${JSON.stringify(r.stdout)} ${r.code === 0 ? '' : plain(r.stderr).slice(-400)}`);
+        }
+        const linuxTests = await run(on('aarch64-unknown-linux-musl', failingSample()), { type: 'test' });
+        check('aarch64-unknown-linux-musl: Test runs libtest itself; a failing test is reported and the rest still run, exit 101',
+            linuxTests.code === 101 && /test points_print_as_pairs \.\.\. FAILED/.test(linuxTests.stdout) && /test result: FAILED\. 2 passed; 1 failed/.test(linuxTests.stdout),
+            `code=${linuxTests.code} in ${linuxTests.ms} ms`);
+        const caught = await run(on('riscv64gc-unknown-linux-musl', CAUGHT));
+        check('riscv64gc-unknown-linux-musl: a panic unwinds, and catch_unwind catches it', caught.code === 0 && caught.stdout === 'caught: true\n',
+            `code=${caught.code} ${JSON.stringify(caught.stdout)}`);
+    }
+
+    // 9. The compiler output views (explorer.js), for the project's target.
+    const emit = (files, emitKind, options = {}, path = 'src/lib.rs') =>
+        page.evaluate(([f, e, o, p]) => new Promise((done) => {
+            const worker = new Worker('/packs/rust/explorer.js', { type: 'module' });
+            worker.onmessage = ({ data: m }) => {
+                if (m.type !== 'result') return;
+                worker.terminate();
+                done(m);
+            };
+            worker.postMessage({ type: 'emit', id: 1, emit: e, files: f, path: p, options: o });
+        }), [files, emitKind, options, path]);
+    const VIEW = { ...MANIFEST, 'src/lib.rs': 'pub fn square(x: i32) -> i32 {\n    x * x\n}\n\npub fn sum(v: &[i32]) -> i32 {\n    v.iter().map(|&x| square(x)).sum()\n}\n' };
+    const mir = await emit(VIEW, 'mir');
+    check('MIR view: the library\'s functions, each line mapped to its source line', mir.ok && /fn square\(/.test(mir.text) && mir.lines.some((l) => l?.line === 2),
+        `ok=${mir.ok} ${mir.ms} ms ${mir.ok ? '' : mir.error}`);
+    const ir = await emit(VIEW, 'llvm-ir', { demangle: true });
+    check('LLVM IR view on WebAssembly: demangled names, wasm32 data layout', ir.ok && /define .*demo::square/.test(ir.text) && ir.triple === 'wasm32-wasip1',
+        `ok=${ir.ok} ${ir.ms} ms ${ir.ok ? ir.text.split('\n').find((l) => l.startsWith('define')) : ir.error}`);
+    const asmViews = {};
+    // Optimised, square is inlined into sum (and, small, not emitted alone:
+    // rustc leaves it to the crates that call it), so sum multiplies.
+    for (const [triple, op] of [['x86_64-unknown-linux-musl', /\b(imul|pmulld)/], ['aarch64-unknown-linux-musl', /\b(mul|mla)\b/], ['riscv64gc-unknown-linux-musl', /\bmulw?\b/]]) {
+        const a = await emit({ ...VIEW, '.cargo/config.toml': `[build]\ntarget = "${triple}"\n` }, 'asm', { demangle: true, optimization: '2' });
+        asmViews[triple] = a.ok && op.test(a.text) && /^demo::sum:/m.test(a.text) ? `ok ${a.ms} ms` : `${a.ok ? a.text.slice(0, 200) : a.error}`;
+    }
+    check('assembly view: x86-64, AArch64 and RISC-V at opt-level 2, demangled, each with its own multiply', Object.values(asmViews).every((v) => v.startsWith('ok')), JSON.stringify(asmViews));
+
+    // 10. A program that never ends: the page terminates the worker.
     const t = Date.now();
     const forever = await run(FOREVER, { stopAfter: 'looping' });
     const alive = await page.evaluate(() => 1 + 1);

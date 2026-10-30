@@ -14,19 +14,33 @@ std-src.tar
   core, alloc and std from rust-src 1.98.0, https://github.com/rust-lang/rust
   Copyright the Rust Project Developers. MIT OR Apache-2.0.
 
-miri.wasm, sysroot.tar
-  Miri and rustc (1.78.0-dev), compiled to WebAssembly by bjorn3
-  (https://github.com/rust-lang/miri/issues/722), and the
-  x86_64-unknown-linux-gnu sysroot built with it, as published by rubri
-  (https://github.com/LyonSyonII/rubri, MIT) at commit
-  00de75bcec3d8cf5156aef2382c738cbfe069986. Miri, rustc and the standard
-  library: Copyright the Rust Project Developers, MIT OR Apache-2.0. The
-  sysroot's other crates (hashbrown, libc, memchr, object, gimli, addr2line,
-  miniz_oxide, adler, cfg-if, rustc-demangle, getopts, unicode-width,
-  compiler_builtins) are MIT and/or Apache-2.0 (compiler_builtins also
-  carries the LLVM exception).
+rustc.wasm, rustc-cross.wasm, miri.wasm
+  rustc and Miri 1.98.1 with LLVM 22 and lld inside, compiled for a
+  wasm32-wasip1-threads host from Rust's source tarball by the compilers unit,
+  https://github.com/rust-lang/rust and https://github.com/llvm/llvm-project.
+  Copyright the Rust Project Developers, MIT OR Apache-2.0; LLVM and lld:
+  Copyright the LLVM Project, Apache-2.0 WITH LLVM-exception. Built with
+  patches (toolchains/compilers/patches, its README) from homescoop
+  (https://github.com/homescoop, Apache-2.0, LICENSE-homescoop.txt), from
+  LLVM, and of ours. Their crates.io dependencies are MIT and/or Apache-2.0
+  (Cargo.lock in the source tarball lists them). wasi-libc and libc++ of
+  wasi-sdk 34 linked in: MIT and Apache-2.0 WITH LLVM-exception.
 
-quickcheck-1.0.3.tar, quickcheck-1.0.3-src.tar
+sysroot-<triple>.tar
+  the official rust-std 1.98.1 for wasm32-wasip1 and the
+  x86_64/aarch64/riscv64gc-unknown-linux-musl targets, from
+  https://static.rust-lang.org, Copyright the Rust Project Developers, MIT
+  OR Apache-2.0; musl (MIT) and compiler_builtins (with the LLVM
+  exception) as rust-std ships them, and the crates of std (hashbrown,
+  libc, memchr, object, gimli, addr2line, miniz_oxide, adler2, cfg-if,
+  rustc-demangle, getopts, unicode-width), MIT and/or Apache-2.0.
+
+miri-sysroot-<triple>.tar
+  std's metadata for each Miri target, built from rust-src 1.98.1 by
+  `cargo miri setup`: the same crates and licences as above.
+
+quickcheck-1.0.3-<triple>.tar, quickcheck-1.0.3-miri-<triple>.tar,
+quickcheck-1.0.3-src.tar
   quickcheck 1.0.3, https://github.com/BurntSushi/quickcheck, Copyright
   Andrew Gallant. Unlicense OR MIT (used here under MIT).
   Its dependencies, from crates.io (versions in packs/rust/crates/Cargo.lock):

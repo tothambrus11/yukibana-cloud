@@ -5,9 +5,9 @@
 
 const decoder = new TextDecoder();
 
-/** The edition when Cargo.toml names none; 2021 is the newest this rustc knows. */
+/** The edition when Cargo.toml names none or one rustc 1.98 does not know: the template's (2024 is known too). */
 export const DEFAULT_EDITION = '2021';
-export const EDITIONS = new Set(['2015', '2018', '2021']);
+export const EDITIONS = new Set(['2015', '2018', '2021', '2024']);
 
 /** A crate's name as code names it: a file's stem, with dashes as underscores. */
 export const stem = (path) => path.split('/').pop().replace(/\.rs$/, '').replace(/-/g, '_');

@@ -48,13 +48,17 @@ test('the level and the target are independent lines of the same file', () => {
 	assert.equal(withCppLevel(flags, '-O2'), '--target=x86_64-linux-musl\n-std=c++20\n');
 });
 
-test('only C, C++, Swift and Scala have levels, and a saved level that is not one of the language\'s is the default', () => {
+test('only C, C++, Swift, Scala and Rust have levels, and a saved level that is not one of the language\'s is the default', () => {
 	assert.ok(levelsOf('cpp'));
 	assert.deepEqual(levelsOf('swift').map((l) => l.flag), ['-Onone', '-O', '-Osize']);
 	assert.deepEqual(levelsOf('scala').map((l) => l.flag), ['off', 'on']);
 	assert.equal(savedLevelOf('scala', 'on'), 'on');
 	assert.equal(savedLevelOf('scala', '-O'), null);
-	for (const language of ['python', 'javascript', 'typescript', 'rust', 'java', 'kotlin', 'php', 'haskell', 'go', 'zig']) assert.equal(levelsOf(language), null, language);
+	assert.deepEqual(levelsOf('rust').map((l) => l.flag), ['0', '1', '2', '3', 's', 'z']);
+	assert.equal(levelsOf('rust').find((l) => l.default).flag, '0', 'a Rust project is on the dev profile unless it chose another level');
+	assert.equal(savedLevelOf('rust', '3'), '3');
+	assert.equal(savedLevelOf('rust', '-O'), null);
+	for (const language of ['python', 'javascript', 'typescript', 'java', 'kotlin', 'php', 'haskell', 'go', 'zig']) assert.equal(levelsOf(language), null, language);
 	for (const level of levelsOf('swift')) assert.equal(savedLevelOf('swift', level.flag), level.flag, level.flag);
 	assert.ok(levelsOf('swift').every((l) => !l.unavailable), 'every Swift level can be chosen');
 	assert.equal(savedLevelOf('cpp', '-O0'), '-O0');

@@ -20,6 +20,10 @@
  * project and sent with Run. Download cannot carry it: the downloaded
  * project is an sbt project for the JVM, which has no such switch.
  *
+ * Rust: Cargo's `opt-level`, saved with the project and sent with Run and
+ * Test (the pack's rustc compiles with `-Copt-level=<level>`); level 0 is
+ * Cargo's dev profile, with full debug info, and 3 its release profile.
+ *
  * Imports nothing, so `node` can load this file directly (tests/unit/optimization.test.mjs).
  */
 
@@ -44,7 +48,7 @@ export interface OptimizationLevel {
 }
 
 /** The languages with levels. */
-export type OptimizingLanguage = 'c' | 'cpp' | 'swift' | 'scala';
+export type OptimizingLanguage = 'c' | 'cpp' | 'swift' | 'scala' | 'rust';
 
 /**
  * Clang's levels. `-O2` is the default because it is what Run used before
@@ -85,9 +89,24 @@ export const SCALA_LEVELS: readonly OptimizationLevel[] = [
 	{ flag: 'on', label: 'Optimizer on' },
 ];
 
+/**
+ * rustc's levels, as Cargo's `opt-level` spells them. `0` is the default:
+ * Cargo's dev profile (`cargo build`, `cargo run`), compiled with full
+ * debug info (`-Cdebuginfo=2`) for the debugger; the others are compiled
+ * without, as the release profile is (packs/rust README, "Optimization").
+ */
+export const RUST_LEVELS: readonly OptimizationLevel[] = [
+	{ flag: '0', label: 'opt-level 0 (debug)', default: true },
+	{ flag: '1', label: 'opt-level 1' },
+	{ flag: '2', label: 'opt-level 2' },
+	{ flag: '3', label: 'opt-level 3 (release)' },
+	{ flag: 's', label: 'opt-level s (size)' },
+	{ flag: 'z', label: 'opt-level z (smallest)' },
+];
+
 /** The levels of `language`, or null for a language without them. */
 export function levelsOf(language: string): readonly OptimizationLevel[] | null {
-	return language === 'cpp' || language === 'c' ? CPP_LEVELS : language === 'swift' ? SWIFT_LEVELS : language === 'scala' ? SCALA_LEVELS : null;
+	return language === 'cpp' || language === 'c' ? CPP_LEVELS : language === 'swift' ? SWIFT_LEVELS : language === 'scala' ? SCALA_LEVELS : language === 'rust' ? RUST_LEVELS : null;
 }
 
 /** The default level of a language with levels. */

@@ -1,0 +1,12 @@
+rustc.wasm
+rustc.wasm.br
+rustc.wasm.gz
+rustc-cross.wasm
+rustc-cross.wasm.br
+rustc-cross.wasm.gz
+miri.wasm
+miri.wasm.br
+miri.wasm.gz
+LICENSE-homescoop.txt
+versions-compilers.json
+build-only/pins.sh

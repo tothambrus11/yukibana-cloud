@@ -1,0 +1,8 @@
+[
+    { "id": "x86_64", "label": "x86-64", "detail": "64-bit, little-endian", "triple": "x86_64-unknown-linux-gnu" },
+    { "id": "aarch64", "label": "AArch64", "detail": "64-bit, little-endian", "triple": "aarch64-unknown-linux-gnu" },
+    { "id": "riscv64", "label": "RISC-V 64", "detail": "64-bit, little-endian", "triple": "riscv64gc-unknown-linux-gnu" },
+    { "id": "i686", "label": "x86 (i686)", "detail": "32-bit; u64 and f64 aligned to 4", "triple": "i686-unknown-linux-gnu" },
+    { "id": "armv7", "label": "ARMv7", "detail": "32-bit, as WebAssembly's pointers", "triple": "armv7-unknown-linux-gnueabihf" },
+    { "id": "s390x", "label": "s390x", "detail": "64-bit, big-endian", "triple": "s390x-unknown-linux-gnu" }
+]

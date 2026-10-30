@@ -1,60 +1,57 @@
 // Compiles the crates.io packages of crates/ (quickcheck and what it depends
-// on) for the runner's Miri, and packs their sources for rust-analyzer.
+// on) for every target of the runner, and packs their sources for
+// rust-analyzer.
 //
-//   node scripts/build-crates.mjs <toolchain> <cargo target dir> <miri.wasm> <sysroot.tar> <out dir> <name>
+//   node scripts/build-crates.mjs <toolchain> <cargo target dir> <out dir> <name> <rustc triples> <miri triples>
 //
-// writes <out dir>/<name>.tar and <out dir>/<name>-src.tar.
+// with the triples comma-separated, and in the environment MIRI and
+// CARGO_MIRI (the native Miri and cargo-miri of the same Rust release) and
+// MIRI_SYSROOTS, a directory holding Miri's standard library for each Miri
+// triple under its triple. Writes into <out dir>:
 //
-// Cargo decides, Miri compiles. `cargo check --target
-// x86_64-unknown-linux-gnu` over crates/ (Cargo.lock pins every version and
-// checksum) resolves the graph, enables the features, runs the build
-// scripts natively, as Cargo runs them on the host, and reports each lib
-// crate it compiles, dependencies first; `cargo metadata` gives each crate's
-// dependencies under the names its code uses. This script then compiles the
-// same crates, in the same order, with the same editions, features and
-// build-script cfgs, with miri.wasm as rustc (MIRI_BE_RUSTC=target) into
-// metadata with every function's MIR (`-Zalways-encode-mir`), which is all
-// Miri reads: the way the runner compiles a project's own library.
+//   <name>-<triple>.tar        for each rustc triple: the crates' rlibs
+//                              (lib<crate>.rlib), for the runner's
+//                              `--extern` and `-L dependency=`
+//   <name>-miri-<triple>.tar   for each Miri triple: their rlibs as Miri
+//                              makes them (metadata with every function's
+//                              MIR, no code), for Miri's
+//   <name>-src.tar             their sources (<package>-<version>/**.rs,
+//                              without tests, benches, examples and build
+//                              scripts) and crates.json, which tells
+//                              rust-analyzer the crate graph: for each crate
+//                              its id, name, edition, root file, cfgs and
+//                              dependencies, in dependency order, and which
+//                              crates a project may name in its Cargo.toml
+//                              (`direct`)
 //
-// The build scripts ran under the host's rustc (the toolchain argument),
-// not Miri's 1.78: Cargo has one rustc for both. Of these crates only libc
-// has one, and for this target the only thing it derives from the rustc
-// version is `cargo::rustc-check-cfg` lines (rustc 1.80 and later), which
-// declare cfgs for a lint and are not passed here; its cfgs
-// (`linux_time_bits64`) depend on the target alone.
-//
-// Miri runs under @bjorn3/browser_wasi_shim, the runner's own WASI, with
-// its files in memory. Node's built-in node:wasi was tried first and
-// crashes Node (a segmentation fault) while compiling libc.
-//
-// <name>.tar      the crates' .rmeta files (lib<crate>.rmeta), for the
-//                 runner's `--extern` and `-L dependency=`
-// <name>-src.tar  their sources (<package>-<version>/**.rs, without tests,
-//                 benches, examples and build scripts) and crates.json,
-//                 which tells rust-analyzer the crate graph: for each crate
-//                 its id, name, edition, root file, cfgs and dependencies,
-//                 in dependency order, and which crates a project may name
-//                 in its Cargo.toml (`direct`)
+// Cargo builds them, with Rust's own release of the version the pack's
+// rustc.wasm and miri.wasm are (the toolchain argument): a crate is loaded
+// only by a compiler whose version string is the same to the byte, and
+// ours is built to say what the release says (the compilers unit).
+// `cargo build --target <triple>` for rustc; `cargo miri build` for Miri,
+// as `cargo miri test` builds a project's dependencies (rlibs of metadata
+// with MIR, no code, cfg miri). Cargo.lock pins every version and checksum.
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Directory, File, OpenFile, PreopenDirectory, WASI, WASIProcExit, ConsoleStdout } from '@bjorn3/browser_wasi_shim';
 
 const TARGET = 'x86_64-unknown-linux-gnu';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CRATES = resolve(HERE, '../crates');
 
-const [toolchain, targetDir, miriWasm, sysrootTar, outDir, name] = process.argv.slice(2);
-if (!name) {
-    console.error('usage: node scripts/build-crates.mjs <toolchain> <cargo target dir> <miri.wasm> <sysroot.tar> <out dir> <name>');
+const [toolchain, targetDir, outDir, name, rustcList, miriList] = process.argv.slice(2);
+if (miriList === undefined || !process.env.MIRI || !process.env.CARGO_MIRI || !process.env.MIRI_SYSROOTS) {
+    console.error('usage: MIRI=… CARGO_MIRI=… MIRI_SYSROOTS=… node scripts/build-crates.mjs <toolchain> <cargo target dir> <out dir> <name> <rustc triples> <miri triples>');
     process.exit(2);
 }
+const rustcTriples = rustcList.split(',').filter(Boolean);
+const miriTriples = miriList.split(',').filter(Boolean);
 
 // ---- what Cargo would do
 
-const cargo = (args) =>
-    execFileSync('cargo', [`+${toolchain}`, ...args], { cwd: CRATES, env: { ...process.env, CARGO_TARGET_DIR: targetDir }, maxBuffer: 1 << 28 }).toString();
+const cargo = (args, env = {}) =>
+    execFileSync('cargo', [`+${toolchain}`, ...args], { cwd: CRATES, env: { ...process.env, CARGO_TARGET_DIR: targetDir, ...env }, maxBuffer: 1 << 28, stdio: ['ignore', 'pipe', 'inherit'] }).toString();
 const metadata = JSON.parse(cargo(['metadata', '--format-version=1', '--locked', `--filter-platform=${TARGET}`]));
 const messages = cargo(['check', '--locked', `--target=${TARGET}`, '--message-format=json'])
     .split('\n')
@@ -94,26 +91,6 @@ for (const m of crates) {
 
 // ---- the files, in memory
 
-/** The regular files of a ustar archive, as [path, bytes]. */
-function untar(tar) {
-    const decoder = new TextDecoder();
-    const field = (at, length) => {
-        const end = tar.indexOf(0, at);
-        return decoder.decode(tar.subarray(at, end < 0 || end > at + length ? at + length : end));
-    };
-    const files = [];
-    for (let at = 0; at + 512 <= tar.length && tar[at] !== 0; ) {
-        const path = field(at, 100);
-        const prefix = field(at + 345, 155);
-        const size = parseInt(field(at + 124, 12).trim() || '0', 8);
-        const type = String.fromCharCode(tar[at + 156] || 48);
-        at += 512;
-        if (type === '0') files.push([prefix ? `${prefix}/${path}` : path, tar.subarray(at, at + size)]);
-        at += Math.ceil(size / 512) * 512;
-    }
-    return files;
-}
-
 /** A ustar archive of [path, bytes], in the order given; paths up to 255 bytes. */
 function tar(entries) {
     const encoder = new TextEncoder();
@@ -147,21 +124,6 @@ function tar(entries) {
     return Buffer.concat(blocks);
 }
 
-/** A directory tree for the WASI shim from [path, bytes]. */
-function tree(entries) {
-    const top = new Map();
-    for (const [path, data] of entries) {
-        const parts = path.split('/').filter(Boolean);
-        let dir = top;
-        for (const part of parts.slice(0, -1)) {
-            if (!dir.has(part)) dir.set(part, new Directory(new Map()));
-            dir = dir.get(part).contents;
-        }
-        dir.set(parts.at(-1), new File(data));
-    }
-    return top;
-}
-
 /** The files of a directory, recursively, as [path relative to it, bytes]. */
 function walk(dir, base = dir) {
     return readdirSync(dir).flatMap((entry) => {
@@ -175,102 +137,81 @@ function walk(dir, base = dir) {
 const sources = (pkg) =>
     walk(dirname(pkg.manifest_path)).filter(([path]) => path.endsWith('.rs') && path !== 'build.rs' && !/^(tests|benches|examples)\//.test(path));
 
-// ---- compiling
+// ---- the crate graph, for rust-analyzer
 
-const module = await WebAssembly.compile(readFileSync(miriWasm));
-const sysroot = tree(untar(readFileSync(sysrootTar)));
 /** /src: every crate's sources, as <package>-<version>/... */
 const srcEntries = crates.flatMap((m) => {
     const pkg = pkgOf(m.package_id);
     return sources(pkg).map(([path, data]) => [`${idOf(pkg)}/${path}`, data]);
 });
-const src = tree(srcEntries);
-const out = new Map();
-
-/** Runs one instance of Miri as rustc; returns its exit code, stderr printed. */
-function rustc(args, env) {
-    const fds = [
-        new OpenFile(new File([])),
-        ConsoleStdout.lineBuffered((line) => console.log(line)),
-        ConsoleStdout.lineBuffered((line) => console.error(line)),
-        new PreopenDirectory('/sysroot', sysroot),
-        new PreopenDirectory('/src', src),
-        new PreopenDirectory('/out', out),
-        new PreopenDirectory('/tmp', new Map()),
-    ];
-    const wasi = new WASI(['miri', ...args], env, fds, { debug: false });
-    const imports = { wasi_snapshot_preview1: wasi.wasiImport };
-    // As in the runner: rubri's build declares thread spawning, which rustc
-    // never calls with one thread.
-    for (const { module: from, name: fn, kind } of WebAssembly.Module.imports(module)) {
-        if (from === 'wasi_snapshot_preview1' || kind !== 'function') continue;
-        imports[from] ??= {};
-        imports[from][fn] ??= () => {
-            throw new Error(`${from}.${fn} is not available`);
-        };
-    }
-    try {
-        return wasi.start(new WebAssembly.Instance(module, imports));
-    } catch (e) {
-        if (e instanceof WASIProcExit) return e.code;
-        if (e instanceof WebAssembly.RuntimeError) return 1; // rustc's abort after an error it reported
-        throw e;
-    }
-}
-
-const graph = [];
-for (const m of crates) {
+const graph = crates.map((m) => {
     const pkg = pkgOf(m.package_id);
-    const id = idOf(pkg);
-    const name = crateName(m);
-    const rootPath = `${id}/${relative(dirname(pkg.manifest_path), m.target.src_path)}`;
+    const rootPath = `${idOf(pkg)}/${relative(dirname(pkg.manifest_path), m.target.src_path)}`;
     const deps = depsOf(m.package_id).map(([dep, pkgId]) => ({ name: dep, id: idOf(pkgOf(pkgId)) }));
     const cfgs = [...m.features.map((f) => `feature="${f}"`), ...(scriptCfgs.get(m.package_id) ?? [])];
-    const [major, minor, patch] = pkg.version.split(/[.+-]/);
-    // What Cargo sets for rustc (env! and option_env! read them), and what
-    // the build script added.
-    const env = [
-        'MIRI_BE_RUSTC=target',
-        `CARGO_PKG_NAME=${pkg.name}`,
-        `CARGO_PKG_VERSION=${pkg.version}`,
-        `CARGO_PKG_VERSION_MAJOR=${major}`,
-        `CARGO_PKG_VERSION_MINOR=${minor}`,
-        `CARGO_PKG_VERSION_PATCH=${patch}`,
-        `CARGO_CRATE_NAME=${name}`,
-        `CARGO_MANIFEST_DIR=/src/${id}`,
-        ...(scriptEnv.get(m.package_id) ?? []).map(([k, v]) => `${k}=${v}`),
-    ];
-    const args = [
-        `--crate-name=${name}`,
-        `--edition=${m.target.edition}`,
-        '--crate-type=lib',
-        '--emit=metadata',
-        '-Zalways-encode-mir',
-        '-o',
-        `/out/lib${name}.rmeta`,
-        '--sysroot',
-        '/sysroot',
-        `--target=${TARGET}`,
-        '--cap-lints=allow',
-        // Panic locations as Cargo's registry paths end:
-        // quickcheck-1.0.3/src/tester.rs:165:28.
-        '--remap-path-prefix=/src/=',
-        '-L',
-        'dependency=/out',
-        ...cfgs.flatMap((c) => ['--cfg', c]),
-        ...deps.flatMap((d) => ['--extern', `${d.name}=/out/lib${crateName(crates.find((c) => idOf(pkgOf(c.package_id)) === d.id))}.rmeta`]),
-        `/src/${rootPath}`,
-    ];
-    const started = Date.now();
-    const code = rustc(args, env);
-    if (code !== 0) throw new Error(`${id}: Miri as rustc exited with ${code}`);
-    console.log(`${id}: lib${name}.rmeta, ${out.get(`lib${name}.rmeta`).data.length} bytes, ${Date.now() - started} ms`);
-    graph.push({ id, name, version: pkg.version, edition: m.target.edition, root: rootPath, cfg: cfgs, deps, license: pkg.license });
-}
-
+    return { id: idOf(pkg), name: crateName(m), version: pkg.version, edition: m.target.edition, root: rootPath, cfg: cfgs, deps, license: pkg.license };
+});
 const direct = depsOf(root).map(([dep]) => dep);
-const rmeta = [...out].filter(([, f]) => f instanceof File).map(([n, f]) => [n, f.data]).sort(([a], [b]) => (a < b ? -1 : 1));
-writeFileSync(join(outDir, `${name}.tar`), tar(rmeta));
 const crateJson = Buffer.from(`${JSON.stringify({ crates: graph, direct }, null, 1)}\n`);
 writeFileSync(join(outDir, `${name}-src.tar`), tar([['crates.json', crateJson], ...srcEntries.sort(([a], [b]) => (a < b ? -1 : 1))]));
-console.log(`${name}.tar: ${rmeta.map(([n]) => n).join(', ')}; ${name}-src.tar: ${srcEntries.length} files; direct: ${direct.join(', ')}`);
+console.log(`${name}-src.tar: ${srcEntries.length} files; direct: ${direct.join(', ')}`);
+
+// ---- compiling
+
+/**
+ * The lib crates a build made for its target, from Cargo's JSON messages
+ * (not the empty package's own, and not build scripts' host crates), as
+ * [lib<crate>.<ext>, bytes]: the graph differs between targets
+ * (getrandom needs libc on Linux and wasi on WASI). Renamed without
+ * Cargo's hash, since rustc finds a dependency by its crate name and
+ * checks its hash itself, and the runner names a direct dependency
+ * without knowing it.
+ */
+function collect(out, ext) {
+    const files = new Map();
+    for (const line of out.split('\n')) {
+        if (!line.startsWith('{')) continue;
+        const m = JSON.parse(line);
+        if (m.reason !== 'compiler-artifact' || m.package_id === root || !m.target.kind.includes('lib')) continue;
+        const file = m.filenames.find((f) => f.endsWith(`.${ext}`));
+        if (!file) throw new Error(`${m.package_id}: no .${ext} among ${m.filenames.join(', ')}`);
+        files.set(`lib${crateName(m)}.${ext}`, readFileSync(file));
+    }
+    return [...files].sort(([a], [b]) => (a < b ? -1 : 1));
+}
+
+// Panic locations as Cargo's registry paths end: quickcheck-1.0.3/src/tester.rs:165:28.
+const registry = dirname(dirname(pkgOf(crates[0].package_id).manifest_path));
+const remap = `--remap-path-prefix=${registry}=`;
+const flags = (extra) => [remap, ...extra].join('\x1f');
+
+for (const triple of rustcTriples) {
+    // As the runner's crates: optimized, with line tables (a backtrace and
+    // a debugger stepping into quickcheck have file and line), like std.
+    const out = cargo(['build', '--locked', '--release', `--target=${triple}`, '--message-format=json'], {
+        CARGO_ENCODED_RUSTFLAGS: flags([]),
+        CARGO_PROFILE_RELEASE_DEBUG: 'line-tables-only',
+    });
+    const files = collect(out, 'rlib');
+    writeFileSync(join(outDir, `${name}-${triple}.tar`), tar(files));
+    console.log(`${name}-${triple}.tar: ${files.map(([n, d]) => `${n} ${d.length}`).join(', ')}`);
+}
+
+for (const triple of miriTriples) {
+    const out = execFileSync(process.env.CARGO_MIRI, ['miri', 'build', '--locked', `--target=${triple}`, '--message-format=json'], {
+        cwd: CRATES,
+        env: {
+            ...process.env,
+            CARGO_TARGET_DIR: targetDir,
+            MIRI_BUILD_TEST_DEPS: '1',
+            MIRI_SYSROOT: join(process.env.MIRI_SYSROOTS, triple),
+            RUSTUP_TOOLCHAIN: toolchain,
+            CARGO_ENCODED_RUSTFLAGS: flags([]),
+        },
+        stdio: ['ignore', 'pipe', 'inherit'],
+        maxBuffer: 1 << 28,
+    }).toString();
+    const files = collect(out, 'rlib');
+    writeFileSync(join(outDir, `${name}-miri-${triple}.tar`), tar(files));
+    console.log(`${name}-miri-${triple}.tar: ${files.map(([n, d]) => `${n} ${d.length}`).join(', ')}`);
+}

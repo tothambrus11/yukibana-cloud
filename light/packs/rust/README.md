@@ -1,11 +1,14 @@
-# Rust pack: rust-analyzer's IDE crates for the editor, Miri (an interpreter, rustc 1.78) for Run and Test
+# Rust pack: rust-analyzer's IDE crates for the editor, rustc 1.98.1 with LLVM for Run and Test, Miri for undefined behaviour
 
 | part | what it is | what it does |
 |---|---|---|
 | `server.js` + `rust-analyzer.wasm` | **rust-analyzer's IDE crates** (`ra_ap_ide` and friends, **0.0.358**, from crates.io) with a small LSP layer written for this pack (`server/src/lib.rs`), compiled to wasm32-wasip1 with Rust 1.98.0 | diagnostics, completion (with auto-import), hover, signature help, definition, type definition, implementations, references, highlights, outline, rename, quick fixes and assists, semantic tokens, inlay hints |
 | `std-src.tar` | `core`, `alloc` and `std` sources from **rust-src 1.98.0** | what rust-analyzer reads for the standard library: types, completion, docs |
-| `runner.js` + `miri.wasm` + `sysroot.tar` | **Miri**, rustc's MIR interpreter (rustc **1.78.0-dev**), compiled to wasm32-wasip1 by bjorn3 and published by [rubri](https://github.com/LyonSyonII/rubri), with its x86_64-unknown-linux-gnu sysroot | **Run** (stdout/stderr, interactive stdin) and **Test** (`#[test]` in `src/`, and `tests/*.rs`, reported like `cargo test`) |
-| `quickcheck-1.0.3.tar` + `quickcheck-1.0.3-src.tar` | **[quickcheck](https://github.com/BurntSushi/quickcheck) 1.0.3** and its dependencies (rand, rand_core, getrandom, libc, cfg-if) from crates.io, compiled with that Miri, and their sources | **property-based tests**, for a project whose `Cargo.toml` names `quickcheck` (see "Property-based tests"); downloaded only then |
+| `runner.js` + `rustc.wasm` + `sysroot-wasm32-wasip1.tar` | **rustc 1.98.1** with **LLVM 22**'s WebAssembly code generator and lld inside, compiled for a wasm32-wasip1-threads host (`toolchains/compilers`), and Rust's own rust-std for wasm32-wasip1 | **Run** and **Test** of the default target, WebAssembly (WASI): a real compile, with full debug info at opt-level 0, and the program run in the browser |
+| `rustc-cross.wasm` + `sysroot-<triple>.tar` | the same rustc with the x86-64, AArch64 and RISC-V code generators and lld's ELF linker too, and rust-std for `x86_64`, `aarch64` and `riscv64gc-unknown-linux-musl` | Run and Test of a **Linux target**: a static ELF, run under the C/C++ pack's QEMU-Wasm |
+| `miri.wasm` + `miri-sysroot-<triple>.tar` | **Miri** of the same tree, and std built for Miri on six targets | Run and Test **under Miri** (Build settings), which stops at undefined behaviour, as if on the Miri target chosen: x86-64, AArch64, RISC-V 64, i686, ARMv7, s390x |
+| `explorer.js` | the same rustc, compiling only | the **MIR**, **LLVM IR** and **assembly** views, each line mapped to its source line |
+| `quickcheck-1.0.3-<triple>.tar`, `quickcheck-1.0.3-miri-<triple>.tar`, `quickcheck-1.0.3-src.tar` | **[quickcheck](https://github.com/BurntSushi/quickcheck) 1.0.3** and its dependencies (rand, rand_core, getrandom, libc, cfg-if) from crates.io, compiled for each target and for Miri's, and their sources | **property-based tests**, for a project whose `Cargo.toml` names `quickcheck` (see "Property-based tests"); downloaded only then |
 
 The status bar shows `rust-analyzer (ra_ap_ide, Yukibana) 0.0.358`. This is
 **not the `rust-analyzer` binary**: that program needs threads, a file
@@ -13,15 +16,14 @@ watcher, and `cargo metadata` to find out what the project is. The pack uses
 the same analysis crates the binary is built on, on one thread, and builds
 the crate graph itself from the files in the editor (see "The crate graph").
 
-**Run does not compile the program.** No rustc that produces a runnable
-program works in a browser: rustc's code generators (LLVM and Cranelift) and
-the linker have not been built for WebAssembly in any usable, published form
-(see "Alternatives"). The runner uses rustc's front end (parsing, macro
-expansion, name resolution, type and borrow checking: the compile errors are
-rustc's own) and then **interprets** the program's MIR with Miri. That is
-real Rust semantics, but it is slow (roughly 100 to 1000 times slower than a
-compiled program) and the compiler is **1.78** (May 2024), edition 2021 at
-most.
+**Run compiles the program**, in the browser, with rustc and LLVM, as
+`cargo build` does, and runs what it made. The default is WebAssembly
+(WASI) with `rustc.wasm`, the smaller compiler, which needs no emulator.
+A project picks a Linux target as Cargo does, with `[build] target` in
+`.cargo/config.toml` (the app's target picker writes it); that downloads
+`rustc-cross.wasm` and runs the program under QEMU. Miri is a choice of its
+own (Build settings, "Miri"): not a target, a way of running the program
+that checks it for undefined behaviour.
 
 ## The language server (server.js)
 
@@ -59,7 +61,8 @@ a file, or changes `Cargo.toml`, the way Cargo would:
   edition 2021 (or the one `Cargo.toml` names), and has the cfgs `test` and
   `debug_assertions` set, so `#[cfg(test)]` modules are analysed.
 - The target is x86_64-unknown-linux-gnu (cfgs and data layout, so hover
-  shows real sizes), like the runner's.
+  shows real sizes), whatever the project's target: hover's sizes are
+  x86-64's. Run under Miri on another target shows that target's.
 
 - If `Cargo.toml` names `quickcheck` under `[dependencies]` or
   `[dev-dependencies]`, `server.js` downloads `quickcheck-1.0.3-src.tar`
@@ -74,14 +77,13 @@ a file, or changes `Cargo.toml`, the way Cargo would:
 Not read from `Cargo.toml`: other `[dependencies]` (there is no crates.io
 here, see "What does not work"), features, `[[bin]]` paths, build scripts.
 
-### Why std 1.98 for analysis and 1.78 for running
+### Why std 1.98.0 for analysis and 1.98.1 for running
 
-rust-analyzer 0.0.358 lowers `format_args!` only the way std 1.93 and later
-define it. Given std 1.78's sources, every `write!`, `format!` and
-`println!` with arguments was a false `E0308`. So the editor analyses
-against std 1.98 while the program runs on std 1.78. A function added to
-std after 1.78 (for example `<[T]>::get_disjoint_mut`, 1.86) completes and
-type checks in the editor, then fails on Run with rustc's `E0599`.
+rust-analyzer 0.0.358 needs rustc 1.98 to build, and lowers `format_args!`
+only the way std 1.93 and later define it, so it reads std 1.98.0's
+sources. The compilers are 1.98.1, a point release whose std has the same
+API. They used to be far apart (Miri 1.78, which made a function newer
+than 1.78 complete in the editor and fail on Run); they no longer are.
 
 ### Diagnostics
 
@@ -118,28 +120,92 @@ last word.
   workspace symbol search, no call hierarchy, no folding ranges from the
   server (Monaco folds by indentation).
 
+## The compiler (toolchains/compilers)
+
+The compilers unit builds rustc 1.98.1 from Rust's source tarball for a
+**wasm32-wasip1-threads host**, with wasi-sdk 34's clang, in one bootstrap
+tree:
+
+1. **LLVM 22.1.8** (Rust's own fork, in the tarball) twice: natively, for
+   the stage-1 compiler that builds the rest, and for the wasm host, with
+   the WebAssembly, X86, AArch64 and RISCV targets, and lld.
+2. **rustc-cross.wasm**: stage 2, `compiler/rustc`, every one of those
+   targets.
+3. **rustc.wasm** and **miri.wasm**: rustc linked again against the same
+   LLVM with `RUSTC_LLVM_ONLY_TARGETS=webassembly`, so only WebAssembly's
+   code generator is in it (a third smaller), and Miri, of the same tree.
+
+The patches (`toolchains/compilers/patches`, their README) are mostly
+homescoop's work on rustc for WASI hosts (threads, no `dlopen`, the LLVM wrapper, lld
+in-process), three LLVM fixes backported (one makes debug info for
+WebAssembly survive LLVM's wasm host), and three of ours: one that links
+rustc.wasm against WebAssembly's code generator alone, a bootstrap fix
+that gives Miri a `rustc_driver` to link on a host without shared
+libraries, and one that builds Miri for a WASI host and gives it its
+target's features without asking LLVM, which in that compiler knows only
+WebAssembly. `[build] description = ""` makes the version string exactly
+that of the official release, `rustc 1.98.1 (48a229cea 2026-09-01)`, and
+that is the point of building that release: crates load only into
+a compiler of the same version string, so **Rust's own rust-std for each
+target loads into these compilers unchanged**, and stable 1.98.1's Cargo
+builds the crates (below).
+
+It is about 4 hours on 4 cores and some 25 GB of build tree (kept in
+`$TMPDIR`, not in the CI cache): a toolchain unit (below), built by
+light-packs.yml's unit job when its inputs change and kept in the
+toolchain store, so a change to the pack's JavaScript never rebuilds it.
+
+Each compiler is a wasm32-wasip1-threads program: `threads.js` gives it
+`wasi-threads` (each thread a worker, `thread.js`, on one shared memory)
+and a WASI file system (`@bjorn3/browser_wasi_shim` 0.4.2) with
+`/sysroot`, `/project`, `/deps`, `/out` and `/tmp`. rustc runs with
+`RUSTC_SYSROOT=/sysroot` (it cannot find its sysroot from its own path
+here) and `RUSTC_BOOTSTRAP=1`.
+
 ## The runner (runner.js)
 
 The contract's runner (`../CONTRACT.md`, "Running a program").
 
-1. **Load**: download `miri.wasm` and `sysroot.tar` (`loading` messages)
-   and compile the module once; the sysroot becomes an in-memory WASI file
-   system (`@bjorn3/browser_wasi_shim` 0.4.2) with `/sysroot`, `/project`,
-   `/out` and `/tmp`.
-2. **Library**: if there is a `src/lib.rs`, Miri runs as rustc
-   (`MIRI_BE_RUSTC=target`) and writes its metadata, MIR included
-   (`--emit=metadata -Zalways-encode-mir`), under the package's name.
-3. **Run**: Miri interprets `src/main.rs` (or `main.rs`) with that library
-   as `--extern`. stdout and stderr are streamed; stdin follows the
-   contract (stdout is flushed, the worker blocks on the SharedArrayBuffer;
-   Ctrl-D is end of file). Compile errors are rustc's, with paths as the
-   project names them, and exit 1. A panic prints Rust's own
-   `thread 'main' panicked at ...` and exits 101; `process::exit(n)` exits
-   n; Stop ends the worker (an endless loop is fine).
+1. **Load**: download the compiler the target needs and that target's
+   sysroot (`loading` messages) and compile the module once.
+2. **Library**: if there is a `src/lib.rs`, it is compiled to an rlib under
+   the package's name.
+3. **Build**: `src/main.rs` (or `main.rs`) with that library as
+   `--extern`, at the Build settings' optimisation level, to
+   `/out/<package>.wasm` or a static ELF. Compile errors are rustc's, with
+   paths as the project names them, and exit 1. Cargo's status lines
+   (`Compiling`, `Finished`, `Running`) go to stderr, as with `cargo run`.
+4. **Run**: a WebAssembly program runs in the runner's worker, on WASI
+   (stdout and stderr streamed, stdin by the contract: stdout is flushed,
+   the worker blocks on the SharedArrayBuffer; Ctrl-D is end of file). A
+   Linux program runs in `linux-worker.js` on the C/C++ pack's QEMU-Wasm,
+   with the C++ pack's Run options (user or system emulation, CPUs,
+   strace). A panic prints Rust's own `thread 'main' panicked at ...` and
+   exits 101 on Linux; on WebAssembly, whose std is `panic=abort`, the
+   abort traps and the program exits 134, as under wasmtime.
+   `process::exit(n)` exits n; Stop ends the worker (an endless loop is
+   fine).
 
-Each step is a fresh Miri instance (rustc keeps global state). A warm run
-of the sample takes about 2.5 s; the first, with downloads, a few seconds
-more.
+**Targets** (`src/targets.json`, `app/src/lib/rust-targets.ts`):
+
+| target | triple | compiler | runs on |
+|---|---|---|---|
+| WebAssembly (WASI), the default | `wasm32-wasip1` | `rustc.wasm` | the browser |
+| x86-64 Linux | `x86_64-unknown-linux-musl` | `rustc-cross.wasm` | QEMU-Wasm |
+| AArch64 Linux | `aarch64-unknown-linux-musl` | `rustc-cross.wasm` | QEMU-Wasm |
+| RISC-V 64 Linux | `riscv64gc-unknown-linux-musl` | `rustc-cross.wasm` | QEMU-Wasm |
+
+Linux programs are linked as Rust links a musl program natively, by
+rust-lld with rust-std's own crt1.o, libc.a and libunwind.a
+(`-C linker-flavor=gnu-lld -C link-self-contained=yes -C
+target-feature=+crt-static`), so they are static and need nothing from
+the VM's file system.
+
+**Optimization** is Cargo's `opt-level` (0, 1, 2, 3, s, z), the app's
+Optimization select. At 0, Cargo's dev profile, the program is compiled
+with full debug info (`-C debuginfo=2`), debug assertions and overflow
+checks, for the debugger; above it, without any of them, as Cargo's release
+profile.
 
 ### Tests
 
@@ -150,38 +216,55 @@ tests of the library, the unit tests of the binary, then each
 ...`), with failures' output and panic messages. The exit code is 101 if any
 test failed.
 
-This is not libtest's harness. Miri here cannot unwind (below), and libtest
-catches each test's panic by unwinding. So `src/harness.rs` is compiled to a
-small crate and injected as the test runner
-(`#![feature(custom_test_frameworks)]`, `#![test_runner(...)]`, through
-`-Zcrate-attr`). It runs the tests one at a time in name order, captures
-their output, and reports each on control lines the runner reads; when a
-test panics, the instance dies, and the runner starts a new one that skips
-the tests already done. `#[ignore]` and `#[should_panic]` (with
-`expected`) work; a `#[test]` returning `Result` fails on `Err`. Benchmarks,
-doc tests, test filters and `--nocapture` are not supported. The sample's
-four tests (one a quickcheck property) take about 9 s in `test-run.mjs`.
+- **On Linux targets** that is libtest itself, `--test-threads=1`: a panic
+  unwinds, the test fails, and the next one runs.
+- **On WebAssembly** the standard library is built with `panic=abort`
+  (wasm32-wasip1 has no unwinding), and libtest catches each test's panic
+  by unwinding. So `src/harness.rs` is compiled to a small crate and
+  injected as the test runner (`#![feature(custom_test_frameworks)]`,
+  `#![test_runner(...)]`, through `-Zcrate-attr`). It runs the tests one
+  at a time in name order, captures their output, and reports each on
+  control lines the runner reads; when a test panics, the program aborts,
+  and the runner starts it again, skipping the tests already done.
+  `#[ignore]` and `#[should_panic]` (with `expected`) work; a `#[test]`
+  returning `Result` fails on `Err`.
 
-### What does not work on Run
+Benchmarks, doc tests, test filters and `--nocapture` are not supported.
 
-- **Panics cannot be caught.** Miri's standard library was built for Linux,
-  not for Miri, and a panic unwinds through `_Unwind_RaiseException`, which
-  Miri does not implement. So a panic always ends the program (exit 101,
-  with the right message): `std::panic::catch_unwind` and joining a thread
-  that panicked do not return.
-- **Rust 1.78, edition 2021 at most.** `edition = "2024"` in `Cargo.toml`
-  runs as 2021, with a warning; newer std APIs are `E0599`.
-- **No program arguments**: std on Linux reads them through `.init_array`,
-  which this Miri does not run, so `std::env::args()` is just empty. The
-  environment is empty too.
-- **Slow**: an interpreter, with Miri's undefined-behaviour checks
-  (Stacked Borrows, validation, alignment, data races) **off** to make it
-  bearable. So this is not Miri as a UB checker; a program with UB runs
-  as far as it gets.
-- Threads run (Miri schedules them on one thread), but slowly. No network,
-  no files outside `/tmp`, no processes.
-- No crates.io dependencies but quickcheck (below), no build scripts, no
-  proc macros.
+### Miri (miri-runner.js)
+
+Build settings' **Miri** runs the program, or its tests, under Miri
+instead of compiling them: what `cargo miri run` and `cargo miri test` do.
+Miri interprets the program's MIR with its checks on (Stacked Borrows,
+alignment, validity of values, uninitialised memory, data races, leaks),
+so a program with undefined behaviour stops at the operation that has it,
+and Miri says which rule it broke and where. Isolation is off
+(`-Zmiri-disable-isolation`), so the clock, the environment and random
+numbers work.
+
+Miri interprets **as if on a target**, and that is the other reason to use
+it: `size_of`, `align_of`, the layout of structs and enums, pointer width,
+endianness and the target's cfgs are the Miri target's. The Miri targets
+(`src/miri-targets.json`) are chosen to differ where layout does:
+
+| Miri target | triple | why |
+|---|---|---|
+| x86-64 | `x86_64-unknown-linux-gnu` | 64-bit, little-endian |
+| AArch64 | `aarch64-unknown-linux-gnu` | 64-bit, little-endian |
+| RISC-V 64 | `riscv64gc-unknown-linux-gnu` | 64-bit, little-endian |
+| x86 (i686) | `i686-unknown-linux-gnu` | 32-bit; `u64` and `f64` aligned to 4, so `struct S(u8, u64)` is 12 bytes, not 16 |
+| ARMv7 | `armv7-unknown-linux-gnueabihf` | 32-bit, as WebAssembly's pointers, with `u64` aligned to 8 |
+| s390x | `s390x-unknown-linux-gnu` | 64-bit, **big-endian**: `to_ne_bytes` and transmutes show it |
+
+The Miri select offers them all, the one nearest the project's target
+first (a WebAssembly project's is ARMv7). WebAssembly itself is not one:
+Miri has no shims for WASI's system calls, so std on wasm32-wasip1 cannot
+print under Miri.
+
+Miri's standard library is built for Miri (`cargo miri setup`, by the
+native Miri of the same release), so a panic unwinds: `catch_unwind`
+works, and tests run under libtest. It is an interpreter, and slow:
+roughly 100 to 1000 times slower than the compiled program.
 
 ### Property-based tests
 
@@ -227,10 +310,11 @@ How it gets here: `crates/Cargo.toml` asks for `quickcheck = "=1.0.3"`
 without default features (they add env_logger and regex, for
 configuration through environment variables a program here does not have),
 `crates/Cargo.lock` pins it and its dependencies by version and checksum,
-and `scripts/build-crates.mjs` has Cargo resolve the graph and run libc's
-build script (`cargo check --target x86_64-unknown-linux-gnu`), then
-compiles each crate with the same Miri, editions, features and cfgs, to
-metadata with MIR, as the runner compiles a project's library. The runner
+and `scripts/build-crates.mjs` has stable Rust 1.98.1's Cargo build them,
+`--release`, for every target (rlibs, line tables only), and with
+`cargo miri build` for every Miri target (metadata with MIR). The same
+version string as the pack's compilers is what lets those rlibs load
+into them. The runner
 passes `--extern quickcheck=...` to the crates Cargo would give it to:
 `[dependencies]` to all of them, `[dev-dependencies]` to the test crates
 only (so a Run of the sample downloads nothing more). A version
@@ -240,20 +324,17 @@ Cargo.
 
 Limits:
 
-- **A property must return `bool` or `TestResult`.** quickcheck finds out
-  that a property failed either from its result or by catching its panic,
-  and panics cannot be caught here (above). A property that panics
-  (`assert!`, an overflow, an index out of bounds) fails its test with that
-  panic and the first failing input is not shrunk or printed.
+- **On WebAssembly, a property must return `bool` or `TestResult`.**
+  quickcheck finds out that a property failed either from its result or
+  by catching its panic, and panics cannot be caught there (above). A
+  property that panics fails its test with that panic, and the first
+  failing input is not shrunk or printed. On a Linux target and under
+  Miri, panics are caught and shrunk as natively.
 - **No `#[quickcheck]` attribute**: it is the `quickcheck_macros` crate, a
   procedural macro. `quickcheck!` and `quickcheck(f as fn(...) -> bool)`
   do the same.
-- **Slow**: every case is interpreted. In `test-run.mjs` the sample's
-  Test (four tests, the property among them) takes about 9 s, and a file
-  with a four-`f64` property and a failing one about 6 to 8 s.
-  `QuickCheck::new().tests(20).quickcheck(...)` runs fewer cases; the
-  environment variables quickcheck reads (`QUICKCHECK_TESTS`) are not set
-  here.
+- Under Miri, every case is interpreted: `QuickCheck::new().tests(20)`
+  runs fewer.
 - proptest, the other common crate, was not added. It would probably run
   (its `prop_assert!` returns an error rather than panicking), but it is
   three times the dependencies (regex-syntax, bitflags, num-traits,
@@ -269,55 +350,45 @@ Rust. It is a Cargo subcommand that copies the source tree, edits one
 function at a time and runs `cargo build` and `cargo test` as child
 processes for each mutant, timing each against a baseline. None of that
 exists here: there is no Cargo, no process to spawn and no file tree to
-copy; each mutant would be a full compile and test under Miri (the
-sample's tests take seconds, so a few hundred mutants would take tens of
-minutes); and a mutant that panics ends the instance without unwinding.
+copy; and each mutant would be a full compile and test in the browser
+(seconds each, so a few hundred mutants would take tens of minutes).
 [mutagen](https://github.com/llogiq/mutagen) inserts its mutations with
 an attribute procedural macro (`#[mutate]`) and a nightly toolchain, and
 there are no procedural macros here (and it is unmaintained since 2020).
 Writing a mutation runner for this pack would be a new tool, not an
 existing one, which this pack does not do.
 
-## Optimization: not offered
+## Compiler output views (src/explorer.js)
 
-Run never compiles to machine code: Miri interprets the program's MIR, so
-there is no optimisation level in the sense of `cargo build --release`
-(Cargo's `opt-level` is LLVM's, and Miri never runs LLVM). The only knob
-left is rustc's MIR optimiser, `-Zmir-opt-level`, which Miri keeps at 0 on
-purpose: MIR optimisations may remove undefined behaviour that Miri exists
-to report. Measured anyway (a loop over a `Copy` struct, an iterator chain,
-a sort of 50,000 numbers; Chromium, 4 cores): the default 59.9 s, level 1
-60.7 s, level 2 54.5 s, level 3 48.7 s. Up to a fifth faster at the
-price of detecting less undefined behaviour, and not what the same code
-does at `--release` (where it would take milliseconds), so a level here
-would mislead more than it helps. The app's Optimization select is not
-shown for Rust.
-
-## The MIR view (src/explorer.js, src/mir.js)
-
-The app's **MIR** button shows the MIR of the crate the active file is in
-(../CONTRACT.md, "Showing compiler output"): rustc's front end in the
-runner's Miri, run as rustc (`MIRI_BE_RUSTC=target`), with
-`-Zunpretty=mir -Zmir-include-spans`, borrow checked, each statement,
-terminator and local mapped to the span rustc prints after it. An item's
-header and each basic block's label map to its first span. MIR is the last
-form a Rust program takes here, since nothing compiles it further (Run
-interprets it), and the form Miri runs.
+The app's **MIR**, **LLVM IR** and **Assembly** views (../CONTRACT.md,
+"Showing compiler output") show the crate the active file is in, compiled
+by the runner's rustc for the project's target at its optimisation level,
+each line mapped to the source line it came from. Compile only: nothing
+is linked.
 
 * Which crate: `src/main.rs` and `src/lib.rs` are their own; a file of
   `tests/` is a test crate; any other file is a module of the library, or
   of the binary when `src/main.rs` declares it (`mod point;`). For a binary
-  or test crate the library is compiled first (its metadata only), as
-  Cargo does.
-* **-O** is rustc's `-Copt-level=3`, which runs the MIR optimiser (inlining,
-  const propagation, simplifying the CFG): the MIR an optimised build hands
-  LLVM. Run's MIR stays unoptimised (above).
-* **Library** keeps the items none of whose code maps to a project file
-  (rustc prints only the crate's own items, so there are few).
-* About 1.8 s a compile once Miri is loaded (Chromium, 4 cores).
+  or test crate the library is compiled first, to metadata with every
+  function's MIR (`--emit=metadata -Zalways-encode-mir`), which code
+  generation needs of the functions it may inline across crates.
+* **MIR** is `-Zunpretty=mir -Zmir-include-spans`, borrow checked, each
+  statement, terminator and local mapped to the span rustc prints after it
+  (`src/mir.js`). Above opt-level 0 it is the MIR the optimiser hands LLVM.
+* **LLVM IR** and **assembly** (`--emit=llvm-ir`, `--emit=asm`) are made
+  with line tables only and one codegen unit, and filtered as the C/C++
+  pack's are (`src/emit-filter.js`, the same file): the project's own
+  functions unless **Library** is on, directives only when asked. Assembly
+  is WebAssembly's, x86-64's, AArch64's or RISC-V's, as the target is
+  (`-Zverbose-asm` gives the function markers the filter reads). Above
+  opt-level 0, lines that had code unoptimised and have none now are
+  marked as optimised away.
+* **Demangle** undoes rustc's v0 symbol names (`_RNvCs…_6shapes6square`
+  is `shapes::square`) and the legacy ones the standard library still
+  has, as rustc-demangle's `{:#}` prints them (`src/demangle.js`).
 
-`test-mir.mjs` checks the filter and the crate rule on MIR the shipped Miri
-printed for `tests/fixtures/sample.json` at both levels
+`test-mir.mjs` checks the filters, the crate rule and the demangler on
+output rustc 1.98.1 printed for `tests/fixtures/sample.json`
 (`tests/fixtures/gen.mjs` makes it again).
 
 ## Alternatives considered
@@ -327,16 +398,17 @@ printed for `tests/fixtures/sample.json` at both levels
   metadata`. The IDE crates, driven directly, need neither; the one
   thread salsa still wanted (dropping parse trees in the background) is
   turned off with `--cfg no_salsa_async_drops`.
-- **rustc compiled to WASI** (bjorn3's `rustc` on wasm32-wasi experiments,
-  2023-24): the front end runs, but code generation needs LLVM or
-  Cranelift on wasm and a linker (wasm-ld or lld) on wasm, with a
-  wasm32-wasip1 std. No published, pinned build of that exists; building
-  one is days of work and many GB, well past this machine's disk. Miri
-  avoids code generation entirely.
-- **rubri** (chosen): Miri on wasm, from bjorn3's builds, with a sysroot,
-  pinned to a commit and every file's sha256 checked by `build.sh`
-  (`scripts/rubri.sha256`). rubri itself runs it in a web worker; this
-  pack reuses only its artifacts, not its code.
+- **rubri's Miri** (this pack's runner until rustc was built here):
+  bjorn3's Miri 1.78 on wasm, with an x86_64 sysroot. No code generation,
+  an old compiler, one target, panics that could not be caught, and its
+  undefined-behaviour checks off to be bearable. Building rustc with LLVM
+  gave real programs, every target, and Miri of the same release as a
+  checker rather than as the only way to run.
+- **Cranelift instead of LLVM**: smaller and faster to build, but no
+  RISC-V, worse code, and its debug info is not what the debugger reads.
+  The C/C++ pack is LLVM, and the views are meant to show what it does.
+- **A WebAssembly Miri target**: Miri cannot run std on wasm32-wasip1 (no
+  shims for WASI), hence ARMv7 as the 32-bit stand-in.
 - **Remote compilation (the Rust playground)**: excluded by the contract;
   nothing here leaves the browser.
 
@@ -375,7 +447,9 @@ than Linux (`scripts/make-sysroot-src.py`).
 | rust-analyzer IDE crates (`ra_ap_*`) | 0.0.358 | crates.io, locked in `server/Cargo.lock` | MIT OR Apache-2.0 |
 | Rust toolchain that builds the server | 1.98.0 | rustup | MIT OR Apache-2.0 |
 | rust-src (std sources for analysis) | 1.98.0, sha256 `0e977492...870f2bf` | static.rust-lang.org | MIT OR Apache-2.0 |
-| Miri / rustc and its sysroot | 1.78.0-dev (`miri.opt.1718474653.wasm`) | rubri at `00de75bcec3d8cf5156aef2382c738cbfe069986` | MIT OR Apache-2.0 (rubri: MIT) |
+| rustc, Miri, LLVM, lld (`rustc.wasm`, `rustc-cross.wasm`, `miri.wasm`) | 1.98.1, LLVM 22.1.8 | Rust's source tarball (`toolchains/compilers/pins.sh`), built by the compilers unit with wasi-sdk 34; patches in `toolchains/compilers/patches` (homescoop's, Apache-2.0, and ours) | MIT OR Apache-2.0; LLVM: Apache-2.0 WITH LLVM-exception |
+| rust-std per target | 1.98.1, sha256 pinned in `build.sh` | static.rust-lang.org | MIT OR Apache-2.0 |
+| Miri's std per Miri target | 1.98.1 | `cargo miri setup` by native Miri of the same tarball | MIT OR Apache-2.0 |
 | browser_wasi_shim | 0.4.2 | npm | MIT OR Apache-2.0 |
 | quickcheck | 1.0.3 | crates.io, locked in `crates/Cargo.lock` | Unlicense OR MIT |
 | rand, rand_core, getrandom, libc, cfg-if | 0.8.8, 0.6.4, 0.2.17, 0.2.191, 1.0.5 | crates.io, locked in `crates/Cargo.lock` | MIT OR Apache-2.0 |
@@ -384,20 +458,29 @@ Full notices: `LICENSES.txt`, shipped next to the pack's files.
 
 ## Building and testing
 
+A split pack (`light/scripts/pack-toolchain.sh`): three units and glue.
+
+| Unit | Builds | Needs | Time |
+| --- | --- | --- | --- |
+| `compilers` | `rustc.wasm`, `rustc-cross.wasm`, `miri.wasm` from Rust's source tarball (`toolchains/compilers`) | | about 4 hours on four cores from nothing |
+| `server` | `rust-analyzer.wasm`, `std-src.tar` | | 5 minutes |
+| `sysroots` | rust-std for each target, Miri's std for each Miri target (`cargo miri setup` by the release's own Miri, built natively), the crates for both | `compilers`, for its release's pins | 25 minutes, most of it brotli |
+
+The glue (`glue.sh`) bundles the workers over them, in seconds; an edit to
+`src/`, the tests or this file rebuilds no unit.
+
 ```sh
 cd packs/rust
 npm install
-./build.sh        # writes ../../app/static/packs/rust/
-node test.mjs     # the language server in headless Chromium
-node test-run.mjs # the runner in headless Chromium
+./build.sh        # the units, then the pack, into ../../app/static/packs/rust/
+./test.sh         # test-mir.mjs, test.mjs, test-run.mjs over the pack as assembled
 ```
 
-`build.sh` installs Rust 1.98.0 (minimal profile, wasm32-wasip1) with
-rustup if needed, caches everything under `$PACK_CACHE/rust` (default
-`~/.cache/yukibana-packs/rust`): the cargo target directory (about 1 GB),
-rust-src, and rubri's files. A first build takes about 10 minutes on 4
-cores: 4 for rust-analyzer's crates, most of the rest compressing the
-sysroot with brotli. A rebuild with a warm cache is a few minutes.
+`build.sh` takes each unit from the local toolchain cache, the toolchain
+store, or builds it (`pack-toolchain.sh ensure rust --build-dirty`).
+Building the compilers needs cmake and ninja (`toolchains/compilers/deps.apt`),
+gcc, git, python3 and about 30 GB of disk; the server and sysroots units
+need rustup, which installs the pinned toolchains.
 
 `test.mjs` serves the static directory with cross-origin isolation and
 drives the server through the sample from `app/src/lib/languages.ts`: clean

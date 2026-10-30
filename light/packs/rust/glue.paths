@@ -1,0 +1,15 @@
+# The Rust pack's glue and what no unit builds with: glue.sh, the workers'
+# sources it bundles, the pack's tests and their fixtures, and its
+# documents. An edit to any of these rebuilds no toolchain. (src/targets.json
+# and src/miri-targets.json are the sysroots unit's inputs too.)
+glue.paths
+glue.sh
+build.sh
+package.json
+package-lock.json
+README.md
+LICENSES.txt
+src/
+test*.mjs
+test.sh
+tests/
