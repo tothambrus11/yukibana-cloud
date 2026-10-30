@@ -33,7 +33,7 @@ jobs:
       # ghc-lib-parser is most of the build, and a failure after it is the
       # usual one.
       - name: Restore GHC's wasm toolchain and the tools' package store
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.ghc-wasm
@@ -49,7 +49,7 @@ jobs:
 
       - name: Save GHC's wasm toolchain and the tools' package store
         if: always()
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/.ghc-wasm
