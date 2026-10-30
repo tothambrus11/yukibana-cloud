@@ -17,6 +17,11 @@ set -euo pipefail
 : "${SWIFT_WASM_SDK_URL:=https://download.swift.org/swift-${SWIFT_VERSION}-release/wasm-sdk/${SWIFT_TAG}/${SWIFT_TAG}_wasm.artifactbundle.tar.gz}"
 : "${SWIFT_WASM_SDK_CHECKSUM:=cabfa08b73bb8ac783927ecd15fa386e99d0c139c5f232445067bcf58379cae7}"
 
+# Swift's Static Linux SDK (musl, x86_64 and aarch64): what the cross compiler links
+# Linux programs against (Stage 41). Checksum of the release asset, taken 2026-10-30.
+: "${SWIFT_LINUX_SDK_URL:=https://download.swift.org/swift-${SWIFT_VERSION}-release/static-sdk/${SWIFT_TAG}/${SWIFT_TAG}_static-linux-0.1.0.artifactbundle.tar.gz}"
+: "${SWIFT_LINUX_SDK_CHECKSUM:=87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b}"
+
 # --- layout -------------------------------------------------------------------
 TOOLCHAIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${TC_SRC:=${TOOLCHAIN_ROOT}/src}"     # third-party sources (gitignored)
@@ -35,6 +40,21 @@ TOOLCHAIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # without them, which needs no plugin host from its embedder (docs/status.md).
 : "${SWIFT_MACROS:=1}"
 export SWIFT_MACROS
+# The cross compiler: SWIFT_CROSS=1 builds swift-frontend-cross.wasm, whose LLVM also
+# has the X86, AArch64 and RISCV backends, and the Linux sysroots it links against
+# (Stage 41), instead of the default compiler, sourcekitd and the wasm sysroot. The
+# default compiler stays WebAssembly-only: the three backends cost every user of it
+# a larger download for programs that run in the browser anyway. Its build trees are
+# the default's, configured with more targets, so the two never share a cache.
+: "${SWIFT_CROSS:=0}"
+export SWIFT_CROSS
+if [[ "$SWIFT_CROSS" == 1 ]]; then
+  LLVM_TARGETS="WebAssembly;X86;AArch64;RISCV"
+  FRONTEND_WASM=swift-frontend-cross.wasm
+else
+  LLVM_TARGETS=WebAssembly
+  FRONTEND_WASM=swift-frontend.wasm
+fi
 
 mkdir -p "$TC_SRC" "$TC_BUILD" "$TC_OUT"
 

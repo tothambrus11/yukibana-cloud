@@ -22,6 +22,23 @@ STAGES=(
   55-check-alignment-contracts
 )
 
+# The cross compiler (SWIFT_CROSS=1) is the compiler alone, and the Linux sysroots
+# instead of the wasm one: sourcekitd and the language server stay the default
+# toolchain's, which checks Swift the same for every target, and the macro plugins
+# are wasm whatever the compiler targets, so the default release's serve both.
+if [[ "$SWIFT_CROSS" == 1 ]]; then
+  STAGES=(
+    00-fetch-sources
+    05-apply-patches
+    # The one native stage: minutes, and it fails early if the SDK moved.
+    41-linux-sysroots
+    10-host-tools
+    15-cmark-wasm
+    20-llvm-wasm
+    30-swift-frontend-wasm
+  )
+fi
+
 # Stages whose failure is reported and does not stop the pipeline: they are
 # new, and nothing after them depends on them. The workflow checks their
 # artifacts separately.
