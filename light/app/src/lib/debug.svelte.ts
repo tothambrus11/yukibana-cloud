@@ -422,12 +422,16 @@ export function decorate(
 			const lines = dbg.breakpoints[path] ?? [];
 			const stopped = dbg.stoppedLine(path);
 			const top = dbg.selected === 0;
+			const onBreakpoint = stopped !== null && lines.includes(stopped);
 			const range = (line: number) => new monaco.Range(line, 1, line, 1) as import('monaco-editor').IRange;
 			decorations.set([
-				...lines.map((line) => ({
-					range: range(line),
-					options: { glyphMarginClassName: 'debug-breakpoint', glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' }, stickiness: 1 },
-				})),
+				// The stopped line's one decoration draws its breakpoint too (app.css says why).
+				...lines
+					.filter((line) => line !== stopped)
+					.map((line) => ({
+						range: range(line),
+						options: { glyphMarginClassName: 'debug-breakpoint', glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' }, stickiness: 1 },
+					})),
 				...(stopped !== null
 					? [
 							{
@@ -435,7 +439,8 @@ export function decorate(
 								options: {
 									isWholeLine: true,
 									className: top ? 'debug-stopped-line' : 'debug-frame-line',
-									glyphMarginClassName: top ? 'debug-stopped' : 'debug-frame',
+									glyphMarginClassName: `${top ? 'debug-stopped' : 'debug-frame'}${onBreakpoint ? ' debug-on-breakpoint' : ''}`,
+									...(onBreakpoint ? { glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' } } : {}),
 									stickiness: 1,
 								},
 							},
