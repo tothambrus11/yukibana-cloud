@@ -198,8 +198,13 @@ export function clangTidyJob(files: Files, configure: Step, dir: string): JobSpe
 export const RUFF_VERSION = '0.16.9';
 /** The Prettier that checks a JavaScript, TypeScript or web project's format. */
 export const PRETTIER_VERSION = '3.9.10';
-/** google-java-format, in AOSP style (four spaces, as the samples are), as Spotless runs it. */
-export const GJF_VERSION = '1.37.0';
+/**
+ * google-java-format, in AOSP style (four spaces, as the samples are), as
+ * Spotless runs it. 2.0: Spotless 3.x fails on 1.37 with nothing but an
+ * InvocationTargetException, although 1.37's own command line formats the
+ * same files; 2.0 needs no --add-exports either, Spotless opens javac itself.
+ */
+export const GJF_VERSION = '2.0.0';
 /** ktlint, in IntelliJ IDEA's style (as Kotlin's own conventions and the samples are), as Spotless runs it. */
 export const KTLINT_VERSION = '1.8.0';
 /**
@@ -217,8 +222,11 @@ const ZIG_SETUP = [
 	`${fetchChecked(`https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz`, ZIG_SHA256, '/tmp/zig.tar.xz')} && tar -xJf /tmp/zig.tar.xz -C /opt && rm /tmp/zig.tar.xz`,
 	`ln -s /opt/zig-x86_64-linux-${ZIG_VERSION}/zig /usr/local/bin/zig`,
 ];
-/** sbt-scalafmt, and the scalafmt it runs. */
-const SBT_SCALAFMT_VERSION = '2.6.2';
+/**
+ * sbt-scalafmt, and the scalafmt it runs. 2.5.6, the last for sbt 1.11 (the
+ * Scala pack's and the image's): 2.6 requires sbt 1.12.9.
+ */
+const SBT_SCALAFMT_VERSION = '2.5.6';
 const SCALAFMT_VERSION = '3.11.5';
 /** PHP-CS-Fixer, in the PER coding style (PHP-FIG's successor to PSR-12). */
 export const PHP_CS_FIXER_VERSION = '3.95.27';

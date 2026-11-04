@@ -1081,8 +1081,7 @@ final class Point
     public function __construct(
         public readonly float $x,
         public readonly float $y,
-    ) {
-    }
+    ) {}
 
     /** Distance from the origin. */
     public function norm(): float
