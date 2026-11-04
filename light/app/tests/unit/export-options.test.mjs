@@ -268,7 +268,7 @@ test('the README says what the CI runs, where, and what the dev container and .g
 test('a TypeScript project with a tsconfig.json has its types checked, with Node\'s, in CI and by npm run typecheck', () => {
 	const { files } = exportProject(sample('typescript'), sample('typescript').sample, null, { ci: 'github' });
 	const json = JSON.parse(files['package.json']);
-	assert.equal(json.scripts.typecheck, 'tsc');
+	assert.equal(json.scripts.typecheck, 'tsc --types node');
 	assert.ok(json.devDependencies.typescript && json.devDependencies['@types/node']);
 	assert.match(files['.github/workflows/ci.yml'], /npm run typecheck/);
 	const bare = { ...sample('typescript').sample };
