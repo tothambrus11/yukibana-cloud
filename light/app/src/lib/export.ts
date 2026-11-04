@@ -1429,18 +1429,22 @@ export function packageJson(entry: string, files: Files = {}): string {
  * `*.test.ts`), with nothing to install but fast-check when the project
  * imports it. Node does not check the types, so with a tsconfig.json
  * `npm run typecheck` is tsc, with Node's own types (@types/node, named on
- * the command line: TypeScript 6 includes no @types package unless named) for `node:test` and `process`.
+ * the command line: TypeScript 6 includes no @types package unless named)
+ * for `node:test` and `process`. tsc comes through npx, as Stryker does,
+ * rather than as a dependency: npx leaves out of its own folder a package
+ * the project has installed, and Stryker, in that folder, then cannot
+ * import the TypeScript it needs.
  */
 export function typescriptPackageJson(entry: string, files: Files = {}): string {
 	const typecheck = 'tsconfig.json' in files;
-	const dev = { ...shippedPackages(files), prettier: PRETTIER_VERSION, ...(typecheck ? { '@types/node': `^${NODE_TYPES_VERSION}`, typescript: TYPESCRIPT_VERSION } : {}) };
+	const dev = { ...shippedPackages(files), prettier: PRETTIER_VERSION, ...(typecheck ? { '@types/node': `^${NODE_TYPES_VERSION}` } : {}) };
 	const json = {
 		name: 'typescript-project',
 		version: '0.1.0',
 		private: true,
 		type: 'module',
 		main: entry,
-		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(true), ...(typecheck ? { typecheck: 'tsc --types node' } : {}), ...prettierScripts() },
+		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(true), ...(typecheck ? { typecheck: `npx --yes --package typescript@${TYPESCRIPT_VERSION} tsc --types node` } : {}), ...prettierScripts() },
 		engines: { node: '>=22.18' },
 		devDependencies: dev,
 	};
