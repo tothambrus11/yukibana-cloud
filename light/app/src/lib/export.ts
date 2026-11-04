@@ -1569,6 +1569,11 @@ export function scalaCheckScope(files: Files): 'main' | 'test' | null {
 export function buildSbt(files: Files): string {
 	const hasTests = Object.keys(files).some((p) => p.startsWith('tests/') && /\.(scala|java)$/.test(p));
 	const scalaCheck = scalaCheckScope(files);
+	const dependencies = [
+		`    libraryDependencies += "org.scalameta" %% "munit" % ${JSON.stringify(MUNIT_VERSION)} % Test`,
+		...(scalaCheck ? [`    libraryDependencies += "org.scalacheck" %% "scalacheck" % ${JSON.stringify(SCALACHECK_VERSION)}${scalaCheck === 'test' ? ' % Test' : ''}`] : []),
+	];
+	// Laid out as scalafmt lays it out (the CI's format check reads build.sbt too): no comma after the last setting.
 	return [
 		'// Builds the project where it is, with the layout it had in Yukibana Light:',
 		`//   sbt run${hasTests ? ', sbt test' : ''}`,
@@ -1587,15 +1592,16 @@ export function buildSbt(files: Files): string {
 		'      HiddenFileFilter || new SimpleFileFilter(file => {',
 		'        val path = file.toPath',
 		'        val relative = base.relativize(path)',
-		'        notSources.exists(path.startsWith) || (0 until relative.getNameCount).exists(i => relative.getName(i).toString.startsWith("."))',
+		'        notSources.exists(path.startsWith) || (0 until relative.getNameCount).exists(i =>',
+		'          relative.getName(i).toString.startsWith(".")',
+		'        )',
 		'      })',
 		'    },',
 		'    // The tests are in tests/.',
 		'    Test / scalaSource := baseDirectory.value / "tests",',
 		'    Test / javaSource := baseDirectory.value / "tests",',
 		'    Test / unmanagedSources / excludeFilter := HiddenFileFilter,',
-		`    libraryDependencies += "org.scalameta" %% "munit" % ${JSON.stringify(MUNIT_VERSION)} % Test,`,
-		...(scalaCheck ? [`    libraryDependencies += "org.scalacheck" %% "scalacheck" % ${JSON.stringify(SCALACHECK_VERSION)}${scalaCheck === 'test' ? ' % Test' : ''},`] : []),
+		dependencies.join(',\n'),
 		'  )',
 		'',
 	].join('\n');
