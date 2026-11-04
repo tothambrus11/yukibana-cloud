@@ -69,6 +69,13 @@ export interface Language {
 	 */
 	pack?: string;
 	/**
+	 * The other packs its runner imports, which "Save offline" downloads
+	 * with its own: `linux`, the emulator a program built for a Linux
+	 * target runs on (packs/linux/README.md), for the languages that build
+	 * for one. A language works without them on its default target.
+	 */
+	uses?: readonly string[];
+	/**
 	 * For a web project, the page Run shows in the Preview panel (live
 	 * reloaded as files change) instead of running `entry` in the terminal.
 	 */
@@ -733,6 +740,7 @@ function draw() {
 		label: 'C',
 		monacoLanguages: ['c', 'cpp'],
 		pack: 'cpp',
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.c',
 		extension: '.c',
@@ -793,6 +801,7 @@ double point_distance(struct point a, struct point b) {
 		label: 'C++',
 		monacoLanguages: ['cpp', 'c'],
 		pack: 'cpp',
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.cpp',
 		extension: '.cpp',
@@ -953,6 +962,7 @@ def distance(a: Point, b: Point): Double =
 		id: 'rust',
 		label: 'Rust',
 		monacoLanguages: ['rust'],
+		uses: ['linux'],
 		settings: {},
 		entry: 'src/main.rs',
 		extension: '.rs',
@@ -1392,6 +1402,7 @@ main = hspec $ do
 		id: 'go',
 		label: 'Go',
 		monacoLanguages: ['go'],
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.go',
 		extension: '.go',
@@ -1501,6 +1512,7 @@ func ExampleDistance() {
 		id: 'zig',
 		label: 'Zig',
 		monacoLanguages: ['zig'],
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.zig',
 		extension: '.zig',

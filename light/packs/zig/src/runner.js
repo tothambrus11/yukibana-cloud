@@ -3,9 +3,9 @@
 // (zig.js), and runs what it makes.
 //
 // The target is zig.env's TARGET (zig.js, settingsOf): wasm32-wasi, the
-// default, runs in this worker; x86_64-linux runs under the C/C++ pack's
-// QEMU-Wasm, in a worker of its own (linux-worker.js), with the C/C++
-// pack's Run options `{ emulation, cpus, strace }` (packs/cpp/README.md).
+// default, runs in this worker; x86_64-linux runs under the Linux pack's
+// QEMU-Wasm, in a worker of its own (linux-worker.js), with its Run
+// options `{ emulation, cpus, strace }` (packs/linux/README.md).
 // The compiler's own backends build both: its WebAssembly and x86-64 code
 // generators and linkers, as `zig build-exe -fno-llvm` does.
 //
@@ -148,7 +148,7 @@ async function execute(program, { target, stdin, options, started }) {
             env: {},
             stdin,
             options: { emulation: 'system', cpus: 1, strace: false, ...options },
-            base: new URL('../cpp/', import.meta.url).href,
+            base: new URL('../linux/', import.meta.url).href,
             t0: started,
             timeOrigin: performance.timeOrigin,
         });

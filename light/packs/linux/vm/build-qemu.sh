@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Builds qemu-system-{x86_64,aarch64,riscv64} for running one program in the C/C++
-# pack's Linux VM, into $ART: qemu-system-<arch>.{mjs,wasm}, qboot.rom and
+# Builds qemu-system-{x86_64,aarch64,riscv64} for running one program in the Linux
+# pack's VM, into $ART: qemu-system-<arch>.{mjs,wasm}, qboot.rom and
 # opensbi-riscv64-generic-fw_dynamic.bin.
 #
 # From ktock/qemu-wasm at QEMU_WASM_COMMIT plus patches/qemu-wasm-tcg.patch (PR #3's
-# Wasm TCG fixes), with the pack's one Emscripten (the emsdk unit's, at $DEP_EMSDK,
-# which clangd and the compilers are built with too; build-lib.sh's emsdk_use) and
+# Wasm TCG fixes), with the C/C++ pack's one Emscripten (its emsdk unit's, at $DEP_EMSDK,
+# which clangd and the compilers are built with too; ../lib.sh's emsdk_use) and
 # the dependencies PR #3's build-deps.sh builds (zlib, libffi, glib,
 # pixman), in $QC (default ~/.cache/yukibana-packs/qemu-wasm).
 # Configured with --without-default-devices: each board gets only devices/<arch>.mak
@@ -19,12 +19,12 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../toolchains/vm/pins.sh"
 # keep_tree (each reused tree records what made it), emsdk_use; its fetch is
 # replaced below.
-# shellcheck source=../build-lib.sh
-source "$HERE/../build-lib.sh"
+# shellcheck source=../lib.sh
+source "$HERE/../lib.sh"
 need_unit emsdk   # emsdk_made_by, for the stamp
-CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp
+CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
-ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
+ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/vm-artifacts}
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
 WORK=$QC/work SRC=$QC/work/qemu-wasm TARGET=$QC/work/target BUILD=$QC/work/build-run
@@ -38,7 +38,7 @@ CFLAGS="-O3 -Wno-unused-command-line-argument -Wno-error=incompatible-pointer-ty
 # Link flags, only in --extra-ldflags: as compile flags, emcc warns about each -s
 # (and meson's checks turn the warning into an error). ASYNCIFY for libffi's calls
 # into JS; PROXY_TO_PTHREAD so QEMU's main loop is not the embedder's thread; the
-# runtime methods are what src/vm/system.js uses (FS for its devices).
+# runtime methods are what src/system.js uses (FS for its devices).
 LDFLAGS="-sASYNCIFY=1 -sASYNCIFY_IMPORTS=ffi_call_js -sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH
  -sINITIAL_MEMORY=512MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -sMALLOC=emmalloc -sEXPORT_ES6=1 -L$TARGET/lib
  -sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,FS"
@@ -60,7 +60,7 @@ fetch() { # url sha256 file
   fi
 }
 
-# --- Emscripten: the pack's one emsdk, the emsdk unit's, read-only (emsdk_use). It
+# --- Emscripten: the C/C++ pack's one emsdk, its emsdk unit's, read-only (emsdk_use). It
 # used to be a second Emscripten, a binary release unpacked here, because the rest
 # of the pack was on 4.0.22, which loses a proxied-call wakeup and freezes the VM
 # (vm/README.md); the pack is on 6.0.13 now (plan D52).

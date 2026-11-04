@@ -5,7 +5,7 @@
 -->
 <script lang="ts">
 	import { LANGUAGES } from '../languages';
-	import { packOf } from '../packs';
+	import { packOf, packsOf } from '../packs';
 	import { mb, offline } from '../offline.svelte';
 
 	let dialog: HTMLDialogElement;
@@ -20,8 +20,8 @@
 	const everything = $derived(offline.sizes(offline.everything));
 	const percent = $derived(offline.progress && offline.progress.total > 0 ? Math.min(100, (100 * offline.progress.loaded) / offline.progress.total) : 0);
 
-	async function makeAvailable(label: string, pack: string) {
-		await offline.download(label, offline.filesFor([pack]));
+	async function makeAvailable(label: string, packs: readonly string[]) {
+		await offline.download(label, offline.filesFor(packs));
 	}
 </script>
 
@@ -52,19 +52,20 @@
 			<tbody>
 				{#each LANGUAGES as l (l.id)}
 					{@const pack = packOf(l)}
+					{@const packs = packsOf(l)}
 					{@const files = offline.packFiles(pack)}
-					{@const sizes = offline.sizes(offline.filesFor([pack]))}
+					{@const sizes = offline.sizes(offline.filesFor(packs))}
 					<tr data-language={l.id}>
 						<td>{l.label}</td>
 						<td class="size">{files.length ? `${mb(sizes.all.transfer)} MB` : ''}</td>
 						<td class="action">
 							{#if !files.length}
 								<span class="muted">not installed</span>
-							{:else if offline.isPackCached(pack) && sizes.missing.files === 0}
+							{:else if offline.arePacksCached(packs) && sizes.missing.files === 0}
 								<span class="ok">available offline</span>
 							{:else}
 								<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
-								<button class="button" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, pack)}>Save offline</button>
+								<button class="button" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
 							{/if}
 						</td>
 					</tr>

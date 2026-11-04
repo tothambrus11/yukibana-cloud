@@ -1,8 +1,8 @@
-// Headless test of the C/C++ pack's Linux VM runtime: app/static/packs/cpp/vm.js
-// (src/vm/*.js, staged by vm/stage.sh) and the QEMU-Wasm builds next to it, run the
+// Headless test of the Linux pack's VM runtime: app/static/packs/linux/vm.js
+// (src/*.js, staged by vm/stage.sh) and the QEMU-Wasm builds next to it, run the
 // way the runner runs them. app/static is served over http WITH
 // Cross-Origin-Opener-Policy / -Embedder-Policy (QEMU's threads need
-// SharedArrayBuffer); a test-only module worker imports /packs/cpp/vm.js and calls
+// SharedArrayBuffer); a test-only module worker imports /packs/linux/vm.js and calls
 // runLinux on fixture programs (vm/fixtures/*.c, built here with the host's clang-18
 // and the musl sysroots through vm/cc.sh), and the page plays the app's part of the
 // stdin protocol.
@@ -29,7 +29,7 @@ import { chromium } from 'playwright-core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STATIC = path.resolve(HERE, '../../app/static');
-const OUT = path.join(STATIC, 'packs/cpp');
+const OUT = path.join(STATIC, 'packs/linux');
 const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
 const ALL = ['x86_64', 'aarch64', 'riscv64'];
 const asked = [...process.argv.slice(2), ...(process.env.VM_ARCHES ?? '').split(/[ ,]/)].filter((a) => ALL.includes(a));
@@ -48,9 +48,9 @@ for (const arch of ARCHES)
 // ---- the server: app/static plus the test page, worker and fixtures
 const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.html': 'text/html' };
 const ISOLATION = { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' };
-const WORKER = `import { runLinux } from '/packs/cpp/vm.js';
+const WORKER = `import { runLinux } from '/packs/linux/vm.js';
 onmessage = async ({ data }) => {
-    const code = await runLinux({ ...data, post: (m) => postMessage(m), base: new URL('/packs/cpp/', location.href).href });
+    const code = await runLinux({ ...data, post: (m) => postMessage(m), base: new URL('/packs/linux/', location.href).href });
     postMessage({ type: 'exit', code });
 };`;
 // window.runVM(cfg): runs fixture cfg.prog on cfg.arch and resolves with everything the

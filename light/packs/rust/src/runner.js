@@ -14,9 +14,9 @@
 //
 // The target is `[build] target` of the project's .cargo/config.toml, as
 // for Cargo (targets.js); none is WebAssembly (WASI). A WebAssembly
-// program runs in this worker; a Linux one (static, musl) under the C/C++
-// pack's QEMU-Wasm, in a worker of its own (linux-worker.js), with the
-// C++ pack's Run options `{ emulation, cpus, strace }`.
+// program runs in this worker; a Linux one (static, musl) under the Linux
+// pack's QEMU-Wasm, in a worker of its own (linux-worker.js), with its
+// Run options `{ emulation, cpus, strace }` (packs/linux/README.md).
 //
 // The level is `options.optimization`, Cargo's opt-level (0, 1, 2, 3, s,
 // z); 0, the default, is Cargo's dev profile and compiles with full debug
@@ -108,7 +108,7 @@ async function runWasm(bytes, { args = [], env = {}, stdin, stdout }) {
     }
 }
 
-/** Runs a Linux program under the C/C++ pack's QEMU in a worker of its own; resolves to its exit status. */
+/** Runs a Linux program under the Linux pack's QEMU in a worker of its own; resolves to its exit status. */
 function runLinux(bytes, target, { args = [], env = {}, stdin, options, stdout, t0 }) {
     return new Promise((resolve) => {
         const worker = new Worker(new URL('linux-worker.js', import.meta.url), { type: 'module' });
@@ -128,7 +128,7 @@ function runLinux(bytes, target, { args = [], env = {}, stdin, options, stdout, 
             finish(1);
         };
         worker.postMessage({
-            base: new URL('../cpp/', import.meta.url).href,
+            base: new URL('../linux/', import.meta.url).href,
             label: target.label,
             arch: target.arch,
             program: bytes,

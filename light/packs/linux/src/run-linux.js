@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
-// Runs one static Linux ELF under QEMU-Wasm: the entry of vm.js, which the C/C++
-// runner (src/runner.js) imports only for a Linux target. Two emulations:
+// Runs one static Linux ELF under QEMU-Wasm: the entry of vm.js, which a
+// language's runner imports, by URL (../linux/vm.js from its own pack), only
+// for a program built for a Linux target: the C/C++, Rust, Go and Zig packs'
+// now, any compiler's that makes a static Linux ELF for one of ARCHES. It
+// knows nothing of the language. Two emulations:
 //
 //   system (default)  qemu-system-<arch> boots Linux 6.12 with vm/guest/init.c as
 //                     PID 1, which runs the program on virtio consoles (system.js)
@@ -12,7 +15,8 @@
 // proxy every file system call here. Nothing in this module blocks; the
 // worker's event loop must stay free for those calls (see stdin.js).
 //
-// The files come from `base` (the pack's /packs/cpp/ URL):
+// The files come from `base`, by default the directory vm.js was loaded from
+// (/packs/linux/):
 //   vm/<arch>/qemu-system-<arch>.{mjs,wasm}, kernel, initrd, strace.cpio,
 //   qboot.rom (x86_64), opensbi-riscv64-generic-fw_dynamic.bin (riscv64)
 //   user/<arch>/qemu-<arch>.{mjs,wasm}
@@ -113,12 +117,13 @@ export function vmFailureMessage(started, why) {
  * @param {{ emulation?: 'system' | 'user', cpus?: 1 | 2 | 4, strace?: boolean }} [run.options]
  *   defaults: system, 1, false; `cpus` is ignored in user mode (one CPU)
  * @param {(msg: object) => void} run.post sends a runner message to the app
- * @param {string | URL} run.base the URL of /packs/cpp/
+ * @param {string | URL} [run.base] the URL of the Linux pack's directory
+ *   (default: vm.js's own, so a runner need not know where the pack is)
  * @param {number} [run.t0] performance.now() when the run message arrived;
  *   marks count from it (default 0, the worker's start)
  * @returns {Promise<number>}
  */
-export async function runLinux({ arch, program, files = [], args = [], env = {}, stdin = null, options = {}, post, base, t0 = 0 }) {
+export async function runLinux({ arch, program, files = [], args = [], env = {}, stdin = null, options = {}, post, base = new URL('./', import.meta.url), t0 = 0 }) {
     const opts = {
         emulation: options?.emulation === 'user' ? 'user' : 'system',
         cpus: [1, 2, 4].includes(options?.cpus) ? options.cpus : 1,

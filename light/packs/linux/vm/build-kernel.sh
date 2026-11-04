@@ -16,10 +16,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../toolchains/vm/pins.sh
 source "$HERE/../toolchains/vm/pins.sh"
-# shellcheck source=../build-lib.sh
-source "$HERE/../build-lib.sh"
+# shellcheck source=../lib.sh
+source "$HERE/../lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
-ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
+ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/vm-artifacts}
 JOBS=${JOBS:-3}
 arch=$1
 case $arch in

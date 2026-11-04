@@ -1,0 +1,16 @@
+# The Linux pack's glue and what no unit builds with: glue.sh and the
+# runtime's sources it bundles (src/, which the vm unit names in part in its
+# paths), the pack's tests and their fixtures, and its documents. An edit to
+# any of these rebuilds no toolchain; it is assembled in seconds.
+glue.paths
+glue.sh
+build.sh
+entries
+package.json
+package-lock.json
+README.md
+src/
+test*.mjs
+test.sh
+vm/fixtures/
+vm/.shellcheckrc

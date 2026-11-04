@@ -22,6 +22,10 @@
 //   language pack's server.js) is a file a unit's outputs declare or its
 //   glue.sh writes, which the assemble job and a release check again over
 //   the pack as assembled, hours later for a unit that is new.
+// * A split pack's `uses` file, the packs its tests run on (the Linux pack's
+//   emulator), names split packs of this tree other than itself: the
+//   assemble job assembles them beside it from their units, and an
+//   unsplit pack has none.
 // * Every unit has a toolchain.sh, an outputs file and a pins.sh of plain
 //   `NAME=value` lines a reader can trust without running them, and the
 //   pack's glue.sh and build.sh assign no pin (the pin rule,
@@ -234,6 +238,16 @@ export function problemsOf(/** @type {string} */ root, /** @type {string} */ pac
             problems.push(`${dir}: its entry point ${entry} is in no unit's outputs and glue.sh writes no "$OUT/${entry}"${fs.existsSync(entriesFile) ? '' : '; a pack that is no language server lists what it serves in an entries file'}`);
         }
     }
+    // light-packs.yml's assemble job assembles each used pack from its
+    // units beside this one, which it can do for a split pack only.
+    const usesFile = path.join(root, dir, 'uses');
+    if (fs.existsSync(usesFile)) {
+        const split = splitPacks(root);
+        for (const used of entriesOf(fs.readFileSync(usesFile, 'utf8'))) {
+            if (used === pack) problems.push(`${dir}/uses names the pack itself`);
+            else if (!split.includes(used)) problems.push(`${dir}/uses names ${used}, which is not a split pack of this tree: only a split pack is assembled beside another`);
+        }
+    }
     for (const name of ['glue.sh', 'build.sh']) {
         const file = path.join(root, dir, name);
         if (!fs.existsSync(file)) continue;
@@ -324,6 +338,23 @@ test("a split pack without its tests is named, and they are glue, which no unit'
         const gluePaths = path.join(dir, 'light/packs/stub/glue.paths');
         fs.writeFileSync(gluePaths, fs.readFileSync(gluePaths, 'utf8').replace(/^test\.sh\n/m, ''));
         assert.deepEqual(problemsOf(dir, 'stub'), ["light/packs/stub has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped"]);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('a pack its tests run on that is no split pack, or the pack itself, is named', () => {
+    const dir = scratch();
+    try {
+        const pack = path.join(dir, 'light/packs/stub');
+        fs.appendFileSync(path.join(pack, 'glue.paths'), 'uses\n');
+        fs.writeFileSync(path.join(pack, 'uses'), '# what its tests run on\nstub\njavascript\n');
+        assert.deepEqual(problemsOf(dir, 'stub'), [
+            'light/packs/stub/uses names the pack itself',
+            'light/packs/stub/uses names javascript, which is not a split pack of this tree: only a split pack is assembled beside another',
+        ]);
+        fs.writeFileSync(path.join(pack, 'uses'), '');
+        assert.deepEqual(problemsOf(dir, 'stub'), [], 'an empty uses is none');
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

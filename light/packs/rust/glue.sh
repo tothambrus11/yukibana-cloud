@@ -10,7 +10,7 @@
 #                    every download's size and the crates' archives
 #   explorer.js      the compiler output views (src/explorer.js)
 #   thread.js        one thread of rustc or Miri (src/thread.js)
-#   linux-worker.js  a Linux program under the C/C++ pack's QEMU
+#   linux-worker.js  a Linux program under the Linux pack's QEMU
 #   LICENSES.txt
 #
 # each script with .gz and .br siblings. It prints each file it adds,

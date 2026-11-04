@@ -1,4 +1,4 @@
-// Unit tests of src/vm/cpio.js against GNU cpio (cpio -i / -t), the reference reader
+// Unit tests of src/cpio.js against GNU cpio (cpio -i / -t), the reference reader
 // of the newc format the Linux kernel unpacks as an initramfs.
 //
 //   node test-cpio.mjs        (needs GNU cpio on PATH)
@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
-import { concat, cpio, runArchive } from './src/vm/cpio.js';
+import { concat, cpio, runArchive } from './src/cpio.js';
 
 const dirs = [];
 after(() => dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true })));

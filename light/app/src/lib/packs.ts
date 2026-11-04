@@ -37,6 +37,24 @@ export function packOf(language: Language): PackId {
 }
 
 /**
+ * Every pack a language's runs may load: its own ({@link packOf}) first,
+ * then the ones its runner imports (`uses`: the Linux pack's emulator).
+ * What "Save offline" downloads for it, and what must be cached for it to
+ * say it works offline. Throws, as packOf does, for a name that is not a
+ * pack id.
+ */
+export function packsOf(language: Language): PackId[] {
+	return [
+		packOf(language),
+		...(language.uses ?? []).map((name) => {
+			const pack = packIdOf(name);
+			if (pack === null) throw new RangeError(`${JSON.stringify(name)}, a pack ${language.label} uses, is not a pack id`);
+			return pack;
+		}),
+	];
+}
+
+/**
  * What the app's runners need, stated by the app itself until each pack
  * ships its needs in a pack.json (M1b-data and PM1 in the architecture
  * plan): the most any of them asks today. Standard input needs a

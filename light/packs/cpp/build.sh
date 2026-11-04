@@ -11,9 +11,12 @@
 #   compilers  clangd, cc, cc-cross, the demangler           (needs emsdk)
 #   libs       the sysroots, runtimes, frameworks, sanitizers, Linux targets'
 #              files                               (needs compilers, emsdk, musl)
-#   vm         QEMU-Wasm, the kernels, init, strace          (needs emsdk, musl)
+#   tidy       clangd with clang-tidy's checks         (needs compilers, emsdk)
 #   glue       server.js, runner.js, runner-linux.js, explorer.js,
-#              sanitizer.js, vm.js
+#              sanitizer.js
+#
+# A Linux target's program runs on the Linux pack's VM (../linux/build.sh),
+# which needs this pack's emsdk and musl units.
 #
 # Arguments go to `pack-toolchain.sh ensure cpp`: --no-fetch builds every
 # unit here, --rebuild ignores the local cache, --any takes each unit's

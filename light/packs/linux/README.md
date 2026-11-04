@@ -1,9 +1,47 @@
-# Running Linux programs in the browser: QEMU-Wasm, system and user mode
+# Linux pack
 
-This is the experience report for the C/C++ pack's Linux targets. A program compiled
-for `x86_64`, `aarch64` or `riscv64` Linux (static musl ELF, by cc-cross; see
-`src/targets.json`) runs in the browser under QEMU compiled to WebAssembly, in one of
-two ways:
+Runs a static Linux program in the browser, under QEMU compiled to WebAssembly, for
+any language that can build one for `x86_64`, `aarch64` or `riscv64` Linux. It is no
+language's pack of its own, as the LLDB pack is not: a language's runner imports it,
+by URL, only for a program built for a Linux target. The C/C++ (cc-cross), Rust
+(rustc-cross), Go and Zig packs do; each one's default target is WebAssembly, which
+downloads none of this.
+
+| File | What it is |
+| --- | --- |
+| `vm.js` | the runtime a runner imports: `runLinux` (`src/run-linux.js`, with `system.js`, `user.js`, `stdin.js`, `cpio.js`) |
+| `vm/<arch>/` | system emulation: `qemu-system-<arch>.{mjs,wasm}`, the Linux 6.12 kernel, the initrd with yk-init (`vm/guest/init.c`), `strace.cpio`, and qboot (x86_64) or OpenSBI (riscv64) |
+| `user/<arch>/` | user emulation (experimental): `qemu-<arch>.{mjs,wasm}` |
+| `LICENSE-{qemu,linux,strace,opensbi,qboot}.txt` | their licences ("Licences and sources") |
+
+## For a runner
+
+```js
+// In a worker of the runner's own: runLinux runs once per worker, and the VM is
+// ended by terminating that worker.
+const { runLinux } = await import(new URL('../linux/vm.js', import.meta.url).href);
+const status = await runLinux({
+    arch: 'aarch64',            // x86_64, aarch64 or riscv64
+    program,                    // the ELF's bytes: static, or dynamic with its loader in `files`
+    files: [],                  // { path, data } put into the guest beside it
+    args: [], env: {},
+    stdin,                      // the run message's SharedArrayBuffer (CONTRACT.md, "Standard input")
+    options,                    // the project's Run options: { emulation: 'system' | 'user', cpus: 1 | 2 | 4, strace }
+    post,                       // the runner's messages to the app: stdout, stderr, stdin, kernel, trace, phase, mark, loading
+    t0,                         // performance.now() when the run began, so the marks count from it
+});
+```
+
+`vm.js` finds its files beside itself, so a runner names nothing but the module. When
+it is not installed the import fails, and the runner says so ("Running on AArch64
+Linux needs the Linux pack's emulator (packs/linux/vm.js), which is not installed").
+`runLinux` knows nothing of the language: the C/C++ runner's `runner-linux.js` and
+the Rust, Go and Zig runners' `linux-worker.js` are each a few lines around it. The
+app downloads this pack with each of those languages for offline use (`uses` in
+`app/src/lib/languages.ts`), and a pack whose tests run programs on it names it in
+its own `uses` file, so that light-packs.yml assembles it beside that pack.
+
+A program runs in one of two ways, the Run option `emulation`:
 
 - **System emulation, the default.** `qemu-system-<arch>` boots a small Linux 6.12
   kernel. PID 1 is `vm/guest/init.c`, which runs the program and reports how it ended.
@@ -15,9 +53,8 @@ two ways:
   downloads 0.5–0.7 MB, but some things are missing because no kernel is underneath
   (see "What user mode cannot do").
 
-Both modes are behind one function, `runLinux` in `src/vm/run-linux.js`. It is bundled
-to `vm.js`, which `runner-linux.js` imports only for a Linux target. The default
-(WASI) target downloads none of this.
+The rest of this file is the experience report, written while the VM was the C/C++
+pack's (until 2026-11-04): its measurements are of C programs that pack compiled.
 
 ## Results
 
@@ -233,7 +270,7 @@ default.
     every request is a streaming one; `app/tests/e2e-targets.mjs` types a line into
     the terminal after the program printed, in both modes, on every arch.
 11. **Every Go program crashed the RISC-V VM** ("memory access out of bounds" in
-    QEMU's worker; found by the Go pack, `../../go/README.md`). The backend emitted
+    QEMU's worker; found by the Go pack, `../go/README.md`). The backend emitted
     `ctpop_i32`/`ctpop_i64` with the op's arguments 1 and 2 as destination and source
     instead of 0 and 1, so a RISC-V `cpop` (Zbb, which QEMU's default RISC-V CPU has)
     wrote its count into the source register and read a register past the op's. Go's
@@ -291,10 +328,14 @@ default.
 
 ## Building
 
-The VM is the pack's `cpp/vm` unit (`toolchains/vm/`, needing the emsdk and musl units),
-which `../build.sh` builds or fetches with the rest; its `toolchain.sh` runs
-`../build-vm.sh`, with `JOBS=3` by default and `nice`. Each step is skipped when
-its stamp in `$PACK_CACHE/cpp/vm-artifacts` matches its inputs (`toolchains/vm/pins.sh`,
+The VM is the pack's one unit, `linux/vm` (`toolchains/vm/`). It needs two of the
+C/C++ pack's: `cpp/emsdk`, the one Emscripten, which compiles QEMU, and `cpp/musl`,
+the musl the guest's tools link and whose headers user mode takes. `build.sh` builds
+or fetches it (and them) and assembles the pack with `glue.sh`, which bundles `vm.js`
+in seconds; the unit's `toolchain.sh` runs `build-vm.sh`, with `JOBS=3` by default
+and `nice`. Its scripts share `lib.sh`, this pack's copy of the helpers of the C/C++
+pack's `build-lib.sh` it needs (a unit's inputs are its own pack's files). Each step is skipped when
+its stamp in `$PACK_CACHE/linux/vm-artifacts` matches its inputs (`toolchains/vm/pins.sh`,
 the patches, the configs, the script itself, the compiler version, and for the QEMU steps
 the Emscripten the emsdk unit's pins name).
 
@@ -305,13 +346,13 @@ the Emscripten the emsdk unit's pins name).
 | yk-init (nolibc), its unit tests (ASan+UBSan), clang-tidy | `vm/build-init.sh` | 4 s |
 | static strace 6.12 per arch (musl) | `vm/build-strace.sh` | 220–315 s for all three |
 | qemu-<arch> linux-user ×3 | `vm/build-qemu-user.sh` | 231 s configure + build; 24–41 s relink |
-| layout, .gz/.br (vm.js is the pack's glue, `../glue.sh`) | `vm/stage.sh` | 112 s, mostly brotli |
+| layout, .gz/.br (vm.js is the pack's glue, `glue.sh`) | `vm/stage.sh` | 112 s, mostly brotli |
 
 - `USER_MODE=0` skips user mode, and `stage.sh` then ships no `user/`.
 - `KEEP_TREES=0` deletes the kernel and QEMU build trees, about 0.6 GB.
 - The caches take 2.6 GB under `$PACK_CACHE/qemu-wasm`.
 - The musl sysroots for strace and the fixtures are made by `vm/build-sysroot.sh`
-  (the first step) in `$PACK_CACHE/cpp/targets/sysroot/<arch>`, from the musl unit's
+  (the first step) in `$PACK_CACHE/linux/sysroot/<arch>`, from the musl unit's
   copies of the same SHA-256-pinned Alpine packages as the targets' `lib.tar` (musl
   1.2.5-r24, compiler-rt 21.1.2); see `vm/cc.sh`. Every file of the sysroot is in strace's stamp.
   (Until review they came from a hand-copied `$PACK_CACHE/qemu-wasm/sysroots` that no
@@ -324,13 +365,15 @@ the Emscripten the emsdk unit's pins name).
 
 | command | what it checks |
 |---|---|
-| `node test-cpio.mjs` | newc archives match GNU cpio byte for byte; the run archive layout |
-| `node --test test-vm.mjs` (or `VM_ARCHES=riscv64 …`) | 8 system and 6 user tests per arch, in headless Chromium, on fixture programs in `vm/fixtures/`; prints timings, idle CPU, memory and Stop time |
-| `node --test test-run-linux.mjs` | end to end through `runner.js`: cc-cross compiles, `runner-linux.js` links, `vm.js` runs |
+| `./test.sh` | the pack as assembled, as light-packs.yml's assemble job runs it: `test-cpio.mjs` and `test-run.mjs` |
+| `node --test test-cpio.mjs` | newc archives match GNU cpio byte for byte; the run archive layout |
+| `node --test test-run.mjs` | `vm.js` imported by a module worker as a runner imports it, with no `base`: a program of a few instructions per arch, written out by the test as a static ELF (no compiler), writes a line, echoes a line of stdin and exits 3, under system emulation on all three, with strace, on two vCPUs, and under user emulation on all three |
+| `node --test test-vm.mjs` (or `VM_ARCHES=riscv64 …`) | the unit's own test, after `build-vm.sh`: 8 system and 6 user tests per arch, in headless Chromium, on the C programs in `vm/fixtures/` compiled against the unit's musl sysroots; prints timings, idle CPU, memory and Stop time |
 | `vm/build-init.sh` | init's pure functions natively under ASan and UBSan, plus clang-tidy |
+| `../cpp/test-run-linux.mjs`, `../rust/test-run.mjs` | end to end through a language's runner, over this pack assembled beside theirs (their `uses` files): C++ compiled by cc-cross, Rust by rustc-cross |
+| `../cpp/test-units.mjs`, `../cpp/test-build-lib.mjs` | which edits re-key the vm unit, and the user-mode QEMU's stamp, with the C/C++ pack's units it needs |
 
-`test-run-linux.mjs` skips with a reason until the compiler's half (cc-cross, the
-targets) is built. With it built, all 24 cases pass. Here is what the app sees for
+The C/C++ pack's `test-run-linux.mjs` passes all 24 cases. Here is what the app sees for
 the sample project, from Run to the end of the program, with the program's output in
 the middle:
 
@@ -362,7 +405,7 @@ The corresponding source is:
 
 - the upstream releases and commits pinned by SHA-256 or commit in
   `toolchains/vm/pins.sh`: ktock/qemu-wasm, linux-6.12.114, strace-6.12, and the qboot
-  and OpenSBI submodule commits of that QEMU, and in `toolchains/emsdk/pins.sh` and
-  `toolchains/musl/pins.sh` the Emscripten that compiles QEMU and the musl whose
-  headers the user-mode build takes;
+  and OpenSBI submodule commits of that QEMU, and in `../cpp/toolchains/emsdk/pins.sh`
+  and `../cpp/toolchains/musl/pins.sh` the Emscripten that compiles QEMU and the musl
+  whose headers the user-mode build takes;
 - plus `vm/patches/`, `vm/kconfig/`, `vm/devices/` and `vm/guest/`.

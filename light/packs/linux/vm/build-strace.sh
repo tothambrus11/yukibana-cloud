@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Builds a static strace 6.12 per guest architecture with cc.sh (musl), and packs each
 # as $ART/strace-<arch>.cpio (bin/strace, mode 0755): the initramfs segment
-# src/vm/system.js appends when the run asks for strace. Also $ART/LICENSE-strace.txt.
+# src/system.js appends when the run asks for strace. Also $ART/LICENSE-strace.txt.
 # --enable-bundled=yes: strace 6.12 checks io_uring structs against its own bundled
 # UAPI headers rather than the newer 6.12.114 ones, whose reserved fields differ in size.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../toolchains/vm/pins.sh
 source "$HERE/../toolchains/vm/pins.sh"
-# shellcheck source=../build-lib.sh
-source "$HERE/../build-lib.sh"
+# shellcheck source=../lib.sh
+source "$HERE/../lib.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
-ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
+ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/vm-artifacts}
 JOBS=${JOBS:-3}
 export QC
 SRC=$QC/src/strace-$STRACE_VERSION
@@ -27,7 +27,7 @@ for a in ${ARCHES:-x86_64 aarch64 riscv64}; do
   # The sysroot cc.sh uses (its default, or $SYSROOTS): every file of it is an input,
   # and so is the compiler it runs (CLANG, default clang-18: the stamp used to name
   # clang-18's version whichever CLANG compiled).
-  sr=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/targets/sysroot}/$a
+  sr=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/sysroot}/$a
   [ -f "$sr/lib/libc.a" ] || { echo "build-strace.sh: no musl sysroot in $sr (run build-sysroot.sh: the vm unit builds it from the musl unit)" >&2; exit 1; }
   stamp=$(cat "$HERE/../toolchains/vm/pins.sh" "$HERE/cc.sh" "$HERE/$(basename "${BASH_SOURCE[0]}")" <(cd "$sr" && find . -type f | LC_ALL=C sort | xargs sha256sum) <("${CLANG:-clang-18}" --version | head -1) | sha256sum | cut -d' ' -f1)
   if [ "$(cat "$ART/strace-$a.stamp" 2>/dev/null)" = "$stamp" ] && [ -f "$ART/strace-$a.cpio" ]; then echo "strace-$a: up to date"; continue; fi
@@ -39,7 +39,7 @@ for a in ${ARCHES:-x86_64 aarch64 riscv64}; do
     const { cpio } = await import(process.argv[1]);
     const fs = await import("node:fs");
     fs.writeFileSync(process.argv[3], cpio([{ name: "bin", mode: 0o040755 }, { name: "bin/strace", mode: 0o100755, data: fs.readFileSync(process.argv[2]) }]));
-  ' "$HERE/../src/vm/cpio.js" src/strace "$ART/strace-$a.cpio"
+  ' "$HERE/../src/cpio.js" src/strace "$ART/strace-$a.cpio"
   cd "$HERE"; rm -rf "$B"
   echo "$stamp" > "$ART/strace-$a.stamp"
 done

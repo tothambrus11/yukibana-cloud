@@ -5,7 +5,7 @@
 | `server.js` + `gotool.wasm` | **our language server** (`tool/internal/lsp`) on Go 1.27.3's `go/parser`, `go/types`, `go/doc` and `go/format`, with our build planner (`tool/internal/plan`), compiled to wasip1/wasm as a reactor | diagnostics (the type checker's, so the compiler's own messages), completion, hover with doc comments, signature help, definition, type definition, references, highlights, rename, outline, formatting (gofmt) |
 | `runner.js` + `compile.wasm` + `link.wasm` | **`cmd/compile` and `cmd/link` of Go 1.27.3**, unchanged, built with `GOOS=wasip1 GOARCH=wasm` | **Run** and **Test** (`go test`'s output, examples included), for the target in `go.env` |
 | `std/<goos>-<goarch>/<path>.a` + `std/index.json` | the standard library's archives (export data and object code, as `go build` caches them), for wasip1/wasm, linux/amd64, linux/arm64 and linux/riscv64 | what the server type-checks imports against and what the linker links; each downloaded the first time something needs it |
-| `linux-worker.js` | a worker that loads the **C/C++ pack's** `vm.js` (QEMU-Wasm and Linux 6.12; `../cpp/vm/README.md`) | runs a Linux program, one worker per run |
+| `linux-worker.js` | a worker that loads the **Linux pack's** `vm.js` (QEMU-Wasm and Linux 6.12; `../linux/README.md`) | runs a Linux program, one worker per run |
 
 The status bar shows `go/types (Yukibana) go1.27.3`. This is **not gopls**:
 gopls runs the go command, which runs the compiler as a subprocess and reads
@@ -40,7 +40,7 @@ evaluated for it, and a file left out says so instead of being checked.
 The go command does not read `go.env`; Download's README says to set the
 variables in the environment (`GOOS=linux GOARCH=arm64 go build .`).
 
-Linux needs the C/C++ pack's VM (`packs/cpp/vm.js` and `vm/<arch>/`, 2.6 to
+Linux needs the Linux pack's VM (`packs/linux/vm.js` and `vm/<arch>/`, 2.6 to
 2.9 MB brotli). Without it, Run says the emulator is not installed.
 
 ## Running and testing (runner.js)
@@ -146,7 +146,7 @@ Go's runtime uses `cpop` once `riscv_hwprobe` says the CPU has Zbb, which
 QEMU's default RISC-V CPU does: every Go program crashed the emulator with
 "memory access out of bounds". A C program built with `-march=rv64gc_zbb`
 showed the same bug as wrong answers (one bit counted in
-`0x00f0123400000100`). The fix is in `../cpp/vm/patches/qemu-wasm-tcg.patch`;
+`0x00f0123400000100`). The fix is in `../linux/vm/patches/qemu-wasm-tcg.patch`;
 the VM must be built from it for Go on riscv64.
 
 ## Building and testing

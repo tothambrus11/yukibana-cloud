@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lays out the guest tools' musl sysroots, $PACK_CACHE/cpp/targets/sysroot/<arch>/
+# Lays out the guest tools' musl sysroots, $PACK_CACHE/linux/sysroot/<arch>/
 # ({include,lib}: musl's complete headers for the arch, its crt files, libc.a and
 # libm.a, and compiler-rt's builtins as libclang_rt.builtins.a), the sysroot cc.sh
 # compiles strace and test-vm.mjs's fixtures with. From the musl unit's checked
@@ -12,10 +12,10 @@
 # unchanged sysroot rebuilds nothing).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../build-lib.sh
-source "$HERE/../build-lib.sh"
+# shellcheck source=../lib.sh
+source "$HERE/../lib.sh"
 need_unit musl   # MUSL_VERSION, and the packages (apk_of)
-SYSROOTS=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/targets/sysroot}
+SYSROOTS=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/sysroot}
 LLVM_LIB=usr/lib/llvm21/lib/clang/21/lib
 
 for arch in x86_64 aarch64 riscv64; do

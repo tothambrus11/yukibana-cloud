@@ -1,6 +1,6 @@
 // A worker of the Rust runner's own, for one program on a Linux target: it
-// imports the C++ pack's emulator (packs/cpp/vm.js, QEMU-Wasm; its
-// vm/README.md) and runs the program with runLinux, posting the runner's
+// imports the Linux pack's emulator (packs/linux/vm.js, QEMU-Wasm; its
+// README.md) from data.base and runs the program with runLinux, posting the runner's
 // messages back unchanged and then { type: 'done', code }. runLinux runs
 // once per worker and leaves QEMU running when it returns, so the runner
 // starts a worker per program and terminates it after, and keeps its
@@ -12,7 +12,7 @@ self.onmessage = async ({ data }) => {
     try {
         ({ runLinux } = await import(new URL('vm.js', data.base).href));
     } catch {
-        post({ type: 'stderr', text: `Running on ${data.label} needs the C/C++ pack's emulator (packs/cpp/vm.js), which is not installed.\n` });
+        post({ type: 'stderr', text: `Running on ${data.label} needs the Linux pack's emulator (packs/linux/vm.js), which is not installed.\n` });
         post({ type: 'done', code: 1 });
         return;
     }

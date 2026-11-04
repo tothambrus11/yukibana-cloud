@@ -2,7 +2,7 @@
 # A cross C compiler for static musl programs in the guest, with the host's clang:
 #   cc.sh <arch> [clang args...]        arch: x86_64 | aarch64 | riscv64
 # for strace (build-strace.sh) and the test programs (vm/fixtures, test-vm.mjs).
-# Sysroots: $SYSROOTS/<arch>/{include,lib} (default $PACK_CACHE/cpp/targets/sysroot,
+# Sysroots: $SYSROOTS/<arch>/{include,lib} (default $PACK_CACHE/linux/sysroot,
 # made by build-sysroot.sh, which ../build-vm.sh runs first) with musl
 # 1.2.5's headers, crt1.o, crti.o, crtn.o, libc.a and compiler-rt's
 # libclang_rt.builtins.a: the SHA-256-pinned Alpine packages the Linux targets'
@@ -13,7 +13,7 @@
 set -euo pipefail
 a=$1; shift
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
-SYSROOTS=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/targets/sysroot}
+SYSROOTS=${SYSROOTS:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/sysroot}
 D=$SYSROOTS/$a
 case $a in x86_64) k=x86_64 ;; aarch64) k=arm64 ;; riscv64) k=riscv ;; *) echo "cc.sh: unknown arch $a" >&2; exit 2 ;; esac
 [ -f "$D/lib/libc.a" ] || { echo "cc.sh: no musl sysroot in $D (run build-sysroot.sh: the vm unit builds it from the musl unit)" >&2; exit 1; }

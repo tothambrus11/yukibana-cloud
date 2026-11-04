@@ -519,15 +519,28 @@ jobs:
           node-version: 22
 
       # Everything this job reads, for the once gate: the pack's directory,
-      # the directories of the packs its units need (whose keys are in its
-      # units' keys), the scripts that key, fetch and assemble, and the
+      # the packs its tests run on (its `uses` file: the Linux pack, whose
+      # emulator a Linux target's program runs on, is assembled beside it),
+      # the directories of the packs their units need (whose keys are in
+      # their units' keys), the scripts that key, fetch and assemble, and the
       # files outside the pack that its tests read (`test.sh --inputs`).
+      # assembled: the pack, then each it uses; artifacts: the
+      # download-artifact pattern of their units' toolchains.
       - name: What this pack is made from
         id: inputs
         run: |
-          packs=("$PACK")
+          used=()
+          if [ -f "light/packs/$PACK/uses" ]; then
+            mapfile -t used < <(sed 's/#.*//; s/[[:space:]]//g; /^$/d' "light/packs/$PACK/uses")
+          fi
+          for p in "${used[@]}"; do
+            [ -d "light/packs/$p/toolchains" ] ||
+              { echo "::error title=$PACK::light/packs/$PACK/uses names $p, which is not a split pack: only a split pack is assembled here"; exit 1; }
+          done
+          assembled=("$PACK" "${used[@]}")
+          packs=("${assembled[@]}")
           plan="$(light/scripts/pack-store.sh toolchain-plan --waves 3)"
-          units="$(light/scripts/pack-store.sh toolchain-units "$PACK")"
+          units="$(for p in "${assembled[@]}"; do light/scripts/pack-store.sh toolchain-units "$p"; done)"
           # A unit's needs, then theirs, until nothing is added.
           while :; do
             added=0
@@ -549,6 +562,12 @@ jobs:
           [ -x "light/packs/$PACK/test.sh" ] ||
             { echo "::error title=$PACK::light/packs/$PACK/test.sh is missing or not executable: a split pack's tests run over the pack as assembled (light/packs/contract.test.mjs)"; exit 1; }
           tested="$("light/packs/$PACK/test.sh" --inputs)"
+          echo "assembled=${assembled[*]}" >> "$GITHUB_OUTPUT"
+          if [ "${#assembled[@]}" -eq 1 ]; then
+            echo "artifacts=toolchain-$PACK-*" >> "$GITHUB_OUTPUT"
+          else
+            echo "artifacts=toolchain-{$(IFS=,; echo "${assembled[*]}")}-*" >> "$GITHUB_OUTPUT"
+          fi
           {
             echo "once-paths<<ONCE_PATHS"
             printf 'light/packs/%s\n' "${packs[@]}"
@@ -581,36 +600,42 @@ jobs:
         working-directory: light
         run: node --test --test-name-pattern="outside the packs starts the pack workflow" scripts/test-workflows.mjs
 
-      # The units this run's waves built of this pack (a pack's name has no
-      # `-`, so toolchain-<pack>-* is this pack's alone). None is no error:
-      # the store has them.
+      # The units this run's waves built of this pack and of the packs it
+      # uses (a pack's name has no `-`, so toolchain-<pack>-* is that pack's
+      # alone). None is no error: the store has them.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: steps.once.outputs.done != 'true'
         with:
-          pattern: toolchain-${{ matrix.pack }}-*
+          pattern: ${{ steps.inputs.outputs.artifacts }}
           merge-multiple: true
           path: ${{ env.FROM }}
 
       # Each unit from this run's artifacts or the store, never built:
-      # missing names the units that are in neither.
+      # missing names the units that are in neither. The pack's own go to
+      # $RUNNER_TEMP/dirs, a used pack's to $RUNNER_TEMP/dirs-<pack>.
       - name: The pack's units
         id: units
         if: steps.once.outputs.done != 'true'
+        env:
+          ASSEMBLED: ${{ steps.inputs.outputs.assembled }}
         run: |
           trap 'echo "Fetch the units|$SECONDS" >> "$TIMINGS"' EXIT
           mkdir -p "$FROM"
-          units="$(light/scripts/pack-store.sh toolchain-units "$PACK")"
           missing=()
-          : > "$RUNNER_TEMP/dirs"
-          while read -r unit; do
-            status=0
-            dir="$(light/scripts/pack-toolchain.sh ensure "$unit" --fetch-only --from "$FROM")" || status=$?
-            case "$status" in
-              0) printf '%s\n' "$dir" >> "$RUNNER_TEMP/dirs" ;;
-              3) missing+=("$unit") ;;
-              *) exit "$status" ;;
-            esac
-          done <<<"$units"
+          for p in $ASSEMBLED; do
+            list="$RUNNER_TEMP/dirs-$p"
+            [ "$p" != "$PACK" ] || list="$RUNNER_TEMP/dirs"
+            : > "$list"
+            while read -r unit; do
+              status=0
+              dir="$(light/scripts/pack-toolchain.sh ensure "$unit" --fetch-only --from "$FROM")" || status=$?
+              case "$status" in
+                0) printf '%s\n' "$dir" >> "$list" ;;
+                3) missing+=("$unit") ;;
+                *) exit "$status" ;;
+              esac
+            done < <(light/scripts/pack-store.sh toolchain-units "$p")
+          done
           echo "missing=${missing[*]}" >> "$GITHUB_OUTPUT"
 
       - name: A release never builds a compiler
@@ -650,13 +675,21 @@ jobs:
           done
           exit 1
 
+      # The pack, then each pack it uses, beside it in light/app/static/packs,
+      # where its tests find them as the app's host serves them.
       - name: Assemble
         id: assemble
         if: steps.units.outcome == 'success' && steps.units.outputs.missing == ''
+        env:
+          ASSEMBLED: ${{ steps.inputs.outputs.assembled }}
         run: |
           trap 'echo "Assemble|$SECONDS" >> "$TIMINGS"' EXIT
-          mapfile -t dirs < "$RUNNER_TEMP/dirs"
-          light/scripts/pack-toolchain.sh assemble "$PACK" "${dirs[@]}"
+          for p in $ASSEMBLED; do
+            list="$RUNNER_TEMP/dirs-$p"
+            [ "$p" != "$PACK" ] || list="$RUNNER_TEMP/dirs"
+            mapfile -t dirs < "$list"
+            light/scripts/pack-toolchain.sh assemble "$p" "${dirs[@]}"
+          done
 
       # Every file of a split pack has one owner (a unit, a unit's paths,
       # glue.paths), each pin is its unit's, and the glue never compiles

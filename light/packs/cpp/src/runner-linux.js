@@ -2,8 +2,9 @@
 // a Linux target, so the default target's runner.js stays as small as it
 // was): links the compiled objects into a static ELF with ld.lld, the way
 // clang's own driver would (toolchain.js linkLinux), and runs it with
-// vm.js's runLinux, QEMU-Wasm in system or user mode (the emulator's
-// bundle; P/vm/README.md, ../../CONTRACT.md "Running a program").
+// vm.js's runLinux, QEMU-Wasm in system or user mode: the Linux pack's,
+// which any language's runner imports the same way (packs/linux/README.md,
+// ../../CONTRACT.md "Running a program").
 
 import { linkLinux } from './toolchain.js';
 import { loadDemangler } from './demangler.js';
@@ -18,9 +19,9 @@ import { loadDemangler } from './demangler.js';
  * Posts `mark` 'compiled' and 'linked' (ms since `started`, the runner's
  * performance.now() when the request arrived), the 'Linking' phase, and the
  * linker's messages on stderr through `post`. Then frees the compiler
- * (`toolchain.release()`) and imports ./vm.js: when that fails (the
- * emulator is not built), prints "Running on <label> is not installed
- * (packs/cpp/vm.js)" and resolves to 1. Otherwise calls `runLinux` with
+ * (`toolchain.release()`) and imports ../linux/vm.js: when that fails (the
+ * Linux pack is not installed), prints "Running on <label> is not
+ * installed (packs/linux/vm.js)" and resolves to 1. Otherwise calls `runLinux` with
  * the program, `args` (argv[1..]) and `env` (a test framework's colour
  * switches; empty for a plain program), the app's `stdin`
  * buffer, and `options` over the defaults `{ emulation: 'system', cpus: 1,
@@ -64,9 +65,9 @@ export async function runOnLinux({ toolchain, target, objects, cxx, libs = [], a
     toolchain.release();
     let runLinux;
     try {
-        ({ runLinux } = await import('./vm.js'));
+        ({ runLinux } = await import(new URL('../linux/vm.js', import.meta.url).href));
     } catch {
-        post({ type: 'stderr', text: `Running on ${target.label} is not installed (packs/cpp/vm.js)\n` });
+        post({ type: 'stderr', text: `Running on ${target.label} is not installed (packs/linux/vm.js)\n` });
         return 1;
     }
     // A line of stderr is held until its newline (or the end of the run).
@@ -86,7 +87,6 @@ export async function runOnLinux({ toolchain, target, objects, cxx, libs = [], a
         stdin,
         options: { emulation: 'system', cpus: 1, strace: false, ...options },
         post: posted,
-        base: new URL('./', import.meta.url),
         // vm.js's marks ('vm-loaded', 'exec', ...) count from the same
         // moment as 'compiled' and 'linked' above.
         t0: started,

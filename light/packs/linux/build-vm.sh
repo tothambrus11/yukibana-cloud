@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the C/C++ pack's Linux VM, which runs programs compiled for a Linux target
-# (x86_64, aarch64, riscv64; see src/targets.json) in the browser with QEMU-Wasm: the
+# Builds the Linux pack's VM, which runs programs compiled for a Linux target
+# (x86_64, aarch64, riscv64) by any language's pack in the browser with QEMU-Wasm: the
 # vm unit's build (toolchains/vm/toolchain.sh runs it), into $OUT, that unit's
 # toolchain:
 #
@@ -10,13 +10,13 @@
 #   user/<arch>/               user emulation (experimental): qemu-<arch>.{mjs,wasm}
 #   LICENSE-{qemu,linux,strace,opensbi,qboot}.txt
 #
-# with .gz and .br siblings. vm.js, the runtime runner.js imports only for a Linux
-# target (src/vm/run-linux.js, bundled with these files' sizes), is the pack's glue.
-# vm/README.md is the report: what works, sizes, timings, every patch and why, and
-# where the GPL sources are (toolchains/vm/pins.sh, toolchains/emsdk/pins.sh,
+# with .gz and .br siblings. vm.js, the runtime a language's runner imports only for
+# a Linux target (src/run-linux.js, bundled with these files' sizes), is the pack's
+# glue. README.md is the report: what works, sizes, timings, every patch and why, and
+# where the GPL sources are (toolchains/vm/pins.sh, ../cpp/toolchains/emsdk/pins.sh,
 # vm/patches/).
 #
-# Steps, each skipped when its stamp in $PACK_CACHE/cpp/vm-artifacts matches its inputs:
+# Steps, each skipped when its stamp in $PACK_CACHE/linux/vm-artifacts matches its inputs:
 #   vm/build-sysroot.sh       the guest tools' musl sysroots, from the musl unit
 #   vm/build-qemu.sh          QEMU's dependencies and qemu-system-*, with the emsdk unit's
 #                             Emscripten
@@ -25,7 +25,7 @@
 #   vm/build-strace.sh        static strace 6.12 (musl)
 #   vm/build-qemu-user.sh     qemu-<arch> (linux-user) with patches/qemu-linux-user-wasm.patch
 #   vm/stage.sh               lays it all out into $OUT, compresses
-# Caches: $PACK_CACHE/qemu-wasm (sources, build trees), $PACK_CACHE/cpp/vm-artifacts.
+# Caches: $PACK_CACHE/qemu-wasm (sources, build trees), $PACK_CACHE/linux/vm-artifacts.
 # KEEP_TREES=0 deletes the kernel and QEMU build trees once their artifacts exist
 # (about 0.6 GB; a later change to a kernel config or QEMU then rebuilds from scratch).
 # USER_MODE=0 skips user emulation (stage.sh then ships no user/). Each is declared
@@ -37,14 +37,14 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # The VM's own pins are toolchains/vm/pins.sh, which vm/build-*.sh source; what it
-# shares with the pack comes from the emsdk and musl units (build-lib.sh's need_unit),
-# and build-lib.sh is sourced here for step.
-# shellcheck source-path=SCRIPTDIR source=build-lib.sh
-source "$HERE/build-lib.sh"
+# shares with the C/C++ pack comes from its emsdk and musl units (lib.sh's need_unit),
+# and lib.sh is sourced here for step.
+# shellcheck source-path=SCRIPTDIR source=lib.sh
+source "$HERE/lib.sh"
 : "${OUT:?OUT is the toolchain directory of the vm unit (pack-toolchain.sh sets it)}"
 export OUT
 export PACK_CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}
-export QC=$PACK_CACHE/qemu-wasm ART=$PACK_CACHE/cpp/vm-artifacts JOBS=${JOBS:-3}
+export QC=$PACK_CACHE/qemu-wasm ART=$PACK_CACHE/linux/vm-artifacts JOBS=${JOBS:-3}
 mkdir -p "$QC" "$ART"
 timed() { local t=$SECONDS; "$@"; echo "($(basename "$1") ${*:2}: $((SECONDS - t)) s)"; }
 

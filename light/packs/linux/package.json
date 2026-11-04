@@ -1,0 +1,14 @@
+{
+    "name": "yukibana-pack-linux",
+    "private": true,
+    "description": "Yukibana Linux pack: QEMU-Wasm with Linux 6.12 for x86-64, AArch64 and RISC-V 64, which runs any language's static Linux program in the browser. This file holds the runtime's bundler and the tests' browser driver.",
+    "type": "module",
+    "scripts": {
+        "test": "./test.sh",
+        "test:vm": "node --test test-vm.mjs"
+    },
+    "devDependencies": {
+        "esbuild": "0.25.10",
+        "playwright-core": "1.56.1"
+    }
+}

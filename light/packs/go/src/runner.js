@@ -12,9 +12,9 @@
 //
 // The target is the project's go.env (GOOS and GOARCH; none means
 // wasip1/wasm). A WebAssembly program runs in this worker; a Linux program
-// (linux/amd64, linux/arm64, linux/riscv64) runs under the C++ pack's
-// QEMU-Wasm, in a worker of its own (linux-worker.js), with the C++ pack's
-// Run options: `{ emulation, cpus, strace }` (packs/cpp/README.md).
+// (linux/amd64, linux/arm64, linux/riscv64) runs under the Linux pack's
+// QEMU-Wasm, in a worker of its own (linux-worker.js), with its Run
+// options: `{ emulation, cpus, strace }` (packs/linux/README.md).
 //
 // `test` builds a test binary per package with tests and runs each with
 // -test.v, then says `ok` or `FAIL` per package, as `go test ./...` does.
@@ -260,7 +260,7 @@ async function execute(program, { target, args, stdin, options, started }) {
             env: {},
             stdin,
             options: { emulation: 'system', cpus: 1, strace: false, ...options },
-            base: new URL('../cpp/', import.meta.url).href,
+            base: new URL('../linux/', import.meta.url).href,
             t0: started,
             timeOrigin: performance.timeOrigin,
         });

@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../toolchains/vm/pins.sh
 source "$HERE/../toolchains/vm/pins.sh"
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
-ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
+ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/vm-artifacts}
 N=$QC/linux-$LINUX_VERSION/tools/include/nolibc
 G=$HERE/guest
 CC=${CC_HOST:-clang-18}

@@ -5,7 +5,7 @@
 | `server.js` + `rust-analyzer.wasm` | **rust-analyzer's IDE crates** (`ra_ap_ide` and friends, **0.0.358**, from crates.io) with a small LSP layer written for this pack (`server/src/lib.rs`), compiled to wasm32-wasip1 with Rust 1.98.0 | diagnostics, completion (with auto-import), hover, signature help, definition, type definition, implementations, references, highlights, outline, rename, quick fixes and assists, semantic tokens, inlay hints |
 | `std-src.tar` | `core`, `alloc` and `std` sources from **rust-src 1.98.0** | what rust-analyzer reads for the standard library: types, completion, docs |
 | `runner.js` + `rustc.wasm` + `sysroot-wasm32-wasip1.tar` | **rustc 1.98.1** with **LLVM 22**'s WebAssembly code generator and lld inside, compiled for a wasm32-wasip1-threads host (`toolchains/compilers`), and Rust's own rust-std for wasm32-wasip1 | **Run** and **Test** of the default target, WebAssembly (WASI): a real compile, with full debug info at opt-level 0, and the program run in the browser |
-| `rustc-cross.wasm` + `sysroot-<triple>.tar` | the same rustc with the x86-64, AArch64 and RISC-V code generators and lld's ELF linker too, and rust-std for `x86_64`, `aarch64` and `riscv64gc-unknown-linux-musl` | Run and Test of a **Linux target**: a static ELF, run under the C/C++ pack's QEMU-Wasm |
+| `rustc-cross.wasm` + `sysroot-<triple>.tar` | the same rustc with the x86-64, AArch64 and RISC-V code generators and lld's ELF linker too, and rust-std for `x86_64`, `aarch64` and `riscv64gc-unknown-linux-musl` | Run and Test of a **Linux target**: a static ELF, run under the Linux pack's QEMU-Wasm (`../linux/README.md`) |
 | `miri.wasm` + `miri-sysroot-<triple>.tar` | **Miri** of the same tree, and std built for Miri on six targets | Run and Test **under Miri** (Build settings), which stops at undefined behaviour, as if on the Miri target chosen: x86-64, AArch64, RISC-V 64, i686, ARMv7, s390x |
 | `explorer.js` | the same rustc, compiling only | the **MIR**, **LLVM IR** and **assembly** views, each line mapped to its source line |
 | `quickcheck-1.0.3-<triple>.tar`, `quickcheck-1.0.3-miri-<triple>.tar`, `quickcheck-1.0.3-src.tar` | **[quickcheck](https://github.com/BurntSushi/quickcheck) 1.0.3** and its dependencies (rand, rand_core, getrandom, libc, cfg-if) from crates.io, compiled for each target and for Miri's, and their sources | **property-based tests**, for a project whose `Cargo.toml` names `quickcheck` (see "Property-based tests"); downloaded only then |
@@ -178,7 +178,7 @@ The contract's runner (`../CONTRACT.md`, "Running a program").
 4. **Run**: a WebAssembly program runs in the runner's worker, on WASI
    (stdout and stderr streamed, stdin by the contract: stdout is flushed,
    the worker blocks on the SharedArrayBuffer; Ctrl-D is end of file). A
-   Linux program runs in `linux-worker.js` on the C/C++ pack's QEMU-Wasm,
+   Linux program runs in `linux-worker.js` on the Linux pack's QEMU-Wasm,
    with the C++ pack's Run options (user or system emulation, CPUs,
    strace). A panic prints Rust's own `thread 'main' panicked at ...` and
    exits 101 on Linux; on WebAssembly, whose std is `panic=abort`, the

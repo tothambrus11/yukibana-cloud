@@ -650,8 +650,8 @@ TEST_CASE("throws something else") {
         linuxCatch2.code === 1 && linuxCatch2.stderr === 'Catch2 runs on the WebAssembly target only, for now: on AArch64 Linux the tests can use GoogleTest (and RapidCheck).\n' && Object.keys(linuxCatch2.loading).length === 0,
         JSON.stringify(linuxCatch2.stderr)
     );
-    // A Linux run with the emulator missing (vm.js answered 404): compiled
-    // and linked, then the message. Needs cc-cross and targets/x86_64.
+    // A Linux run with the emulator missing (the Linux pack's vm.js
+    // answered 404): compiled and linked, then the message. Needs cc-cross and targets/x86_64.
     let haveCross = true;
     try {
         await stat(join(STATIC, 'packs/cpp/cc-cross.wasm'));
@@ -659,14 +659,14 @@ TEST_CASE("throws something else") {
         haveCross = false;
     }
     if (haveCross) {
-        hidden.add('/packs/cpp/vm.js');
+        hidden.add('/packs/linux/vm.js');
         requested.length = 0;
         const novm = await run({ ...SAMPLE, 'compile_flags.txt': `--target=x86_64-linux-musl\n${SAMPLE['compile_flags.txt']}` });
         hidden.clear();
         const fetched = [...new Set(requested)].filter((u) => u.startsWith('/packs/')).sort();
         check(
             'Linux target without vm.js: compiled for x86_64-linux-musl, linked, then "not installed", exit 1',
-            novm.code === 1 && novm.stderr === 'Running on x86-64 Linux is not installed (packs/cpp/vm.js)\n' &&
+            novm.code === 1 && novm.stderr === 'Running on x86-64 Linux is not installed (packs/linux/vm.js)\n' &&
                 novm.phases.some(([t]) => t === 'Compiling geometry.cpp (1/2) for x86_64-linux-musl') && novm.phases.some(([t]) => t === 'Linking'),
             `${JSON.stringify(novm.stderr)} ${timeline(novm)}`
         );
@@ -674,7 +674,7 @@ TEST_CASE("throws something else") {
             'a Linux target fetches cc-cross and its own arch only, never cc.wasm or wasi-sysroot',
             // runner.js and sysroot.tar.gz come from the browser's cache,
             // fetched by the runs before.
-            JSON.stringify(fetched) === JSON.stringify(['/packs/cpp/cc-cross.js', '/packs/cpp/cc-cross.wasm', '/packs/cpp/runner-linux.js', '/packs/cpp/targets/x86_64/include.tar', '/packs/cpp/targets/x86_64/lib.tar', '/packs/cpp/vm.js']),
+            JSON.stringify(fetched) === JSON.stringify(['/packs/cpp/cc-cross.js', '/packs/cpp/cc-cross.wasm', '/packs/cpp/runner-linux.js', '/packs/cpp/targets/x86_64/include.tar', '/packs/cpp/targets/x86_64/lib.tar', '/packs/linux/vm.js']),
             fetched.join(' ')
         );
     } else console.log('SKIP  Linux target without vm.js (no cc-cross.wasm: run build-cross.sh)');

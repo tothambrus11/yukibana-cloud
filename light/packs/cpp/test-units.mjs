@@ -1,8 +1,9 @@
 // Tests of how the C/C++ pack is cut into toolchain units (toolchains/<unit>/:
-// emsdk, musl, compilers, libs, vm; README, "Units"): which edits re-key which
-// unit, with the real key (light/scripts/toolchain-key.sh) over a scratch
-// copy of the pack, and that a unit's scripts reach only the units its needs
-// file names. Nothing is built, so it takes seconds.
+// emsdk, musl, compilers, libs; README, "Units"), with the Linux pack's vm
+// unit (../linux/toolchains/vm/), which needs two of them: which edits re-key
+// which unit, with the real key (light/scripts/toolchain-key.sh) over a
+// scratch copy of both packs, and that a unit's scripts reach only the units
+// its needs file names. Nothing is built, so it takes seconds.
 //
 //   node --test test-units.mjs   (from light/packs/cpp; needs bash and git)
 import assert from 'node:assert/strict';
@@ -16,6 +17,9 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const LIGHT = path.resolve(HERE, '../..');
 const UNITS = ['emsdk', 'musl', 'compilers', 'libs', 'vm'];
+/** The pack of each unit: vm is the Linux pack's. */
+const PACK = { emsdk: 'cpp', musl: 'cpp', compilers: 'cpp', libs: 'cpp', vm: 'linux' };
+const packDir = (unit) => path.join(LIGHT, 'packs', PACK[unit]);
 const scratches = [];
 after(() => {
     for (const d of scratches) fs.rmSync(d, { recursive: true, force: true });
@@ -23,7 +27,8 @@ after(() => {
 
 /**
  * A scratch repository holding the key's two scripts and a copy of this
- * pack without its node_modules, so a test may edit any file of it. The
+ * pack and the Linux pack without their node_modules, so a test may edit
+ * any file of them (a file of the Linux pack is ../linux/<path>). The
  * key reads untracked files too, so nothing is committed.
  */
 function scratch() {
@@ -31,7 +36,8 @@ function scratch() {
     scratches.push(dir);
     fs.mkdirSync(path.join(dir, 'light/scripts'), { recursive: true });
     for (const name of ['toolchain-key.sh', 'toolchain-build-env.sh']) fs.copyFileSync(path.join(LIGHT, 'scripts', name), path.join(dir, 'light/scripts', name));
-    fs.cpSync(HERE, path.join(dir, 'light/packs/cpp'), { recursive: true, filter: (src) => path.basename(src) !== 'node_modules' });
+    for (const pack of ['cpp', 'linux'])
+        fs.cpSync(path.join(LIGHT, 'packs', pack), path.join(dir, 'light/packs', pack), { recursive: true, filter: (src) => path.basename(src) !== 'node_modules' });
     execFileSync('git', ['-C', dir, 'init', '-q']);
     return dir;
 }
@@ -41,7 +47,7 @@ const keySh = (root, script, ...args) =>
     execFileSync('bash', ['-c', `set -euo pipefail; source light/scripts/toolchain-key.sh; ${script}`, 'bash', ...args], { cwd: root, encoding: 'utf8' });
 
 /** Every unit's key in repository `root`, as { unit: key }. */
-const keys = (root) => Object.fromEntries(UNITS.map((u) => [u, keySh(root, 'toolchain_key "$1"', `cpp/${u}`).trim()]));
+const keys = (root) => Object.fromEntries(UNITS.map((u) => [u, keySh(root, 'toolchain_key "$1"', `${PACK[u]}/${u}`).trim()]));
 
 /** The units whose key differs between `a` and `b`, sorted. */
 const changed = (a, b) => UNITS.filter((u) => a[u] !== b[u]).sort();
@@ -94,22 +100,25 @@ test('a change to the VM, a library, a worker, a test or a document re-keys only
     const root = scratch();
     let last = keys(root);
     for (const [file, units] of [
-        ['vm/kconfig/common.config', ['vm']],
-        ['vm/build-qemu.sh', ['vm']],
-        ['toolchains/vm/pins.sh', ['vm']],
+        ['../linux/vm/kconfig/common.config', ['vm']],
+        ['../linux/vm/build-qemu.sh', ['vm']],
+        ['../linux/toolchains/vm/pins.sh', ['vm']],
+        ['../linux/lib.sh', ['vm']],
         ['build-sanitizers.sh', ['libs']],
         ['libs-lib.sh', ['libs']],
         ['src/sanitizer-rt/wasi_heap.c', ['libs']],
         ['src/toolchain.js', ['libs']],
         ['src/runner.js', []],
         ['src/server.js', []],
-        ['src/vm/run-linux.js', []],
+        ['../linux/src/run-linux.js', []],
+        ['../linux/glue.sh', []],
+        ['../linux/test-run.mjs', []],
         ['glue.sh', []],
         ['glue-lib.sh', []],
         ['build.sh', []],
         ['test-run.mjs', []],
         ['README.md', []],
-        ['vm/README.md', []],
+        ['../linux/README.md', []],
     ]) {
         touch(root, file, file.endsWith('.js') || file.endsWith('.mjs') || file.endsWith('.c') ? '// edited\n' : '# edited\n');
         const next = keys(root);
@@ -117,20 +126,20 @@ test('a change to the VM, a library, a worker, a test or a document re-keys only
         last = next;
     }
     touch(root, 'build-lib.sh');
-    assert.deepEqual(changed(last, keys(root)), [...UNITS].sort(), 'what every unit\'s scripts share re-keys them all');
+    assert.deepEqual(changed(last, keys(root)), [...UNITS].sort(), 'what every unit\'s scripts share re-keys them all, and the Linux pack\'s vm through the emsdk and musl it needs');
 });
 
-/** The files of unit `unit`'s inputs in this checkout, pack-relative, from its specs (toolchain_specs). */
+/** The files of unit `unit`'s inputs in this checkout, relative to its pack, from its specs (toolchain_specs). */
 function inputsOf(unit) {
-    const specs = keySh(path.resolve(LIGHT, '..'), 'toolchain_specs "$1"', `cpp/${unit}`).trim().split('\n');
+    const specs = keySh(path.resolve(LIGHT, '..'), 'toolchain_specs "$1"', `${PACK[unit]}/${unit}`).trim().split('\n');
     return execFileSync('git', ['-C', path.resolve(LIGHT, '..'), 'ls-files', '-co', '--exclude-standard', '-z', '--', ...specs], { encoding: 'utf8' })
-        .split('\0').filter(Boolean).map((f) => path.relative('light/packs/cpp', f));
+        .split('\0').filter(Boolean).map((f) => path.relative(`light/packs/${PACK[unit]}`, f));
 }
 
 /** The units a unit's `needs` file names, without the pack. */
-const needsOf = (unit) => fs.readFileSync(path.join(HERE, 'toolchains', unit, 'needs'), 'utf8').split('\n')
+const needsOf = (unit) => fs.readFileSync(path.join(packDir(unit), 'toolchains', unit, 'needs'), 'utf8').split('\n')
     .filter((l) => l && !l.startsWith('#')).map((l) => l.replace(/^cpp\//, ''));
-const needsOrNone = (unit) => (fs.existsSync(path.join(HERE, 'toolchains', unit, 'needs')) ? needsOf(unit) : []);
+const needsOrNone = (unit) => (fs.existsSync(path.join(packDir(unit), 'toolchains', unit, 'needs')) ? needsOf(unit) : []);
 
 /**
  * The units shell script `text` reaches: each `need_unit <unit>`, `emsdk_use`
@@ -149,14 +158,15 @@ function reaches(text) {
 }
 
 test('a unit cannot see a dependency it did not declare: its scripts reach only the units its needs file names', () => {
-    // build-lib.sh defines need_unit, emsdk_use and apk_of; it is every
-    // unit's, and reaches a unit only when one of its callers asks.
-    const definers = new Set(['build-lib.sh']);
+    // build-lib.sh (the Linux pack's lib.sh) defines need_unit, emsdk_use
+    // and apk_of; it is every unit's, and reaches a unit only when one of
+    // its callers asks.
+    const definers = new Set(['build-lib.sh', 'lib.sh']);
     for (const unit of UNITS) {
         const allowed = new Set(needsOrNone(unit));
         for (const file of inputsOf(unit).filter((f) => f.endsWith('.sh') && !definers.has(f))) {
-            for (const dep of reaches(fs.readFileSync(path.join(HERE, file), 'utf8')))
-                assert.ok(allowed.has(dep), `${file}, an input of cpp/${unit}, reaches cpp/${dep}, which toolchains/${unit}/needs does not name`);
+            for (const dep of reaches(fs.readFileSync(path.join(packDir(unit), file), 'utf8')))
+                assert.ok(allowed.has(dep), `${file}, an input of ${PACK[unit]}/${unit}, reaches cpp/${dep}, which toolchains/${unit}/needs does not name`);
         }
     }
     assert.deepEqual([...reaches('need_unit musl; emsdk_use # apk_of\n"$DEP_COMPILERS/x"')].sort(), ['compilers', 'emsdk', 'musl'], 'the scan sees what it looks for');

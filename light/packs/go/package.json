@@ -1,7 +1,7 @@
 {
     "name": "yukibana-pack-go",
     "private": true,
-    "description": "Yukibana Go pack: a go/types language server and Go's own compiler and linker, compiled to WebAssembly, building for WASI and for x86-64, AArch64 and RISC-V Linux (run under the C/C++ pack's QEMU-Wasm). build.sh builds it; this file holds the bundler, the WASI host and the test's browser driver.",
+    "description": "Yukibana Go pack: a go/types language server and Go's own compiler and linker, compiled to WebAssembly, building for WASI and for x86-64, AArch64 and RISC-V Linux (run under the Linux pack's QEMU-Wasm). build.sh builds it; this file holds the bundler, the WASI host and the test's browser driver.",
     "type": "module",
     "scripts": {
         "build": "./build.sh",

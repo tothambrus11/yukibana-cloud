@@ -7,12 +7,12 @@
 #   LICENSE-{qemu,linux,strace,opensbi,qboot}.txt
 # and a .gz and .br sibling for every file (../compress.mjs). vm.js, the runtime
 # bundled with every file's raw size (VM_SIZES), is the pack's glue (glue.sh), so a
-# change to src/vm/*.js rebuilds nothing here.
+# change to src/*.js rebuilds nothing here.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 P="$(cd "$HERE/.." && pwd)"
 : "${OUT:?OUT is the toolchain directory of the vm unit (pack-toolchain.sh sets it)}"
-ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
+ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/vm-artifacts}
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
 
 rm -rf "$OUT/vm" "$OUT/user"
@@ -25,7 +25,7 @@ for a in x86_64 aarch64 riscv64; do
   node --input-type=module -e '
     const { cpio } = await import(process.argv[1]); const fs = await import("node:fs");
     fs.writeFileSync(process.argv[3], cpio([{ name: "init", mode: 0o100755, data: fs.readFileSync(process.argv[2]) }]));
-  ' "$P/src/vm/cpio.js" "$ART/init-$a" "$d/initrd"
+  ' "$P/src/cpio.js" "$ART/init-$a" "$d/initrd"
   case $a in
     x86_64) cp "$ART/qboot.rom" "$d/" ;;
     riscv64) cp "$ART/opensbi-riscv64-generic-fw_dynamic.bin" "$d/" ;;

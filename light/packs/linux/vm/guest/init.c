@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /*
- * yk-init: PID 1 of the C/C++ pack's Linux VM (src/vm/system.js). It runs one
+ * yk-init: PID 1 of the Linux pack's VM (src/system.js). It runs one
  * program, reports how it ended, and reboots, which QEMU (-no-reboot) would turn
  * into its own exit; the host does not wait for that (see system.js).
  *
@@ -16,7 +16,7 @@
  *              Nothing the program writes can reach this channel.
  *
  * What it runs comes from files in the initramfs, which the host appends as a
- * cpio archive of its own (no kernel command line quoting; src/vm/cpio.js):
+ * cpio archive of its own (no kernel command line quoting; src/cpio.js):
  *   /yk/prog    the program, always executed by this path
  *   /yk/argv    its argv, each argument NUL-terminated, argv[0] first
  *   /yk/env     optional: its environment, "NAME=value" NUL-terminated;
@@ -46,7 +46,7 @@ static char *child_argv[MAX_ARGS + MAX_OPTS + 8];
 static char *child_env[MAX_ENV + 1];
 static char *strace_opts[MAX_OPTS];
 
-/* The environment without /yk/env; src/vm/run-linux.js's DEFAULT_ENV, which always sends one. */
+/* The environment without /yk/env; src/run-linux.js's DEFAULT_ENV, which always sends one. */
 static char *const DEFAULT_ENV[] = {"PATH=/usr/local/bin:/usr/bin:/bin", "HOME=/", "TERM=xterm-256color", "LANG=C.UTF-8", 0};
 
 /* Writes a NUL-terminated string to fd, ignoring errors (there is nowhere to report them). */

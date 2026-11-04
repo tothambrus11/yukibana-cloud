@@ -89,6 +89,16 @@ export class Offline {
 		return files.length > 0 && files.every((f) => this.cached.has(f.path));
 	}
 
+	/**
+	 * Whether a language works offline: its own pack (the first of `packs`,
+	 * packs.ts packsOf) is cached, and each pack it uses that the build has
+	 * (a build without the Linux pack runs the default target only).
+	 */
+	arePacksCached(packs: readonly string[]): boolean {
+		const [own, ...used] = packs;
+		return own !== undefined && this.isPackCached(own) && used.every((p) => this.packFiles(p).length === 0 || this.isPackCached(p));
+	}
+
 	/** Sizes of all of `files`, and of those still missing. */
 	sizes(files: readonly OfflineFile[]): { all: Sizes; missing: Sizes } {
 		return { all: sum(files), missing: sum(files.filter((f) => !this.cached.has(f.path))) };

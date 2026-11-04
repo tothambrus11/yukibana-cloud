@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the experimental user-mode QEMU (linux-user) for x86_64, aarch64 and riscv64
 # into $ART/user/<arch>/qemu-<arch>.{mjs,wasm}: QEMU translates the program's system
-# calls onto Emscripten's libc instead of booting a kernel (src/vm/user.js runs it).
+# calls onto Emscripten's libc instead of booting a kernel (src/user.js runs it).
 #
 # QEMU 8.2 has no linux-user host support for Wasm, and QEMU 10 dropped 64-bit guests
 # on 32-bit hosts, so this needs patches/qemu-linux-user-wasm.patch (vm/README.md says
@@ -19,12 +19,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../toolchains/vm/pins.sh
 source "$HERE/../toolchains/vm/pins.sh"
-# shellcheck source=../build-lib.sh
-source "$HERE/../build-lib.sh"
+# shellcheck source=../lib.sh
+source "$HERE/../lib.sh"
 need_unit emsdk   # emsdk_made_by
 need_unit musl    # MUSL_VERSION, MUSL_SHA256
 QC=${QC:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/qemu-wasm}
-ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp/vm-artifacts}
+ART=${ART:-${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux/vm-artifacts}
 JOBS=${JOBS:-3}
 NICE="nice -n 10"
 WORK=$QC/work SRC=$QC/work/qemu-wasm TARGET=$QC/work/target
@@ -35,7 +35,7 @@ HDR=$QC/hdr/x86_64/include
 # this only has to hold QEMU itself. test-vm.mjs passes at 8, 16 and 32 alike, with the
 # same resident memory (the guest region's growth dominates); 16 leaves headroom.
 USER_INITIAL_MEMORY_MB=${USER_INITIAL_MEMORY_MB:-16}
-CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}/cpp
+CACHE=${PACK_CACHE:-$HOME/.cache/yukibana-packs}/linux
 
 CFLAGS="-idirafter $C -include $C/wasm-host-syscall.h -O3 -Wno-unused-command-line-argument -Wno-error=incompatible-pointer-types -matomics -mbulk-memory -pthread -DEMSCRIPTEN -DNDEBUG -DG_DISABLE_ASSERT -D_GNU_SOURCE"
 LDFLAGS="-sPROXY_TO_PTHREAD=1 -sFORCE_FILESYSTEM -sALLOW_TABLE_GROWTH -sINITIAL_MEMORY=512MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=2GB -sMALLOC=emmalloc -sEXPORT_ES6=1 -L$TARGET/lib -sEXPORTED_RUNTIME_METHODS=getTempRet0,setTempRet0,addFunction,removeFunction,FS"

@@ -1,14 +1,14 @@
 # shellcheck shell=bash disable=SC2034
-# The vm unit's pins (cpp/vm), the Linux VM's own inputs: plain NAME=value lines, no
-# commands. vm/build-*.sh source this file; what the VM shares with the rest of the
-# pack comes from the units it needs, each by its own exported pins: the Emscripten
+# The vm unit's pins (linux/vm), the Linux VM's own inputs: plain NAME=value lines, no
+# commands. vm/build-*.sh source this file; what the VM shares with the C/C++
+# pack comes from the units it needs of it, each by its own exported pins: the Emscripten
 # that compiles QEMU (cpp/emsdk) and musl, whose headers the user-mode build takes and
 # whose Alpine packages the guest's tools link (cpp/musl). No pin here is pinned by
 # another unit (this file once held a second Emscripten and a second musl, and was
 # vm/pins.sh beside a second pins file, vm/pins.txt). Every download is checked
 # against its SHA-256; git sources are pinned by commit. The QEMU, Linux, qboot and
 # OpenSBI binaries the pack ships are built from (or are) exactly these, with that
-# Emscripten, so this file, toolchains/emsdk/pins.sh and vm/patches/ are the
+# Emscripten, so this file, ../cpp/toolchains/emsdk/pins.sh and vm/patches/ are the
 # corresponding source (GPL-2.0).
 
 # QEMU-Wasm: ktock/qemu-wasm (QEMU 8.2 with a Wasm TCG backend), at the commit

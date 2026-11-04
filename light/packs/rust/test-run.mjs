@@ -22,13 +22,13 @@
 // a type's layout on three Miri targets (i686's 4-aligned u64, s390x's
 // byte order), undefined behaviour reported where it happens,
 // catch_unwind, and tests under libtest. On the Linux targets (x86-64,
-// AArch64, RISC-V), when the C/C++ pack's emulator is there: the sample,
-// its tests under libtest, and a caught panic.
+// AArch64, RISC-V), on the Linux pack's emulator: the sample, its tests
+// under libtest, and a caught panic.
 //
-// The Linux cases need packs/cpp/vm.js and its files. Without them in
-// app/static they are skipped, unless CPP_PACK_ORIGIN names a Light that
-// has them (https://light.yukibana.dev), whose /packs/cpp/ this server
-// then forwards.
+// The Linux cases need the Linux pack assembled beside this one
+// (app/static/packs/linux: ../linux/build.sh, or this pack's `uses` in CI).
+// Run by hand without it, they are skipped and say so; test.sh refuses to
+// run without it.
 //
 // Adapted from ../swift/test-run.mjs.
 
@@ -42,7 +42,7 @@ const HERE = fileURLToPath(new URL('.', import.meta.url));
 const STATIC = resolve(HERE, '../../app/static');
 const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
 
-const TYPES = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.tar': 'application/x-tar', '.html': 'text/html' };
+const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.tar': 'application/x-tar', '.html': 'text/html' };
 const ISOLATION = {
     'cross-origin-opener-policy': 'same-origin',
     'cross-origin-embedder-policy': 'require-corp',
@@ -52,16 +52,8 @@ const ISOLATION = {
 // browser accepts brotli, as the app's host does; cacheable, so the second
 // run measures a warm cache.
 let bytesSent = 0;
-const CPP_ORIGIN = process.env.CPP_PACK_ORIGIN?.replace(/\/$/, '') ?? null;
 const server = createServer(async (req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (CPP_ORIGIN && path.startsWith('/packs/cpp/')) {
-        const upstream = await fetch(CPP_ORIGIN + path);
-        const body = Buffer.from(await upstream.arrayBuffer());
-        res.writeHead(upstream.status, { 'content-type': upstream.headers.get('content-type') ?? 'application/octet-stream', 'cache-control': 'max-age=3600', 'cross-origin-resource-policy': 'same-origin', ...ISOLATION });
-        res.end(body);
-        return;
-    }
     if (path === '/__test.html') {
         res.writeHead(200, { 'content-type': 'text/html', ...ISOLATION });
         res.end('<!doctype html><link rel=icon href="data:,"><title>rust runner test</title>');
@@ -425,9 +417,9 @@ fn main() {
     const noMiri = await run(SAMPLE, { options: { miri: 'wasm32' } });
     check('Miri: a Miri target that is not one is refused', noMiri.code === 1 && /no Miri target wasm32/.test(noMiri.stderr), `code=${noMiri.code}`);
 
-    // 8. Linux targets, under the C/C++ pack's QEMU-Wasm, when it is here.
-    const vm = await page.evaluate(async () => (await fetch('/packs/cpp/vm.js', { method: 'HEAD' })).ok);
-    if (!vm) console.log('SKIP  Linux targets: no packs/cpp/vm.js (build the C/C++ pack, or set CPP_PACK_ORIGIN)');
+    // 8. Linux targets, under the Linux pack's QEMU-Wasm, when it is here.
+    const vm = await page.evaluate(async () => (await fetch('/packs/linux/vm.js', { method: 'HEAD' })).ok);
+    if (!vm) console.log('SKIP  Linux targets: no packs/linux/vm.js (build the Linux pack: ../linux/build.sh)');
     else {
         const on = (triple, files) => ({ ...files, '.cargo/config.toml': `[build]\ntarget = "${triple}"\n` });
         for (const triple of ['x86_64-unknown-linux-musl', 'aarch64-unknown-linux-musl', 'riscv64gc-unknown-linux-musl']) {

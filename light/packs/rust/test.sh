@@ -13,9 +13,8 @@
 #   test-run.mjs   the runner on WebAssembly (the sample, tests, quickcheck,
 #                  stdin, errors, panics, optimisation levels), under Miri on
 #                  its targets, and the compiler output views; and on the
-#                  Linux targets when the C/C++ pack's emulator is there,
-#                  which in an assembly of this pack alone it is not (they
-#                  are skipped and say so; CPP_PACK_ORIGIN, test-run.mjs)
+#                  Linux targets, on the Linux pack's emulator, assembled
+#                  beside this pack (`uses`), which test.sh requires
 #
 #   ./test.sh            runs them, after assembly; CHROMIUM names the
 #                        browser, else playwright-core's own, else
@@ -51,6 +50,8 @@ case "${1:-}" in
 esac
 
 [ -f "$OUT/server.js" ] || { echo "test.sh: no assembled pack at $OUT" >&2; exit 1; }
+[ -f "$OUT/../linux/vm.js" ] ||
+  { echo "test.sh: no Linux pack beside it (app/static/packs/linux), which the Linux targets run on: ../linux/build.sh" >&2; exit 1; }
 npm_deps
 if [ -z "${CHROMIUM:-}" ]; then
   CHROMIUM="$(cd "$HERE" && node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")"

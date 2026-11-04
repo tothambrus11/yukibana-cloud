@@ -12,4 +12,5 @@ LICENSES.txt
 src/
 test*.mjs
 test.sh
+uses
 tests/

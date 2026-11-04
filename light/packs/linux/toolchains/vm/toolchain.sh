@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR
-# Builds the C/C++ pack's vm unit (cpp/vm) into $OUT, run by
+# Builds the Linux pack's vm unit (linux/vm) into $OUT, run by
 # light/scripts/pack-toolchain.sh from this directory of its stage, with the
-# emsdk unit at $DEP_EMSDK (the Emscripten that compiles QEMU) and the musl
-# unit at $DEP_MUSL (the guest tools' musl, user mode's headers): the Linux
-# VM, QEMU-Wasm with its kernels, init and strace (build-vm.sh says what,
-# vm/README.md why). It needs neither the compilers nor the libraries, so a
-# change to either never rebuilds it, and it builds beside them.
+# C/C++ pack's emsdk unit at $DEP_EMSDK (the Emscripten that compiles QEMU)
+# and its musl unit at $DEP_MUSL (the guest tools' musl, user mode's
+# headers): the Linux VM, QEMU-Wasm with its kernels, init and strace
+# (build-vm.sh says what, README.md why). It needs no language's compiler,
+# so a change to one never rebuilds it.
 #
 #   vm/<arch>/, user/<arch>/, LICENSE-{qemu,linux,strace,opensbi,qboot}.txt
 #   versions-vm.json
 #
-# Hours from nothing, in $PACK_CACHE/qemu-wasm and $PACK_CACHE/cpp/vm-artifacts,
+# Hours from nothing, in $PACK_CACHE/qemu-wasm and $PACK_CACHE/linux/vm-artifacts,
 # whose stamps make a warm build redo only what changed.
 set -euo pipefail
 

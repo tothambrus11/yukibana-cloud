@@ -6,7 +6,7 @@
 //
 // targets.json: each target's triple (what rustc and Cargo call it), what
 // runs a program built for it (the runner's own WASI, or Linux under the
-// C/C++ pack's QEMU), which of the pack's two compilers builds for it, and
+// Linux pack's QEMU), which of the pack's two compilers builds for it, and
 // the Miri target a project on it starts with when Miri is turned on.
 //
 // miri-targets.json: the targets Miri interprets a program for, chosen in
