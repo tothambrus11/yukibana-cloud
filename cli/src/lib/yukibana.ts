@@ -65,6 +65,7 @@ export interface Features {
   readonly codeSuggestions: boolean;
   /** Error and warning underlines in the editor. */
   readonly squiggles: boolean;
+  readonly codeLenses: boolean;
   readonly ai: boolean;
 }
 
@@ -221,6 +222,7 @@ const settingsShape = {
       z.object({
         codeSuggestions: about(on, 'Code completion in the editor.'),
         squiggles: about(on, 'Error and warning underlines in the editor.'),
+        codeLenses: about(on, 'Inline actions in the editor.'),
         ai: about(on, "The IDE's AI features."),
       }),
       {},
