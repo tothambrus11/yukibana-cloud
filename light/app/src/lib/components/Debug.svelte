@@ -70,17 +70,17 @@
 	<div class="toolbar" role="toolbar" aria-label="Debugger">
 		{#if dbg.active}
 			{#if stopped}
-				<button title="Continue (F5)" aria-label="Continue" onclick={() => dbg.continue()}><span class="codicon codicon-debug-continue"></span></button>
+				<button class="go" title="Continue (F5)" aria-label="Continue" onclick={() => dbg.continue()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14" /><path class="solid" d="M10.5 5.8v12.4a.8.8 0 0 0 1.2.7l9.3-6.2a.8.8 0 0 0 0-1.4l-9.3-6.2a.8.8 0 0 0-1.2.7z" /></svg></button>
 			{:else}
-				<button title="Pause" aria-label="Pause" disabled={status.kind !== 'running'} onclick={() => dbg.pause()}><span class="codicon codicon-debug-pause"></span></button>
+				<button class="pause" title="Pause" aria-label="Pause" disabled={status.kind !== 'running'} onclick={() => dbg.pause()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13M15.5 5.5v13" /></svg></button>
 			{/if}
-			<button title="Step Over (F10)" aria-label="Step Over" disabled={!stopped} onclick={() => dbg.next()}><span class="codicon codicon-debug-step-over"></span></button>
-			<button title="Step Into (F11)" aria-label="Step Into" disabled={!stopped} onclick={() => dbg.stepIn()}><span class="codicon codicon-debug-step-into"></span></button>
-			<button title="Step Out (Shift+F11)" aria-label="Step Out" disabled={!stopped} onclick={() => dbg.stepOut()}><span class="codicon codicon-debug-step-out"></span></button>
-			<button class="stop" title="Stop debugging" aria-label="Stop" onclick={() => dbg.end()}><span class="codicon codicon-debug-stop"></span></button>
+			<button class="step" title="Step Over (F10)" aria-label="Step Over" disabled={!stopped} onclick={() => dbg.next()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13a8 8 0 0 1 15.2-3.5" /><path d="M20 4.5v5.2h-5.2" /><circle class="solid" cx="12" cy="18.5" r="2" /></svg></button>
+			<button class="step" title="Step Into (F11)" aria-label="Step Into" disabled={!stopped} onclick={() => dbg.stepIn()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10" /><path d="m7.5 8.5 4.5 4.5 4.5-4.5" /><circle class="solid" cx="12" cy="18.5" r="2" /></svg></button>
+			<button class="step" title="Step Out (Shift+F11)" aria-label="Step Out" disabled={!stopped} onclick={() => dbg.stepOut()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13V3" /><path d="M7.5 7.5 12 3l4.5 4.5" /><circle class="solid" cx="12" cy="18.5" r="2" /></svg></button>
+			<button class="stop" title="Stop debugging" aria-label="Stop" onclick={() => dbg.end()}><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="solid" x="6" y="6" width="12" height="12" rx="2" /></svg></button>
 		{:else}
 			<button class="start" disabled={!language.debugs || workspace.runner.busy} onclick={() => workspace.debug()} title={language.debugs ? 'Run the project under the debugger (F5)' : `${language.label} has no debugger yet`}>
-				<span class="codicon codicon-debug-alt"></span> Debug
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M7 5.8v12.4a.8.8 0 0 0 1.2.7l9.3-6.2a.8.8 0 0 0 0-1.4L8.2 5.1a.8.8 0 0 0-1.2.7z" /></svg> Debug
 			</button>
 		{/if}
 		<span class="state" role="status">
@@ -203,8 +203,33 @@
 		border-color: var(--gray-5);
 		padding: 0 0.6rem;
 	}
+	/* Drawn like the header's icons (stroked, round), and coloured as in
+	   VS Code so each reads at a glance: go green, steps blue, stop red. */
+	.toolbar svg {
+		width: 1rem;
+		height: 1rem;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.toolbar svg .solid {
+		fill: currentColor;
+		stroke: none;
+	}
+	.toolbar .go,
+	.toolbar .start svg {
+		color: var(--accent-high);
+	}
+	.toolbar .pause {
+		color: var(--orange-high);
+	}
+	.toolbar .step {
+		color: var(--blue-high);
+	}
 	.toolbar .stop {
-		color: var(--red, #e5534b);
+		color: var(--red-high);
 	}
 	.state {
 		min-width: 0;

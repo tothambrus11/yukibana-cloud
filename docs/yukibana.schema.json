@@ -58,6 +58,11 @@
           "description": "Error and warning underlines in the editor.",
           "type": "boolean"
         },
+        "codeLenses": {
+          "default": true,
+          "description": "Inline actions in the editor.",
+          "type": "boolean"
+        },
         "ai": {
           "default": true,
           "description": "The IDE's AI features.",
@@ -194,6 +199,18 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
+        }
+      }
+    },
+    "telemetry": {
+      "description": "What kind of telemetry should be sent.",
+      "default": {},
+      "type": "object",
+      "properties": {
+        "liveTypingStats": {
+          "default": false,
+          "description": "Whether to send live stats about what the user is typing in the IDE.",
+          "type": "boolean"
         }
       }
     },

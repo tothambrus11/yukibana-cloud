@@ -20,6 +20,15 @@ const ROOT = '/workspace/';
 /** Where the debugger's worker is: beside the page, as every pack (packs.ts). */
 const debuggerUrl = (): URL => new URL('packs/lldb/debugger.js', document.baseURI);
 
+/** Whether the server answers `url` with 404; false when it cannot be asked. */
+async function missing(url: URL): Promise<boolean> {
+	try {
+		return (await fetch(url, { method: 'HEAD', cache: 'no-store' })).status === 404;
+	} catch {
+		return false;
+	}
+}
+
 /** One frame of the call stack, as the panel shows it. */
 export interface Frame {
 	id: number;
@@ -129,8 +138,20 @@ export class Debugger {
 		this.#worker = worker;
 		worker.onerror = (e) => {
 			if (generation !== this.#generation) return;
-			host.log(`The debugger failed: ${e.message || 'its worker did not load'}`);
-			this.#finish('The debugger failed; see the Log panel.');
+			if (e.message) {
+				host.log(`The debugger failed: ${e.message}`);
+				this.#finish('The debugger failed; see the Log panel.');
+				return;
+			}
+			// A worker that does not load says nothing of why. The likeliest
+			// reason is a site deployed without the debugger's pack, which
+			// light.yukibana.dev was for a day after Debug shipped, and
+			// "did not load" read as a bug.
+			void missing(debuggerUrl()).then((absent) => {
+				if (generation !== this.#generation) return;
+				host.log(absent ? `The debugger is not on this site: ${debuggerUrl().href} is not there.` : 'The debugger failed: its worker did not load');
+				this.#finish(absent ? 'This site has no debugger yet.' : 'The debugger failed; see the Log panel.');
+			});
 		};
 		worker.onmessage = ({ data }: MessageEvent<unknown>) => {
 			if (generation !== this.#generation || !isRecord(data)) return;
@@ -401,12 +422,16 @@ export function decorate(
 			const lines = dbg.breakpoints[path] ?? [];
 			const stopped = dbg.stoppedLine(path);
 			const top = dbg.selected === 0;
+			const onBreakpoint = stopped !== null && lines.includes(stopped);
 			const range = (line: number) => new monaco.Range(line, 1, line, 1) as import('monaco-editor').IRange;
 			decorations.set([
-				...lines.map((line) => ({
-					range: range(line),
-					options: { glyphMarginClassName: 'debug-breakpoint', glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' }, stickiness: 1 },
-				})),
+				// The stopped line's one decoration draws its breakpoint too (app.css says why).
+				...lines
+					.filter((line) => line !== stopped)
+					.map((line) => ({
+						range: range(line),
+						options: { glyphMarginClassName: 'debug-breakpoint', glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' }, stickiness: 1 },
+					})),
 				...(stopped !== null
 					? [
 							{
@@ -414,7 +439,8 @@ export function decorate(
 								options: {
 									isWholeLine: true,
 									className: top ? 'debug-stopped-line' : 'debug-frame-line',
-									glyphMarginClassName: top ? 'debug-stopped' : 'debug-frame',
+									glyphMarginClassName: `${top ? 'debug-stopped' : 'debug-frame'}${onBreakpoint ? ' debug-on-breakpoint' : ''}`,
+									...(onBreakpoint ? { glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' } } : {}),
 									stickiness: 1,
 								},
 							},

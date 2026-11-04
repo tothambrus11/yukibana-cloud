@@ -665,9 +665,19 @@ async function loadTidy() {
     }, CATCH_UP_MS);
 }
 
-/** Whether clangd-tidy has diagnosed every open document, and may take over. */
+/**
+ * Whether clangd-tidy has diagnosed every open document as the client last
+ * sent it, and may take over. Any version once was enough, and a change the
+ * client made while clangd-tidy caught up then went to a clangd that had
+ * not parsed it yet: a quick fix asked for at once found no diagnostic of
+ * its own to match and came back empty (test.mjs, "a code action fixes the
+ * missing semicolon", failed that way about one run in three).
+ */
 function incomingReady() {
-    return [...forwarded.keys()].every((uri) => incoming.diagnostics.has(uri));
+    return [...forwarded].every(([uri, { version }]) => {
+        const published = incoming.diagnostics.get(uri)?.params;
+        return published !== undefined && (published.version === undefined || published.version === version);
+    });
 }
 
 /**
