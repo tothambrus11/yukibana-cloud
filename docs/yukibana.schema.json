@@ -58,6 +58,11 @@
           "description": "Error and warning underlines in the editor.",
           "type": "boolean"
         },
+        "codeLenses": {
+          "default": true,
+          "description": "Inline actions in the editor.",
+          "type": "boolean"
+        },
         "ai": {
           "default": true,
           "description": "The IDE's AI features.",
