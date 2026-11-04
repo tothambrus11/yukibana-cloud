@@ -18,7 +18,19 @@ import { detectTestFramework, withoutComments, TEST_FRAMEWORKS, type TestFramewo
 import { targetOf, type CppTarget } from './cpp-targets.ts';
 import { sanitizersOf } from './cpp-sanitizers.ts';
 import { CPP_LEVELS, defaultLevel, SWIFT_LEVELS } from './optimization.ts';
-import { ciService, clangTidyJob, devcontainer, gitattributes, jobFiles, jobsFor, type BuildCi, type CiService, type CiServiceId, type Extra, type Job, type JobSpec, type Step } from './export-tooling.ts';
+import {
+	ciService,
+	clangTidyJob,
+	devcontainer,
+	GJF_VERSION,
+	gitattributes,
+	jobFiles,
+	jobsFor,
+	KTLINT_VERSION,
+	PHP_CS_FIXER_VERSION,
+	PRETTIER_VERSION,
+	RUFF_VERSION,
+	type BuildCi, type CiService, type CiServiceId, type Extra, type Job, type JobSpec, type Step } from './export-tooling.ts';
 
 /** What a download contains. */
 export interface ExportedProject {
@@ -272,7 +284,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Maven',
 			paths: ['pom.xml'],
 			generate: (p) => ({ 'pom.xml': pomXml(p.files, p.language.entry) }),
-			ci: () => ({ jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify']))] }),
+			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p, 'pom.xml', 'mvn -B -ntp spotless:check')] }),
 		},
 		{
 			id: 'gradle',
@@ -281,7 +293,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			generate: (p) => ({ 'build.gradle.kts': javaGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "java-project"\n' }),
 			instructions: (_, files) => javaGradleInstructions(files),
 			ignored: ['build/', '.gradle/'],
-			ci: () => ({ extra: GRADLE_IMAGE, jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain']))] }),
+			ci: (p) => ({ extra: GRADLE_IMAGE, jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p, 'build.gradle.kts', SPOTLESS_GRADLE_CHECK)] }),
 		},
 	],
 	kotlin: [
@@ -290,7 +302,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Gradle',
 			paths: ['build.gradle.kts', 'settings.gradle.kts'],
 			generate: (p) => ({ 'build.gradle.kts': buildGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "kotlin-project"\n' }),
-			ci: () => ({ jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain']))] }),
+			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p, 'build.gradle.kts', SPOTLESS_GRADLE_CHECK)] }),
 		},
 		{
 			id: 'maven',
@@ -301,7 +313,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			generate: (p) => ({ 'pom.xml': kotlinPomXml(p.files, p.language.entry) }),
 			instructions: (_, files) => kotlinMavenInstructions(files),
 			ignored: ['target/'],
-			ci: () => ({ extra: MAVEN_IMAGE, jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify']))] }),
+			ci: (p) => ({ extra: MAVEN_IMAGE, jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p, 'pom.xml', 'mvn -B -ntp spotless:check')] }),
 		},
 	],
 	haskell: [
@@ -606,7 +618,7 @@ function cFamilyLayout(files: Files, entry: string): CFamilyLayout {
  * `app`, from every C/C++ source outside tests/; when tests/ has sources, a
  * second one, `app_tests`, from those plus the program's sources without its
  * main, linked with the test framework tests/ includes (GoogleTest, doctest
- * or Catch2, fetched with FetchContent; its main unless a test defines one)
+ * or Catch2, from find_package or else FetchContent; its main unless a test defines one)
  * and registered with CTest test by test. RapidCheck, when a source
  * includes it, is fetched the same way, pinned to the browser's commit, and
  * linked to whichever of the two needs it. compile_flags.txt's standard,
@@ -618,9 +630,11 @@ function cFamilyLayout(files: Files, entry: string): CFamilyLayout {
  * flag is never passed on: for a Linux target a comment at the top says
  * what cross compiling would take (crossNote).
  *
- * With `deps` 'conan' the test framework comes from Conan instead
- * (conanfile.txt, conanfile), found with find_package in the toolchain
- * `conan install` writes; RapidCheck is still fetched, at the browser's
+ * The framework is declared once, for both: FetchContent with
+ * FIND_PACKAGE_ARGS uses the package find_package finds at the browser's
+ * version or newer (Conan's, with `deps` 'conan', whose only difference is
+ * the comment saying how to build; vcpkg's; a system one) and downloads it
+ * only when there is none. RapidCheck is always fetched, at the browser's
  * commit, which ConanCenter does not have.
  */
 export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' = 'fetch'): string {
@@ -635,7 +649,7 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 			: ['#   cmake -S . -B build && cmake --build build && ./build/app']),
 		...(tests.length ? ['#   ctest --test-dir build --output-on-failure'] : []),
 		...crossNote(linuxTarget(files), languages),
-		'cmake_minimum_required(VERSION 3.16...3.31)',
+		'cmake_minimum_required(VERSION 3.24...3.31)',
 		`project(app LANGUAGES ${languages.join(' ')})`,
 		'',
 	];
@@ -732,29 +746,25 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 		const framework = testFramework ?? 'gtest';
 		const testSources = list([...underTest, ...tests]);
 		const conan = deps === 'conan';
-		if (framework === 'gtest' && conan) {
+		// FIND_PACKAGE_ARGS (CMake 3.24): a package that find_package finds at
+		// this version or a newer one is used, from Conan's toolchain, vcpkg's
+		// or the system; only without one is the framework downloaded. One
+		// CMakeLists.txt therefore serves both build systems.
+		const note = (name: string, version: string) => [
+			`# The tests: tests/ and the program's sources without its main, with ${name} ${version},`,
+			`# the version the browser runs${conan ? ', from Conan (conanfile.txt)' : ''}: a ${name} ${version} or newer that find_package`,
+			"# finds (Conan's, vcpkg's, the system's) is used; otherwise it is downloaded once, when the build is configured.",
+		];
+		if (framework === 'gtest') {
 			lines.push(
-				`# The tests: tests/ and the program's sources without its main, with GoogleTest ${GTEST_VERSION}`,
-				'# from Conan (conanfile.txt), the version the browser runs.',
-				'find_package(GTest REQUIRED CONFIG)',
-				'',
-				'enable_testing()',
-				`add_executable(app_tests${testSources}\n)`,
-				`target_link_libraries(app_tests PRIVATE project_flags ${ownMain ? 'GTest::gtest' : 'GTest::gtest_main'}${rcTests ? ' rapidcheck_gtest' : ''})`,
-				'include(GoogleTest)',
-				'gtest_discover_tests(app_tests)',
-				'',
-			);
-		} else if (framework === 'gtest') {
-			lines.push(
-				`# The tests: tests/ and the program's sources without its main, with GoogleTest ${GTEST_VERSION},`,
-				'# the version the browser runs. Downloaded once, when the build is configured.',
+				...note('GoogleTest', GTEST_VERSION),
 				'include(FetchContent)',
 				'FetchContent_Declare(googletest',
 				`    URL https://github.com/google/googletest/releases/download/v${GTEST_VERSION}/googletest-${GTEST_VERSION}.tar.gz`,
 				`    URL_HASH SHA256=${GTEST_SHA256}`,
+				`    FIND_PACKAGE_ARGS ${GTEST_VERSION} NAMES GTest CONFIG`,
 				')',
-				'# On Windows, use the same C runtime as the project; never install GoogleTest.',
+				'# When downloaded: on Windows, use the same C runtime as the project; never install GoogleTest.',
 				'set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)',
 				'set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)',
 				'FetchContent_MakeAvailable(googletest)',
@@ -766,69 +776,48 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 				'gtest_discover_tests(app_tests)',
 				'',
 			);
-		} else if (framework === 'doctest' && conan) {
-			// Conan's doctest is the header alone, without doctest_with_main: the
-			// first test file implements doctest and its main, as under Meson.
-			const ownDoctest = ownMain || tests.some((p) => implementsDoctest(files[p] ?? ''));
-			lines.push(
-				`# The tests: tests/ and the program's sources without its main, with doctest ${DOCTEST_VERSION}`,
-				'# from Conan (conanfile.txt), the version the browser runs.',
-				'find_package(doctest REQUIRED CONFIG)',
-				'',
-				'enable_testing()',
-				`add_executable(app_tests${testSources}\n)`,
-				`target_link_libraries(app_tests PRIVATE project_flags doctest::doctest${rcTests ? ' rapidcheck' : ''})`,
-				...(ownDoctest ? [] : [`# Conan's doctest has no main of its own: ${tests[0]} implements doctest and its main.`, `set_source_files_properties(${cmakeQuote(tests[0]!)} PROPERTIES COMPILE_DEFINITIONS DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN)`]),
-				'include(doctest)',
-				'doctest_discover_tests(app_tests)',
-				'',
-			);
 		} else if (framework === 'doctest') {
-			// doctest is header-only; doctest_with_main is its implementation and
-			// main, the library the browser links unless a test implements doctest.
+			// doctest is header-only, and a packaged one (Conan's) has no
+			// doctest_with_main: the first test file implements doctest and its
+			// main, as under Meson, however doctest was found.
 			const ownDoctest = ownMain || tests.some((p) => implementsDoctest(files[p] ?? ''));
 			lines.push(
-				`# The tests: tests/ and the program's sources without its main, with doctest ${DOCTEST_VERSION},`,
-				'# the version the browser runs. Downloaded once, when the build is configured.',
+				...note('doctest', DOCTEST_VERSION),
 				'include(FetchContent)',
 				'FetchContent_Declare(doctest',
 				'    GIT_REPOSITORY https://github.com/doctest/doctest.git',
 				`    GIT_TAG ${DOCTEST_COMMIT} # v${DOCTEST_VERSION}`,
+				`    FIND_PACKAGE_ARGS ${DOCTEST_VERSION} CONFIG`,
 				')',
 				'set(DOCTEST_NO_INSTALL ON CACHE BOOL "" FORCE)',
 				'FetchContent_MakeAvailable(doctest)',
+				"# doctest.cmake, doctest_discover_tests: on the module path when found, in the sources when downloaded.",
+				'if(doctest_SOURCE_DIR)',
+				'    list(APPEND CMAKE_MODULE_PATH ${doctest_SOURCE_DIR}/scripts/cmake)',
+				'endif()',
 				'',
 				'enable_testing()',
 				`add_executable(app_tests${testSources}\n)`,
-				`target_link_libraries(app_tests PRIVATE project_flags ${ownDoctest ? 'doctest::doctest' : 'doctest::doctest_with_main'}${rcTests ? ' rapidcheck' : ''})`,
-				'include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)',
+				`target_link_libraries(app_tests PRIVATE project_flags doctest::doctest${rcTests ? ' rapidcheck' : ''})`,
+				...(ownDoctest ? [] : [`# ${tests[0]} implements doctest and its main.`, `set_source_files_properties(${cmakeQuote(tests[0]!)} PROPERTIES COMPILE_DEFINITIONS DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN)`]),
+				'include(doctest)',
 				'doctest_discover_tests(app_tests)',
-				'',
-			);
-		} else if (conan) {
-			lines.push(
-				`# The tests: tests/ and the program's sources without its main, with Catch2 ${CATCH2_VERSION}`,
-				'# from Conan (conanfile.txt), the version the browser runs.',
-				'find_package(Catch2 3 REQUIRED CONFIG)',
-				'',
-				'enable_testing()',
-				`add_executable(app_tests${testSources}\n)`,
-				`target_link_libraries(app_tests PRIVATE project_flags ${ownMain ? 'Catch2::Catch2' : 'Catch2::Catch2WithMain'}${rcTests ? ' rapidcheck' : ''})`,
-				...(rcTests ? ['target_include_directories(app_tests PRIVATE ${rapidcheck_SOURCE_DIR}/extras/catch/include)'] : []),
-				'include(Catch)',
-				'catch_discover_tests(app_tests)',
 				'',
 			);
 		} else {
 			lines.push(
-				`# The tests: tests/ and the program's sources without its main, with Catch2 ${CATCH2_VERSION},`,
-				'# the version the browser runs. Downloaded once, when the build is configured.',
+				...note('Catch2', CATCH2_VERSION),
 				'include(FetchContent)',
 				'FetchContent_Declare(Catch2',
 				'    GIT_REPOSITORY https://github.com/catchorg/Catch2.git',
 				`    GIT_TAG ${CATCH2_COMMIT} # v${CATCH2_VERSION}`,
+				`    FIND_PACKAGE_ARGS ${CATCH2_VERSION} CONFIG`,
 				')',
 				'FetchContent_MakeAvailable(Catch2)',
+				"# Catch.cmake, catch_discover_tests: on the module path when found, in the sources when downloaded.",
+				'if(catch2_SOURCE_DIR)',
+				'    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)',
+				'endif()',
 				'',
 				'enable_testing()',
 				`add_executable(app_tests${testSources}\n)`,
@@ -836,7 +825,6 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 				// RC_ENABLE_CATCH would also add RapidCheck's ext/catch submodule
 				// (Catch 2); rapidcheck/catch.h is one header, used as it is.
 				...(rcTests ? ['target_include_directories(app_tests PRIVATE ${rapidcheck_SOURCE_DIR}/extras/catch/include)'] : []),
-				'list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)',
 				'include(Catch)',
 				'catch_discover_tests(app_tests)',
 				'',
@@ -1087,7 +1075,7 @@ export function conanfile(files: Files, entry: string): string {
 function conanInstructions(language: Language, files: Files): string[] {
 	const { tests, testFramework } = cFamilyLayout(files, language.entry);
 	return [
-		`## Build and run\n\nWith Conan 2, CMake 3.16 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler (\`conan profile detect\` once, to describe it to Conan):\n\n\`\`\`sh\nconan install . --output-folder=build --build=missing -s build_type=Debug\ncmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
+		`## Build and run\n\nWith Conan 2, CMake 3.24 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler (\`conan profile detect\` once, to describe it to Conan):\n\n\`\`\`sh\nconan install . --output-folder=build --build=missing -s build_type=Debug\ncmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
 		...(tests.length && testFramework
 			? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFramework]}, which \`conan install\` brings from ConanCenter (\`conanfile.txt\`):\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``]
 			: []),
@@ -1268,7 +1256,7 @@ export function pyprojectToml(files: Files): string {
 		'dependencies = []',
 		'',
 		'[dependency-groups]',
-		usesHypothesis(files) ? 'dev = ["pytest>=9", "hypothesis>=6.170"]' : 'dev = ["pytest>=9"]',
+		`dev = [${['"pytest>=9"', ...(usesHypothesis(files) ? ['"hypothesis>=6.170"'] : []), `"ruff==${RUFF_VERSION}"`].join(', ')}]`,
 		'',
 		'[tool.pytest.ini_options]',
 		...(hasTestsFolder ? ['testpaths = ["tests"]'] : []),
@@ -1350,16 +1338,16 @@ export function strykerConfig(): string {
  * project imports (fast-check, for the tests, so a development dependency).
  */
 export function packageJson(entry: string, files: Files = {}): string {
-	const dev = shippedPackages(files);
+	const dev = { ...shippedPackages(files), prettier: PRETTIER_VERSION };
 	const json = {
 		name: 'javascript-project',
 		version: '0.1.0',
 		private: true,
 		type: 'module',
 		main: entry,
-		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(false) },
+		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(false), format: 'prettier --write .' },
 		engines: { node: '>=22' },
-		...(Object.keys(dev).length ? { devDependencies: dev } : {}),
+		devDependencies: dev,
 	};
 	return JSON.stringify(json, null, 2) + '\n';
 }
@@ -1374,16 +1362,16 @@ export function packageJson(entry: string, files: Files = {}): string {
  * imports it.
  */
 export function typescriptPackageJson(entry: string, files: Files = {}): string {
-	const dev = shippedPackages(files);
+	const dev = { ...shippedPackages(files), prettier: PRETTIER_VERSION };
 	const json = {
 		name: 'typescript-project',
 		version: '0.1.0',
 		private: true,
 		type: 'module',
 		main: entry,
-		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(true) },
+		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(true), format: 'prettier --write .' },
 		engines: { node: '>=22.18' },
-		...(Object.keys(dev).length ? { devDependencies: dev } : {}),
+		devDependencies: dev,
 	};
 	return JSON.stringify(json, null, 2) + '\n';
 }
@@ -1440,9 +1428,9 @@ export function vitePackageJson(name: string, files: Files = {}): string {
 		version: '0.1.0',
 		private: true,
 		type: 'module',
-		scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', typecheck: 'tsc' },
+		scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', typecheck: 'tsc', format: 'prettier --write .' },
 		...(usesP5(files) ? { dependencies: { p5: `^${P5_VERSION}` } } : {}),
-		devDependencies: { typescript: TYPESCRIPT_VERSION, vite: VITE_VERSION },
+		devDependencies: { prettier: PRETTIER_VERSION, typescript: TYPESCRIPT_VERSION, vite: VITE_VERSION },
 	};
 	return JSON.stringify(json, null, 2) + '\n';
 }
@@ -1646,9 +1634,9 @@ export function composerJson(entry: string, files: Files = {}): string {
 		description: 'Written in Yukibana Light.',
 		type: 'project',
 		require: { php: '>=8.3' },
-		'require-dev': { ...(eris ? { 'giorgiosironi/eris': `^${ERIS_VERSION}` } : {}), 'phpunit/phpunit': `^${PHPUNIT_VERSION}` },
+		'require-dev': { 'friendsofphp/php-cs-fixer': PHP_CS_FIXER_VERSION, ...(eris ? { 'giorgiosironi/eris': `^${ERIS_VERSION}` } : {}), 'phpunit/phpunit': `^${PHPUNIT_VERSION}` },
 		autoload: { classmap: phpClassmap(files) },
-		scripts: { start: `php ${entry}`, test: 'phpunit' },
+		scripts: { start: `php ${entry}`, test: 'phpunit', format: 'php-cs-fixer fix --rules=@PER-CS' },
 		config: { 'sort-packages': true },
 	};
 	return JSON.stringify(json, null, 4) + '\n';
@@ -1702,6 +1690,110 @@ export function cargoToml(files: Files): string {
 	const lines = ['[package]', 'name = "app"', 'version = "0.1.0"', 'edition = "2021"', ''];
 	if (!('src/main.rs' in files) && 'main.rs' in files) lines.push('[[bin]]', 'name = "app"', 'path = "main.rs"', '');
 	return lines.join('\n');
+}
+
+// ---- Java and Kotlin: Spotless
+
+/**
+ * The Spotless plugins that check (`spotless:check`, `spotlessCheck`) and fix
+ * (`spotless:apply`, `spotlessApply`) a Java or Kotlin project's format, with
+ * google-java-format or ktlint at the versions Light formats with
+ * (export-tooling.ts). Spotless fetches the formatter from Maven Central as
+ * the build fetches everything else, so the version lives in the build file
+ * and nothing is downloaded by hand.
+ */
+const SPOTLESS_MAVEN_VERSION = '3.11.0';
+const SPOTLESS_GRADLE_VERSION = '8.11.0';
+const SPOTLESS_GRADLE_CHECK = 'gradle spotlessCheck --no-daemon --console=plain';
+
+/**
+ * .editorconfig naming ktlint's code style, for editors and the ktlint command
+ * line; the build file names it too (`editorConfigOverride`), so Spotless
+ * checks the same style whether or not the project keeps this file.
+ */
+const KTLINT_EDITORCONFIG = "root = true\n\n[*.{kt,kts}]\n# The code style ktlint checks: IntelliJ IDEA's, which is Kotlin's own.\nktlint_code_style = intellij_idea\n";
+
+/**
+ * CI's format check for a Java or Kotlin project: Spotless, as the build file
+ * written here configures it. None for a project that brings its own build
+ * file (`own`), which may not have Spotless, or that has no sources.
+ */
+function spotlessJob(p: Project, own: string, check: string): JobSpec[] {
+	const kotlin = p.language.id === 'kotlin';
+	if (own in p.files || !(kotlin ? kotlinFiles(p.files) : Object.keys(p.files).filter((f) => f.endsWith('.java'))).length) return [];
+	return [{ id: 'format', name: 'Format', steps: steps(['Spotless', check]), ...(kotlin ? { files: { '.editorconfig': KTLINT_EDITORCONFIG } } : {}) }];
+}
+
+/** Spotless in a pom.xml: every .java or .kt file of the project, outside target/ and dot folders. */
+function spotlessMaven(kotlin: boolean): string[] {
+	const formatter = kotlin
+		? [
+				'          <kotlin>',
+				'            <includes>',
+				'              <include>**/*.kt</include>',
+				'            </includes>',
+				'            <excludes>',
+				'              <exclude>target/**</exclude>',
+				'              <exclude>.*/**</exclude>',
+				'            </excludes>',
+				'            <ktlint>',
+				`              <version>${KTLINT_VERSION}</version>`,
+				'              <editorConfigOverride>',
+				'                <ktlint_code_style>intellij_idea</ktlint_code_style>',
+				'              </editorConfigOverride>',
+				'            </ktlint>',
+				'          </kotlin>',
+			]
+		: [
+				'          <java>',
+				'            <includes>',
+				'              <include>**/*.java</include>',
+				'            </includes>',
+				'            <excludes>',
+				'              <exclude>target/**</exclude>',
+				'              <exclude>.*/**</exclude>',
+				'            </excludes>',
+				'            <googleJavaFormat>',
+				`              <version>${GJF_VERSION}</version>`,
+				'              <style>AOSP</style>',
+				'            </googleJavaFormat>',
+				'          </java>',
+			];
+	return [
+		'      <plugin>',
+		'        <groupId>com.diffplug.spotless</groupId>',
+		'        <artifactId>spotless-maven-plugin</artifactId>',
+		`        <version>${SPOTLESS_MAVEN_VERSION}</version>`,
+		`        <!-- mvn spotless:check checks the format (${kotlin ? "ktlint, IntelliJ IDEA's style" : 'google-java-format, AOSP style'}), mvn spotless:apply fixes it. -->`,
+		'        <configuration>',
+		...formatter,
+		'        </configuration>',
+		'      </plugin>',
+	];
+}
+
+/**
+ * Spotless in a build.gradle.kts. `isEnforceCheck = false`: Spotless would
+ * otherwise make `gradle build` fail on a file's format; CI checks it as a
+ * job of its own, so a build is a build.
+ */
+function spotlessGradle(kotlin: boolean): string[] {
+	return [
+		`// gradle spotlessCheck checks the format (${kotlin ? "ktlint, IntelliJ IDEA's style" : 'google-java-format, AOSP style'}), gradle spotlessApply fixes it.`,
+		'spotless {',
+		'    isEnforceCheck = false',
+		...(kotlin
+			? [
+					'    kotlin {',
+					'        target("**/*.kt")',
+					'        targetExclude("build/**", ".gradle/**")',
+					`        ktlint(${JSON.stringify(KTLINT_VERSION)}).editorConfigOverride(mapOf("ktlint_code_style" to "intellij_idea"))`,
+					'    }',
+				]
+			: ['    java {', '        target("**/*.java")', '        targetExclude("build/**", ".gradle/**")', `        googleJavaFormat(${JSON.stringify(GJF_VERSION)}).aosp()`, '    }']),
+		'}',
+		'',
+	];
 }
 
 // ---- Java: Maven
@@ -1805,6 +1897,7 @@ export function pomXml(files: Files, entry: string): string {
 		'          </arguments>',
 		'        </configuration>',
 		'      </plugin>',
+		...spotlessMaven(false),
 		'    </plugins>',
 		'  </build>',
 		'</project>',
@@ -1850,6 +1943,7 @@ export function javaGradleKts(files: Files, entry: string): string {
 		`//   gradle run${java.some((p) => JAVA_TESTS.test(p)) ? ', gradle test' : ''}`,
 		'plugins {',
 		'    application',
+		`    id("com.diffplug.spotless") version ${JSON.stringify(SPOTLESS_GRADLE_VERSION)}`,
 		'}',
 		'',
 		'repositories {',
@@ -1880,6 +1974,7 @@ export function javaGradleKts(files: Files, entry: string): string {
 		'    useJUnitPlatform()',
 		'}',
 		'',
+		...spotlessGradle(false),
 	].join('\n');
 }
 
@@ -1943,6 +2038,7 @@ export function buildGradleKts(files: Files, entry: string): string {
 		'plugins {',
 		`    kotlin("jvm") version ${JSON.stringify(KOTLIN_VERSION)}`,
 		'    application',
+		`    id("com.diffplug.spotless") version ${JSON.stringify(SPOTLESS_GRADLE_VERSION)}`,
 		'}',
 		'',
 		'repositories {',
@@ -1966,6 +2062,7 @@ export function buildGradleKts(files: Files, entry: string): string {
 		'    useJUnitPlatform()',
 		'}',
 		'',
+		...spotlessGradle(true),
 	].join('\n');
 }
 
@@ -2044,6 +2141,7 @@ export function kotlinPomXml(files: Files, entry: string): string {
 		'          </arguments>',
 		'        </configuration>',
 		'      </plugin>',
+		...spotlessMaven(true),
 		'    </plugins>',
 		'  </build>',
 		'</project>',
@@ -2351,7 +2449,7 @@ function instructions(language: Language, files: Files): string[] {
 		case 'cpp': {
 			const tests = paths.some((p) => TESTS.test(p) && (CXX.test(p) || C.test(p)));
 			return [
-				`## Build and run\n\nWith CMake 3.16 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake -S . -B build\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
+				`## Build and run\n\nWith CMake 3.24 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake -S . -B build\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
 				...(tests ? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFrameworkOf(files)]}, which CMake downloads the first time it configures the build:\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``] : []),
 				...crossSection(linuxTarget(files)),
 				'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',

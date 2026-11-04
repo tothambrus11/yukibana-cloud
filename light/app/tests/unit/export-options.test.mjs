@@ -62,14 +62,15 @@ test("every build system is built and tested in Light's CI, with a language whos
 	for (const language of LANGUAGES) for (const build of buildSystems(language, language.sample)) assert.ok(tested.has(build.id), `${build.id} (${language.id}) is in the exports job's matrix`);
 });
 
-test('Conan brings the test framework at the browser\'s version, and CMakeLists.txt finds it rather than fetching it', () => {
+test('Conan brings the test framework at the browser\'s version, and CMakeLists.txt uses a package it finds before downloading one', () => {
 	const cpp = sample('cpp');
 	const { files, generated } = exportProject(cpp, cpp.sample, null, { build: 'conan' });
 	assert.ok(generated.includes('conanfile.txt') && generated.includes('CMakeLists.txt'));
 	assert.match(files['conanfile.txt'], /^\[requires\]\ngtest\/1\.18\.0$/m);
 	assert.match(files['conanfile.txt'], /^CMakeDeps\nCMakeToolchain$/m);
-	assert.match(files['CMakeLists.txt'], /find_package\(GTest REQUIRED CONFIG\)/);
-	assert.doesNotMatch(files['CMakeLists.txt'], /FetchContent/);
+	assert.match(files['CMakeLists.txt'], /FetchContent_Declare\(googletest\n[^)]*FIND_PACKAGE_ARGS 1\.18\.0 NAMES GTest CONFIG\n\)/);
+	assert.match(files['CMakeLists.txt'], /^cmake_minimum_required\(VERSION 3\.24/m, 'FIND_PACKAGE_ARGS is CMake 3.24\'s');
+	assert.equal(files['CMakeLists.txt'].replace(/^#.*\n/gm, ''), exportProject(cpp, cpp.sample).files['CMakeLists.txt'].replace(/^#.*\n/gm, ''), 'the same CMakeLists.txt as without Conan, comments aside');
 	assert.match(files['README.md'], /conan install \. --output-folder=build --build=missing -s build_type=Debug\ncmake -S \. -B build -DCMAKE_TOOLCHAIN_FILE=build\/conan_toolchain\.cmake/);
 	const workflow = exportProject(cpp, cpp.sample, null, { build: 'conan', ci: 'github' }).files['.github/workflows/ci.yml'];
 	assert.match(workflow, /conan profile detect --exist-ok && conan install \. --output-folder=build --build=missing -s build_type=Debug && cmake -S \. -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=build\/conan_toolchain\.cmake -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON/);
@@ -85,10 +86,9 @@ test("under Conan, doctest's main comes from the first test file and Catch2's fr
 	const catch2 = { 'main.cpp': 'int main() { return 0; }\n', 'tests/a_test.cpp': '#include <catch2/catch_test_macros.hpp>\n#include <rapidcheck.h>\nTEST_CASE("a") {}\n' };
 	assert.match(conanfile(catch2, 'main.cpp'), /^catch2\/3\.16\.1$/m);
 	const c = cmakeLists(catch2, 'main.cpp', 'conan');
-	assert.match(c, /find_package\(Catch2 3 REQUIRED CONFIG\)/);
+	assert.match(c, /FIND_PACKAGE_ARGS 3\.16\.1 CONFIG/);
 	assert.match(c, /Catch2::Catch2WithMain rapidcheck\)/);
 	assert.match(c, /FetchContent_Declare\(rapidcheck/);
-	assert.doesNotMatch(c, /FetchContent_Declare\(Catch2/);
 	assert.match(conanfile({ 'main.c': 'int main(void) { return 0; }\n' }, 'main.c'), /^\[requires\]\n# None yet/m, 'without tests it requires nothing');
 });
 

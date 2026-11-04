@@ -184,17 +184,29 @@ export function clangTidyJob(files: Files, configure: Step, dir: string): JobSpe
 	];
 }
 
+// Formatters are the project's own dependencies where its package manager
+// has a place for them (package.json, pyproject.toml, composer.json,
+// Spotless in pom.xml and build.gradle.kts, export.ts): pinned in the
+// project, installed by the tool everyone already runs, the version the
+// editor uses too, and updated by Dependabot or Renovate with the rest. A
+// project that brings its own manifest gets the same version installed
+// for the job alone. Only a tool no package manager the image has can
+// install at the version Light formats with is downloaded, and checked:
+// ormolu and Zig.
+
 /** The Ruff that checks a Python project's format (its formatter is Black's style). */
-const RUFF_VERSION = '0.16.9';
+export const RUFF_VERSION = '0.16.9';
 /** The Prettier that checks a JavaScript, TypeScript or web project's format. */
 export const PRETTIER_VERSION = '3.9.10';
-/** google-java-format, in AOSP style (four spaces, as the samples are). */
-const GJF_VERSION = '1.37.0';
-const GJF_SHA256 = '834b2a0c38cb774953322a84b5ca3f2f40dd3156650b3cd44d3b744345962f7a';
-/** ktlint, in IntelliJ IDEA's style (as Kotlin's own conventions and the samples are). */
-const KTLINT_VERSION = '1.8.0';
-const KTLINT_SHA256 = 'a3fd620207d5c40da6ca789b95e7f823c54e854b7fade7f613e91096a3706d75';
-/** The ormolu the Haskell pack's Format Document runs (packs/haskell README). */
+/** google-java-format, in AOSP style (four spaces, as the samples are), as Spotless runs it. */
+export const GJF_VERSION = '1.37.0';
+/** ktlint, in IntelliJ IDEA's style (as Kotlin's own conventions and the samples are), as Spotless runs it. */
+export const KTLINT_VERSION = '1.8.0';
+/**
+ * The ormolu the Haskell pack's Format Document runs (packs/haskell README).
+ * Downloaded: Debian's is 0.7, which formats differently, and building 0.9
+ * with cabal compiles ghc-lib-parser, some ten minutes a run.
+ */
 const ORMOLU_VERSION = '0.9.0.0';
 const ORMOLU_SHA256 = '367eb4969986504cf171f71f91e24ea5d7d9d97c41701e8e6eef9b642fd0d201';
 /** The Zig the browser builds with (packs/zig/build.sh), and its Linux release's checksum. */
@@ -209,7 +221,7 @@ const ZIG_SETUP = [
 const SBT_SCALAFMT_VERSION = '2.6.2';
 const SCALAFMT_VERSION = '3.11.5';
 /** PHP-CS-Fixer, in the PER coding style (PHP-FIG's successor to PSR-12). */
-const PHP_CS_FIXER_VERSION = '3.95.27';
+export const PHP_CS_FIXER_VERSION = '3.95.27';
 
 /** Prettier's options for the samples' style: single quotes, lines of up to 100. */
 const PRETTIER_CONFIG = `${JSON.stringify({ singleQuote: true, printWidth: 100 }, null, 2)}\n`;
@@ -217,6 +229,12 @@ const PRETTIER_CONFIG = `${JSON.stringify({ singleQuote: true, printWidth: 100 }
 /** The Node toolchain, shared by JavaScript, TypeScript and web projects. Node 24: TypeScript runs by type stripping, which needs 22.18. */
 const NODE = env('node:24', { image: 'archlinux', packages: ['nodejs', 'npm'], setup: [] });
 
+/**
+ * Prettier, a development dependency of the package.json export.ts writes:
+ * installed with the project, and npx runs that one. npx runs the version
+ * named whatever the project's own package.json has, downloading it when
+ * node_modules has another.
+ */
 function prettierJob(files: Files): JobSpec[] {
 	const list = sources(files, /\.(js|mjs|cjs|jsx|ts|mts|cts|tsx|html?|css)$/);
 	if (!list.length) return [];
@@ -224,7 +242,10 @@ function prettierJob(files: Files): JobSpec[] {
 		{
 			id: 'format',
 			name: 'Format',
-			steps: [{ name: 'Prettier', run: `npx --yes prettier@${PRETTIER_VERSION} --check ${shellList(list)}` }],
+			steps: [
+				{ name: 'Install', run: 'npm install --no-audit --no-fund' },
+				{ name: 'Prettier', run: `npx --yes prettier@${PRETTIER_VERSION} --check ${shellList(list)}` },
+			],
 			files: { '.prettierrc.json': PRETTIER_CONFIG },
 		},
 	];
@@ -243,9 +264,10 @@ const TOOLCHAINS: Record<LanguageId, Toolchain> = {
 						{
 							id: 'format',
 							name: 'Format',
+							// Ruff is in the dev group of the pyproject.toml export.ts writes; a project with its own gets it alone. Ruff leaves .venv out by itself.
 							steps: [
-								{ name: 'Install Ruff', run: `python -m venv .venv-format && .venv-format/bin/pip install --quiet ruff==${RUFF_VERSION}` },
-								{ name: 'ruff format', run: '.venv-format/bin/ruff format --check --extend-exclude .venv-format .' },
+								{ name: 'Install', run: `python -m venv .venv && .venv/bin/pip install --quiet ${'pyproject.toml' in files ? `ruff==${RUFF_VERSION}` : '--group dev'}` },
+								{ name: 'ruff format', run: '.venv/bin/ruff format --check' },
 							],
 						},
 					]
@@ -299,19 +321,13 @@ const TOOLCHAINS: Record<LanguageId, Toolchain> = {
 				: [],
 	},
 	php: {
+		// Debian's PHP 8.4, the browser's, and its Composer, from the archive:
+		// php:8.4-cli has no Composer, which would otherwise be a downloaded installer.
+		// php-xml and php-mbstring: the extensions PHPUnit needs beyond those php-cli has.
 		environment: env(
-			'php:8.4-cli',
+			'debian:trixie',
 			{ image: 'archlinux', packages: ['php', 'composer'], setup: [] },
-			{
-				apt: ['git', 'unzip'],
-				// Composer from its own image's release, checked by the installer's signature.
-				setup: [
-					'curl -fsSL -o /tmp/composer-setup.php https://getcomposer.org/installer',
-					'php -r "if (hash_file(\'sha384\', \'/tmp/composer-setup.php\') !== trim(file_get_contents(\'https://composer.github.io/installer.sig\'))) { echo \'Composer installer corrupt\'; exit(1); }"',
-					'php /tmp/composer-setup.php --quiet --install-dir=/usr/local/bin --filename=composer',
-					'rm /tmp/composer-setup.php',
-				],
-			},
+			{ apt: ['php-cli', 'php-xml', 'php-mbstring', 'composer', 'unzip', 'git', 'ca-certificates'] },
 		),
 		extensions: ['bmewburn.vscode-intelephense-client'],
 		jobs: (files) =>
@@ -320,10 +336,17 @@ const TOOLCHAINS: Record<LanguageId, Toolchain> = {
 						{
 							id: 'format',
 							name: 'Format',
-							steps: [
-								{ name: 'Install PHP-CS-Fixer', run: `composer global require --quiet --no-interaction friendsofphp/php-cs-fixer:${PHP_CS_FIXER_VERSION}` },
-								{ name: 'php-cs-fixer', run: '"$(composer global config bin-dir --absolute --quiet)/php-cs-fixer" check --rules=@PER-CS --diff --using-cache=no .' },
-							],
+							// PHP-CS-Fixer is a development dependency of the composer.json export.ts writes; a project with its own gets it alone.
+							steps:
+								'composer.json' in files
+									? [
+											{ name: 'Install PHP-CS-Fixer', run: `composer global require --quiet --no-interaction friendsofphp/php-cs-fixer:${PHP_CS_FIXER_VERSION}` },
+											{ name: 'php-cs-fixer', run: '"$(composer global config bin-dir --absolute --quiet)/php-cs-fixer" check --rules=@PER-CS --diff --using-cache=no .' },
+										]
+									: [
+											{ name: 'Install', run: 'composer install --no-interaction --no-progress' },
+											{ name: 'php-cs-fixer', run: 'vendor/bin/php-cs-fixer check --rules=@PER-CS --diff --using-cache=no .' },
+										],
 						},
 					]
 				: [],
@@ -340,38 +363,12 @@ const TOOLCHAINS: Record<LanguageId, Toolchain> = {
 	java: {
 		environment: env('maven:3-eclipse-temurin-25', { image: 'archlinux', packages: ['jdk-openjdk', 'maven'], setup: [] }),
 		extensions: ['vscjava.vscode-java-pack'],
-		jobs: (files) => {
-			const list = sources(files, /\.java$/);
-			if (!list.length) return [];
-			return [
-				{
-					id: 'format',
-					name: 'Format',
-					steps: [
-						{ name: 'Fetch google-java-format', run: fetchChecked(`https://github.com/google/google-java-format/releases/download/v${GJF_VERSION}/google-java-format-${GJF_VERSION}-all-deps.jar`, GJF_SHA256, '/tmp/google-java-format.jar') },
-						{ name: 'google-java-format', run: `java -jar /tmp/google-java-format.jar --aosp --dry-run --set-exit-if-changed ${shellList(list)}` },
-					],
-				},
-			];
-		},
+		// The format check is Spotless's, which the build file configures (export.ts).
 	},
 	kotlin: {
 		environment: env('gradle:9-jdk25', { image: 'archlinux', packages: ['jdk-openjdk', 'gradle'], setup: [] }),
 		extensions: ['fwcd.kotlin'],
-		jobs: (files) =>
-			sources(files, /\.kts?$/).length
-				? [
-						{
-							id: 'format',
-							name: 'Format',
-							steps: [
-								{ name: 'Fetch ktlint', run: fetchChecked(`https://github.com/pinterest/ktlint/releases/download/${KTLINT_VERSION}/ktlint`, KTLINT_SHA256, '/tmp/ktlint') },
-								{ name: 'ktlint', run: 'chmod +x /tmp/ktlint && /tmp/ktlint --relative' },
-							],
-							files: { '.editorconfig': 'root = true\n\n[*.{kt,kts}]\n# The code style ktlint checks: IntelliJ IDEA\'s, which is Kotlin\'s own.\nktlint_code_style = intellij_idea\n' },
-						},
-					]
-				: [],
+		// The format check is Spotless's, which the build file configures (export.ts).
 	},
 	haskell: {
 		// GHC 9.14, the browser's. Arch Linux's GHC has only shared libraries,

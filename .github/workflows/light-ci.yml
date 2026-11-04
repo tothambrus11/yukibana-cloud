@@ -395,9 +395,9 @@ jobs:
 
   # One job per build system, each with a language whose sample it builds
   # (tests/unit/export-options.test.mjs checks that every build system is
-  # here). Only the build-and-test job: the format and lint jobs depend on
-  # the language, not the build system, and tests/export-ci.mjs runs them
-  # all by hand.
+  # here). Every job the download's CI has: build and test, and the format
+  # and lint checks, whose tools the build files now pin (Spotless in pom.xml
+  # and build.gradle.kts, Prettier in package.json, and so on).
   exports:
     name: Download builds with ${{ matrix.target }}
     needs: plan
@@ -441,9 +441,8 @@ jobs:
         with:
           node-version: 24
 
-      - name: Build and test the download
+      - name: Run the download's CI
         env:
-          JOBS: test
           TARGET: ${{ matrix.target }}
         run: node tests/export-ci.mjs "$TARGET"
 
