@@ -18,7 +18,7 @@ test('each import names its package once, qualified, with a package import or sa
 		'tests/Spec.hs': 'import Test.Hspec\nimport Test.QuickCheck\n',
 		'README.md': 'import Data.Time\n',
 	};
-	assert.deepEqual(haskellDepends(files), ['containers >=0.6', 'mtl >=2.2', 'text >=2.0', 'bytestring >=0.11', 'random >=1.2', 'QuickCheck >=2.14', 'hspec >=2.10']);
+	assert.deepEqual(haskellDepends(files), ['containers >=0.6', 'mtl >=2.2', 'text >=2.0', 'bytestring >=0.11', 'random >=1.2', 'QuickCheck >=2.14', 'hspec >=2.10 && <3']);
 });
 
 test('Template Haskell and the packages beyond the testing ones are named too', () => {
@@ -37,5 +37,5 @@ test('the cabal file depends on what the program imports, and its test suite on 
 	const common = cabal.slice(cabal.indexOf('common shared'), cabal.indexOf('executable'));
 	assert.match(common, /build-depends:\n {8}base >=4\.16 && <5\n {6}, mtl >=2\.2\n {6}, QuickCheck >=2\.14\n/);
 	assert.doesNotMatch(common, /hspec/);
-	assert.match(cabal.slice(cabal.indexOf('test-suite spec')), /build-depends:\n {8}hspec >=2\.10\n/);
+	assert.match(cabal.slice(cabal.indexOf('test-suite spec')), /build-depends:\n {8}hspec >=2\.10 && <3\n/);
 });

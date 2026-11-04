@@ -71,6 +71,8 @@ for (const [id, buildId] of targets) {
 		// Each job starts from the downloaded files, as a fresh checkout does.
 		const copy = join(work, `${name}-${job.id}`);
 		spawnSync('cp', ['-r', dir, copy]);
+		// A repository with every file added, as a clone is: the checks read `git ls-files`.
+		spawnSync('sh', ['-c', 'git init -q && git add -A'], { cwd: copy });
 		const e = job.environment;
 		// One stream, in order, so that a failing step's output ends the log rather than hiding before another stream's.
 		const script = ['exec 2>&1', ...imageSetup(e).map((s) => `${s} >/dev/null`), ...job.steps.flatMap((s) => [`echo ${JSON.stringify(`==> ${s.name}`)}`, s.run])].join('\n');

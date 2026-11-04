@@ -21,16 +21,22 @@ import { CPP_LEVELS, defaultLevel, SWIFT_LEVELS } from './optimization.ts';
 import {
 	ciService,
 	clangTidyJob,
+	dependencyUpdates,
 	devcontainer,
+	editorconfig,
+	GO_SAFE_DIRECTORY,
 	GJF_VERSION,
 	gitattributes,
 	jobFiles,
 	jobsFor,
 	KTLINT_VERSION,
+	NPM_INSTALL,
 	PHP_CS_FIXER_VERSION,
+	PRETTIER_GLOB,
 	PRETTIER_VERSION,
 	RUFF_VERSION,
-	type BuildCi, type CiService, type CiServiceId, type Extra, type Job, type JobSpec, type Step } from './export-tooling.ts';
+	vscodeExtensions,
+	type BuildCi, type CiService, type CiServiceId, type Extra, type Job, type JobSpec, type LocalCheck, type Step } from './export-tooling.ts';
 
 /** What a download contains. */
 export interface ExportedProject {
@@ -108,8 +114,10 @@ const testJob = (name: string, s: readonly Step[], extra?: Extra): JobSpec => ({
 const CMAKE: BuildSystem = {
 	id: 'cmake',
 	label: 'CMake',
-	paths: ['CMakeLists.txt'],
-	generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry) }),
+	// No presets beside a CMakeLists.txt of the project's own, which may not have the options they set.
+	paths: (files) => ['CMakeLists.txt', ...('CMakeLists.txt' in files ? [] : ['CMakePresets.json'])],
+	generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry), 'CMakePresets.json': cmakePresets(p.files, p.language.entry, false) }),
+	ignored: ['CMakeUserPresets.json'],
 	ci: (p) => cFamilyCi(p.files, p.language.entry, {
 		configure: (dir, more) => `cmake -S . -B ${dir} -G Ninja -DCMAKE_BUILD_TYPE=Debug${more.warningsAsErrors ? ' -DWARNINGS_AS_ERRORS=ON' : ''}${more.sanitize ? ` -DSANITIZE=${more.sanitize}` : ''}`,
 		build: (dir) => `cmake --build ${dir}`,
@@ -145,8 +153,10 @@ const CONAN_VERSION = '2.34.0';
 const CONAN: BuildSystem = {
 	id: 'conan',
 	label: 'CMake with Conan',
-	paths: ['CMakeLists.txt', 'conanfile.txt'],
-	generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry, 'conan'), 'conanfile.txt': conanfile(p.files, p.language.entry) }),
+	paths: (files) => ['CMakeLists.txt', ...('CMakeLists.txt' in files ? [] : ['CMakePresets.json']), 'conanfile.txt'],
+	generate: (p) => ({ 'CMakeLists.txt': cmakeLists(p.files, p.language.entry, 'conan'), 'conanfile.txt': conanfile(p.files, p.language.entry), 'CMakePresets.json': cmakePresets(p.files, p.language.entry, true) }),
+	// Conan writes CMakeUserPresets.json beside CMakeLists.txt, naming its own presets in build/.
+	ignored: ['CMakeUserPresets.json'],
 	instructions: (language, files) => conanInstructions(language, files),
 	ci: (p) => cFamilyCi(p.files, p.language.entry, {
 		configure: (dir, more) =>
@@ -195,6 +205,8 @@ function cFamilyCi(
 		jobs.push({
 			id: 'sanitize',
 			name: 'Sanitizers',
+			// UndefinedBehaviorSanitizer reports and carries on by default, which would pass: halt on its first report.
+			extra: { variables: { UBSAN_OPTIONS: 'halt_on_error=1:print_stacktrace=1' } },
 			steps: steps(['Configure', tool.configure('build-sanitize', { sanitize: 'address,undefined' })], ['Build', tool.build('build-sanitize')], ...exercise('build-sanitize')),
 		});
 	jobs.push(...clangTidyJob(files, { name: 'Configure', run: tool.configure('build', {}) }, 'build'));
@@ -211,7 +223,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Swift Package Manager',
 			paths: ['Package.swift'],
 			generate: (p) => ({ 'Package.swift': packageSwift(p.files, p.paths, p.optimization) }),
-			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Build', 'swift build'], ...(swiftTests(p.files) ? [['Test', 'swift test'] as const] : [])))] }),
+			ci: (p) => ({ ecosystems: ['swift'], prepare: 'swift package resolve', jobs: [testJob('Build and test', steps(['Build', 'swift build'], ...(swiftTests(p.files) ? [['Test', 'swift test'] as const] : [])))] }),
 		},
 	],
 	python: [
@@ -221,6 +233,8 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			paths: ['pyproject.toml'],
 			generate: (p) => ({ 'pyproject.toml': pyprojectToml(p.files) }),
 			ci: (p) => ({
+				ecosystems: ['pip'],
+				prepare: 'python -m venv .venv && .venv/bin/pip install --group dev',
 				jobs: [
 					testJob(
 						'Test',
@@ -246,7 +260,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'sbt',
 			paths: ['build.sbt', 'project/build.properties'],
 			generate: (p) => ({ 'build.sbt': buildSbt(p.files), 'project/build.properties': `sbt.version=${SBT_VERSION}\n` }),
-			ci: (p) => ({ jobs: [testJob('Build and test', steps(['sbt', Object.keys(p.files).some((f) => f.startsWith('tests/') && /\.(scala|java)$/.test(f)) ? 'sbt -batch test' : 'sbt -batch compile']))] }),
+			ci: () => ({ jobs: [testJob('Build and test', steps(['sbt', 'sbt -batch test']))] }),
 		},
 	],
 	php: [
@@ -256,6 +270,8 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			paths: ['composer.json', 'phpunit.xml'],
 			generate: (p) => ({ 'composer.json': composerJson(p.language.entry, p.files), 'phpunit.xml': phpunitXml(p.files) }),
 			ci: (p) => ({
+				ecosystems: ['composer'],
+				prepare: 'composer install',
 				jobs: [
 					testJob(
 						'Test',
@@ -275,7 +291,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Cargo',
 			paths: ['Cargo.toml'],
 			generate: (p) => ({ 'Cargo.toml': cargoToml(p.files) }),
-			ci: () => ({ jobs: [testJob('Build and test', steps(['Build', 'cargo build --all-targets'], ['Test', 'cargo test']))] }),
+			ci: () => ({ ecosystems: ['cargo'], prepare: 'cargo fetch', jobs: [testJob('Build and test', steps(['Build', 'cargo build --all-targets'], ['Test', 'cargo test']))] }),
 		},
 	],
 	java: [
@@ -284,7 +300,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Maven',
 			paths: ['pom.xml'],
 			generate: (p) => ({ 'pom.xml': pomXml(p.files, p.language.entry) }),
-			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p, 'pom.xml', 'mvn -B -ntp spotless:check')] }),
+			ci: (p) => ({ ecosystems: ['maven'], jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p, 'pom.xml', 'mvn -B -ntp spotless:check', MAVEN_LOCAL)] }),
 		},
 		{
 			id: 'gradle',
@@ -292,8 +308,9 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			paths: ['build.gradle.kts', 'settings.gradle.kts'],
 			generate: (p) => ({ 'build.gradle.kts': javaGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "java-project"\n' }),
 			instructions: (_, files) => javaGradleInstructions(files),
-			ignored: ['build/', '.gradle/'],
-			ci: (p) => ({ extra: GRADLE_IMAGE, jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p, 'build.gradle.kts', SPOTLESS_GRADLE_CHECK)] }),
+			// bin/: where Eclipse's and VS Code's Java builds put classes.
+			ignored: ['build/', '.gradle/', 'bin/'],
+			ci: (p) => ({ extra: GRADLE_IMAGE, ecosystems: ['gradle'], jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p, 'build.gradle.kts', SPOTLESS_GRADLE_CHECK, GRADLE_LOCAL)] }),
 		},
 	],
 	kotlin: [
@@ -302,7 +319,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Gradle',
 			paths: ['build.gradle.kts', 'settings.gradle.kts'],
 			generate: (p) => ({ 'build.gradle.kts': buildGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "kotlin-project"\n' }),
-			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p, 'build.gradle.kts', SPOTLESS_GRADLE_CHECK)] }),
+			ci: (p) => ({ ecosystems: ['gradle'], jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p, 'build.gradle.kts', SPOTLESS_GRADLE_CHECK, GRADLE_LOCAL)] }),
 		},
 		{
 			id: 'maven',
@@ -313,7 +330,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			generate: (p) => ({ 'pom.xml': kotlinPomXml(p.files, p.language.entry) }),
 			instructions: (_, files) => kotlinMavenInstructions(files),
 			ignored: ['target/'],
-			ci: (p) => ({ extra: MAVEN_IMAGE, jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p, 'pom.xml', 'mvn -B -ntp spotless:check')] }),
+			ci: (p) => ({ extra: MAVEN_IMAGE, ecosystems: ['maven'], jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p, 'pom.xml', 'mvn -B -ntp spotless:check', MAVEN_LOCAL)] }),
 		},
 	],
 	haskell: [
@@ -351,7 +368,7 @@ const BUILD: Record<LanguageId, readonly BuildSystem[]> = {
 			label: 'Go modules',
 			paths: ['go.mod'],
 			generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }),
-			ci: (p) => ({ jobs: [testJob('Build and test', steps(['Build', 'go build ./...'], ...(Object.keys(p.files).some((f) => f.endsWith('_test.go')) ? [['Test', 'go test ./...'] as const] : [])))] }),
+			ci: () => ({ ecosystems: ['gomod'], prepare: 'go mod download', jobs: [testJob('Build and test', [GO_SAFE_DIRECTORY, ...steps(['Build', 'go build ./...'], ['Test', 'go test ./...'])])] }),
 		},
 	],
 	zig: [
@@ -373,9 +390,10 @@ export function buildSystems(language: Language, files: Files): BuildSystem[] {
 /**
  * The files to download for a project: `files` unchanged, plus each build
  * file of the chosen build system (the language's usual one by default),
- * README.md and .gitignore that the project does not have, and what
- * `options` asks for: CI for one service, with the formatter
- * configurations its jobs read; .devcontainer/; .gitattributes. A README
+ * README.md, .gitignore, .editorconfig, .vscode/extensions.json and the
+ * formatters' configurations that the project does not have, and what
+ * `options` asks for: CI for one service, with Dependabot or Renovate;
+ * .devcontainer/; .gitattributes. A README
  * in any case or with any extension (readme.txt, README) counts as having
  * one.
  */
@@ -389,8 +407,14 @@ export function exportProject(language: Language, files: Files, optimization: st
 	const ci = build.ci(draft);
 	const jobs = jobsFor(language.id, ci, files);
 	const service = options.ci ? ciService(options.ci) : null;
+	const updates = service ? dependencyUpdates(service.id, ci.ecosystems ?? [], !!options.devcontainer) : null;
 	const extras: Files = {
-		...(service ? { ...jobFiles(language.id, ci, files), ...service.render(jobs, `${language.id}-project`) } : {}),
+		// The formatters' configurations whether or not CI runs them: the editor and the README's checks read them too.
+		...jobFiles(language.id, ci, files),
+		'.editorconfig': editorconfig(language.id),
+		'.vscode/extensions.json': vscodeExtensions(language.id, ci),
+		...(service ? service.render(jobs, `${language.id}-project`) : {}),
+		...(updates ? updates.files : {}),
 		...(options.devcontainer ? devcontainer(language, jobs, ci) : {}),
 		...(options.gitattributes ? { '.gitattributes': gitattributes(language.id) } : {}),
 	};
@@ -401,8 +425,14 @@ export function exportProject(language: Language, files: Files, optimization: st
 	const candidates: Files = {
 		...extras,
 		...build.generate(project),
-		'README.md': readme(language, files, generated, build, { service, jobs, devcontainer: generated.includes('.devcontainer/devcontainer.json'), gitattributes: generated.includes('.gitattributes') }),
-		'.gitignore': gitignore(language.id, build),
+		'README.md': readme(language, files, generated, build, {
+			service,
+			jobs,
+			updates: updates && Object.keys(updates.files).every((f) => generated.includes(f)) ? updates.readme : null,
+			devcontainer: generated.includes('.devcontainer/devcontainer.json'),
+			gitattributes: generated.includes('.gitattributes'),
+		}),
+		'.gitignore': gitignore(language.id, build, files),
 	};
 	const out: Files = { ...files };
 	for (const path of generated) out[path] = candidates[path] ?? '';
@@ -674,7 +704,8 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 	lines.push(`# The project's own flags${fromFlags}, for its targets only.`, 'add_library(project_flags INTERFACE)');
 	if (flags.includes.length) lines.push(`target_include_directories(project_flags INTERFACE ${flags.includes.map(cmakeDir).join(' ')})`);
 	if (flags.definitions.length) lines.push(`target_compile_definitions(project_flags INTERFACE ${flags.definitions.map(cmakeArg).join(' ')})`);
-	if (flags.options.length) lines.push('if(NOT MSVC)', `    target_compile_options(project_flags INTERFACE ${flags.options.map(cmakeArg).join(' ')})`, 'endif()');
+	// MSVC takes none of compile_flags.txt's GCC-style options: its own usual warnings and standard conformance instead.
+	lines.push('if(MSVC)', '    target_compile_options(project_flags INTERFACE /W4 /permissive-)', ...(flags.options.length ? ['else()', `    target_compile_options(project_flags INTERFACE ${flags.options.map(cmakeArg).join(' ')})`] : []), 'endif()');
 	// C++'s runtime brings libm with it; C's does not on Linux, where
 	// hypot() and the rest of <math.h> are in a library of their own.
 	if (c) lines.push("# libm, where <math.h>'s functions are on Linux (C++ links it anyway).", 'find_library(MATH_LIBRARY m)', 'if(MATH_LIBRARY)', '    target_link_libraries(project_flags INTERFACE ${MATH_LIBRARY})', 'endif()');
@@ -711,7 +742,8 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 		'# -DSANITIZE=address,undefined builds the project with those sanitizers (Debug, for file:line in reports).',
 		'set(SANITIZE "" CACHE STRING "Sanitizers to build with, as -fsanitize= takes them")',
 		'if(SANITIZE AND NOT MSVC)',
-		'    target_compile_options(project_flags INTERFACE -fsanitize=${SANITIZE} -fno-omit-frame-pointer)',
+		'    # Every report stops the program, as a failed test should; UBSan would otherwise carry on.',
+		'    target_compile_options(project_flags INTERFACE -fsanitize=${SANITIZE} -fno-sanitize-recover=all -fno-omit-frame-pointer)',
 		'    target_link_options(project_flags INTERFACE -fsanitize=${SANITIZE})',
 		'endif()',
 	);
@@ -832,6 +864,42 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 		}
 	}
 	return lines.join('\n');
+}
+
+/**
+ * CMakePresets.json (format 3, CMake 3.21; the project needs 3.24): the
+ * builds CI makes, by name, for the command line (`cmake --preset dev`,
+ * `cmake --build --preset dev`, `ctest --preset dev`) and for CLion, Visual
+ * Studio and VS Code's CMake Tools, which list them. `dev` is a Debug build
+ * in build/, `ci` the same with warnings as errors, `sanitize` a Debug build
+ * with AddressSanitizer and UndefinedBehaviorSanitizer in build-sanitize/.
+ * With Conan, every preset reads the toolchain file `conan install` writes
+ * into build/ (its packages serve the sanitized build too); Conan's own
+ * presets go to CMakeUserPresets.json, which .gitignore lists.
+ */
+export function cmakePresets(files: Files, entry: string, conan: boolean): string {
+	const { tests } = cFamilyLayout(files, entry);
+	const configure = [
+		{
+			name: 'dev',
+			displayName: 'Debug',
+			description: conan ? 'A Debug build in build/, after `conan install . --output-folder=build --build=missing -s build_type=Debug`.' : 'A Debug build in build/.',
+			binaryDir: '${sourceDir}/build',
+			...(conan ? { toolchainFile: '${sourceDir}/build/conan_toolchain.cmake' } : {}),
+			cacheVariables: { CMAKE_BUILD_TYPE: 'Debug' },
+		},
+		{ name: 'ci', inherits: 'dev', displayName: 'Debug, warnings as errors', description: "CI's build: any warning of the project fails it.", cacheVariables: { WARNINGS_AS_ERRORS: 'ON' } },
+		{ name: 'sanitize', inherits: 'dev', displayName: 'Debug with sanitizers', description: 'AddressSanitizer and UndefinedBehaviorSanitizer, in build-sanitize/.', binaryDir: '${sourceDir}/build-sanitize', cacheVariables: { SANITIZE: 'address,undefined' } },
+	];
+	const names = configure.map((c) => c.name);
+	const json = {
+		version: 3,
+		cmakeMinimumRequired: { major: 3, minor: 24, patch: 0 },
+		configurePresets: configure,
+		buildPresets: names.map((name) => ({ name, configurePreset: name })),
+		...(tests.length ? { testPresets: names.map((name) => ({ name, configurePreset: name, output: { outputOnFailure: true } })) } : {}),
+	};
+	return `${JSON.stringify(json, null, 2)}\n`;
 }
 
 // ---- C and C++: Meson
@@ -1075,12 +1143,12 @@ export function conanfile(files: Files, entry: string): string {
 function conanInstructions(language: Language, files: Files): string[] {
 	const { tests, testFramework } = cFamilyLayout(files, language.entry);
 	return [
-		`## Build and run\n\nWith Conan 2, CMake 3.24 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler (\`conan profile detect\` once, to describe it to Conan):\n\n\`\`\`sh\nconan install . --output-folder=build --build=missing -s build_type=Debug\ncmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
+		`## Build and run\n\nWith Conan 2, CMake 3.24 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler (\`conan profile detect\` once, to describe it to Conan):\n\n\`\`\`sh\nconan install . --output-folder=build --build=missing -s build_type=Debug\ncmake --preset dev          # or: cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Debug\ncmake --build --preset dev\n./build/app\n\`\`\`\n\n\`CMakePresets.json\` has CI's builds too: \`ci\` fails on any warning of the project (\`-DWARNINGS_AS_ERRORS=ON\`), and \`sanitize\` builds into \`build-sanitize/\` with AddressSanitizer and UndefinedBehaviorSanitizer (\`-DSANITIZE=address,undefined\`).`,
 		...(tests.length && testFramework
-			? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFramework]}, which \`conan install\` brings from ConanCenter (\`conanfile.txt\`):\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``]
+			? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFramework]}, which \`conan install\` brings from ConanCenter (\`conanfile.txt\`):\n\n\`\`\`sh\nctest --preset dev\n\`\`\``]
 			: []),
 		...crossSection(linuxTarget(files)),
-		'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project once `conan install` has run; give them the toolchain file above. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
+		'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project once `conan install` has run, and offer the presets, which name its toolchain file. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
 	];
 }
 
@@ -1345,7 +1413,7 @@ export function packageJson(entry: string, files: Files = {}): string {
 		private: true,
 		type: 'module',
 		main: entry,
-		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(false), format: 'prettier --write .' },
+		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(false), ...prettierScripts() },
 		engines: { node: '>=22' },
 		devDependencies: dev,
 	};
@@ -1359,22 +1427,37 @@ export function packageJson(entry: string, files: Files = {}): string {
  * 22.18 and later strip the types of a `.ts` file themselves, so `npm start`
  * is `node main.ts` and `npm test` is `node --test` (which finds
  * `*.test.ts`), with nothing to install but fast-check when the project
- * imports it.
+ * imports it. Node does not check the types, so with a tsconfig.json
+ * `npm run typecheck` is tsc, with Node's own types (@types/node, which tsc
+ * finds without a `types` list) for `node:test` and `process`.
  */
 export function typescriptPackageJson(entry: string, files: Files = {}): string {
-	const dev = { ...shippedPackages(files), prettier: PRETTIER_VERSION };
+	const typecheck = 'tsconfig.json' in files;
+	const dev = { ...shippedPackages(files), prettier: PRETTIER_VERSION, ...(typecheck ? { '@types/node': `^${NODE_TYPES_VERSION}`, typescript: TYPESCRIPT_VERSION } : {}) };
 	const json = {
 		name: 'typescript-project',
 		version: '0.1.0',
 		private: true,
 		type: 'module',
 		main: entry,
-		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(true), format: 'prettier --write .' },
+		scripts: { start: `node ${entry}`, test: 'node --test', mutate: mutateScript(true), ...(typecheck ? { typecheck: 'tsc' } : {}), ...prettierScripts() },
 		engines: { node: '>=22.18' },
 		devDependencies: dev,
 	};
 	return JSON.stringify(json, null, 2) + '\n';
 }
+
+/**
+ * package.json's `format` and `format:check`: Prettier over the files CI
+ * checks, the glob in double quotes, which both sh and Windows' cmd pass to
+ * Prettier whole for it to expand.
+ */
+function prettierScripts(): Record<'format' | 'format:check', string> {
+	return { format: `prettier --write "${PRETTIER_GLOB}"`, 'format:check': `prettier --check "${PRETTIER_GLOB}"` };
+}
+
+/** The Node whose types a TypeScript project checks against: the major CI and the dev container run (export-tooling.ts, node:24). */
+const NODE_TYPES_VERSION = '24.0.0';
 
 /** Whether a Node project has tests `node --test` finds (its default patterns, as the browser's Test). */
 function nodeTests(files: Files, typescript: boolean): boolean {
@@ -1391,11 +1474,14 @@ function nodeBuild(id: 'javascript' | 'typescript'): BuildSystem {
 		paths: ['package.json', 'stryker.config.json'],
 		generate: (p) => ({ 'package.json': (typescript ? typescriptPackageJson : packageJson)(p.language.entry, p.files), 'stryker.config.json': strykerConfig() }),
 		ci: (p) => ({
+			ecosystems: ['npm'],
+			prepare: 'npm install',
 			jobs: [
 				testJob(
 					'Test',
 					steps(
-						...(Object.keys(shippedPackages(p.files)).length ? [['Install', 'npm install --no-audit --no-fund'] as const] : []),
+						['Install', NPM_INSTALL],
+						...(typescript && 'tsconfig.json' in p.files ? [['Type-check', 'npm run typecheck'] as const] : []),
 						nodeTests(p.files, typescript) ? ['Test', 'npm test'] : ['Run', 'npm start </dev/null'],
 					),
 				),
@@ -1428,7 +1514,7 @@ export function vitePackageJson(name: string, files: Files = {}): string {
 		version: '0.1.0',
 		private: true,
 		type: 'module',
-		scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', typecheck: 'tsc', format: 'prettier --write .' },
+		scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview', typecheck: 'tsc', ...prettierScripts() },
 		...(usesP5(files) ? { dependencies: { p5: `^${P5_VERSION}` } } : {}),
 		devDependencies: { prettier: PRETTIER_VERSION, typescript: TYPESCRIPT_VERSION, vite: VITE_VERSION },
 	};
@@ -1442,7 +1528,7 @@ function viteBuild(name: string): BuildSystem {
 		label: 'Vite',
 		paths: (files) => ['package.json', ...(classicScripts(files).length > 0 ? ['vite.config.js'] : [])],
 		generate: (p) => ({ 'package.json': vitePackageJson(name, p.files), 'vite.config.js': viteConfig() }),
-		ci: () => ({ jobs: [testJob('Build', steps(['Install', 'npm install --no-audit --no-fund'], ['Type-check', 'npm run typecheck'], ['Build', 'npm run build']))] }),
+		ci: () => ({ ecosystems: ['npm'], prepare: 'npm install', jobs: [testJob('Build', steps(['Install', NPM_INSTALL], ['Type-check', 'npm run typecheck'], ['Build', 'npm run build']))] }),
 	};
 }
 
@@ -1511,7 +1597,10 @@ function classicTypeScript() {
     transformIndexHtml: {
       order: 'pre',
       async handler(html, { filename }) {
-        for (const [tag, src] of [...html.matchAll(/<script\\s+src="([^"]+\\.ts)"\\s*><\\/script>/g)]) {
+        // Every classic script with a TypeScript src, whatever its quotes and other attributes, as the download found them.
+        for (const [tag, attrs] of [...html.matchAll(/<script\\b([^>]*)>\\s*<\\/script>/gi)]) {
+          const src = /\\bsrc\\s*=\\s*["']([^"']+\\.[cm]?tsx?)["']/i.exec(attrs)?.[1];
+          if (!src || /\\btype\\s*=\\s*["']?module/i.test(attrs)) continue;
           const path = resolve(filename, '..', src);
           scripts.add(path);
           const { code } = await transformWithOxc(readFileSync(path, 'utf8'), path);
@@ -1642,7 +1731,7 @@ export function composerJson(entry: string, files: Files = {}): string {
 		require: { php: '>=8.3' },
 		'require-dev': { 'friendsofphp/php-cs-fixer': PHP_CS_FIXER_VERSION, ...(eris ? { 'giorgiosironi/eris': `^${ERIS_VERSION}` } : {}), 'phpunit/phpunit': `^${PHPUNIT_VERSION}` },
 		autoload: { classmap: phpClassmap(files) },
-		scripts: { start: `php ${entry}`, test: 'phpunit', format: 'php-cs-fixer fix --rules=@PER-CS' },
+		scripts: { start: `php ${entry}`, test: 'phpunit', format: 'php-cs-fixer fix', 'format:check': 'php-cs-fixer check --diff' },
 		config: { 'sort-packages': true },
 	};
 	return JSON.stringify(json, null, 4) + '\n';
@@ -1712,22 +1801,21 @@ const SPOTLESS_MAVEN_VERSION = '3.11.0';
 const SPOTLESS_GRADLE_VERSION = '8.11.0';
 const SPOTLESS_GRADLE_CHECK = 'gradle spotlessCheck --no-daemon --console=plain';
 
-/**
- * .editorconfig naming ktlint's code style, for editors and the ktlint command
- * line; the build file names it too (`editorConfigOverride`), so Spotless
- * checks the same style whether or not the project keeps this file.
- */
-const KTLINT_EDITORCONFIG = "root = true\n\n[*.{kt,kts}]\n# The code style ktlint checks: IntelliJ IDEA's, which is Kotlin's own.\nktlint_code_style = intellij_idea\n";
+/** Spotless as a developer runs it with Maven: the check, and the command that formats every file. */
+const MAVEN_LOCAL: LocalCheck = { check: 'mvn spotless:check', fix: 'mvn spotless:apply' };
+/** Spotless as a developer runs it with Gradle. */
+const GRADLE_LOCAL: LocalCheck = { check: 'gradle spotlessCheck', fix: 'gradle spotlessApply' };
 
 /**
  * CI's format check for a Java or Kotlin project: Spotless, as the build file
  * written here configures it. None for a project that brings its own build
  * file (`own`), which may not have Spotless, or that has no sources.
+ * Kotlin's code style is named in the build file and in .editorconfig.
  */
-function spotlessJob(p: Project, own: string, check: string): JobSpec[] {
+function spotlessJob(p: Project, own: string, check: string, local: LocalCheck): JobSpec[] {
 	const kotlin = p.language.id === 'kotlin';
 	if (own in p.files || !(kotlin ? kotlinFiles(p.files) : Object.keys(p.files).filter((f) => f.endsWith('.java'))).length) return [];
-	return [{ id: 'format', name: 'Format', steps: steps(['Spotless', check]), ...(kotlin ? { files: { '.editorconfig': KTLINT_EDITORCONFIG } } : {}) }];
+	return [{ id: 'format', name: 'Format', steps: steps(['Spotless', check]), local }];
 }
 
 /** Spotless in a pom.xml: every .java or .kt file of the project, outside target/ and dot folders. */
@@ -1987,7 +2075,7 @@ export function javaGradleKts(files: Files, entry: string): string {
 function javaGradleInstructions(files: Files): string[] {
 	const tests = Object.keys(files).some((p) => JAVA_TESTS.test(p) && p.endsWith('.java'));
 	return [
-		`## Build and run\n\nWith Gradle 9 or later and a JDK ${JAVA_RELEASE} or later:\n\n\`\`\`sh\ngradle run -q --console=plain\n\`\`\`\n\n\`gradle wrapper\` adds \`./gradlew\`, which pins Gradle for everyone who builds the project.`,
+		`## Build and run\n\nWith Gradle 9.1 or later (the first to run on JDK 25) and a JDK ${JAVA_RELEASE} or later:\n\n\`\`\`sh\ngradle run -q --console=plain\n\`\`\`\n\n\`gradle wrapper\` adds \`./gradlew\`, which pins Gradle for everyone who builds the project.`,
 		...(tests ? [`## Test\n\nThe tests use JUnit ${JUNIT_VERSION}:\n\n\`\`\`sh\ngradle test\n\`\`\``] : []),
 		'## Editors\n\nIntelliJ IDEA, Eclipse and VS Code (with the Extension Pack for Java) open the folder and import `build.gradle.kts`.',
 	];
@@ -2225,7 +2313,7 @@ const HASKELL_PACKAGES: readonly (readonly [string, RegExp])[] = [
 	['exceptions >=0.10', /^Control\.Monad\.Catch\b/],
 	['random >=1.2', /^System\.Random\b/],
 	['QuickCheck >=2.14', /^Test\.QuickCheck\b/],
-	['hspec >=2.10', /^Test\.Hspec\b/],
+	['hspec >=2.10 && <3', /^Test\.Hspec\b/],
 	['HUnit >=1.6', /^Test\.HUnit\b/],
 	['template-haskell >=2.18', /^Language\.Haskell\.TH\b/],
 	['parsec >=3.1', /^Text\.(Parsec|ParserCombinators\.Parsec)\b/],
@@ -2297,7 +2385,7 @@ export function haskellCabal(files: Files, entry: string): string {
 			`    main-is:          ${mainIs(testMain)}`,
 			`    hs-source-dirs:   ${dirs([testMain, ...testOnly, ...library]).join(' ')}`,
 			...cabalList('other-modules', [...testOnly, ...library].map((m) => m.name)),
-			...cabalList('build-depends', ['hspec >=2.10']),
+			...cabalList('build-depends', ['hspec >=2.10 && <3']),
 		);
 	}
 	return `${lines.join('\n')}\n`;
@@ -2314,6 +2402,10 @@ function stackYaml(): string {
 		`snapshot: ${STACK_SNAPSHOT}`,
 		'packages:',
 		'  - .',
+		"# The snapshot's GHC, which Stack installs, whatever GHC is on the PATH (a GHCup or",
+		"# Docker image's own one is not the snapshot's).",
+		'system-ghc: false',
+		'install-ghc: true',
 		'',
 	].join('\n');
 }
@@ -2455,10 +2547,10 @@ function instructions(language: Language, files: Files): string[] {
 		case 'cpp': {
 			const tests = paths.some((p) => TESTS.test(p) && (CXX.test(p) || C.test(p)));
 			return [
-				`## Build and run\n\nWith CMake 3.24 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake -S . -B build\ncmake --build build\n./build/app\n\`\`\`\n\n\`-DWARNINGS_AS_ERRORS=ON\` fails the build on any warning of the project; \`-DSANITIZE=address,undefined\` builds it with AddressSanitizer and UndefinedBehaviorSanitizer.`,
-				...(tests ? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFrameworkOf(files)]}, which CMake downloads the first time it configures the build:\n\n\`\`\`sh\nctest --test-dir build --output-on-failure\n\`\`\``] : []),
+				`## Build and run\n\nWith CMake 3.24 or later and a ${language.id === 'c' ? 'C' : 'C++'} compiler:\n\n\`\`\`sh\ncmake --preset dev          # or: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug\ncmake --build --preset dev\n./build/app\n\`\`\`\n\n\`CMakePresets.json\` has CI's builds too: \`ci\` fails on any warning of the project (\`-DWARNINGS_AS_ERRORS=ON\`), and \`sanitize\` builds into \`build-sanitize/\` with AddressSanitizer and UndefinedBehaviorSanitizer (\`-DSANITIZE=address,undefined\`).`,
+				...(tests ? [`## Test\n\nThe tests in \`tests/\` use ${{ gtest: `GoogleTest ${GTEST_VERSION}`, doctest: `doctest ${DOCTEST_VERSION}`, catch2: `Catch2 ${CATCH2_VERSION}` }[testFrameworkOf(files)]}, which CMake downloads the first time it configures the build unless it finds one installed:\n\n\`\`\`sh\nctest --preset dev           # or: ctest --test-dir build --output-on-failure\n\`\`\``] : []),
 				...crossSection(linuxTarget(files)),
-				'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
+				'## Editors\n\nCLion, Visual Studio and VS Code (with CMake Tools) open the folder as a CMake project and offer the presets. clangd reads `build/compile_commands.json`, which CMake writes, and `compile_flags.txt` for files outside the build.',
 			];
 		}
 		case 'swift': {
@@ -2475,7 +2567,7 @@ function instructions(language: Language, files: Files): string[] {
 			return [
 				`## Run\n\nWith Python 3.12 or later:\n\n\`\`\`sh\npython ${language.entry}\n\`\`\``,
 				...(tests
-					? [`## Test\n\nThe tests use pytest${hypothesis ? ' and Hypothesis' : ''}:\n\n\`\`\`sh\npython -m venv .venv\n. .venv/bin/activate        # .venv\\Scripts\\activate on Windows\npython -m pip install pytest${hypothesis ? ' hypothesis' : ''}\npython -m pytest\n\`\`\`\n\nOr, with uv: \`uv run pytest\`.`]
+					? [`## Test\n\nThe tests use pytest${hypothesis ? ' and Hypothesis' : ''}:\n\n\`\`\`sh\npython -m venv .venv\n. .venv/bin/activate        # .venv\\Scripts\\activate on Windows\npython -m pip install --group dev   # pip 25.1 or later: pytest${hypothesis ? ', Hypothesis' : ''} and Ruff, as pyproject.toml pins them\npython -m pytest\n\`\`\`\n\nOr, with uv: \`uv run pytest\`.`]
 					: []),
 				'## Editors\n\nPyCharm and VS Code (with the Python extension) open the folder; pytest is configured in `pyproject.toml`.',
 			];
@@ -2493,7 +2585,7 @@ function instructions(language: Language, files: Files): string[] {
 			return [
 				`## Run\n\nWith Node.js 22.18 or later, which runs TypeScript by stripping its types (nothing to install):\n\n\`\`\`sh\nnode ${language.entry}     # or: npm start\n\`\`\``,
 				...(tests ? [testSection(files)] : []),
-				'## Editors\n\nVS Code and WebStorm open the folder as it is. Node only strips types, so `tsconfig.json` sets `erasableSyntaxOnly` (no `enum` or `namespace`) and imports name their `.ts` files. For the types of `node:test` and `process` outside Yukibana, `npm install -D @types/node` and add `"types": ["node"]` to `tsconfig.json`.',
+				'## Editors\n\nVS Code and WebStorm open the folder as it is. Node only strips types, so `tsconfig.json` sets `erasableSyntaxOnly` (no `enum` or `namespace`) and imports name their `.ts` files. Node does not check the types; `npm run typecheck` does, with tsc and Node\'s types, as CI does.',
 			];
 		}
 		case 'web':
@@ -2541,7 +2633,7 @@ function instructions(language: Language, files: Files): string[] {
 			const tests = haskellTests(files);
 			return [
 				'## Build and run\n\nWith GHC 9.4 or later and cabal 3.8 or later (GHCup from haskell.org installs both):\n\n```sh\ncabal run -v0\n```\n\nThe browser checks and runs the project with GHC 9.14 and the flags this build uses (`GHC2021`, `-Wall`), so what it reported there is what GHC reports here.',
-				...(tests ? ['## Test\n\nThe tests use hspec, which cabal downloads the first time:\n\n```sh\ncabal test --test-show-details=direct\n```'] : []),
+				...(tests ? ['## Test\n\nThe tests use hspec, which cabal downloads from Hackage the first time, once `cabal update` has fetched its index:\n\n```sh\ncabal update\ncabal test --test-show-details=direct\n```'] : []),
 				'## Editors\n\nVS Code (with the Haskell extension), Emacs, Vim and Zed run the Haskell Language Server, which reads the `.cabal` file; GHCup installs it with `ghcup install hls`.',
 			];
 		}
@@ -2578,6 +2670,8 @@ function instructions(language: Language, files: Files): string[] {
 interface ReadmeExtras {
 	service: CiService | null;
 	jobs: readonly Job[];
+	/** What the dependency-update file does, when the download has one. */
+	updates: string | null;
 	devcontainer: boolean;
 	gitattributes: boolean;
 }
@@ -2585,11 +2679,20 @@ interface ReadmeExtras {
 /** The README's sections on CI, the dev container and line endings, for what the download has. */
 function extrasSections(extras: ReadmeExtras): string[] {
 	const out: string[] = [];
+	const checks = extras.jobs.flatMap((j) => (j.local ? [{ name: j.name, ...j.local }] : []));
+	if (checks.length)
+		out.push(
+			[
+				'## Checks',
+				"Beside the tests, the project is checked with these, from the project folder with the project's tools installed" + (extras.service ? ', as CI runs them' : '') + ':',
+				checks.map((c) => `- **${c.name}**: \`${c.check}\`${c.fix ? `; \`${c.fix}\` fixes what it reports` : ''}`).join('\n'),
+			].join('\n\n'),
+		);
 	if (extras.service) {
 		const jobs = extras.jobs.map((j) => `**${j.name}**`);
 		const listed = jobs.length > 1 ? `${jobs.slice(0, -1).join(', ')} and ${jobs.at(-1)}` : (jobs[0] ?? '');
 		const sourcehut = extras.service.id === 'sourcehut' ? ' In each manifest, replace `~you` with your sr.ht user (and the repository name if it differs); git.sr.ht then runs them on every push.' : '';
-		out.push(`## Continuous integration\n\n\`${extras.service.where}\` runs ${listed} on ${extras.service.label} for every push and pull request, each in the image it names (\`${extras.jobs[0]?.environment.image ?? ''}\`${extras.jobs.some((j) => j.environment.image !== extras.jobs[0]?.environment.image) ? ' and others' : ''}).${sourcehut} The format check fails on a file the formatter would change; run the same formatter on it to fix it.`);
+		out.push(`## Continuous integration\n\n\`${extras.service.where}\` runs ${listed} on ${extras.service.label} ${extras.service.when}, each in the image it names (\`${extras.jobs[0]?.environment.image ?? ''}\`${extras.jobs.some((j) => j.environment.image !== extras.jobs[0]?.environment.image) ? ' and others' : ''}).${sourcehut} A check fails on what it would change or report; the commands under "Checks" fix it.${extras.updates ? `\n\n${extras.updates}` : ''}`);
 	}
 	if (extras.devcontainer)
 		out.push('## Dev container\n\n`.devcontainer/` describes a container with the tools to build, test and check this project, the ones CI uses. VS Code (with the Dev Containers extension) offers to reopen the folder in it; GitHub Codespaces and the `devcontainer` CLI use it too.');
@@ -2613,6 +2716,7 @@ function readme(language: Language, files: Files, generated: readonly string[], 
 		`Written in Yukibana Light. The files are where they were in the browser${others.length ? `; ${listed} ${others.length === 1 ? 'was' : 'were'} generated when it was downloaded, for the tools below, and can be changed like any other file` : ''}.`,
 		...(build.instructions ?? instructions)(language, files),
 		...extrasSections(extras),
+		'## Licence\n\nThe project has no licence yet, which means nobody else may use, copy or change it. To let them, add a `LICENSE` file (choosealicense.com compares the usual ones) and name it in the build file.',
 		'',
 	].join('\n\n');
 }
@@ -2622,7 +2726,7 @@ const IGNORED: Record<LanguageId, readonly string[]> = {
 	c: ['build/', 'build-*/', 'cmake-build-*/', 'out/', '.cache/'],
 	cpp: ['build/', 'build-*/', 'cmake-build-*/', 'out/', '.cache/'],
 	swift: ['.build/', '.swiftpm/', 'xcuserdata/', 'DerivedData/'],
-	python: ['__pycache__/', '*.py[cod]', '.venv/', '.venv-*/', '.pytest_cache/', '.ruff_cache/'],
+	python: ['__pycache__/', '*.py[cod]', '.venv/', '.venv-*/', '.pytest_cache/', '.ruff_cache/', '.hypothesis/'],
 	javascript: ['node_modules/', '.stryker-tmp/', 'reports/'],
 	typescript: ['node_modules/', '.stryker-tmp/', 'reports/'],
 	web: ['node_modules/', 'dist/'],
@@ -2632,14 +2736,20 @@ const IGNORED: Record<LanguageId, readonly string[]> = {
 	php: ['vendor/', '.phpunit.cache/', '.phpunit.result.cache'],
 	rust: ['target/'],
 	java: ['target/', '*.class', '.classpath', '.project', '.settings/', '*.iml'],
-	kotlin: ['build/', '.gradle/', '.kotlin/', '*.class', '*.iml'],
-	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o'],
+	kotlin: ['build/', '.gradle/', '.kotlin/', 'bin/', '*.class', '*.iml'],
+	haskell: ['dist-newstyle/', '.stack-work/', '*.hi', '*.o', '*.dyn_hi', '*.dyn_o', 'cabal.project.local', 'cabal.project.local~', '.ghc.environment.*'],
 	go: ['*.exe', '*.test', '*.out'],
 	zig: ['zig-out/', '.zig-cache/'],
 };
 
+/** What `go build` in the module's root writes: the program, named after the module path's last element. */
+function goBinaries(files: Files): string[] {
+	const name = /^module\s+(\S+)/m.exec(files['go.mod'] ?? '')?.[1]?.split('/').at(-1) ?? 'example';
+	return [`/${name}`];
+}
+
 /** A .gitignore for the build output of the language's tools and the build system's. */
-function gitignore(language: LanguageId, build: BuildSystem): string {
-	const ignored = [...new Set([...IGNORED[language], ...(build.ignored ?? [])])];
+function gitignore(language: LanguageId, build: BuildSystem, files: Files): string {
+	const ignored = [...new Set([...IGNORED[language], ...(build.ignored ?? []), ...(language === 'go' ? goBinaries(files) : [])])];
 	return ['# Build output', ...ignored, '', '# Editors and systems', '.idea/', '.DS_Store', ''].join('\n');
 }
