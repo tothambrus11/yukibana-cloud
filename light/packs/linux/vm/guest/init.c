@@ -116,13 +116,39 @@ static int split_or_fail(char *buf, ssize_t len, char **out, int cap, const char
 }
 
 /*
+ * Opens a virtio console port once the kernel has added it, or returns -1 (errno
+ * set) after PORT_WAIT_MS of trying. The ports are not there when init starts:
+ * virtio_console asks QEMU for them at probe (DEVICE_READY), and adds each one as
+ * its answer arrives, from a workqueue, so init can run first. Until the first port
+ * is added, /dev/hvc* does not exist (ENOENT). Adding it registers the hvc driver,
+ * which makes every node, each a moment before its char device: a node made but
+ * not yet a device fails with ENXIO (tty_register_device_attr: device_register,
+ * which devtmpfs follows, then tty_cdev_add). After that, a port not yet added
+ * fails with ENODEV (hvc_install). This was the "guest rebooted"
+ * flake (vm/README.md, problem 12): with one vCPU, init got to /dev/hvc3 before the
+ * kworker had added port 3, about one riscv64 boot in a hundred. A real system
+ * waits for udev here.
+ */
+enum { PORT_WAIT_MS = 10000, PORT_POLL_MS = 2 };
+
+static int open_port(const char *path, int flags)
+{
+	for (int waited = 0;; waited += PORT_POLL_MS) {
+		int fd = open(path, flags, 0);
+		if (fd >= 0 || (errno != ENOENT && errno != ENXIO && errno != ENODEV) || waited >= PORT_WAIT_MS)
+			return fd;
+		(void)msleep(PORT_POLL_MS);
+	}
+}
+
+/*
  * Opens a virtio console and makes it a byte pipe: no echo (the host shows what
  * the user typed itself) and no output processing ("\n" stays "\n"). Input stays
  * canonical, so the host sends whole lines and ^D (VEOF) is end of file.
  */
 static int open_channel(const char *path, int flags)
 {
-	int fd = open(path, flags | O_NOCTTY, 0);
+	int fd = open_port(path, flags | O_NOCTTY);
 	if (fd < 0)
 		fail("cannot open", path);
 	struct termios t;
