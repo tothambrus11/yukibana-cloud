@@ -81,6 +81,22 @@ TC_ARTIFACTS=(
 )
 PLUGIN_HOST_SHA256=ae445e4a0f98f55b5bcebe7acaa14ca93908625ca04e36b38b9f4d2767f087c4
 
+# The cross compiler and the Linux sysroots (README, "Linux targets"), from
+# the cross build of the toolchain (light/toolchains/swift with
+# SWIFT_CROSS=1, its workflow's `cross` input), which this repository
+# publishes. Same scheme: the .gz is fetched, both checksums verified.
+# SWIFT_CROSS_DIR=<dir> takes them from <dir> instead (an unpacked CI
+# artifact), unverified. With neither, the pack is built without them and
+# a Linux target's Run says so.
+CROSS_DOWNLOADS=https://github.com/tothambrus11/yukibana-cloud/releases/download
+CROSS_RELEASE=swift-6.3.3-wasm-cross
+CROSS_ARTIFACTS=(
+  # name                             sha256 of name.gz  sha256 of name
+  "swift-frontend-cross.wasm         PENDING PENDING"
+  "swift-sysroot-linux-x86_64.tar    PENDING PENDING"
+  "swift-sysroot-linux-aarch64.tar   PENDING PENDING"
+)
+
 # swift-testing.tar is made from the Wasm SDK the toolchain release is built
 # against (swift-toolchain-wasm env.sh pins the same file and checksum).
 TESTING_SDK_URL="https://download.swift.org/swift-6.3.3-release/wasm-sdk/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE_wasm.artifactbundle.tar.gz"
@@ -210,10 +226,39 @@ if [ ! -f "$XCT" ] || [ -n "$(find "$HERE/xctest/XCTest" "$HERE/tools/build-xcte
 fi
 cp -p "$XCT" "$OUT/swift-xctest.tar"
 
-step "server.js, runner.js, explorer.js"
+step "the cross compiler and the Linux sysroots ($CROSS_RELEASE)"
+CROSS_SIZES=""
+for line in "${CROSS_ARTIFACTS[@]}"; do
+  read -r name gz_sha raw_sha <<<"$line"
+  if [ -n "${SWIFT_CROSS_DIR:-}" ] && [ -f "$SWIFT_CROSS_DIR/$name" ]; then
+    if ! cmp -s "$SWIFT_CROSS_DIR/$name" "$TCDL/$name"; then
+      echo "$name from $SWIFT_CROSS_DIR (not verified)"
+      cp "$SWIFT_CROSS_DIR/$name" "$TCDL/$name.part" && mv "$TCDL/$name.part" "$TCDL/$name"
+    fi
+  elif [ "$raw_sha" = PENDING ]; then
+    [ -f "$TCDL/$name" ] || { echo "warning: $name: release $CROSS_RELEASE is not published yet and SWIFT_CROSS_DIR has none; building without it" >&2; rm -f "$OUT/$name"{,.gz,.br}; continue; }
+  elif [ ! -f "$TCDL/$name" ] || ! echo "$raw_sha  $TCDL/$name" | sha256sum -c --quiet - 2>/dev/null; then
+    fetch "$CROSS_DOWNLOADS/$CROSS_RELEASE/$name.gz" "$gz_sha" "$TCDL/$name.gz"
+    gzip -dc "$TCDL/$name.gz" > "$TCDL/$name.part"
+    rm -f "$TCDL/$name.gz"
+    echo "$raw_sha  $TCDL/$name.part" | sha256sum -c --quiet - || { echo "checksum mismatch for $name" >&2; exit 1; }
+    mv "$TCDL/$name.part" "$TCDL/$name"
+  fi
+  case "$name" in
+    *.wasm)
+      if [ ! -f "$CACHE/stage/$name" ] || [ "$TCDL/$name" -nt "$CACHE/stage/$name" ]; then
+        llvm-objcopy --strip-all "$TCDL/$name" "$CACHE/stage/$name"
+      fi
+      cp -p "$CACHE/stage/$name" "$OUT/$name" ;;
+    *) cp -p "$TCDL/$name" "$OUT/$name" ;;
+  esac
+  CROSS_SIZES+=",\"$name\":$(stat -c %s "$OUT/$name")"
+done
+
+step "server.js, runner.js, explorer.js, linux-worker.js"
 size() { stat -c %s "$OUT/$1"; }
-SIZES="{\"swift-frontend-lsp.wasm\":$(size swift-frontend-lsp.wasm),\"wasm-ld.wasm\":$(size wasm-ld.wasm),\"swift-sysroot.tar\":$(size swift-sysroot.tar),\"swift-xctest.tar\":$(size swift-xctest.tar),\"SwiftMacroPlugins.wasm\":$(size SwiftMacroPlugins.wasm),\"swift-testing.tar\":$(size swift-testing.tar)}"
-for entry in server runner explorer; do
+SIZES="{\"swift-frontend-lsp.wasm\":$(size swift-frontend-lsp.wasm),\"wasm-ld.wasm\":$(size wasm-ld.wasm),\"swift-sysroot.tar\":$(size swift-sysroot.tar),\"swift-xctest.tar\":$(size swift-xctest.tar),\"SwiftMacroPlugins.wasm\":$(size SwiftMacroPlugins.wasm),\"swift-testing.tar\":$(size swift-testing.tar)${CROSS_SIZES}}"
+for entry in server runner explorer linux-worker; do
   "$HERE/node_modules/.bin/esbuild" "$HERE/src/$entry.js" --bundle --minify --format=esm --target=es2022 \
     --define:__SWIFT_TOOLCHAIN_SIZES__="$SIZES" --legal-comments=none --outfile="$OUT/$entry.js" --log-level=warning
 done

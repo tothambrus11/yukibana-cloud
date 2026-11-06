@@ -193,5 +193,5 @@ cmake -G Ninja -S "${SWIFT_SRC}" -B "$SWIFT_BUILD" \
 log "building swift-frontend"
 ninja -C "$SWIFT_BUILD" -j "$JOBS" swift-frontend
 
-install -D "${SWIFT_BUILD}/bin/swift-frontend" "${TC_OUT}/swift-frontend.wasm"
-log "wrote ${TC_OUT}/swift-frontend.wasm ($(du -h "${TC_OUT}/swift-frontend.wasm" | cut -f1))"
+install -D "${SWIFT_BUILD}/bin/swift-frontend" "${TC_OUT}/${FRONTEND_WASM}"
+log "wrote ${TC_OUT}/${FRONTEND_WASM} ($(du -h "${TC_OUT}/${FRONTEND_WASM}" | cut -f1))"
