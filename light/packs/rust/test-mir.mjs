@@ -1,5 +1,5 @@
 // Tests the compiler output views' filters, crate lookup and demangler
-// (src/mir.js, src/emit-filter.js, src/demangle.js; README, "Compiler
+// (src/mir.js, ../kit/emit-filter.js, src/demangle.js; README, "Compiler
 // output views") on the fixtures in tests/fixtures/, which
 // tests/fixtures/gen.mjs makes with rustc 1.98.1, the release rustc.wasm
 // is built from. No compiler runs here: `node --test test-mir.mjs`.
@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { crateOf, filterMir } from './src/mir.js';
-import { filterAsm, filterIr } from './src/emit-filter.js';
+import { filterAsm, filterIr } from '../kit/emit-filter.js';
 import { demangleRust, demangleText } from './src/demangle.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'tests/fixtures');

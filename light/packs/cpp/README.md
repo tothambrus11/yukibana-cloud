@@ -1598,7 +1598,7 @@ every function and data section of the assembly, once what line tables
 add around them is taken out); and `test-emit.mjs` compares the filtered
 outputs of the checked-in fixtures.
 
-**Filtering** (`src/emit-filter.js`, pure functions, as Compiler Explorer
+**Filtering** (`../kit/emit-filter.js`, shared with the Rust and Swift packs; pure functions, as Compiler Explorer
 filters):
 
 * Assembly: `.loc`/`.file` give each instruction its source line; then

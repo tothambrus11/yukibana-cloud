@@ -744,6 +744,40 @@ test('a pack without toolchain units keeps its tree as its key', async () => {
     assert.equal((await store('toolchain-units', 'demo')).code, 2);
 });
 
+test('a pack that bundles shared code is stored under an id that changes with that code, and no other pack is', async () => {
+    const plain = git('rev-parse', 'HEAD:light/packs/demo');
+    fs.mkdirSync(path.join(light, 'packs/kit'), { recursive: true });
+    fs.writeFileSync(path.join(light, 'packs/kit/a.js'), 'export const a = 1;\n');
+    fs.mkdirSync(path.join(light, 'packs/bundler'), { recursive: true });
+    fs.writeFileSync(path.join(light, 'packs/bundler/build.sh'), '# other\n');
+    fs.writeFileSync(path.join(light, 'packs/bundler/shared'), '# what it bundles\nkit\n');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'kit');
+    try {
+        const other = git('rev-parse', 'HEAD:light/packs/bundler');
+        const first = (await store('tree', 'bundler')).out.trim();
+        assert.match(first, /^[0-9a-f]{40}$/);
+        assert.notEqual(first, other);
+        const kit = git('rev-parse', 'HEAD:light/packs/kit');
+        assert.equal(first, execFileSync('git', ['hash-object', '--stdin'], { input: `yukibana-pack/2\npack bundler ${other}\nshared kit ${kit}\n`, encoding: 'utf8' }).trim());
+        assert.equal((await store('tree', 'demo')).out.trim(), plain, 'a pack without a shared file keeps its tree id');
+        fs.writeFileSync(path.join(light, 'packs/kit/a.js'), 'export const a = 2;\n');
+        git('commit', '-q', '-am', 'kit edit');
+        const second = (await store('tree', 'bundler')).out.trim();
+        assert.notEqual(second, first, 'an edit to the shared code re-keys the pack that bundles it');
+        assert.equal(git('rev-parse', 'HEAD:light/packs/bundler'), other, "the pack's own tree did not change");
+        assert.equal((await store('tree', 'demo')).out.trim(), plain);
+        fs.writeFileSync(path.join(light, 'packs/bundler/shared'), 'nothing-here\n');
+        git('commit', '-q', '-am', 'bad shared');
+        const bad = await store('tree', 'bundler');
+        assert.notEqual(bad.code, 0);
+        assert.match(bad.err, /packs\/bundler\/shared names nothing-here, which HEAD has no packs\/nothing-here for/);
+    } finally {
+        git('rm', '-rq', 'light/packs/kit', 'light/packs/bundler');
+        git('commit', '-q', '-m', 'no kit');
+    }
+});
+
 test("a split pack's units are listed each after the units it needs", async () => {
     const r = await store('toolchain-units', 'stub');
     assert.equal(r.code, 0, r.err);

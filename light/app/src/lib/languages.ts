@@ -884,6 +884,7 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		entry: 'main.swift',
 		extension: '.swift',
 		runs: true,
+		uses: ['linux'],
 		debugs: true,
 		tests: true,
 		sample: {

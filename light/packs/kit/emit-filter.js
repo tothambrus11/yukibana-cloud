@@ -1,9 +1,12 @@
-// What the compiler output views show (README, "Compiler output views"):
-// clang's assembly (-S) and LLVM IR (-S -emit-llvm), compiled with
-// -gline-tables-only, filtered the way Compiler Explorer filters them, with
-// each output line mapped to the source line it came from. Pure functions of
-// strings, no I/O; explorer.js calls them, test-emit.mjs checks them on the
-// fixtures in tests/fixtures/.
+// What the compiler output views show (../cpp/README.md, "Compiler output
+// views"): LLVM's assembly and IR, as clang (-S, -S -emit-llvm), rustc and
+// swift-frontend emit them with line tables, filtered the way Compiler
+// Explorer filters them, with each output line mapped to the source line it
+// came from. Pure functions of strings, no I/O; the C/C++, Rust and Swift
+// packs' explorer.js call them (README.md), and cpp/test-emit.mjs,
+// rust/test-mir.mjs and swift/test-emit.mjs check them on each pack's
+// fixtures. One file, so a fix to the filters is a fix in every pack that
+// shows LLVM output.
 //
 // Source locations. The project is compiled in /workspace, so clang names a
 // project file /workspace/x, ./x or x, and a header outside the project by

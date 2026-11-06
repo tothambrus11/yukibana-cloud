@@ -1,8 +1,10 @@
-// Running a Go program built for wasip1/wasm in the runner's own worker,
-// with browser_wasi_shim: its standard output and error posted as they are
-// written, and standard input read from the contract's SharedArrayBuffer
-// (../../CONTRACT.md, "Standard input"), blocking the worker while the app
-// waits for a line.
+// Running a program built for wasm32-wasip1 (Go's wasip1/wasm, Rust's
+// wasm32-wasip1) in the runner's own worker, with browser_wasi_shim: its
+// standard output and error posted as they are written, and standard input
+// read from the contract's SharedArrayBuffer (../CONTRACT.md, "Standard
+// input"), blocking the worker while the app waits for a line. Shared by the
+// Go and Rust runners (README.md); browser_wasi_shim is resolved from the
+// bundling pack's own node_modules, so each of them declares it.
 
 import { ConsoleStdout, Directory, Fd, PreopenDirectory, WASI, WASIProcExit, wasi as defs } from '@bjorn3/browser_wasi_shim';
 

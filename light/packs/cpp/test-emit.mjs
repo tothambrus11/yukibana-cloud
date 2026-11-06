@@ -1,4 +1,4 @@
-// Tests the compiler output views' filters (src/emit-filter.js; README,
+// Tests the compiler output views' filters (../kit/emit-filter.js, shared with rust and swift; README,
 // "Compiler output views") on the fixtures in tests/fixtures/, which
 // tests/fixtures/gen.mjs compiles with the shipped compilers. No compiler
 // runs here: `node --test test-emit.mjs`.
@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { filterAsm, filterIr, demangleLines, projectPath, inProject, linesWithCode, optimises } from './src/emit-filter.js';
+import { filterAsm, filterIr, demangleLines, projectPath, inProject, linesWithCode, optimises } from '../kit/emit-filter.js';
 import { TARGETS } from './src/targets.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'tests/fixtures');

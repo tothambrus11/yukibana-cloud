@@ -10,7 +10,9 @@
 # the same output and a pack whose tree has an asset never needs building.
 # Writes go through CI (light-packs.yml); reads need no account.
 #
-#   pack-store.sh tree <pack>             the tree id of HEAD's packs/<pack>
+#   pack-store.sh tree <pack>             the id HEAD's packs/<pack> is stored
+#       under: its tree id, or with a `shared` file that and the shared
+#       directories' (tree(), below)
 #   pack-store.sh has <pack>              exit 0 when the store has HEAD's
 #       asset of the pack, 3 when it has none; downloads nothing.
 #   pack-store.sh fetch <pack> [--any]    downloads HEAD's asset of the pack
@@ -183,10 +185,35 @@ repo() {
   esac
 }
 
+# The id a pack's build is stored under: the git tree id of HEAD's
+# packs/<pack>, or, for a pack whose `shared` file names directories of
+# packs/ that it bundles from (packs/kit: code several packs' workers
+# share, packs/kit/README.md), the git object id of the lines
+#   yukibana-pack/2
+#   pack <pack> <tree id of packs/<pack>>
+#   shared <dir> <tree id of packs/<dir>>   one per name, in the file's order
+# so an edit to the shared code re-keys exactly the packs that bundle it.
+# A pack without the file keeps its plain tree id, so adding the file to one
+# pack rebuilds no other. contract.test.mjs fails when a pack imports from
+# packs/kit without naming it here.
 tree() {
   [ -d "$LIGHT/packs/$1" ] || die "no pack $1 (packs/$1)"
-  git -C "$LIGHT" rev-parse "HEAD:light/packs/$1" 2>/dev/null ||
-    git -C "$LIGHT" rev-parse "HEAD:packs/$1"
+  local root=light/packs id lines name sub
+  id="$(git -C "$LIGHT" rev-parse "HEAD:$root/$1" 2>/dev/null)" || {
+    root=packs
+    id="$(git -C "$LIGHT" rev-parse "HEAD:$root/$1")"
+  }
+  git -C "$LIGHT" cat-file -e "HEAD:$root/$1/shared" 2>/dev/null || { echo "$id"; return; }
+  lines="yukibana-pack/2"$'\n'"pack $1 $id"
+  while IFS= read -r name; do
+    name="${name%%#*}"
+    name="${name//[[:space:]]/}"
+    [ -n "$name" ] || continue
+    case "$name" in */* | . | ..) die "packs/$1/shared names $name: name a directory of packs/, as kit" ;; esac
+    sub="$(git -C "$LIGHT" rev-parse "HEAD:$root/$name" 2>/dev/null)" || die "packs/$1/shared names $name, which HEAD has no packs/$name for"
+    lines+=$'\n'"shared $name $sub"
+  done < <(git -C "$LIGHT" show "HEAD:$root/$1/shared")
+  git hash-object --stdin <<<"$lines"
 }
 
 # Prints GitHub's answer to GET $API/repos/<repo>/$1, whatever its status

@@ -49,7 +49,9 @@ fi
 
 : "${OUT:?OUT is the pack being assembled, every unit already linked into it}"
 npm_deps "$HERE"
-esbuild() { "$HERE/node_modules/.bin/esbuild" "$@" --format=esm --minify --target=es2022 --log-level=warning; }
+# NODE_PATH: code bundled from ../kit (README.md there) imports its packages
+# by name, and resolves them from this pack's node_modules, which declares them.
+esbuild() { NODE_PATH="$HERE/node_modules" "$HERE/node_modules/.bin/esbuild" "$@" --format=esm --minify --target=es2022 --log-level=warning; }
 for f in clangd.wasm clangd-tidy.wasm tidy-checks.json sysroot.tar.gz cc.wasm cc-cross.wasm wasi-sysroot.tar.gz demangle.wasm; do
   [ -f "$OUT/$f" ] || { echo "glue.sh: $OUT/$f is missing: a unit did not build it" >&2; exit 1; }
 done

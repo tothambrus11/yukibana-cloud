@@ -8,12 +8,12 @@
 // compiler.
 //
 // LLVM IR and assembly are the same LLVM's as clang's, so they are filtered
-// and mapped by the C++ pack's filters (emit-filter.js, a copy kept
-// identical to ../cpp/src/emit-filter.js by ../contract.test.mjs).
+// and mapped by the filters the C/C++ and Rust packs use too
+// (../../kit/emit-filter.js).
 
 import { commonFrontendArgs } from './frontend-args.js';
 import { importsTesting, importsXCTest, isTestFile, projectModuleName } from './xctest.js';
-import { inProject, projectPath } from './emit-filter.js';
+import { inProject, projectPath } from '../../kit/emit-filter.js';
 
 /** Where the frontend writes a view's output. */
 export const OUTPUT = '/build/view.out';

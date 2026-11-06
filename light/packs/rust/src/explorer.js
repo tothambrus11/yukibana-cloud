@@ -26,7 +26,7 @@ import { Directory, File } from '@bjorn3/browser_wasi_shim';
 import { manifest } from './cargo.js';
 import { tree } from './tree.js';
 import { crateOf, filterMir } from './mir.js';
-import { filterAsm, filterIr, linesWithCode } from './emit-filter.js';
+import { filterAsm, filterIr, linesWithCode } from '../../kit/emit-filter.js';
 import { demangleText } from './demangle.js';
 import { targetOf } from './targets.js';
 import { runRustc, toolchain } from './toolchain.js';

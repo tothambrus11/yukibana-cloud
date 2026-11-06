@@ -169,8 +169,11 @@ passes, these cases included, and XCTest compiles at `-O` and `-Osize`.
 A project chooses its target in `swift.env` (the sample has one, all
 comments): `TARGET=x86_64-linux` or `TARGET=aarch64-linux` builds a static
 Linux executable instead of a WebAssembly program, and Run runs it under the
-C++ pack's QEMU-Wasm (`packs/cpp/vm.js`, system emulation, one CPU), in a
-worker of its own (`src/linux-worker.js`), as the Go pack does. Nothing set
+Linux pack's QEMU-Wasm (`packs/linux/vm.js`, system emulation, one CPU),
+in a worker of its own (`src/linux-worker.js`, the shared
+`../kit/linux-worker.js`), as the Go, Rust and Zig packs do. The debugger
+runs WebAssembly programs only, so Debug with a Linux target is refused by
+name. Nothing set
 is WebAssembly, which stays the default: it needs no emulator and nothing
 more to download. `src/target.js` reads the file; a line it does not
 understand is printed as `swift.env:<line>: <message>` and the run stops.
@@ -604,8 +607,9 @@ never downloaded.
   which becomes its mapping and leaves the text; a function's header and
   its blocks' labels map to the function's first location. IR and
   assembly are compiled with `-gline-tables-only` and filtered by the C++
-  pack's emit-filter.js, a byte-identical copy (a pack's tree hash covers
-  only its own directory; test-emit.mjs checks that the two match).
+  pack's filters, the one shared file `../kit/emit-filter.js`, bundled
+  into explorer.js (the pack's `shared` file names the kit, so its stored
+  build changes with it).
 * **Demangle** has no demangler to call (swift-frontend exports none): it
   compiles the SIL too and takes the names SIL prints above each function
   (`// Circle.area.getter`), so the IR and assembly read as Swift.

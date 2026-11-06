@@ -22,7 +22,7 @@
 
 import { createToolchain, compileArgs } from './toolchain.js';
 import { targetOf, unsupportedMessage } from './targets.js';
-import { filterAsm, filterIr, demangleLines, linesWithCode, optimises } from './emit-filter.js';
+import { filterAsm, filterIr, demangleLines, linesWithCode, optimises } from '../../kit/emit-filter.js';
 import { loadDemangler as loadLLVMDemangler } from './demangler.js';
 
 /* global CC_WASM_SIZE, CC_CROSS_WASM_SIZE, WASI_SYSROOT_SIZE, SYSROOT_SIZE, DEMANGLE_WASM_SIZE, TARGET_SIZES */

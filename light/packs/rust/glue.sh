@@ -70,7 +70,9 @@ size() { stat -L -c %s "$OUT/$1"; }
 # Every download's raw size, for the progress bars' totals.
 sizes="{$(cd "$OUT" && for f in *.wasm *.tar; do printf '"%s":%s,' "$f" "$(stat -L -c %s "$f")"; done | sed 's/,$//')}"
 
-esbuild() { "$HERE/node_modules/.bin/esbuild" "$@" --bundle --format=esm --minify --target=es2022 --log-level=warning; }
+# NODE_PATH: code bundled from ../kit (README.md there) imports its packages
+# by name, and resolves them from this pack's node_modules, which declares them.
+esbuild() { NODE_PATH="$HERE/node_modules" "$HERE/node_modules/.bin/esbuild" "$@" --bundle --format=esm --minify --target=es2022 --log-level=warning; }
 esbuild "$HERE/src/server.js" \
   --define:SERVER_WASM_SIZE="$(size rust-analyzer.wasm)" --define:STD_SRC_SIZE="$(size std-src.tar)" \
   --define:CRATES_SRC_FILE="\"$crates-src.tar\"" --define:CRATES_SRC_SIZE="$(size "$crates-src.tar")" --define:CRATES_DIRECT="$crates_direct" \

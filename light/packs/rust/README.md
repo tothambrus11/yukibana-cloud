@@ -377,7 +377,7 @@ is linked.
   (`src/mir.js`). Above opt-level 0 it is the MIR the optimiser hands LLVM.
 * **LLVM IR** and **assembly** (`--emit=llvm-ir`, `--emit=asm`) are made
   with line tables only and one codegen unit, and filtered as the C/C++
-  pack's are (`src/emit-filter.js`, the same file): the project's own
+  pack's are (`../kit/emit-filter.js`, the same file, bundled): the project's own
   functions unless **Library** is on, directives only when asked. Assembly
   is WebAssembly's, x86-64's, AArch64's or RISC-V's, as the target is
   (`-Zverbose-asm` gives the function markers the filter reads). Above

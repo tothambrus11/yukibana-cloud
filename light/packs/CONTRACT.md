@@ -536,7 +536,8 @@ column), and Ctrl/Cmd+click on an output line opens its source line.
 Where each pack's `lines` come from (its README, "Compiler output views",
 says more): C and C++, the `.loc` directives and `DILocation`s of `-g`;
 Swift, SIL's `loc` annotations, and for IR and assembly the C++ pack's
-filter (a copy: a pack's tree is its own directory); Rust, the spans
+filter (`kit/emit-filter.js`, which the C/C++, Rust and Swift packs
+bundle; `kit/README.md`); Rust, the spans
 `-Zmir-include-spans` prints; Haskell, the source notes of `-g` in Core
 and STG, Cmm's `//tick` lines, and for the assembly the Cmm procedure
 each function was made from; Python, the positions CPython records for

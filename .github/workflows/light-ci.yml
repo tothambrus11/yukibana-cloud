@@ -160,6 +160,8 @@ jobs:
             light/packs/*/glue.paths
             light/packs/*/test.sh
             light/packs/stub
+            light/packs/kit
+            light/packs/*/shared
             light/packs/contract.test.mjs
             light/scripts
             .github/workflows/light-ci.yml

@@ -21,7 +21,7 @@
 
 import { FRONTEND_WASM, OPTIMIZATION_LEVELS, loadMacroPlugins, loadSwiftTesting, loadSysroot, loadTool, loadXCTest, mkdirp, readFile, remove, runFrontend, textSink, usesMacroPlugins, writeProject } from './toolchain.js';
 import { OUTPUT, VIEWS, demangleSwift, emitArgs, extrasFor, filterSil, moduleNameFor, shownFlags, sourcesFor, swiftNames } from './views.js';
-import { filterAsm, filterIr, linesWithCode } from './emit-filter.js';
+import { filterAsm, filterIr, linesWithCode } from '../../kit/emit-filter.js';
 import { dropOwnModuleImportWarnings } from './xctest.js';
 
 const post = (msg) => self.postMessage(msg);

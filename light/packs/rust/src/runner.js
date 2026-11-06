@@ -42,7 +42,7 @@ import { EDITIONS, manifest, satisfies, stem } from './cargo.js';
 import { tree } from './tree.js';
 import { miriTarget, MIRI_TARGETS, targetOf } from './targets.js';
 import { runRustc, textOut, toolchain } from './toolchain.js';
-import { Stdin, runProgram } from './program.js';
+import { Stdin, runProgram } from '../../kit/wasi-program.js';
 import { runTests } from './tests.js';
 import { runMiri } from './miri-runner.js';
 

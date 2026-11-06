@@ -24,7 +24,7 @@
 
 import { archiveName, closure, compileModule, download, libraryIndex, loadIndex, mkdirp, readFile, writeFile } from './files.js';
 import { ConsoleStdout, Directory, OpenFile, File, PreopenDirectory, WASI, WASIProcExit } from '@bjorn3/browser_wasi_shim';
-import { Stdin, runProgram, textOut } from './program.js';
+import { Stdin, runProgram, textOut } from '../../kit/wasi-program.js';
 import { startTool } from './tool.js';
 
 const post = (msg) => self.postMessage(msg);

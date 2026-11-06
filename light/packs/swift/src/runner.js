@@ -310,7 +310,7 @@ async function run({ files, entry, stdin, options, debug }, testing) {
 let linuxRun = null;
 
 /**
- * Runs a linked Linux program under the C++ pack's emulator, in a worker
+ * Runs a linked Linux program under the Linux pack's emulator, in a worker
  * of its own (linux-worker.js), which is terminated when the program ends;
  * resolves to its exit status. `options` are the run's, with the
  * emulator's defaults (CONTRACT.md: system emulation, one CPU).
