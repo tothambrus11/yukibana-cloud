@@ -167,26 +167,18 @@ function decide(path: string, b: Version | null, t: Version | null, m: FolderEnt
   if (m !== null && t !== null && same(m, t)) return null;
   if (m === null && t === null) return null;
 
-  if (isProtected) {
-    const editedByStudent = m === null ? false : b === null || !same(m, b);
-    const newlyProtected = !wasProtected && path !== CONFIG_FILE;
-    return t === null
-      ? { kind: 'delete', path, protected: true, editedByStudent, newlyProtected }
-      : { kind: 'write', path, theirs: t, protected: true, editedByStudent, newlyProtected };
-  }
-
-  const teacherChanged = !sameVersion(b, t);
-  if (!teacherChanged) return null;
   const studentChanged = m === null ? b !== null : b === null || !same(m, b);
-
-  if (!studentChanged) {
-    // The folder is as the base had it: take the teacher's.
-    if (m === null) return t === null ? null : { kind: 'write', path, theirs: t, protected: false, editedByStudent: false, newlyProtected: false };
-    return t === null
-      ? { kind: 'delete', path, protected: false, editedByStudent: false, newlyProtected: false }
-      : { kind: 'write', path, theirs: t, protected: false, editedByStudent: false, newlyProtected: false };
+  if (!isProtected) {
+    if (sameVersion(b, t)) return null;
+    if (studentChanged) return toSettle(path, b, t, m);
   }
+  // Protected, or only the teacher changed it: the teacher's version
+  const flags = { protected: isProtected, editedByStudent: isProtected && m !== null && studentChanged, newlyProtected: isProtected && !wasProtected && path !== CONFIG_FILE };
+  return t === null ? { kind: 'delete', path, ...flags } : { kind: 'write', path, theirs: t, ...flags };
+}
 
+/** A path both changed, which the student settles: merged when it can be, else chosen. */
+function toSettle(path: string, b: Version | null, t: Version | null, m: FolderEntry | null): Change {
   if (m === null) return { kind: 'choose', path, reason: 'deletedByStudent', base: b, theirs: t };
   if (t === null) return { kind: 'choose', path, reason: 'deletedByTeacher', base: b, theirs: t };
   if (b === null) return { kind: 'choose', path, reason: 'bothAdded', base: b, theirs: t };
@@ -226,6 +218,7 @@ function configOf(entries: readonly Entry[], which: string): { ok: true; config:
 }
 
 function protectedIn(...configs: readonly Config[]): (path: string) => boolean {
+  // Not protectedPaths: hidden paths are the teacher's to grade, but a student's own file there is not the update's to delete
   const matches = configs.map(c => matcher(c.readOnly));
   return path => path === CONFIG_FILE || matches.some(m => m(path));
 }

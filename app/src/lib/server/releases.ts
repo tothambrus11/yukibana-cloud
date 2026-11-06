@@ -168,24 +168,21 @@ function refuse(e: unknown): never {
  *  archive's key. Either way an answer the caller may not have is a 404,
  *  the same as for an id that names nothing. */
 export async function releaseUrl(ctx: Context, claims: Claims, release: ReleaseId, archive: 'starter' | 'teacher'): Promise<URL> {
-  const row = await asUser(ctx.sql, claims, async tx => {
-    if (archive === 'starter') {
-      const [r] = await tx<{ key: string | null; slug: string | null; label: string | null }[]>`
-        select app.release_starter(${release}) as key,
-               (select p.slug from project_release r join project p on p.project_id = r.project_id where r.release_id = ${release}) as slug,
-               (select r.label from project_release r where r.release_id = ${release}) as label`;
-      return r === undefined || r.key === null ? null : { key: r.key, slug: r.slug, label: r.label ?? '' };
-    }
-    const [r] = await tx<{ teacher_key: string; slug: string; label: string }[]>`
-      select r.teacher_key, p.slug, r.label
-      from project_release r join project p on p.project_id = r.project_id
-      where r.release_id = ${release}`;
-    return r === undefined ? null : { key: r.teacher_key, slug: r.slug, label: r.label };
-  });
-  if (row === null) error(404, 'No such release.');
-  // A student reads neither the release row nor, outside staff, its label,
-  // so their download is named after the release id; staff keep the slug
-  // and the label they gave it.
-  const name = row.slug === null ? `release-${release}-${archive}` : `${row.slug}-${archive}${row.label === '' ? '' : `-${row.label.replace(/[^A-Za-z0-9._-]+/g, '_')}`}`;
-  return ctx.bucket.presignGet(trustKey(row.key), 60, `${name}.tar.gz`);
+  // A student reads no release row, so for them the joins find nothing:
+  // no teacher key, and a download named after the release id
+  const [row] = await asUser(
+    ctx.sql,
+    claims,
+    tx => tx<{ starter_key: string | null; teacher_key: string | null; slug: string | null; label: string | null }[]>`
+    select app.release_starter(${release}) as starter_key, r.teacher_key, p.slug, r.label
+    from (select) one
+    left join project_release r on r.release_id = ${release}
+    left join project p on p.project_id = r.project_id`,
+  );
+  const key = archive === 'starter' ? row?.starter_key : row?.teacher_key;
+  if (key === null || key === undefined) error(404, 'No such release.');
+  const slug = row?.slug ?? undefined;
+  const label = row?.label ?? '';
+  const name = slug === undefined ? `release-${release}-${archive}` : `${slug}-${archive}${label === '' ? '' : `-${label.replace(/[^A-Za-z0-9._-]+/g, '_')}`}`;
+  return ctx.bucket.presignGet(trustKey(key), 60, `${name}.tar.gz`);
 }
