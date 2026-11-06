@@ -268,7 +268,11 @@ const ORMOLU_SHA256 = '367eb4969986504cf171f71f91e24ea5d7d9d97c41701e8e6eef9b642
 const ORMOLU_SETUP = [
 	`${fetchChecked(`https://github.com/tweag/ormolu/releases/download/${ORMOLU_VERSION}/ormolu-x86_64-linux.zip`, ORMOLU_SHA256, '/tmp/ormolu.zip')} && unzip -o -q /tmp/ormolu.zip -d /usr/local/bin && rm /tmp/ormolu.zip`,
 ];
-/** The Zig the browser builds with (packs/zig/build.sh), and its Linux releases' checksums, by `uname -m`. */
+/**
+ * The Zig release the browser builds with (packs/zig/build.sh, ZIG_VERSION;
+ * tests/unit/export-pins.test.mjs keeps the two equal), which a download's
+ * build.zig is written for, and its Linux releases' checksums, by `uname -m`.
+ */
 export const ZIG_VERSION = '0.17.0';
 const ZIG_SHA256 = { x86_64: '1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026', aarch64: '9e8d11661d4ae3bd57702a3832781e23ad151dde5798e16a5ccd503f65234ff8' };
 /**

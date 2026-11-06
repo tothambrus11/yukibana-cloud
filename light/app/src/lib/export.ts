@@ -36,6 +36,7 @@ import {
 	PRETTIER_VERSION,
 	RUFF_VERSION,
 	vscodeExtensions,
+	ZIG_VERSION,
 	type BuildCi, type CiService, type CiServiceId, type Extra, type Job, type JobSpec, type LocalCheck, type Step } from './export-tooling.ts';
 
 /** What a download contains. */
@@ -2444,9 +2445,6 @@ function crossSection(target: CppTarget | null): string[] {
 }
 
 // ---- Zig
-
-/** The Zig release the browser builds with (packs/zig/build.sh, ZIG_VERSION); build.zig is written for its build API. */
-const ZIG_VERSION = '0.17.0';
 
 /**
  * build.zig for a project whose root is `entry`, as `zig init` writes one
