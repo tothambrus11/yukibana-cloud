@@ -267,7 +267,7 @@ def test_norm(x: float, y: float, expected: float) -> None:
 def test_points_are_immutable() -> None:
     p = Point(0, 0)
     with pytest.raises(dataclasses.FrozenInstanceError):
-        setattr(p, "x", 1)
+        p.x = 1  # type: ignore[misc]
 `,
 		},
 	},
@@ -1100,8 +1100,7 @@ final class Point
     public function __construct(
         public readonly float $x,
         public readonly float $y,
-    ) {
-    }
+    ) {}
 
     /** Distance from the origin. */
     public function norm(): float

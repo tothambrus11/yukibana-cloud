@@ -7,9 +7,10 @@
 //   node --test tests/unit/export-options.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { LANGUAGES } from '../../src/lib/languages.ts';
-import { buildSystems, exportProject, mesonBuild, mesonWraps } from '../../src/lib/export.ts';
-import { CI_SERVICES } from '../../src/lib/export-tooling.ts';
+import { buildSystems, cmakeLists, conanfile, exportProject, mesonBuild, mesonWraps } from '../../src/lib/export.ts';
+import { CI_SERVICES, jobsFor } from '../../src/lib/export-tooling.ts';
 
 const sample = (id) => LANGUAGES.find((l) => l.id === id);
 const ALL = { ci: 'github', devcontainer: true, gitattributes: true };
@@ -36,6 +37,65 @@ test('every language with every build system and every CI service gets CI files,
 	}
 });
 
+test('every build system of every language makes its build files, says in the README how to build with them, and has a job that builds and tests', () => {
+	for (const language of LANGUAGES) {
+		for (const build of buildSystems(language, language.sample)) {
+			const where = `${language.id}/${build.id}`;
+			const { files } = exportProject(language, language.sample, null, { build: build.id });
+			const paths = typeof build.paths === 'function' ? build.paths(language.sample) : build.paths;
+			assert.ok(paths.length > 0, where);
+			for (const path of paths) assert.ok(path in files && files[path].trim().length > 0, `${where}: ${path}`);
+			assert.match(files['README.md'], /```sh\n/, `${where}: README`);
+			const project = { language, files: language.sample, paths: Object.keys(files).sort(), optimization: null };
+			const jobs = jobsFor(language.id, build.ci(project), language.sample);
+			assert.equal(jobs[0]?.id, 'test', `${where}: the first job builds and tests`);
+			assert.ok(jobs[0].steps.length > 0, `${where}: steps`);
+		}
+	}
+});
+
+test("every build system is built and tested in Light's CI, with a language whose sample it builds", () => {
+	const workflow = readFileSync(new URL('../../../../.github/workflows/light-ci.yml', import.meta.url), 'utf8');
+	const targets = [...workflow.matchAll(/^ {10}- ([a-z0-9-]+):([a-z0-9]+)$/gm)].map(([, language, build]) => [language, build]);
+	for (const [language, build] of targets) assert.ok(buildSystems(sample(language), sample(language).sample).some((b) => b.id === build), `${language}:${build} is offered for its sample`);
+	const tested = new Set(targets.map(([, build]) => build));
+	for (const language of LANGUAGES) for (const build of buildSystems(language, language.sample)) assert.ok(tested.has(build.id), `${build.id} (${language.id}) is in the exports job's matrix`);
+});
+
+test('Conan brings the test framework at the browser\'s version, and CMakeLists.txt uses a package it finds before downloading one', () => {
+	const cpp = sample('cpp');
+	const { files, generated } = exportProject(cpp, cpp.sample, null, { build: 'conan' });
+	assert.ok(generated.includes('conanfile.txt') && generated.includes('CMakeLists.txt'));
+	assert.match(files['conanfile.txt'], /^\[requires\]\ngtest\/1\.18\.0$/m);
+	assert.match(files['conanfile.txt'], /^CMakeDeps\nCMakeToolchain$/m);
+	assert.match(files['CMakeLists.txt'], /FetchContent_Declare\(googletest\n[^)]*FIND_PACKAGE_ARGS 1\.18\.0 NAMES GTest CONFIG\n\)/);
+	assert.match(files['CMakeLists.txt'], /^cmake_minimum_required\(VERSION 3\.24/m, 'FIND_PACKAGE_ARGS is CMake 3.24\'s');
+	assert.equal(files['CMakeLists.txt'].replace(/^#.*\n/gm, ''), exportProject(cpp, cpp.sample).files['CMakeLists.txt'].replace(/^#.*\n/gm, ''), 'the same CMakeLists.txt as without Conan, comments aside');
+	assert.match(files['README.md'], /conan install \. --output-folder=build --build=missing -s build_type=Debug\ncmake --preset dev {10}# or: cmake -S \. -B build -DCMAKE_TOOLCHAIN_FILE=build\/conan_toolchain\.cmake/);
+	const presets = JSON.parse(files['CMakePresets.json']);
+	assert.deepEqual(presets.configurePresets.map((p) => p.name), ['dev', 'ci', 'sanitize']);
+	assert.equal(presets.configurePresets[0].toolchainFile, '${sourceDir}/build/conan_toolchain.cmake');
+	assert.match(files['.gitignore'], /^CMakeUserPresets\.json$/m, "Conan's own presets");
+	const workflow = exportProject(cpp, cpp.sample, null, { build: 'conan', ci: 'github' }).files['.github/workflows/ci.yml'];
+	assert.match(workflow, /conan profile detect --exist-ok && conan install \. --output-folder=build --build=missing -s build_type=Debug && cmake -S \. -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=build\/conan_toolchain\.cmake -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON/);
+	assert.match(workflow, /pipx install conan==2\.\d+\.\d+/);
+});
+
+test("under Conan, doctest's main comes from the first test file and Catch2's from Catch2WithMain; RapidCheck is still fetched at the browser's commit", () => {
+	const doctest = { 'main.cpp': 'int main() { return 0; }\n', 'lib.cpp': 'int f() { return 1; }\n', 'tests/a_test.cpp': '#include <doctest/doctest.h>\nTEST_CASE("a") {}\n', 'tests/b_test.cpp': '#include <doctest/doctest.h>\nTEST_CASE("b") {}\n' };
+	assert.match(conanfile(doctest, 'main.cpp'), /^doctest\/2\.5\.3$/m);
+	const d = cmakeLists(doctest, 'main.cpp', 'conan');
+	assert.match(d, /set_source_files_properties\("tests\/a_test\.cpp" PROPERTIES COMPILE_DEFINITIONS DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN\)/);
+	assert.match(d, /doctest::doctest\)/);
+	const catch2 = { 'main.cpp': 'int main() { return 0; }\n', 'tests/a_test.cpp': '#include <catch2/catch_test_macros.hpp>\n#include <rapidcheck.h>\nTEST_CASE("a") {}\n' };
+	assert.match(conanfile(catch2, 'main.cpp'), /^catch2\/3\.16\.1$/m);
+	const c = cmakeLists(catch2, 'main.cpp', 'conan');
+	assert.match(c, /FIND_PACKAGE_ARGS 3\.16\.1 CONFIG/);
+	assert.match(c, /Catch2::Catch2WithMain rapidcheck\)/);
+	assert.match(c, /FetchContent_Declare\(rapidcheck/);
+	assert.match(conanfile({ 'main.c': 'int main(void) { return 0; }\n' }, 'main.c'), /^\[requires\]\n# None yet/m, 'without tests it requires nothing');
+});
+
 test("a project's own workflow, dev container and .gitattributes are kept", () => {
 	const cpp = sample('cpp');
 	const own = { ...cpp.sample, '.github/workflows/ci.yml': 'mine\n', '.devcontainer/devcontainer.json': '{}\n', '.gitattributes': '* -text\n' };
@@ -52,13 +112,24 @@ test("a C++ project's CI builds with warnings as errors, tests under the sanitiz
 	assert.match(workflow, /cmake -S \. -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DWARNINGS_AS_ERRORS=ON/);
 	assert.match(workflow, /ctest --test-dir build --output-on-failure/);
 	assert.match(workflow, /-DSANITIZE=address,undefined/);
-	assert.match(workflow, /clang-tidy -p build --quiet --warnings-as-errors='\*' geometry\.cpp main\.cpp tests\/geometry_test\.cpp/);
-	assert.match(workflow, /clang-format --dry-run --Werror geometry\.cpp geometry\.h main\.cpp tests\/geometry_test\.cpp/);
+	assert.match(workflow, /git ls-files -z -- '\*\.c' '\*\.cc' '\*\.cpp' '\*\.cxx' '\*\.c\+\+' \| xargs -0 -r clang-tidy -p build --quiet --warnings-as-errors='\*'/);
+	assert.match(workflow, /git ls-files -z -- [^\n]*'\*\.hpp'[^\n]* \| xargs -0 -r clang-format --dry-run --Werror/);
 	assert.match(workflow, /CXX: clang\+\+/);
 	const meson = exportProject(sample('cpp'), sample('cpp').sample, null, { ...ALL, build: 'meson' }).files['.github/workflows/ci.yml'];
 	assert.match(meson, /meson setup build --buildtype=debug -Dwerror=true/);
 	assert.match(meson, /-Db_sanitize=address,undefined -Db_lundef=false/);
 	assert.match(meson, /apt-get install -y --no-install-recommends [^\n]*\bmeson\b/);
+});
+
+test('CMake builds have presets for CI\'s builds, and a sanitizer report fails the build that has one', () => {
+	const { files } = exportProject(sample('cpp'), sample('cpp').sample, null, { ci: 'github' });
+	const presets = JSON.parse(files['CMakePresets.json']);
+	assert.deepEqual(presets.configurePresets.find((p) => p.name === 'sanitize').cacheVariables, { SANITIZE: 'address,undefined' });
+	assert.ok(!('toolchainFile' in presets.configurePresets[0]));
+	assert.deepEqual(presets.testPresets.map((p) => p.name), ['dev', 'ci', 'sanitize']);
+	assert.match(files['CMakeLists.txt'], /-fsanitize=\$\{SANITIZE\} -fno-sanitize-recover=all/);
+	assert.match(files['CMakeLists.txt'], /if\(MSVC\)\n {4}target_compile_options\(project_flags INTERFACE \/W4 \/permissive-\)/);
+	assert.match(files['.github/workflows/ci.yml'], /UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"/);
 });
 
 test('a C project without tests runs its program under the sanitizers', () => {
@@ -146,7 +217,42 @@ test("a format check's configuration comes with it: Prettier's, swift-format's, 
 	assert.ok(has('swift', '.swift-format'));
 	assert.ok(has('kotlin', '.editorconfig'));
 	assert.ok(has('scala', '.scalafmt.conf') && has('scala', 'project/plugins.sbt'));
-	assert.ok(!exportProject(sample('typescript'), sample('typescript').sample).generated.includes('.prettierrc.json'), 'and only with CI');
+	assert.ok(exportProject(sample('typescript'), sample('typescript').sample).generated.includes('.prettierrc.json'), "and without CI, for the editor and the README's checks");
+});
+
+test("every download has an .editorconfig with the formatter's indent, and recommends the editor's extensions", () => {
+	const config = (id) => exportProject(sample(id), sample(id).sample).files['.editorconfig'];
+	assert.match(config('go'), /^\[\*\]\n[^[]*indent_style = tab/m);
+	assert.match(config('typescript'), /^\[\*\]\n[^[]*indent_size = 2/m);
+	assert.match(config('python'), /^\[\*\]\n[^[]*indent_size = 4/m);
+	assert.match(config('kotlin'), /\[\*\.\{kt,kts\}\]\n[^\n]*\nktlint_code_style = intellij_idea/);
+	const vscode = JSON.parse(exportProject(sample('cpp'), sample('cpp').sample, null, { build: 'meson' }).files['.vscode/extensions.json']);
+	assert.deepEqual(vscode.recommendations.slice(-1), ['editorconfig.editorconfig']);
+	assert.ok(vscode.recommendations.includes('llvm-vs-code-extensions.vscode-clangd'));
+});
+
+test('CI comes with Dependabot on GitHub, for the manifests, the actions and the dev container, and Renovate elsewhere', () => {
+	const github = exportProject(sample('rust'), sample('rust').sample, null, { ci: 'github', devcontainer: true });
+	const dependabot = github.files['.github/dependabot.yml'];
+	for (const ecosystem of ['cargo', 'github-actions', 'docker']) assert.match(dependabot, new RegExp(`package-ecosystem: ${ecosystem}\\n`));
+	assert.match(github.files['README.md'], /Dependabot/);
+	const gitlab = exportProject(sample('rust'), sample('rust').sample, null, { ci: 'gitlab' });
+	assert.deepEqual(JSON.parse(gitlab.files['renovate.json']).extends, ['config:recommended']);
+	assert.ok(!gitlab.generated.includes('.github/dependabot.yml'));
+	assert.ok(!exportProject(sample('rust'), sample('rust').sample).generated.some((f) => f.includes('dependabot') || f.includes('renovate')), 'and none without CI');
+});
+
+test('the README lists each check with the command that fixes what it reports, CI or not', () => {
+	const readme = exportProject(sample('python'), sample('python').sample).files['README.md'];
+	assert.match(readme, /## Checks[\s\S]*\*\*Format\*\*: `ruff format --check`; `ruff format` fixes/);
+	assert.match(readme, /## Licence/);
+	const java = exportProject(sample('java'), sample('java').sample, null, { build: 'gradle' }).files['README.md'];
+	assert.match(java, /`gradle spotlessCheck`; `gradle spotlessApply`/);
+});
+
+test("the dev container installs the project's dependencies once it is created", () => {
+	const json = JSON.parse(exportProject(sample('php'), sample('php').sample, null, { devcontainer: true }).files['.devcontainer/devcontainer.json']);
+	assert.equal(json.postCreateCommand, 'composer install');
 });
 
 test('the README says what the CI runs, where, and what the dev container and .gitattributes are for', () => {
@@ -157,4 +263,28 @@ test('the README says what the CI runs, where, and what the dev container and .g
 	const meson = exportProject(sample('cpp'), sample('cpp').sample, null, { build: 'meson' }).files['README.md'];
 	assert.match(meson, /meson setup build\nmeson compile -C build/);
 	assert.doesNotMatch(meson, /cmake -S/);
+});
+
+test('a TypeScript project with a tsconfig.json has its types checked, with Node\'s, in CI and by npm run typecheck', () => {
+	const { files } = exportProject(sample('typescript'), sample('typescript').sample, null, { ci: 'github' });
+	const json = JSON.parse(files['package.json']);
+	assert.match(json.scripts.typecheck, /^npx --yes --package typescript@[\d.]+ tsc --types node$/);
+	assert.ok(json.devDependencies['@types/node'] && !json.devDependencies.typescript, 'typescript through npx, which Stryker needs');
+	assert.match(files['.github/workflows/ci.yml'], /npm run typecheck/);
+	const bare = { ...sample('typescript').sample };
+	delete bare['tsconfig.json'];
+	assert.ok(!('typecheck' in JSON.parse(exportProject(sample('typescript'), bare).files['package.json']).scripts), 'and not without one, where tsc would only print its help');
+});
+
+test('Zig is installed for the machine it runs on, x86-64 or ARM64, each release checked', () => {
+	const { files } = exportProject(sample('zig'), sample('zig').sample, null, { devcontainer: true });
+	const dockerfile = files['.devcontainer/Dockerfile'];
+	assert.match(dockerfile, /case "\$arch" in x86_64\) sha=[0-9a-f]{64} ;; aarch64\) sha=[0-9a-f]{64} ;;/);
+	assert.match(dockerfile, /zig-\$arch-linux-/);
+});
+
+test('.gitignore lists what the tools write: the Go program named after its module, Hypothesis\' database, Stack set to its own GHC', () => {
+	assert.match(exportProject(sample('go'), sample('go').sample).files['.gitignore'], new RegExp(`^/${/^module\s+(\S+)/m.exec(sample('go').sample['go.mod'])[1].split('/').at(-1)}$`, 'm'));
+	assert.match(exportProject(sample('python'), sample('python').sample).files['.gitignore'], /^\.hypothesis\/$/m);
+	assert.match(exportProject(sample('haskell'), sample('haskell').sample, null, { build: 'stack' }).files['stack.yaml'], /^system-ghc: false\ninstall-ghc: true$/m);
 });

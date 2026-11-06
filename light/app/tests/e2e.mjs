@@ -1495,7 +1495,7 @@ async function downloading() {
 	const dialog = page.locator('dialog.export');
 	await dialog.waitFor({ timeout: 10_000 });
 	const builds = await dialog.locator('input[name=export-build]').count();
-	check(builds === 2 && (await dialog.locator('input[name=export-build][value=cmake]').isChecked()), `the dialog offers CMake and Meson for C++, CMake chosen (${builds} choices)`);
+	check(builds === 3 && (await dialog.locator('input[name=export-build][value=cmake]').isChecked()), `the dialog offers CMake, Meson and Conan for C++, CMake chosen (${builds} choices)`);
 	check(await dialog.locator('input[name=export-ci][value=github]').isChecked(), 'GitHub Actions is the CI chosen at first');
 	const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Download .zip' }).click()]);
 	const dir = mkdtempSync(join(tmpdir(), 'yukibana-download-'));
