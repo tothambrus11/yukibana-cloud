@@ -61,6 +61,7 @@ interface ProjectRow {
   late: boolean;
   role: EditionRole;
   starter_ready: boolean;
+  current_release: string | null;
   can_submit: boolean;
   my_submissions: number;
   my_last: Date | null;
@@ -72,6 +73,7 @@ async function projectRows(tx: Tx, claims: Claims, edition: EditionId | null, on
            p.available_after, p.deadline, p.closes_at, coalesce(now() > p.deadline, false) as late,
            app.role_in(p.edition_id)::text as role,
            app.current_starter(p.project_id) is not null as starter_ready,
+           app.current_release(p.project_id) as current_release,
            app.can_submit(p.project_id) as can_submit,
            (select count(*)::int from submission s where s.project_id = p.project_id and s.author_id = ${claims.sub}) as my_submissions,
            (select max(s.submitted_at) from submission s where s.project_id = p.project_id and s.author_id = ${claims.sub}) as my_last
@@ -95,6 +97,7 @@ async function projectRows(tx: Tx, claims: Claims, edition: EditionId | null, on
     late: r.late,
     role: r.role,
     starterReady: r.starter_ready,
+    currentReleaseId: r.current_release,
     canSubmit: r.can_submit,
     mySubmissions: r.my_submissions,
     myLastSubmittedAt: iso(r.my_last),

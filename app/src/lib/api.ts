@@ -50,6 +50,11 @@ export interface ProjectJson {
   readonly role: EditionRole;
   /** Whether a starter has been released and the caller may download it. */
   readonly starterReady: boolean;
+  /** The release whose starter the caller would download now
+   *  (`app.current_release`), to compare with the `releaseId` in a
+   *  student's `yukibana.json` and to fetch by id. Null exactly when
+   *  `starterReady` is false. */
+  readonly currentReleaseId: string | null;
   /** Whether the caller may submit right now: only ever true for a student,
    *  between `availableAfter` and `closesAt`, before the deadline or after. */
   readonly canSubmit: boolean;

@@ -158,17 +158,34 @@ function refuse(e: unknown): never {
   error(500, `The release could not be recorded${code === '' ? '' : ` (SQLSTATE ${code})`}; the Worker log says why.`);
 }
 
-/** A URL for the caller to download one archive of `release`, if they are
- *  staff of its edition. The policy on the table is the check. */
+/** A URL for the caller to download one archive of `release`, if they may.
+ *
+ *  The teacher archive is for staff of the release's edition, and the
+ *  release_read policy on the table is the check. The starter is also for a
+ *  student of a project whose window is open, the merge base of an IDE's
+ *  update, and `app.release_starter` is the check: a student reads no
+ *  release row, and must not, because the row carries the teacher
+ *  archive's key. Either way an answer the caller may not have is a 404,
+ *  the same as for an id that names nothing. */
 export async function releaseUrl(ctx: Context, claims: Claims, release: ReleaseId, archive: 'starter' | 'teacher'): Promise<URL> {
   const row = await asUser(ctx.sql, claims, async tx => {
-    const [r] = await tx<{ starter_key: string; teacher_key: string; slug: string; label: string }[]>`
-      select r.starter_key, r.teacher_key, p.slug, r.label
+    if (archive === 'starter') {
+      const [r] = await tx<{ key: string | null; slug: string | null; label: string | null }[]>`
+        select app.release_starter(${release}) as key,
+               (select p.slug from project_release r join project p on p.project_id = r.project_id where r.release_id = ${release}) as slug,
+               (select r.label from project_release r where r.release_id = ${release}) as label`;
+      return r === undefined || r.key === null ? null : { key: r.key, slug: r.slug, label: r.label ?? '' };
+    }
+    const [r] = await tx<{ teacher_key: string; slug: string; label: string }[]>`
+      select r.teacher_key, p.slug, r.label
       from project_release r join project p on p.project_id = r.project_id
       where r.release_id = ${release}`;
-    return r ?? null;
+    return r === undefined ? null : { key: r.teacher_key, slug: r.slug, label: r.label };
   });
   if (row === null) error(404, 'No such release.');
-  const key = trustKey(archive === 'starter' ? row.starter_key : row.teacher_key);
-  return ctx.bucket.presignGet(key, 60, `${row.slug}-${archive}${row.label === '' ? '' : `-${row.label.replace(/[^A-Za-z0-9._-]+/g, '_')}`}.tar.gz`);
+  // A student reads neither the release row nor, outside staff, its label,
+  // so their download is named after the release id; staff keep the slug
+  // and the label they gave it.
+  const name = row.slug === null ? `release-${release}-${archive}` : `${row.slug}-${archive}${row.label === '' ? '' : `-${row.label.replace(/[^A-Za-z0-9._-]+/g, '_')}`}`;
+  return ctx.bucket.presignGet(trustKey(row.key), 60, `${name}.tar.gz`);
 }
