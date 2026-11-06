@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { asPublisher, asUser, connect } from '../../src/lib/server/db.js';
 import { s3Bucket } from '../../src/lib/server/storage.js';
 import { publishRelease, releaseUrl } from '../../src/lib/server/releases.js';
+import { project as projectOf } from '../../src/lib/server/catalogue.js';
 import { sha256 } from '../../src/lib/bytes.js';
 import { trustId, type ProjectId, type ReleaseId } from '../../src/lib/ids.js';
 import type { Context } from '../../src/lib/server/context.js';
@@ -138,4 +139,39 @@ test('a token cannot take an id another project already has', async () => {
   expect(still?.project_id).toBe(project);
   const fresh = trustId<ReleaseId>(crypto.randomUUID());
   expect((await publishRelease(ctx, { kind: 'token', secret }, elsewhere, archive, other, 'ci', null, fresh)).releaseId).toBe(fresh);
+});
+
+test("a student downloads any release's starter of their open project by id, the base of an update, and never a teacher archive", async () => {
+  const project = await warmup();
+  const older = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, archive, other, 'older', null, null);
+  const newerStarter = new Uint8Array([...archive, 1]);
+  const newer = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, project, newerStarter, other, 'newer', null, null);
+
+  expect((await projectOf(ctx, claimsOf(ALICE), project)).currentReleaseId).toBe(newer.releaseId);
+  const base = await fetch(await releaseUrl(ctx, claimsOf(ALICE), older.releaseId, 'starter'));
+  expect(base.status).toBe(200);
+  expect(new Uint8Array(await base.arrayBuffer())).toEqual(archive);
+  const newest = await fetch(await releaseUrl(ctx, claimsOf(ALICE), newer.releaseId, 'starter'));
+  expect(new Uint8Array(await newest.arrayBuffer())).toEqual(newerStarter);
+
+  await expect(releaseUrl(ctx, claimsOf(ALICE), older.releaseId, 'teacher')).rejects.toMatchObject({ status: 404 });
+  await expect(releaseUrl(ctx, claimsOf(ALICE), trustId<ReleaseId>(crypto.randomUUID()), 'starter')).rejects.toMatchObject({ status: 404 });
+  // Staff still get the archive named after the project and the label.
+  const staff = await fetch(await releaseUrl(ctx, claimsOf(TEACHER), older.releaseId, 'starter'));
+  expect(staff.headers.get('content-disposition') ?? '').toContain('warmup-starter-older');
+});
+
+test('a student gets no release of a project that is not open to them, by id or as the newest', async () => {
+  const draft = await asUser(sql, claimsOf(TEACHER), async tx => {
+    const [row] = await tx<{ project_id: string }[]>`
+      insert into project (edition_id, slug, title, kind, available_after)
+      select edition_id, ${'draft-' + crypto.randomUUID().slice(0, 8)}, 'Draft', 'rust-cargo', null from project where slug = 'warmup'
+      returning project_id`;
+    return trustId<ProjectId>(row?.project_id ?? '');
+  });
+  const release = await publishRelease(ctx, { kind: 'user', claims: claimsOf(TEACHER) }, draft, archive, other, 'draft', null, null);
+  await expect(releaseUrl(ctx, claimsOf(ALICE), release.releaseId, 'starter')).rejects.toMatchObject({ status: 404 });
+  await expect(projectOf(ctx, claimsOf(ALICE), draft)).rejects.toMatchObject({ status: 404 });
+  expect((await projectOf(ctx, claimsOf(TEACHER), draft)).currentReleaseId).toBe(release.releaseId);
+  expect((await fetch(await releaseUrl(ctx, claimsOf(TEACHER), release.releaseId, 'starter'))).status).toBe(200);
 });
