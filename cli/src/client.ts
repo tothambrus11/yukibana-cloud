@@ -158,7 +158,9 @@ export class YukibanaClient {
     return this.#download(`/api/projects/${seg(project)}/starter`);
   }
 
-  /** One archive of a release (staff only; a `.tar.gz`). */
+  /** One archive of a release (a `.tar.gz`). Staff may download either;
+   *  a student only the starter, of a release of a project they may download
+   *  from now, which is how an IDE fetches the base of an update. */
   downloadRelease(release: string, archive: 'starter' | 'teacher'): Promise<Uint8Array> {
     return this.#download(`/api/releases/${seg(release)}/${archive}`);
   }

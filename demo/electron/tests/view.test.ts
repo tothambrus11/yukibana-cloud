@@ -21,6 +21,7 @@ const project = (over: Partial<Project> = {}): Project => ({
   late: false,
   role: 'student',
   starterReady: true,
+  currentReleaseId: null,
   canSubmit: true,
   mySubmissions: 0,
   myLastSubmittedAt: null,

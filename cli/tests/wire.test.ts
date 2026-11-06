@@ -16,6 +16,7 @@ const project = {
   late: false,
   role: 'student',
   starterReady: true,
+  currentReleaseId: '00000000-0000-7000-8000-000000000002',
   canSubmit: true,
   mySubmissions: 0,
   myLastSubmittedAt: null,
@@ -25,6 +26,8 @@ test('a project the registry answers is read as it is, and a missing optional ti
   assert.deepEqual(decodeProject(project), project);
   const { deadline: _, ...older } = project;
   assert.equal(decodeProject(older).deadline, null, 'a registry older than a nullable field answers without it');
+  const { currentReleaseId: __, ...beforeUpdates } = project;
+  assert.equal(decodeProject(beforeUpdates).currentReleaseId, null, 'and a registry from before updates reads as no release to update to');
 });
 
 test('a field of the wrong type is refused with a sentence that names it', () => {
