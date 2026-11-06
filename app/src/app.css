@@ -512,6 +512,26 @@
   .toast button {
     padding: 0.1rem 0.5rem;
   }
+  /* A notice with an incident wraps: its folded details take a line of their own. */
+  .toast {
+    flex-wrap: wrap;
+  }
+  .toast details {
+    flex-basis: 100%;
+    order: 3;
+    color: var(--ink);
+  }
+  .toast details pre {
+    max-height: 14rem;
+    margin: 0.4rem 0 0;
+    font-size: 0.78rem;
+  }
+  /* An incident on the error page: a stack is long, and scrolls rather than pushes. */
+  pre.incident {
+    max-height: 24rem;
+    overflow-y: auto;
+    font-size: 0.8rem;
+  }
 
   /* A role, a state, a kind: a word that is a value rather than prose. */
   .chip {
