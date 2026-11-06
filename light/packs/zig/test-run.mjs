@@ -7,8 +7,8 @@
 //
 //   node test-run.mjs        (after ./build.sh; needs playwright-core)
 //
-// The Linux targets need the C/C++ pack's emulator in app/static/packs/cpp
-// (vm.js and vm/<arch>/; ../cpp/build.sh, or a copy of a deployed one).
+// The Linux targets need the Linux pack's emulator in app/static/packs/linux
+// (vm.js and vm/<arch>/; ../linux/build.sh).
 // Without it those cases fail, unless ALLOW_SKIP=1 is set, which skips them.
 //
 // Adapted from ../go/test-run.mjs.
@@ -304,9 +304,9 @@ try {
         `code=${failing.code}\n${(failing.stdout + failing.stderr).trimEnd()}`);
 
     // 5. x86-64 Linux under QEMU-Wasm.
-    const vm = existsSync(join(STATIC, 'packs/cpp/vm.js'));
+    const vm = existsSync(join(STATIC, 'packs/linux/vm.js'));
     if (!vm && process.env.ALLOW_SKIP === '1') {
-        console.log('SKIP  Linux target: no packs/cpp/vm.js');
+        console.log('SKIP  Linux target: no packs/linux/vm.js');
     } else {
         const x86 = await run(linux(TARGET), { keep: true });
         check('x86_64-linux: built by the same compiler, run under QEMU', x86.code === 0 && x86.stdout === 'x86_64-linux: sum 285\n' && x86.reusable,

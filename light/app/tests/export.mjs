@@ -62,7 +62,7 @@ for (const language of LANGUAGES) {
 	const cpp = sample('cpp');
 	const own = { ...cpp.sample, 'CMakeLists.txt': '# mine\n', 'readme.txt': 'mine\n', '.gitignore': 'mine\n' };
 	const { files, generated } = exportProject(cpp, own);
-	check(files['CMakeLists.txt'] === '# mine\n' && files['.gitignore'] === 'mine\n' && !('README.md' in files) && generated.length === 0, "cpp: a project's own CMakeLists.txt, README and .gitignore are kept, and nothing is generated over them");
+	check(files['CMakeLists.txt'] === '# mine\n' && files['.gitignore'] === 'mine\n' && !('README.md' in files) && generated.join() === '.editorconfig,.vscode/extensions.json', `cpp: a project's own CMakeLists.txt, README and .gitignore are kept, and nothing is generated over them, nor presets for options it may not have (${generated})`);
 }
 
 // ---- C++ targets: the browser's --target line is not CMake's business
@@ -81,7 +81,7 @@ for (const language of LANGUAGES) {
 	for (const [triple, arch] of [['x86_64-linux-musl', 'x86_64'], ['aarch64-linux-musl', 'aarch64'], ['riscv64-linux-musl', 'riscv64']]) {
 		const { files } = exportProject(cpp, { ...cpp.sample, 'compile_flags.txt': `--target=${triple}\n${cpp.sample['compile_flags.txt']}` });
 		const cmake = files['CMakeLists.txt'];
-		const options = /target_compile_options\(project_flags INTERFACE ([^)]*)\)/.exec(cmake)?.[1] ?? '';
+		const options = [...cmake.matchAll(/target_compile_options\(project_flags INTERFACE ([^)]*)\)/g)].map((m) => m[1]).find((o) => !o.startsWith('/')) ?? '';
 		check(!options.includes('target') && options === '-Wall -Wextra', `cpp on ${arch}: --target is not passed to CMake (options: ${options})`);
 		check(cmake.startsWith('# Builds the project') && cmake.includes(`# In the browser, this project is built for ${triple}`) && cmake.includes(`CMAKE_CXX_COMPILER_TARGET=${triple}`), `cpp on ${arch}: CMakeLists.txt says CMake builds natively and how to cross compile`);
 		check(cmake.replace(/^# In the browser[^\n]*\n#[^\n]*\n#[^\n]*\n/m, '') === plain['CMakeLists.txt'], `cpp on ${arch}: apart from that note, CMakeLists.txt is the default target's`);
@@ -105,6 +105,10 @@ for (const language of LANGUAGES) {
 	check(settings(exportProject(swift, swift.sample).files['Package.swift']).every((f) => !/"-O/.test(f)), 'swift: at the default level (-Onone), Package.swift sets none');
 	const osize = settings(exportProject(swift, swift.sample, '-Osize').files['Package.swift']);
 	check(osize.length === 2 && osize.every((f) => f.startsWith('"-Osize"')), `swift: a chosen level goes to the program and to the tests (${osize.join(' | ')})`);
+	check(!exportProject(swift, swift.sample).files['README.md'].includes('## Target'), 'swift: the sample, with TARGET commented out in swift.env, gets no Target section');
+	const linux = exportProject(swift, { ...swift.sample, 'swift.env': 'TARGET=aarch64-linux\n' }).files;
+	check(linux['README.md'].includes('## Target') && linux['README.md'].includes('swift build --swift-sdk aarch64-swift-linux-musl'), 'swift on aarch64-linux: README.md says how to build with the Static Linux SDK');
+	check(/exclude: \[[^\]]*"swift.env"/.test(linux['Package.swift']), 'swift: Package.swift excludes swift.env from the program');
 }
 
 // ---- Sanitizers: Download links what Run links
@@ -137,6 +141,10 @@ for case in cases:
         except yaml.YAMLError as e:
             bad.append(f"{case['name']} {path}: {e}"); continue
         s = case["service"]
+        if path.endswith("dependabot.yml"):
+            if not (doc.get("version") == 2 and all({"package-ecosystem", "directory", "schedule"} <= set(u) for u in doc["updates"])):
+                bad.append(f"{case['name']} {path}: version 2 and each update's ecosystem, directory and schedule")
+            continue
         def need(ok, what):
             if not ok: bad.append(f"{case['name']} {path}: {what}")
         if s in ("github", "forgejo"):
@@ -147,7 +155,7 @@ for case in cases:
                 need(all(("run" in st) != ("uses" in st) for st in j["steps"]), "each step runs or uses")
                 need(all(isinstance(st.get("run", ""), str) for st in j["steps"]), "runs are strings")
         elif s == "gitlab":
-            jobs = [k for k in doc if k != "workflow"]
+            jobs = [k for k in doc if k not in ("workflow", "default")]
             need(jobs == case["jobs"], f"jobs {jobs}")
             for k in jobs:
                 need(isinstance(doc[k]["image"], str) and all(isinstance(x, str) for x in doc[k]["script"]), f"{k}: image and script")
@@ -436,7 +444,7 @@ const cases = {
 		// Properties checked from a main, as the browser runs them: build.sbt
 		// asks sbt for ScalaCheck, and the same program prints the same report.
 		const props = 'import org.scalacheck.Prop.forAll\n\n@main def properties(): Unit =\n  forAll((a: Int, b: Int) => a + b == b + a).check()\n';
-		check(buildSbt({ 'Props.scala': props }).includes('"org.scalacheck" %% "scalacheck" % "1.18.1",'), 'scala-scalacheck: build.sbt has ScalaCheck as a dependency of the main sources');
+		check(/"org\.scalacheck" %% "scalacheck" % "1\.18\.1"$/m.test(buildSbt({ 'Props.scala': props })), 'scala-scalacheck: build.sbt has ScalaCheck as a dependency of the main sources');
 		await scalaRun('scala-scalacheck', { 'Props.scala': props }, '+ OK, passed 100 tests.');
 		// A main that throws when a property fails ends non-zero under sbt as
 		// in the browser (packs/scala/README.md, "Property-based tests").

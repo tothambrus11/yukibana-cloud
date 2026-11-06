@@ -1,7 +1,7 @@
 {
     "name": "yukibana-pack-rust",
     "private": true,
-    "description": "Yukibana Rust pack: rust-analyzer's IDE crates compiled to wasm32-wasip1 in a module Web Worker, and a runner on Miri compiled to WebAssembly. build.sh builds both; this file holds the bundler, the WASI file system the runner uses, and the test's browser driver.",
+    "description": "Yukibana Rust pack: rust-analyzer's IDE crates compiled to wasm32-wasip1 in a module Web Worker, and a runner on rustc and Miri compiled to WebAssembly (rustc/build.sh), with LLVM for WebAssembly, x86-64, AArch64 and RISC-V. build.sh assembles the pack; this file holds the bundler, the WASI file system the runner uses, and the test's browser driver.",
     "type": "module",
     "scripts": {
         "build": "./build.sh",

@@ -1,41 +1,38 @@
 // WARNING: This output format is intended for human consumers only
 // and is subject to change without notice. Knock yourself out.
+// HINT: See also -Z dump-mir for MIR at specific points during compilation.
 fn norm(_1: Point) -> f64 {
     debug p => _1;                       // in scope 0 at src/lib.rs:6:13: 6:14
     let mut _0: f64;                     // return place in scope 0 at src/lib.rs:6:26: 6:29
     let mut _2: f64;                     // in scope 0 at src/lib.rs:7:5: 7:28
     let mut _3: f64;                     // in scope 0 at src/lib.rs:7:6: 7:15
     let mut _4: f64;                     // in scope 0 at src/lib.rs:7:6: 7:9
-    let mut _5: f64;                     // in scope 0 at src/lib.rs:7:12: 7:15
-    let mut _6: f64;                     // in scope 0 at src/lib.rs:7:18: 7:27
-    let mut _7: f64;                     // in scope 0 at src/lib.rs:7:18: 7:21
-    let mut _8: f64;                     // in scope 0 at src/lib.rs:7:24: 7:27
+    let mut _5: f64;                     // in scope 0 at src/lib.rs:7:18: 7:27
+    let mut _6: f64;                     // in scope 0 at src/lib.rs:7:18: 7:21
+    scope 1 (inlined f64::<impl f64>::sqrt) { // at src/lib.rs:7:29: 7:35
+        scope 2 (inlined core::f64::math::sqrt) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/num/f64.rs:387:9: 387:36
+        }
+    }
 
     bb0: {
         StorageLive(_2);                 // scope 0 at src/lib.rs:7:5: 7:28
         StorageLive(_3);                 // scope 0 at src/lib.rs:7:6: 7:15
         StorageLive(_4);                 // scope 0 at src/lib.rs:7:6: 7:9
-        _4 = (_1.0: f64);                // scope 0 at src/lib.rs:7:6: 7:9
-        StorageLive(_5);                 // scope 0 at src/lib.rs:7:12: 7:15
-        _5 = (_1.0: f64);                // scope 0 at src/lib.rs:7:12: 7:15
-        _3 = Mul(move _4, move _5);      // scope 0 at src/lib.rs:7:6: 7:15
-        StorageDead(_5);                 // scope 0 at src/lib.rs:7:14: 7:15
+        _4 = copy (_1.0: f64);           // scope 0 at src/lib.rs:7:6: 7:9
+        _3 = Mul(copy _4, copy _4);      // scope 0 at src/lib.rs:7:6: 7:15
         StorageDead(_4);                 // scope 0 at src/lib.rs:7:14: 7:15
-        StorageLive(_6);                 // scope 0 at src/lib.rs:7:18: 7:27
-        StorageLive(_7);                 // scope 0 at src/lib.rs:7:18: 7:21
-        _7 = (_1.1: f64);                // scope 0 at src/lib.rs:7:18: 7:21
-        StorageLive(_8);                 // scope 0 at src/lib.rs:7:24: 7:27
-        _8 = (_1.1: f64);                // scope 0 at src/lib.rs:7:24: 7:27
-        _6 = Mul(move _7, move _8);      // scope 0 at src/lib.rs:7:18: 7:27
-        StorageDead(_8);                 // scope 0 at src/lib.rs:7:26: 7:27
-        StorageDead(_7);                 // scope 0 at src/lib.rs:7:26: 7:27
-        _2 = Add(move _3, move _6);      // scope 0 at src/lib.rs:7:5: 7:28
-        StorageDead(_6);                 // scope 0 at src/lib.rs:7:27: 7:28
+        StorageLive(_5);                 // scope 0 at src/lib.rs:7:18: 7:27
+        StorageLive(_6);                 // scope 0 at src/lib.rs:7:18: 7:21
+        _6 = copy (_1.1: f64);           // scope 0 at src/lib.rs:7:18: 7:21
+        _5 = Mul(copy _6, copy _6);      // scope 0 at src/lib.rs:7:18: 7:27
+        StorageDead(_6);                 // scope 0 at src/lib.rs:7:26: 7:27
+        _2 = Add(move _3, move _5);      // scope 0 at src/lib.rs:7:5: 7:28
+        StorageDead(_5);                 // scope 0 at src/lib.rs:7:27: 7:28
         StorageDead(_3);                 // scope 0 at src/lib.rs:7:27: 7:28
-        _0 = std::f64::<impl f64>::sqrt(move _2) -> [return: bb1, unwind continue]; // scope 0 at src/lib.rs:7:5: 7:35
+        _0 = sqrtf64(move _2) -> [return: bb1, unwind unreachable]; // scope 2 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/num/f64.rs:2083:9: 2083:31
                                          // mir::ConstOperand
-                                         // + span: src/lib.rs:7:29: 7:33
-                                         // + const_: Const { ty: fn(f64) -> f64 {std::f64::<impl f64>::sqrt}, val: Value(std::f64::<impl f64>::sqrt) }
+                                         // + span: no-location
+                                         // + const_: Const { ty: fn(f64) -> f64 {sqrtf64}, val: Value(sqrtf64) }
     }
 
     bb1: {

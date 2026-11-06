@@ -1,0 +1,18 @@
+--- a/src/bootstrap/src/core/build_steps/compile.rs
++++ b/src/bootstrap/src/core/build_steps/compile.rs
+@@ -1173,8 +1173,13 @@
+             vec![],
+             &stamp,
+             vec![],
+-            ArtifactKeepMode::Custom(Box::new(|filename| {
+-                if filename.contains("jemalloc_sys")
++            ArtifactKeepMode::Custom(Box::new(move |filename| {
++                // A WASI host has no dylibs: there is no librustc_driver.so
++                // for a tool (Miri) to link against, so it links against the
++                // crates themselves, which must be in the sysroot whole.
++                if target.contains("wasi") {
++                    filename.ends_with(".rlib") || filename.ends_with(".rmeta")
++                } else if filename.contains("jemalloc_sys")
+                     || filename.contains("rustc_public_bridge")
+                     || filename.contains("rustc_public")
+                 {

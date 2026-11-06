@@ -22,10 +22,20 @@
 //   language pack's server.js) is a file a unit's outputs declare or its
 //   glue.sh writes, which the assemble job and a release check again over
 //   the pack as assembled, hours later for a unit that is new.
+// * A split pack's `uses` file, the packs its tests run on (the Linux pack's
+//   emulator), names split packs of this tree other than itself: the
+//   assemble job assembles them beside it from their units, and an
+//   unsplit pack has none.
 // * Every unit has a toolchain.sh, an outputs file and a pins.sh of plain
 //   `NAME=value` lines a reader can trust without running them, and the
 //   pack's glue.sh and build.sh assign no pin (the pin rule,
 //   pack-toolchain.sh's header).
+// * Code in packs/kit (kit/README.md), which several packs' workers bundle,
+//   reaches a pack only by an import its glue or build bundles, and an
+//   unsplit pack that imports it names `kit` in its `shared` file, so the
+//   id its build is stored under (pack-store.sh tree) changes with the kit.
+//   The kit imports from no pack and has no build.sh, so nothing takes it
+//   for a pack.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -234,6 +244,16 @@ export function problemsOf(/** @type {string} */ root, /** @type {string} */ pac
             problems.push(`${dir}: its entry point ${entry} is in no unit's outputs and glue.sh writes no "$OUT/${entry}"${fs.existsSync(entriesFile) ? '' : '; a pack that is no language server lists what it serves in an entries file'}`);
         }
     }
+    // light-packs.yml's assemble job assembles each used pack from its
+    // units beside this one, which it can do for a split pack only.
+    const usesFile = path.join(root, dir, 'uses');
+    if (fs.existsSync(usesFile)) {
+        const split = splitPacks(root);
+        for (const used of entriesOf(fs.readFileSync(usesFile, 'utf8'))) {
+            if (used === pack) problems.push(`${dir}/uses names the pack itself`);
+            else if (!split.includes(used)) problems.push(`${dir}/uses names ${used}, which is not a split pack of this tree: only a split pack is assembled beside another`);
+        }
+    }
     for (const name of ['glue.sh', 'build.sh']) {
         const file = path.join(root, dir, name);
         if (!fs.existsSync(file)) continue;
@@ -324,6 +344,23 @@ test("a split pack without its tests is named, and they are glue, which no unit'
         const gluePaths = path.join(dir, 'light/packs/stub/glue.paths');
         fs.writeFileSync(gluePaths, fs.readFileSync(gluePaths, 'utf8').replace(/^test\.sh\n/m, ''));
         assert.deepEqual(problemsOf(dir, 'stub'), ["light/packs/stub has no test.sh: a split pack's tests run over the pack as assembled, so the bytes tested are the bytes shipped"]);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+test('a pack its tests run on that is no split pack, or the pack itself, is named', () => {
+    const dir = scratch();
+    try {
+        const pack = path.join(dir, 'light/packs/stub');
+        fs.appendFileSync(path.join(pack, 'glue.paths'), 'uses\n');
+        fs.writeFileSync(path.join(pack, 'uses'), '# what its tests run on\nstub\njavascript\n');
+        assert.deepEqual(problemsOf(dir, 'stub'), [
+            'light/packs/stub/uses names the pack itself',
+            'light/packs/stub/uses names javascript, which is not a split pack of this tree: only a split pack is assembled beside another',
+        ]);
+        fs.writeFileSync(path.join(pack, 'uses'), '');
+        assert.deepEqual(problemsOf(dir, 'stub'), [], 'an empty uses is none');
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -472,4 +509,76 @@ test('a pin is a plain assignment, and a build or glue script assigns none', () 
 test('a file two units name is listed as shared, and one only glue names is owned', () => {
     const owners = { units: new Map([['p/a', new Set(['x', 'lib'])], ['p/b', new Set(['y', 'lib'])]]), glue: new Set(['g']) };
     assert.deepEqual(partition(['g', 'lib', 'x', 'y', 'z'], owners), { unowned: ['z'], shared: [['lib', ['p/a', 'p/b']]] });
+});
+
+/** An import of the kit: `from '../../kit/x.js'`, `import '../kit/x.js'`, or a dynamic `import('…/kit/…')`. */
+const KIT_IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"]((?:\.\.\/)+kit\/[^'"]+)['"]/g;
+/** An import that leaves the kit for a pack: `../<pack>/…`. */
+const PACK_IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)['"]\.\.\/([^'"/]+)\/[^'"]*['"]/g;
+
+/**
+ * What is wrong with the kit and its users in the repository at `root`, as
+ * sentences naming the file: an unsplit pack that imports from packs/kit
+ * without naming `kit` in its `shared` file (its stored build would not
+ * change with the kit's code), a kit file that imports from a pack, and a
+ * kit that has a build.sh (a release would take it for a pack).
+ */
+export function kitProblems(/** @type {string} */ root) {
+    const problems = [];
+    const packs = path.join(root, 'light/packs');
+    if (!fs.existsSync(path.join(packs, 'kit'))) return problems;
+    if (fs.existsSync(path.join(packs, 'kit/build.sh'))) problems.push('light/packs/kit/build.sh exists: the kit is no pack, and a release builds every packs/*/build.sh');
+    const code = (f) => /\.(?:m?js|ts)$/.test(f);
+    for (const file of filesOf(root, ['light/packs/kit']).filter(code)) {
+        for (const [, dir] of fs.readFileSync(path.join(root, file), 'utf8').matchAll(PACK_IMPORT)) {
+            if (dir !== 'kit' && dir !== '..') problems.push(`${file} imports from packs/${dir}: the kit is shared by packs and imports from none`);
+        }
+    }
+    for (const entry of fs.readdirSync(packs, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name === 'kit') continue;
+        const pack = entry.name;
+        if (fs.existsSync(path.join(packs, pack, 'toolchains'))) continue; // a split pack's glue is assembled every time, under no stored id
+        const shared = fs.existsSync(path.join(packs, pack, 'shared')) ? entriesOf(fs.readFileSync(path.join(packs, pack, 'shared'), 'utf8')) : [];
+        if (shared.includes('kit')) continue;
+        for (const file of filesOf(root, [`light/packs/${pack}`]).filter(code)) {
+            for (const [, spec] of fs.readFileSync(path.join(root, file), 'utf8').matchAll(KIT_IMPORT)) {
+                const target = path.relative(packs, path.resolve(path.dirname(path.join(root, file)), spec));
+                if (target.startsWith(`kit${path.sep}`)) problems.push(`${file} imports ${spec}, but light/packs/${pack}/shared does not name kit: its stored build would not change with the kit`);
+            }
+        }
+    }
+    return problems;
+}
+
+test('every pack that bundles the kit names it, so its stored build changes with the kit', () => {
+    assert.deepEqual(kitProblems(ROOT), []);
+    for (const pack of ['go', 'swift', 'zig']) assert.ok(entriesOf(fs.readFileSync(path.join(ROOT, 'light/packs', pack, 'shared'), 'utf8')).includes('kit'), pack);
+});
+
+test('a pack that bundles the kit without naming it, a kit that imports a pack, and a kit with a build.sh are named', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-contract-'));
+    try {
+        const put = (file, text) => {
+            fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+            fs.writeFileSync(path.join(dir, file), text);
+        };
+        execFileSync('git', ['-C', dir, 'init', '-q']);
+        put('light/packs/kit/a.js', "export const a = 1;\n");
+        put('light/packs/kit/b.js', "import { x } from '../go/src/x.js';\nexport const b = x;\n");
+        put('light/packs/kit/build.sh', '#!/bin/sh\n');
+        put('light/packs/go/src/runner.js', "import { a } from '../../kit/a.js';\nimport '../../kit/b.js';\n");
+        put('light/packs/go/src/x.js', 'export const x = 1;\n');
+        put('light/packs/zig/src/runner.js', "import { a } from '../../kit/a.js';\n");
+        put('light/packs/zig/shared', '# bundles\nkit\n');
+        put('light/packs/rust/toolchains/main/toolchain.sh', '#!/bin/sh\n');
+        put('light/packs/rust/src/runner.js', "import { a } from '../../kit/a.js';\n");
+        assert.deepEqual(kitProblems(dir), [
+            'light/packs/kit/build.sh exists: the kit is no pack, and a release builds every packs/*/build.sh',
+            'light/packs/kit/b.js imports from packs/go: the kit is shared by packs and imports from none',
+            "light/packs/go/src/runner.js imports ../../kit/a.js, but light/packs/go/shared does not name kit: its stored build would not change with the kit",
+            "light/packs/go/src/runner.js imports ../../kit/b.js, but light/packs/go/shared does not name kit: its stored build would not change with the kit",
+        ]);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
 });

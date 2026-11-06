@@ -1,5 +1,6 @@
 // WARNING: This output format is intended for human consumers only
 // and is subject to change without notice. Knock yourself out.
+// HINT: See also -Z dump-mir for MIR at specific points during compilation.
 fn norm(_1: Point) -> f64 {
     debug p => _1;                       // in scope 0 at src/lib.rs:6:13: 6:14
     let mut _0: f64;                     // return place in scope 0 at src/lib.rs:6:26: 6:29
@@ -12,34 +13,20 @@ fn norm(_1: Point) -> f64 {
     let mut _8: f64;                     // in scope 0 at src/lib.rs:7:24: 7:27
 
     bb0: {
-        StorageLive(_2);                 // scope 0 at src/lib.rs:7:5: 7:28
-        StorageLive(_3);                 // scope 0 at src/lib.rs:7:6: 7:15
-        StorageLive(_4);                 // scope 0 at src/lib.rs:7:6: 7:9
-        _4 = (_1.0: f64);                // scope 0 at src/lib.rs:7:6: 7:9
-        StorageLive(_5);                 // scope 0 at src/lib.rs:7:12: 7:15
-        _5 = (_1.0: f64);                // scope 0 at src/lib.rs:7:12: 7:15
+        _4 = copy (_1.0: f64);           // scope 0 at src/lib.rs:7:6: 7:9
+        _5 = copy (_1.0: f64);           // scope 0 at src/lib.rs:7:12: 7:15
         _3 = Mul(move _4, move _5);      // scope 0 at src/lib.rs:7:6: 7:15
-        StorageDead(_5);                 // scope 0 at src/lib.rs:7:14: 7:15
-        StorageDead(_4);                 // scope 0 at src/lib.rs:7:14: 7:15
-        StorageLive(_6);                 // scope 0 at src/lib.rs:7:18: 7:27
-        StorageLive(_7);                 // scope 0 at src/lib.rs:7:18: 7:21
-        _7 = (_1.1: f64);                // scope 0 at src/lib.rs:7:18: 7:21
-        StorageLive(_8);                 // scope 0 at src/lib.rs:7:24: 7:27
-        _8 = (_1.1: f64);                // scope 0 at src/lib.rs:7:24: 7:27
+        _7 = copy (_1.1: f64);           // scope 0 at src/lib.rs:7:18: 7:21
+        _8 = copy (_1.1: f64);           // scope 0 at src/lib.rs:7:24: 7:27
         _6 = Mul(move _7, move _8);      // scope 0 at src/lib.rs:7:18: 7:27
-        StorageDead(_8);                 // scope 0 at src/lib.rs:7:26: 7:27
-        StorageDead(_7);                 // scope 0 at src/lib.rs:7:26: 7:27
         _2 = Add(move _3, move _6);      // scope 0 at src/lib.rs:7:5: 7:28
-        StorageDead(_6);                 // scope 0 at src/lib.rs:7:27: 7:28
-        StorageDead(_3);                 // scope 0 at src/lib.rs:7:27: 7:28
-        _0 = std::f64::<impl f64>::sqrt(move _2) -> [return: bb1, unwind continue]; // scope 0 at src/lib.rs:7:5: 7:35
+        _0 = f64::<impl f64>::sqrt(move _2) -> [return: bb1, unwind continue]; // scope 0 at src/lib.rs:7:5: 7:35
                                          // mir::ConstOperand
                                          // + span: src/lib.rs:7:29: 7:33
-                                         // + const_: Const { ty: fn(f64) -> f64 {std::f64::<impl f64>::sqrt}, val: Value(std::f64::<impl f64>::sqrt) }
+                                         // + const_: Const { ty: fn(f64) -> f64 {f64::<impl f64>::sqrt}, val: Value(f64::<impl f64>::sqrt) }
     }
 
     bb1: {
-        StorageDead(_2);                 // scope 0 at src/lib.rs:7:34: 7:35
         return;                          // scope 0 at src/lib.rs:8:2: 8:2
     }
 }

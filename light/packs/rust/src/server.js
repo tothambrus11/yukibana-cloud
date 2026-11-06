@@ -5,10 +5,8 @@
 //   rust-analyzer.wasm  the server (ra_ap_ide 0.0.358 and our LSP layer)
 //   std-src.tar         core, alloc and std from rust-src 1.98.0: what
 //                       rust-analyzer reads for the standard library
-//                       (completion, hover docs, types). Newer than the
-//                       runner's Miri (1.78), because this rust-analyzer
-//                       only understands a recent std's format_args!
-////   quickcheck-<version>-src.tar
+//                       (completion, hover docs, types)
+//   quickcheck-<version>-src.tar
 //                       the sources of the crates.io packages the pack
 //                       ships (quickcheck and its dependencies) and their
 //                       crate graph (crates.json), from

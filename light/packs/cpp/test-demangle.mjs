@@ -20,7 +20,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { demangleLines } from './src/emit-filter.js';
+import { demangleLines } from '../kit/emit-filter.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = resolve(HERE, '../../app/static/packs/cpp');

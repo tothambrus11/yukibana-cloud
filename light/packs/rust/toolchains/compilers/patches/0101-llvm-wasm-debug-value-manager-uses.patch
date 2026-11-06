@@ -1,0 +1,62 @@
+From fe990b9005260bcf4a5630b577483e954c6bb60e Mon Sep 17 00:00:00 2001
+From: Derek Schuff <dschuff@chromium.org>
+Date: Fri, 27 Mar 2026 09:05:48 -0700
+Subject: [PATCH] [WebAssembly] DebugValueManager ctor: scan only uses instead
+ of whole BB (#188871)
+
+The DebugValueManager constructor scans the basic block to find all DEBUG_VALUE
+uses of a def. This can lead to quadratic behavior as reported in #168326.
+Instead, use MRI.use_instructions to find only the def's uses to limit the
+search.
+We still scan the BB so that we get the uses in order, and so we can stop
+when a new def is found.
+---
+ .../WebAssemblyDebugValueManager.cpp          | 21 ++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/llvm/lib/Target/WebAssembly/WebAssemblyDebugValueManager.cpp b/llvm/lib/Target/WebAssembly/WebAssemblyDebugValueManager.cpp
+index da37174996..abc022c18f 100644
+--- a/llvm/lib/Target/WebAssembly/WebAssemblyDebugValueManager.cpp
++++ b/llvm/lib/Target/WebAssembly/WebAssemblyDebugValueManager.cpp
+@@ -27,20 +27,35 @@ WebAssemblyDebugValueManager::WebAssemblyDebugValueManager(MachineInstr *Def)
+     return;
+ 
+   // This code differs from MachineInstr::collectDebugValues in that it scans
+-  // the whole BB, not just contiguous DBG_VALUEs, until another definition to
+-  // the same register is encountered.
++  // all users in the BB, not just contiguous DBG_VALUEs, until another
++  // definition to the same register is encountered.
+   if (!Def->getOperand(0).isReg())
+     return;
+   CurrentReg = Def->getOperand(0).getReg();
+ 
++  // Collect all the uses of this def.
++  MachineRegisterInfo &MRI = Def->getMF()->getRegInfo();
++  SmallVector<MachineInstr *, 2> Candidates;
++  for (MachineInstr &MI : MRI.use_instructions(CurrentReg)) {
++    if (MI.isDebugValue() && MI.getParent() == Def->getParent())
++      Candidates.push_back(&MI);
++  }
++  if (Candidates.empty())
++    return;
++
++  // To preserve the order of DBG_VALUEs and correctly handle non-SSA cases,
++  // we scan the BB as far as needed to find all candidates.
+   for (MachineBasicBlock::iterator MI = std::next(Def->getIterator()),
+                                    ME = Def->getParent()->end();
+        MI != ME; ++MI) {
+     // If another definition appears, stop
+     if (MI->definesRegister(CurrentReg, /*TRI=*/nullptr))
+       break;
+-    if (MI->isDebugValue() && MI->hasDebugOperandForReg(CurrentReg))
++    if (MI->isDebugValue() && MI->hasDebugOperandForReg(CurrentReg)) {
+       DbgValues.push_back(&*MI);
++      if (DbgValues.size() == Candidates.size())
++        break;
++    }
+   }
+ }
+ 
+-- 
+2.43.0
+

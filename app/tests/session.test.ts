@@ -1,7 +1,7 @@
 import { afterEach, test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import type { Cookies } from '@sveltejs/kit';
-import { claimsFor, sessionCookieOptions, staleSessionCookies, supabaseFor, type CookieSerializeOptions } from '../src/lib/server/session.js';
+import { claimsFor, identify, sessionCookieOptions, staleSessionCookies, supabaseFor, type CookieSerializeOptions } from '../src/lib/server/session.js';
 import { SESSION_COOKIE } from '../src/lib/session-cookie.js';
 
 // @supabase/ssr as it is, except that its cookie default is SameSite=None:
@@ -158,4 +158,37 @@ test("a session under the cloud's own cookie name is read, so the test above is 
   const TEACHER = '00000000-0000-4000-8000-00000000000a';
   const jar = holding({ [SESSION_COOKIE]: sessionCookie(TEACHER, 'teacher@school.example') });
   assert.deepEqual(await claimsFor(supabaseFor(jar, 'https://auth.example', 'publishable'), null), { sub: TEACHER, role: 'authenticated', email: 'teacher@school.example' });
+});
+
+test('a session that Auth no longer honours says why, instead of reading as nobody having logged in', async () => {
+  const TEACHER = '00000000-0000-4000-8000-00000000000a';
+  const now = Math.floor(Date.now() / 1000);
+  const user = {
+    id: TEACHER,
+    aud: 'authenticated',
+    role: 'authenticated',
+    email: 'teacher@school.example',
+    app_metadata: {},
+    user_metadata: {},
+    created_at: new Date().toISOString(),
+  };
+  const payload = Buffer.from(JSON.stringify({ sub: TEACHER, exp: now - 60, iat: now - 3660, role: 'authenticated', aud: 'authenticated' })).toString('base64url');
+  // Expired an hour ago, so the client refreshes it; Auth refuses the refresh
+  // token as one already spent, which is what a second refresher causes.
+  const session = { access_token: `e30.${payload}.sig`, refresh_token: 'spent', token_type: 'bearer', expires_in: 3600, expires_at: now - 60, user };
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.includes('grant_type=refresh_token')) return Response.json({ code: 'refresh_token_already_used', message: 'Invalid Refresh Token: Already Used' }, { status: 400 });
+    return Response.json({ message: `unexpected ${url}` }, { status: 500 });
+  });
+  const jar = holding({ [SESSION_COOKIE]: `base64-${Buffer.from(JSON.stringify(session)).toString('base64url')}` });
+  const who = await identify(supabaseFor(jar, 'https://auth.example', 'publishable'), null);
+  assert.equal(who.claims, null);
+  assert.ok(who.claims === null && who.by === 'cookie', 'it was the cookie that was refused');
+  assert.match(who.refused ?? '', /Already Used/);
+});
+
+test('a request with no session and no token is nobody, with nothing to explain', async () => {
+  const who = await identify(supabaseFor(holding({}), 'https://auth.example', 'publishable'), null);
+  assert.deepEqual(who, { claims: null, refused: null, by: 'cookie' });
 });

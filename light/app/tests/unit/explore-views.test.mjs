@@ -11,13 +11,13 @@ import { LANGUAGES } from '../../src/lib/languages.ts';
 test('C++ keeps its LLVM IR and Assembly views; Swift, Rust, Haskell, Scala, Python and Java have their own', () => {
 	assert.deepEqual(viewsOf('cpp')?.views.map((v) => v.kind), ['llvm-ir', 'asm']);
 	assert.deepEqual(viewsOf('swift')?.views.map((v) => v.kind), ['sil', 'llvm-ir', 'asm']);
-	assert.deepEqual(viewsOf('rust')?.views.map((v) => v.kind), ['mir']);
+	assert.deepEqual(viewsOf('rust')?.views.map((v) => v.kind), ['mir', 'llvm-ir', 'asm']);
 	assert.deepEqual(viewsOf('haskell')?.views.map((v) => v.kind), ['core', 'stg', 'cmm', 'asm']);
 	assert.deepEqual(viewsOf('python')?.views.map((v) => v.kind), ['bytecode']);
 	assert.deepEqual(viewsOf('java')?.views.map((v) => v.kind), ['bytecode']);
 	assert.deepEqual(viewsOf('scala')?.views.map((v) => v.kind), ['typed', 'lowered']);
 	assert.equal(viewsOf('javascript'), null);
-	assert.equal(viewOf('rust', 'asm'), null);
+	assert.equal(viewOf('rust', 'sil'), null);
 });
 
 test('every language with views is a language of the app, and every view a known kind', () => {

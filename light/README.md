@@ -256,8 +256,8 @@ no DOM and no npm packages except fast-check, for property-based tests
 | Java | javac (OpenJDK 25u) compiled to WebAssembly GC by TeaVM 0.16.0 (teavm-javac), with our language service on its trees | the same javac, then TeaVM linking the program to WebAssembly GC in the browser; JUnit Jupiter 5.14 | 2.0 MB | 2.3 MB (TeaVM's class library) |
 | Kotlin | kotlinc 2.4.21 (K2) compiled to WebAssembly GC by GraalVM Web Image, for diagnostics; ours on tree-sitter-kotlin 1.1.0 for the rest | the same kotlinc, compiling for Kotlin/Wasm (WASI), run in a worker; kotlin.test | 23.0 MB | 3 KB (the same files) |
 | Haskell | GHC 9.14 (GHC's wasm backend) through the GHC API, our LSP layer on its diagnostics and `.hie` files; hlint 3.10 and ormolu 0.8.0.2 | GHC's bytecode interpreter, as `runghc` (one session across runs, as GHCi); hspec 2.11 and QuickCheck 2.19 | 33.2 MB; hlint 3.6 MB after the first check, ormolu 3.3 MB on the first Format | 3 KB (the same files) |
-| Go | ours, on go/types and go/doc from Go 1.27.3 (not gopls), compiled to WebAssembly (wasip1) | Go 1.27.3's own compiler and linker, compiled to WebAssembly: a wasip1/wasm program in the browser, or a Linux amd64, arm64 or riscv64 one under the C/C++ pack's QEMU-Wasm (go.env) | 2.5 MB; each imported standard library package's archive when imported (fmt 0.16 MB) | 9.1 MB; the standard library's archives for the target as a build needs them (fmt and what it imports 3.7 to 4.4 MB, Test 7.7 to 8.8 MB); a Linux target the C/C++ pack's VM, 2.6 to 2.9 MB |
-| Zig | ZLS 0.17.0 (zigtools' wasm32-wasi release), with the Zig compiler's own errors added | Zig 0.17.0's compiler, built for WebAssembly without LLVM: a wasm32-wasi program in the browser, or an x86-64 Linux one under the C/C++ pack's QEMU-Wasm (zig.env) | 4.8 MB (ZLS and the standard library's sources); the compiler 2.4 MB for its errors | 4.7 MB (the compiler, the standard library, compiler_rt); a Linux target the C/C++ pack's VM |
+| Go | ours, on go/types and go/doc from Go 1.27.3 (not gopls), compiled to WebAssembly (wasip1) | Go 1.27.3's own compiler and linker, compiled to WebAssembly: a wasip1/wasm program in the browser, or a Linux amd64, arm64 or riscv64 one under the Linux pack's QEMU-Wasm (go.env) | 2.5 MB; each imported standard library package's archive when imported (fmt 0.16 MB) | 9.1 MB; the standard library's archives for the target as a build needs them (fmt and what it imports 3.7 to 4.4 MB, Test 7.7 to 8.8 MB); a Linux target the Linux pack's VM, 2.6 to 2.9 MB |
+| Zig | ZLS 0.17.0 (zigtools' wasm32-wasi release), with the Zig compiler's own errors added | Zig 0.17.0's compiler, built for WebAssembly without LLVM: a wasm32-wasi program in the browser, or an x86-64 Linux one under the Linux pack's QEMU-Wasm (zig.env) | 4.8 MB (ZLS and the standard library's sources); the compiler 2.4 MB for its errors | 4.7 MB (the compiler, the standard library, compiler_rt); a Linux target the Linux pack's VM |
 
 Sizes are brotli transfer sizes. The app itself is 1.2 MB, icons included.
 Each pack's README has the details: what was patched and why, what is
@@ -278,7 +278,7 @@ and the language server is told of each file's change
 
 The target is one line of `compile_flags.txt`; the pack has the details
 (packs/cpp/README.md, "Targets", "Running" and "Compiler output views";
-packs/cpp/vm/README.md is the report on system and user mode). What each
+packs/linux/README.md, the Linux pack's, is the report on system and user mode). What each
 use case downloads, with brotli, measured:
 
 | Use case | Downloads | Size |
@@ -306,7 +306,7 @@ boot per run and 256 MB of guest RAM. User mode starts in 0.2 s and
 downloads 0.5 to 0.7 MB, but QEMU translates the system calls onto the
 browser's libc itself, with no kernel underneath: one CPU, no `fork`, no
 memory protection (a null dereference reads 0 and the program carries on),
-partial signals (packs/cpp/vm/README.md, "What user mode cannot do"). Run options choose between them per project.
+partial signals (packs/linux/README.md, "What user mode cannot do"). Run options choose between them per project.
 
 ## Offline and installing
 

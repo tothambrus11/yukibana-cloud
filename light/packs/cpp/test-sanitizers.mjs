@@ -30,8 +30,10 @@ const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
 const TARGETS = JSON.parse(fs.readFileSync(path.join(HERE, 'src/targets.json'), 'utf8'));
 const LINUX = TARGETS.filter((t) => t.runtime === 'linux' && process.argv.slice(2).includes(t.arch));
 
-const missing = ['runner.js', 'sanitizer.js', 'cc.wasm', 'asan.tar', 'ubsan.tar', ...LINUX.flatMap((t) => [`targets/${t.arch}/asan.tar`, `vm/${t.arch}/kernel`])]
-    .filter((f) => !fs.existsSync(path.join(OUT, f)));
+const missing = [
+    ...['runner.js', 'sanitizer.js', 'cc.wasm', 'asan.tar', 'ubsan.tar', ...LINUX.map((t) => `targets/${t.arch}/asan.tar`)].filter((f) => !fs.existsSync(path.join(OUT, f))),
+    ...LINUX.map((t) => `vm/${t.arch}/kernel`).filter((f) => !fs.existsSync(path.join(STATIC, 'packs/linux', f))).map((f) => `../linux/${f}`),
+];
 if (missing.length) {
     console.log(`# test-sanitizers: not built yet: ${missing.join(', ')} (build.sh)`);
     process.exit(process.env.ALLOW_SKIP ? 0 : 1);

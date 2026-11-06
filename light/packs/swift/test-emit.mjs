@@ -1,5 +1,5 @@
 // Tests the compiler output views' argument vectors and filters
-// (src/views.js, src/emit-filter.js; README, "Compiler output views") on
+// (src/views.js, ../kit/emit-filter.js; README, "Compiler output views") on
 // the fixtures in tests/fixtures/, which tests/fixtures/gen.mjs compiles
 // with the shipped compiler. No compiler runs here: `node --test test-emit.mjs`.
 import { test } from 'node:test';
@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { demangleSwift, emitArgs, filterSil, moduleNameFor, shownFlags, sourcesFor, swiftNames } from './src/views.js';
-import { filterAsm, filterIr } from './src/emit-filter.js';
+import { filterAsm, filterIr } from '../kit/emit-filter.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'tests/fixtures');
 const read = (name) => readFileSync(join(FIXTURES, name), 'utf8');
@@ -131,10 +131,4 @@ test("a view compiles the file as the primary file of what Run compiles, at the 
     assert.throws(() => emitArgs({ emit: 'bytecode', files, path: 'main.swift' }));
     assert.equal(moduleNameFor({ ...files, 'T.swift': '@testable import App\n' }, 'T.swift'), 'App');
     assert.deepEqual(shownFlags(args), ['-emit-ir', '-O']);
-});
-
-test("the IR and assembly filters are the C++ pack's, unchanged: a fix there is a fix here", () => {
-    const here = readFileSync(new URL('./src/emit-filter.js', import.meta.url), 'utf8');
-    const cpp = readFileSync(new URL('../cpp/src/emit-filter.js', import.meta.url), 'utf8');
-    assert.ok(here === cpp, 'src/emit-filter.js differs from ../cpp/src/emit-filter.js: copy it again (cp ../cpp/src/emit-filter.js src/)');
 });

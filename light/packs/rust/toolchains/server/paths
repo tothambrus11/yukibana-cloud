@@ -1,0 +1,6 @@
+# The pack files the server unit builds with, besides this directory: the
+# language server's crate, the script that trims std's sources, and the
+# compressor.
+server/
+scripts/make-sysroot-src.py
+scripts/compress.mjs

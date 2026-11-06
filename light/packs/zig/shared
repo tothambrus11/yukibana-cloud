@@ -1,0 +1,3 @@
+# The directories of packs/ this pack's workers bundle code from, one per
+# line; part of the id its build is stored under (scripts/pack-store.sh tree).
+kit

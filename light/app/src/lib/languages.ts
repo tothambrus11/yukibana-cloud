@@ -69,6 +69,13 @@ export interface Language {
 	 */
 	pack?: string;
 	/**
+	 * The other packs its runner imports, which "Save offline" downloads
+	 * with its own: `linux`, the emulator a program built for a Linux
+	 * target runs on (packs/linux/README.md), for the languages that build
+	 * for one. A language works without them on its default target.
+	 */
+	uses?: readonly string[];
+	/**
 	 * For a web project, the page Run shows in the Preview panel (live
 	 * reloaded as files change) instead of running `entry` in the terminal.
 	 */
@@ -260,7 +267,7 @@ def test_norm(x: float, y: float, expected: float) -> None:
 def test_points_are_immutable() -> None:
     p = Point(0, 0)
     with pytest.raises(dataclasses.FrozenInstanceError):
-        setattr(p, "x", 1)
+        p.x = 1  # type: ignore[misc]
 `,
 		},
 	},
@@ -733,6 +740,7 @@ function draw() {
 		label: 'C',
 		monacoLanguages: ['c', 'cpp'],
 		pack: 'cpp',
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.c',
 		extension: '.c',
@@ -793,6 +801,7 @@ double point_distance(struct point a, struct point b) {
 		label: 'C++',
 		monacoLanguages: ['cpp', 'c'],
 		pack: 'cpp',
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.cpp',
 		extension: '.cpp',
@@ -875,9 +884,15 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		entry: 'main.swift',
 		extension: '.swift',
 		runs: true,
+		uses: ['linux'],
 		debugs: true,
 		tests: true,
 		sample: {
+			'swift.env': `# The target Run builds for. With nothing set it is WebAssembly, run in
+# the browser; TARGET=x86_64-linux or TARGET=aarch64-linux builds a static
+# Linux program with a larger compiler and runs it under QEMU.
+# TARGET=aarch64-linux
+`,
 			'main.swift': `let a = Point(x: 0, y: 0)
 let b = Point(x: 3, y: 4)
 print("\\(a) to \\(b): \\(distance(a, b))")
@@ -953,6 +968,7 @@ def distance(a: Point, b: Point): Double =
 		id: 'rust',
 		label: 'Rust',
 		monacoLanguages: ['rust'],
+		uses: ['linux'],
 		settings: {},
 		entry: 'src/main.rs',
 		extension: '.rs',
@@ -1090,8 +1106,7 @@ final class Point
     public function __construct(
         public readonly float $x,
         public readonly float $y,
-    ) {
-    }
+    ) {}
 
     /** Distance from the origin. */
     public function norm(): float
@@ -1392,6 +1407,7 @@ main = hspec $ do
 		id: 'go',
 		label: 'Go',
 		monacoLanguages: ['go'],
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.go',
 		extension: '.go',
@@ -1501,6 +1517,7 @@ func ExampleDistance() {
 		id: 'zig',
 		label: 'Zig',
 		monacoLanguages: ['zig'],
+		uses: ['linux'],
 		settings: {},
 		entry: 'main.zig',
 		extension: '.zig',

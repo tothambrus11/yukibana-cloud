@@ -18,6 +18,11 @@
   $effect(() => {
     viewer.zone = browserZone();
   });
+  // A session that stopped counting in an open tab is said, not only
+  // replaced by a "Log in" link: the person thought they were signed in.
+  $effect(() => {
+    if (data.sessionRefused !== null) toast(`You are no longer logged in here (${data.sessionRefused}). Log in again to carry on.`);
+  });
   // A form action that refused says why in `form.error`, on every page
   // alike; it is shown here, once, rather than by each page.
   $effect(() => {

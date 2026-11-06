@@ -1,2 +1,17 @@
 # Stores text files with LF, and checks them out with the platform's line ending.
 * text=auto
+
+# Expected outputs written by a compiler or a tool, not by hand: GitHub folds
+# them in diffs and leaves them out of the language statistics, so a compiler
+# upgrade that rewrites thousands of their lines does not bury the change a
+# reviewer has to read. Regenerate them as each pack's README says.
+light/packs/*/tests/fixtures/**/*.s linguist-generated
+light/packs/*/tests/fixtures/**/*.ll linguist-generated
+light/packs/*/tests/fixtures/**/*.asm linguist-generated
+light/packs/*/tests/fixtures/**/*.llvm-ir linguist-generated
+light/packs/*/tests/fixtures/**/*.mir linguist-generated
+light/packs/*/tests/fixtures/**/*.sil linguist-generated
+light/packs/*/tests/fixtures/**/*.sil-raw linguist-generated
+light/packs/*/tests/fixtures/**/*.dump-* linguist-generated
+light/packs/kotlin/kotlinc/config/traced-reachability-metadata.json linguist-generated
+light/app/static/schemas/*.json linguist-generated

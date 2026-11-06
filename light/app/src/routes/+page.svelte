@@ -18,7 +18,7 @@
 	import { onMount } from 'svelte';
 	import { createDock } from '../lib/dock';
 	import { isCFamily, languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
-	import { packOf } from '../lib/packs';
+	import { packOf, packsOf } from '../lib/packs';
 	import { KINDS, viewsOf } from '../lib/explore-views';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
@@ -98,7 +98,7 @@
 			value: l.id,
 			label: l.label,
 			keywords: `${l.id} ${shortLabel(l)} ${packOf(l)}`,
-			...(offline.isPackCached(packOf(l)) ? { detail: 'offline' } : {}),
+			...(offline.arePacksCached(packsOf(l)) ? { detail: 'offline' } : {}),
 		})),
 	);
 	/** The language's compiler output views (explore-views.ts), none for most. */
@@ -108,7 +108,7 @@
 	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */
 	const hasBuild = $derived(isCFamily(workspace.language) || workspace.optimization !== null);
 	const summary = $derived(buildSummary(workspace));
-	const cached = $derived(offline.isPackCached(packOf(language)));
+	const cached = $derived(offline.arePacksCached(packsOf(language)));
 	const themeLabel = $derived(`Switch to ${theme.current === 'dark' ? 'light' : 'dark'} theme`);
 	/** The server's full name and version, for the status bar's title; its short form is shown. */
 	const serverFull = $derived(workspace.clientState.kind === 'running' ? workspace.clientState.server : '');

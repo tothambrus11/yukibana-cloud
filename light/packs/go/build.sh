@@ -109,8 +109,10 @@ rm -f "$OUT"/std/*.tsv "$OUT"/std/*.list "$OUT"/std/*.all
 [ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && npm ci --no-audit --no-fund)
 size() { stat -c %s "$OUT/$1"; }
 SIZES="{\"gotool.wasm\":$(size gotool.wasm),\"compile.wasm\":$(size compile.wasm),\"link.wasm\":$(size link.wasm),\"std/index.json\":$(size std/index.json)}"
+# NODE_PATH: code bundled from ../kit (README.md there) imports its packages
+# by name, and resolves them from this pack's node_modules, which declares them.
 for worker in server runner linux-worker; do
-    "$HERE/node_modules/.bin/esbuild" "$HERE/src/$worker.js" --bundle --format=esm --minify --target=es2022 --log-level=warning \
+    NODE_PATH="$HERE/node_modules" "$HERE/node_modules/.bin/esbuild" "$HERE/src/$worker.js" --bundle --format=esm --minify --target=es2022 --log-level=warning \
         --define:PACK_SIZES="$SIZES" --outfile="$OUT/$worker.js"
 done
 

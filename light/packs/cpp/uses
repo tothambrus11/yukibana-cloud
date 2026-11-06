@@ -1,0 +1,4 @@
+# The packs this pack's tests run on, assembled beside it by light-packs.yml's
+# assemble job (and by hand with their build.sh): a program built for a Linux
+# target runs on the Linux pack's emulator (packs/linux/README.md).
+linux

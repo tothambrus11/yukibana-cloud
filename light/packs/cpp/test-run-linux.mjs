@@ -4,16 +4,18 @@
 // one { type: 'run', files, entry, stdin, options } message, stdin through the
 // SharedArrayBuffer protocol. The project's compile_flags.txt carries the target
 // (--target=<triple>, src/targets.json); runner.js compiles with cc-cross.wasm and
-// runs the ELF with vm.js (QEMU-Wasm).
+// runs the ELF with the Linux pack's vm.js (QEMU-Wasm), assembled beside this pack
+// (app/static/packs/linux; ../linux/build.sh, or this pack's `uses` in CI).
 //
-//   node test-run-linux.mjs [arch...]   (after build.sh: runner.js, cc-cross, targets/, vm/)
+//   node test-run-linux.mjs [arch...]   (after build.sh: runner.js, cc-cross, targets/; and ../linux/build.sh)
 //
 // Skips, saying why, until the compiler's half (cc-cross.wasm, targets/) is built.
 // Per architecture: the app's sample project, a C++ cin sum, std::thread x 4 on 4
 // vCPUs, an uncaught exception (134 with libc++abi's message), a null dereference
 // (139), an endless loop stopped by terminating the worker, the user-mode variants
 // of hello and threads, and the URLs each use case fetches (plan §2: only this
-// arch's files; user/ only in user mode; strace.cpio only with strace).
+// arch's files; the Linux pack's user/ only in user mode; strace.cpio only with
+// strace).
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import fs from 'node:fs';
@@ -26,14 +28,17 @@ import { PROPERTIES } from './tests/fixtures/properties.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STATIC = path.resolve(HERE, '../../app/static');
 const OUT = path.join(STATIC, 'packs/cpp');
+const LINUX_PACK = path.join(STATIC, 'packs/linux');
 const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
 const TARGETS = JSON.parse(fs.readFileSync(path.join(HERE, 'src/targets.json'), 'utf8')).filter((t) => t.runtime === 'linux');
 const asked = process.argv.slice(2);
 const LINUX = TARGETS.filter((t) => !asked.length || asked.includes(t.arch));
 const ARCHES = TARGETS.map((t) => t.arch);
 
-const missing = ['runner.js', 'cc-cross.wasm', 'vm.js', ...LINUX.flatMap((t) => [`targets/${t.arch}/lib.tar`, `vm/${t.arch}/kernel`])]
-    .filter((f) => !fs.existsSync(path.join(OUT, f)));
+const missing = [
+    ...['runner.js', 'cc-cross.wasm', ...LINUX.map((t) => `targets/${t.arch}/lib.tar`)].filter((f) => !fs.existsSync(path.join(OUT, f))),
+    ...['vm.js', ...LINUX.map((t) => `vm/${t.arch}/kernel`)].filter((f) => !fs.existsSync(path.join(LINUX_PACK, f))).map((f) => `../linux/${f}`),
+];
 // runner.js, or the runner-linux.js it imports for a Linux target, loads vm.js.
 const runnerSource = ['runner.js', 'runner-linux.js'].map((f) => path.join(OUT, f)).filter((f) => fs.existsSync(f)).map((f) => fs.readFileSync(f, 'utf8')).join('\n');
 const skip = missing.length ? `not built yet: ${missing.join(', ')}` : !runnerSource.includes('vm.js') ? 'runner.js does not run Linux targets yet' : false;
@@ -209,12 +214,13 @@ const run = async (files, opts = {}) => {
     warm ??= await newPage(false);
     return warm.evaluate(([f, o]) => window.runProject(f, o), [files, opts]);
 };
-/** Runs in a cold cache and returns the result with the /packs/cpp/ paths it fetched. */
+/** Runs in a cold cache and returns the result with the paths it fetched: under /packs/cpp/, and the Linux pack's as linux/<path>. */
 const runCold = async (files, opts = {}) => {
     const page = await newPage(true);
     requests = [];
     const r = await page.evaluate(([f, o]) => window.runProject(f, o), [files, opts]);
-    r.fetched = [...new Set(requests.filter((u) => u.startsWith('/packs/cpp/')).map((u) => u.slice('/packs/cpp/'.length)))].sort();
+    const local = (u) => (u.startsWith('/packs/cpp/') ? u.slice('/packs/cpp/'.length) : u.startsWith('/packs/linux/') ? u.slice('/packs/'.length) : null);
+    r.fetched = [...new Set(requests.map(local).filter((u) => u !== null))].sort();
     await page.context().close();
     return r;
 };
@@ -227,10 +233,10 @@ function checkFetched(fetched, arch, { user = false, strace = false } = {}) {
             assert.ok(!f.includes(`/${other}/`), `${f}: another architecture's file`);
         assert.ok(!/^(cc\.(js|wasm)|wasi-sysroot|gtest|catch2|doctest|explorer|demangle)/.test(f), `${f}: not needed to run on Linux`);
     }
-    assert.equal(fetched.some((f) => f.startsWith('user/')), user, `user/ fetched only in user mode: ${fetched}`);
-    assert.equal(fetched.some((f) => f.startsWith('vm/') && f !== `vm/${arch}/strace.cpio`), !user, `vm/ fetched only in system mode: ${fetched}`);
-    assert.equal(fetched.includes(`vm/${arch}/strace.cpio`), strace, `strace.cpio only with strace: ${fetched}`);
-    for (const f of ['runner.js', 'cc-cross.js', 'cc-cross.wasm', 'vm.js', `targets/${arch}/lib.tar`])
+    assert.equal(fetched.some((f) => f.startsWith('linux/user/')), user, `user/ fetched only in user mode: ${fetched}`);
+    assert.equal(fetched.some((f) => f.startsWith('linux/vm/') && f !== `linux/vm/${arch}/strace.cpio`), !user, `vm/ fetched only in system mode: ${fetched}`);
+    assert.equal(fetched.includes(`linux/vm/${arch}/strace.cpio`), strace, `strace.cpio only with strace: ${fetched}`);
+    for (const f of ['runner.js', 'cc-cross.js', 'cc-cross.wasm', 'linux/vm.js', `targets/${arch}/lib.tar`])
         assert.ok(fetched.includes(f), `${f} fetched: ${fetched}`);
 }
 
@@ -318,7 +324,7 @@ for (const t of LINUX) {
         assert.equal(r.stderr, `Catch2 runs on the WebAssembly target only, for now: on ${t.label} the tests can use GoogleTest (and RapidCheck).\n`);
     });
 
-    const userBuilt = fs.existsSync(path.join(OUT, `user/${arch}/qemu-${arch}.wasm`));
+    const userBuilt = fs.existsSync(path.join(LINUX_PACK, `user/${arch}/qemu-${arch}.wasm`));
     test(`${arch} user mode: hello and threads (one CPU), fetching user/ and no VM`, { skip: skip || (!userBuilt && 'user mode not staged') }, async () => {
         const r = await runCold(withTarget(HELLO, triple), { options: { emulation: 'user', cpus: 1, strace: false } });
         assert.equal(r.code, 0, why(r));

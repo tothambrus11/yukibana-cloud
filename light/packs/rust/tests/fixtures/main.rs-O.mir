@@ -1,19 +1,12 @@
 // WARNING: This output format is intended for human consumers only
 // and is subject to change without notice. Knock yourself out.
+// HINT: See also -Z dump-mir for MIR at specific points during compilation.
 fn square(_1: i32) -> i32 {
     debug x => _1;                       // in scope 0 at src/main.rs:3:11: 3:12
     let mut _0: i32;                     // return place in scope 0 at src/main.rs:3:22: 3:25
-    let mut _2: i32;                     // in scope 0 at src/main.rs:4:5: 4:6
-    let mut _3: i32;                     // in scope 0 at src/main.rs:4:9: 4:10
 
     bb0: {
-        StorageLive(_2);                 // scope 0 at src/main.rs:4:5: 4:6
-        _2 = _1;                         // scope 0 at src/main.rs:4:5: 4:6
-        StorageLive(_3);                 // scope 0 at src/main.rs:4:9: 4:10
-        _3 = _1;                         // scope 0 at src/main.rs:4:9: 4:10
-        _0 = Mul(move _2, move _3);      // scope 0 at src/main.rs:4:5: 4:10
-        StorageDead(_3);                 // scope 0 at src/main.rs:4:9: 4:10
-        StorageDead(_2);                 // scope 0 at src/main.rs:4:9: 4:10
+        _0 = Mul(copy _1, copy _1);      // scope 0 at src/main.rs:4:5: 4:10
         return;                          // scope 0 at src/main.rs:5:2: 5:2
     }
 }
@@ -24,40 +17,160 @@ fn main() -> () {
     let mut _2: std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>; // in scope 0 at src/main.rs:8:23: 8:43
     let mut _3: std::ops::RangeInclusive<i32>; // in scope 0 at src/main.rs:8:23: 8:31
     let mut _5: std::slice::Iter<'_, i32>; // in scope 0 at src/main.rs:9:22: 9:30
-    let mut _6: &[i32];                  // in scope 0 at src/main.rs:9:22: 9:23
-    let _7: &[i32];                      // in scope 0 at src/main.rs:9:22: 9:30
-    let mut _8: &std::vec::Vec<i32>;     // in scope 0 at src/main.rs:9:22: 9:23
-    let _9: ();                          // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:142:23: 144:6
-    let _10: ();                         // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:62
-    let mut _11: std::fmt::Arguments<'_>; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let mut _12: &[&str];                // in scope 0 at src/main.rs:10:14: 10:26
-    let mut _13: &[&str; 3];             // in scope 0 at src/main.rs:10:14: 10:26
-    let _14: &[&str; 3];                 // in scope 0 at src/main.rs:10:14: 10:26
-    let _15: [&str; 3];                  // in scope 0 at src/main.rs:10:14: 10:26
-    let mut _16: &[core::fmt::rt::Argument<'_>]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let mut _17: &[core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let _18: &[core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let _19: [core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let mut _20: (&f64, &i32);           // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let mut _21: &f64;                   // in scope 0 at src/main.rs:10:28: 10:58
-    let _22: f64;                        // in scope 0 at src/main.rs:10:28: 10:58
-    let mut _23: shapes::Point;          // in scope 0 at src/main.rs:10:33: 10:57
-    let mut _24: &i32;                   // in scope 0 at src/main.rs:10:16: 10:21
-    let mut _26: core::fmt::rt::Argument<'_>; // in scope 0 at src/main.rs:10:15: 10:22
-    let mut _27: &i32;                   // in scope 0 at src/main.rs:10:15: 10:22
-    let mut _28: core::fmt::rt::Argument<'_>; // in scope 0 at src/main.rs:10:23: 10:25
-    let mut _29: &f64;                   // in scope 0 at src/main.rs:10:28: 10:58
-    let mut _31: &i32;                   // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-    let mut _32: &f64;                   // in scope 0 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+    let _6: ();                          // in scope 0 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:9: 146:62
+    let mut _7: std::fmt::Arguments<'_>; // in scope 0 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+    let mut _8: &f64;                    // in scope 0 at src/main.rs:10:28: 10:58
+    let _9: f64;                         // in scope 0 at src/main.rs:10:28: 10:58
+    let mut _10: &i32;                   // in scope 0 at src/main.rs:10:16: 10:21
+    let mut _12: core::fmt::rt::Argument<'_>; // in scope 0 at src/main.rs:10:15: 10:22
+    let mut _13: core::fmt::rt::Argument<'_>; // in scope 0 at src/main.rs:10:23: 10:25
+    let _14: &[core::fmt::rt::Argument<'_>; 2]; // in scope 0 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
     scope 1 {
         debug v => _1;                   // in scope 1 at src/main.rs:8:9: 8:10
         let _4: i32;                     // in scope 1 at src/main.rs:9:9: 9:14
         scope 2 {
             debug total => _4;           // in scope 2 at src/main.rs:9:9: 9:14
-            let _25: (&f64, &i32);       // in scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-            let mut _30: &[&str; 3];     // in scope 2 at src/main.rs:10:14: 10:26
             scope 3 {
-                debug args => _25;       // in scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
+                debug ((args: (&f64, &i32)).0: &f64) => _8; // in scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+                debug ((args: (&f64, &i32)).1: &i32) => _10; // in scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+                let _11: [core::fmt::rt::Argument<'_>; 2]; // in scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+                scope 4 {
+                    debug args => _11;   // in scope 4 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+                    scope 59 (inlined Arguments::<'_>::new::<7, 2>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+                        let mut _37: std::ptr::NonNull<u8>; // in scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:40: 734:64
+                        let mut _38: std::ptr::NonNull<core::fmt::rt::Argument<'_>>; // in scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:72: 734:92
+                    }
+                }
+                scope 49 (inlined core::fmt::rt::Argument::<'_>::new_display::<i32>) { // at src/main.rs:10:15: 10:22
+                    let mut _27: core::fmt::rt::ArgumentType<'_>; // in scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:47:17: 82:14
+                    let mut _28: std::ptr::NonNull<()>; // in scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:58
+                    let mut _29: for<'a, 'b> unsafe fn(std::ptr::NonNull<()>, &'a mut std::fmt::Formatter<'b>) -> std::result::Result<(), std::fmt::Error>; // in scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:69:28: 73:18
+                    let _30: for<'a, 'b, 'c> fn(&'a i32, &'b mut std::fmt::Formatter<'c>) -> std::result::Result<(), std::fmt::Error>; // in scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:70:25: 70:26
+                    scope 50 {
+                    }
+                    scope 51 (inlined NonNull::<i32>::from_ref) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:51
+                        let mut _31: *const i32; // in scope 51 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:41
+                    }
+                    scope 52 (inlined NonNull::<i32>::cast::<()>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:52: 48:58
+                        scope 53 (inlined NonNull::<i32>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:33: 501:41
+                        }
+                    }
+                }
+                scope 54 (inlined core::fmt::rt::Argument::<'_>::new_display::<f64>) { // at src/main.rs:10:23: 10:25
+                    let mut _32: core::fmt::rt::ArgumentType<'_>; // in scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:47:17: 82:14
+                    let mut _33: std::ptr::NonNull<()>; // in scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:58
+                    let mut _34: for<'a, 'b> unsafe fn(std::ptr::NonNull<()>, &'a mut std::fmt::Formatter<'b>) -> std::result::Result<(), std::fmt::Error>; // in scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:69:28: 73:18
+                    let _35: for<'a, 'b, 'c> fn(&'a f64, &'b mut std::fmt::Formatter<'c>) -> std::result::Result<(), std::fmt::Error>; // in scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:70:25: 70:26
+                    scope 55 {
+                    }
+                    scope 56 (inlined NonNull::<f64>::from_ref) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:51
+                        let mut _36: *const f64; // in scope 56 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:41
+                    }
+                    scope 57 (inlined NonNull::<f64>::cast::<()>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:52: 48:58
+                        scope 58 (inlined NonNull::<f64>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:33: 501:41
+                        }
+                    }
+                }
+            }
+        }
+        scope 24 (inlined <Vec<i32> as Deref>::deref) { // at src/main.rs:9:22: 9:30
+            scope 25 (inlined Vec::<i32>::as_slice) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:3797:14: 3797:24
+                let _15: *const [i32];   // in scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:15: 1873:95
+                let mut _16: *const i32; // in scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:71: 1873:84
+                let mut _17: usize;      // in scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:86: 1873:94
+                scope 26 (inlined Vec::<i32>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:76: 1873:84
+                    scope 27 (inlined alloc::raw_vec::RawVec::<i32>::ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1977:18: 1977:23
+                        scope 28 (inlined alloc::raw_vec::RawVecInner::ptr::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:296:20: 296:25
+                            scope 29 (inlined alloc::raw_vec::RawVecInner::non_null::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:610:14: 610:29
+                                let mut _18: std::ptr::NonNull<u8>; // in scope 29 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:615:9: 615:17
+                                scope 30 (inlined std::ptr::Unique::<u8>::cast::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:615:18: 615:24
+                                    scope 31 (inlined NonNull::<u8>::cast::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/unique.rs:153:40: 153:46
+                                        scope 32 (inlined NonNull::<u8>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:33: 501:41
+                                        }
+                                    }
+                                }
+                                scope 33 (inlined std::ptr::Unique::<i32>::as_non_null_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:615:25: 615:42
+                                }
+                            }
+                            scope 34 (inlined NonNull::<i32>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:610:30: 610:38
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        scope 35 (inlined core::slice::<impl [i32]>::iter) { // at src/main.rs:9:24: 9:30
+            scope 36 (inlined std::slice::Iter::<'_, i32>::new) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/mod.rs:1044:9: 1044:24
+                let mut _20: std::ptr::NonNull<[i32]>; // in scope 36 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:31: 96:55
+                let mut _22: *mut i32;   // in scope 36 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:63: 100:88
+                let mut _23: *mut i32;   // in scope 36 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:65: 100:77
+                scope 37 {
+                    let _19: std::ptr::NonNull<i32>; // in scope 37 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:13: 96:16
+                    scope 38 {
+                        let _21: *const i32; // in scope 38 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:99:17: 99:27
+                        scope 39 {
+                        }
+                        scope 43 (inlined std::ptr::without_provenance::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:32: 100:55
+                            scope 44 (inlined without_provenance_mut::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/mod.rs:900:5: 900:33
+                            }
+                        }
+                        scope 45 (inlined NonNull::<i32>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:69: 100:77
+                        }
+                        scope 46 (inlined #[track_caller] std::ptr::mut_ptr::<impl *mut i32>::add) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:78: 100:86
+                        }
+                    }
+                    scope 40 (inlined NonNull::<[i32]>::from_ref) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:31: 96:55
+                        let mut _24: *const [i32]; // in scope 40 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:41
+                    }
+                    scope 41 (inlined NonNull::<[i32]>::cast::<i32>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:56: 96:62
+                        let mut _25: *mut i32; // in scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:28: 501:51
+                        let mut _26: *mut [i32]; // in scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:28: 501:41
+                        scope 42 (inlined NonNull::<[i32]>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:33: 501:41
+                        }
+                    }
+                }
+            }
+        }
+        scope 47 (inlined <std::slice::Iter<'_, i32> as Iterator>::sum::<i32>) { // at src/main.rs:9:31: 9:36
+            scope 48 (inlined <i32 as Sum<&i32>>::sum::<std::slice::Iter<'_, i32>>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:3674:9: 3674:23
+            }
+        }
+    }
+    scope 5 (inlined std::ops::RangeInclusive::<i32>::new) { // at src/main.rs:8:23: 8:31
+    }
+    scope 6 (inlined <std::ops::RangeInclusive<i32> as Iterator>::map::<i32, fn(i32) -> i32 {square}>) { // at src/main.rs:8:32: 8:43
+        scope 7 (inlined Map::<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>::new) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:836:9: 836:26
+        }
+    }
+    scope 8 (inlined <Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as Iterator>::collect::<Vec<i32>>) { // at src/main.rs:8:44: 8:53
+        scope 9 {
+            scope 10 {
+                scope 11 {
+                    scope 20 (inlined Arguments::<'_>::new::<23, 1>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/panic.rs:62:38: 62:72
+                    }
+                }
+                scope 15 (inlined core::fmt::rt::Argument::<'_>::new_debug::<(usize, Option<usize>)>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2087:84: 2087:92
+                    scope 16 {
+                    }
+                    scope 17 (inlined NonNull::<(usize, Option<usize>)>::from_ref) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:51
+                    }
+                    scope 18 (inlined NonNull::<(usize, Option<usize>)>::cast::<()>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:52: 48:58
+                        scope 19 (inlined NonNull::<(usize, Option<usize>)>::as_ptr) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:33: 501:41
+                        }
+                    }
+                }
+            }
+            scope 12 (inlined Option::<usize>::is_none_or::<{closure@<Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as Iterator>::collect<Vec<i32>>::{closure#0}}>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2087:28: 2087:61
+                scope 13 {
+                    scope 14 (inlined <Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as Iterator>::collect::<Vec<i32>>::{closure#0}) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/option.rs:711:24: 711:28
+                    }
+                }
+            }
+        }
+        scope 21 (inlined <Vec<i32> as FromIterator<i32>>::from_iter::<Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>>) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/iterator.rs:2090:9: 2090:38
+            scope 22 (inlined <Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as IntoIterator>::into_iter) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:3941:64: 3941:75
+            }
+            scope 23 (inlined <Vec<i32> as vec::spec_from_iter::SpecFromIter<i32, Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>>>::from_iter) { // at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:3941:9: 3941:76
             }
         }
     }
@@ -66,211 +179,182 @@ fn main() -> () {
         StorageLive(_1);                 // scope 0 at src/main.rs:8:9: 8:10
         StorageLive(_2);                 // scope 0 at src/main.rs:8:23: 8:43
         StorageLive(_3);                 // scope 0 at src/main.rs:8:23: 8:31
-        _3 = std::ops::RangeInclusive::<i32>::new(const 1_i32, const 10_i32) -> [return: bb1, unwind continue]; // scope 0 at src/main.rs:8:23: 8:31
+        _3 = std::ops::RangeInclusive::<i32> { start: const 1_i32, end: const 10_i32, exhausted: const false }; // scope 5 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ops/range.rs:391:9: 391:46
+                                         // adt
+                                         // + user_ty: UserType(0)
+        _2 = Map::<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> { iter: copy _3, f: square }; // scope 7 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/adapters/map.rs:69:9: 69:24
                                          // mir::ConstOperand
-                                         // + span: src/main.rs:8:24: 8:30
-                                         // + const_: Const { ty: fn(i32, i32) -> std::ops::RangeInclusive<i32> {std::ops::RangeInclusive::<i32>::new}, val: Value(std::ops::RangeInclusive::<i32>::new) }
+                                         // + span: no-location
+                                         // + const_: Const { ty: fn(i32) -> i32 {square}, val: Value(square) }
+        StorageDead(_3);                 // scope 0 at src/main.rs:8:42: 8:43
+        _1 = <Vec<i32> as vec::spec_from_iter_nested::SpecFromIterNested<i32, Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>>>::from_iter(move _2) -> [return: bb6, unwind continue]; // scope 23 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/spec_from_iter.rs:33:9: 33:48
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: fn(Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>) -> Vec<i32> {<Vec<i32> as vec::spec_from_iter_nested::SpecFromIterNested<i32, Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>>>::from_iter}, val: Value(<Vec<i32> as vec::spec_from_iter_nested::SpecFromIterNested<i32, Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>>>::from_iter) }
     }
 
     bb1: {
-        _2 = <std::ops::RangeInclusive<i32> as std::iter::Iterator>::map::<i32, fn(i32) -> i32 {square}>(move _3, square) -> [return: bb2, unwind continue]; // scope 0 at src/main.rs:8:23: 8:43
+        _8 = &_9;                        // scope 2 at src/main.rs:10:28: 10:58
+        _10 = &_4;                       // scope 2 at src/main.rs:10:16: 10:21
+        StorageLive(_11);                // scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+        StorageLive(_12);                // scope 3 at src/main.rs:10:15: 10:22
+        StorageLive(_31);                // scope 3 at src/main.rs:10:15: 10:22
+        StorageLive(_27);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:47:17: 82:14
+        StorageLive(_28);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:58
+        _31 = &raw const (*_10);         // scope 51 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:29
+        _28 = copy _31 as std::ptr::NonNull<()> (Transmute); // scope 52 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:18: 501:52
+        StorageLive(_29);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:69:28: 73:18
+        StorageLive(_30);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:70:25: 70:26
+        _30 = <i32 as std::fmt::Display>::fmt as for<'a, 'b, 'c> fn(&'a i32, &'b mut std::fmt::Formatter<'c>) -> std::result::Result<(), std::fmt::Error> (PointerCoercion(ReifyFnPointer(Safe), Implicit)); // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:90:29: 90:48
                                          // mir::ConstOperand
-                                         // + span: src/main.rs:8:32: 8:35
-                                         // + const_: Const { ty: fn(std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}) -> std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> {<std::ops::RangeInclusive<i32> as std::iter::Iterator>::map::<i32, fn(i32) -> i32 {square}>}, val: Value(<std::ops::RangeInclusive<i32> as std::iter::Iterator>::map::<i32, fn(i32) -> i32 {square}>) }
+                                         // + span: no-location
+                                         // + const_: Const { ty: for<'a, 'b, 'c> fn(&'a i32, &'b mut Formatter<'c>) -> Result<(), std::fmt::Error> {<i32 as std::fmt::Display>::fmt}, val: Value(<i32 as std::fmt::Display>::fmt) }
+        _29 = copy _30 as for<'a, 'b> unsafe fn(std::ptr::NonNull<()>, &'a mut std::fmt::Formatter<'b>) -> std::result::Result<(), std::fmt::Error> (Transmute); // scope 50 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:72:30: 72:53
+        StorageDead(_30);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:73:17: 73:18
+        _27 = core::fmt::rt::ArgumentType::<'_>::Placeholder { value: move _28, formatter: copy _29, _lifetime: const PhantomData::<&()> }; // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:47:17: 82:14
                                          // mir::ConstOperand
-                                         // + span: src/main.rs:8:36: 8:42
-                                         // + const_: Const { ty: fn(i32) -> i32 {square}, val: Value(square) }
+                                         // + span: no-location
+                                         // + const_: Const { ty: PhantomData<&()>, val: Value(PhantomData::<&()>) }
+        StorageDead(_29);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:82:13: 82:14
+        StorageDead(_28);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:82:13: 82:14
+        _12 = core::fmt::rt::Argument::<'_> { ty: move _27 }; // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:44:9: 83:10
+        StorageDead(_27);                // scope 49 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:83:9: 83:10
+        StorageDead(_31);                // scope 3 at src/main.rs:10:15: 10:22
+        StorageLive(_13);                // scope 3 at src/main.rs:10:23: 10:25
+        StorageLive(_36);                // scope 3 at src/main.rs:10:23: 10:25
+        StorageLive(_32);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:47:17: 82:14
+        StorageLive(_33);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:48:24: 48:58
+        _36 = &raw const (*_8);          // scope 56 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:29
+        _33 = copy _36 as std::ptr::NonNull<()> (Transmute); // scope 57 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:18: 501:52
+        StorageLive(_34);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:69:28: 73:18
+        StorageLive(_35);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:70:25: 70:26
+        _35 = <f64 as std::fmt::Display>::fmt as for<'a, 'b, 'c> fn(&'a f64, &'b mut std::fmt::Formatter<'c>) -> std::result::Result<(), std::fmt::Error> (PointerCoercion(ReifyFnPointer(Safe), Implicit)); // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:90:29: 90:48
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: for<'a, 'b, 'c> fn(&'a f64, &'b mut Formatter<'c>) -> Result<(), std::fmt::Error> {<f64 as std::fmt::Display>::fmt}, val: Value(<f64 as std::fmt::Display>::fmt) }
+        _34 = copy _35 as for<'a, 'b> unsafe fn(std::ptr::NonNull<()>, &'a mut std::fmt::Formatter<'b>) -> std::result::Result<(), std::fmt::Error> (Transmute); // scope 55 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:72:30: 72:53
+        StorageDead(_35);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:73:17: 73:18
+        _32 = core::fmt::rt::ArgumentType::<'_>::Placeholder { value: move _33, formatter: copy _34, _lifetime: const PhantomData::<&()> }; // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:47:17: 82:14
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: PhantomData<&()>, val: Value(PhantomData::<&()>) }
+        StorageDead(_34);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:82:13: 82:14
+        StorageDead(_33);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:82:13: 82:14
+        _13 = core::fmt::rt::Argument::<'_> { ty: move _32 }; // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:44:9: 83:10
+        StorageDead(_32);                // scope 54 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/rt.rs:83:9: 83:10
+        StorageDead(_36);                // scope 3 at src/main.rs:10:23: 10:25
+        _11 = [move _12, move _13];      // scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+        StorageDead(_13);                // scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:60: 146:61
+        StorageDead(_12);                // scope 3 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:60: 146:61
+        StorageLive(_14);                // scope 4 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+        _14 = &_11;                      // scope 4 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+        StorageLive(_37);                // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:40: 734:64
+        _37 = const b"\xc0\x01 \xc0\x01\n\x00" as std::ptr::NonNull<u8> (Transmute); // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:40: 734:64
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: &[u8; 7], val: Value(b"\xc0\x01 \xc0\x01\n\x00") }
+        StorageLive(_38);                // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:72: 734:92
+        _38 = copy _14 as std::ptr::NonNull<core::fmt::rt::Argument<'_>> (Transmute); // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:72: 734:92
+        _7 = Arguments::<'_> { template: move _37, args: move _38 }; // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:18: 734:94
+        StorageDead(_38);                // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:93: 734:94
+        StorageDead(_37);                // scope 59 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/fmt/mod.rs:734:93: 734:94
+        StorageDead(_14);                // scope 4 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:60: 146:61
+        _6 = std::io::_print(move _7) -> [return: bb2, unwind: bb4]; // scope 2 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:9: 146:62
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: for<'a> fn(Arguments<'a>) {std::io::_print}, val: Value(std::io::_print) }
     }
 
     bb2: {
-        StorageDead(_3);                 // scope 0 at src/main.rs:8:42: 8:43
-        _1 = <std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as std::iter::Iterator>::collect::<std::vec::Vec<i32>>(move _2) -> [return: bb3, unwind continue]; // scope 0 at src/main.rs:8:23: 8:53
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:8:44: 8:51
-                                         // + const_: Const { ty: fn(std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}>) -> std::vec::Vec<i32> {<std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as std::iter::Iterator>::collect::<std::vec::Vec<i32>>}, val: Value(<std::iter::Map<std::ops::RangeInclusive<i32>, fn(i32) -> i32 {square}> as std::iter::Iterator>::collect::<std::vec::Vec<i32>>) }
+        StorageDead(_7);                 // scope 2 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:61: 146:62
+        StorageDead(_11);                // scope 2 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:62: 146:63
+        StorageDead(_9);                 // scope 2 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:62: 146:63
+        StorageDead(_4);                 // scope 1 at src/main.rs:11:1: 11:2
+        drop(_1) -> [return: bb3, unwind continue]; // scope 0 at src/main.rs:11:1: 11:2
     }
 
     bb3: {
-        Retag(_1);                       // scope 0 at src/main.rs:8:23: 8:53
-        StorageDead(_2);                 // scope 0 at src/main.rs:8:52: 8:53
-        StorageLive(_4);                 // scope 1 at src/main.rs:9:9: 9:14
-        StorageLive(_5);                 // scope 1 at src/main.rs:9:22: 9:30
-        StorageLive(_6);                 // scope 1 at src/main.rs:9:22: 9:23
-        StorageLive(_7);                 // scope 1 at src/main.rs:9:22: 9:30
-        StorageLive(_8);                 // scope 1 at src/main.rs:9:22: 9:23
-        _8 = &_1;                        // scope 1 at src/main.rs:9:22: 9:23
-        _7 = <std::vec::Vec<i32> as std::ops::Deref>::deref(move _8) -> [return: bb4, unwind: bb13]; // scope 1 at src/main.rs:9:22: 9:30
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:9:22: 9:30
-                                         // + const_: Const { ty: for<'a> fn(&'a std::vec::Vec<i32>) -> &'a <std::vec::Vec<i32> as std::ops::Deref>::Target {<std::vec::Vec<i32> as std::ops::Deref>::deref}, val: Value(<std::vec::Vec<i32> as std::ops::Deref>::deref) }
-    }
-
-    bb4: {
-        Retag(_7);                       // scope 1 at src/main.rs:9:22: 9:30
-        _6 = &(*_7);                     // scope 1 at src/main.rs:9:22: 9:23
-        StorageDead(_8);                 // scope 1 at src/main.rs:9:22: 9:23
-        _5 = core::slice::<impl [i32]>::iter(move _6) -> [return: bb5, unwind: bb13]; // scope 1 at src/main.rs:9:22: 9:30
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:9:24: 9:28
-                                         // + const_: Const { ty: for<'a> fn(&'a [i32]) -> std::slice::Iter<'a, i32> {core::slice::<impl [i32]>::iter}, val: Value(core::slice::<impl [i32]>::iter) }
-    }
-
-    bb5: {
-        StorageDead(_6);                 // scope 1 at src/main.rs:9:29: 9:30
-        _4 = <std::slice::Iter<'_, i32> as std::iter::Iterator>::sum::<i32>(move _5) -> [return: bb6, unwind: bb13]; // scope 1 at src/main.rs:9:22: 9:36
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:9:31: 9:34
-                                         // + const_: Const { ty: fn(std::slice::Iter<'_, i32>) -> i32 {<std::slice::Iter<'_, i32> as std::iter::Iterator>::sum::<i32>}, val: Value(<std::slice::Iter<'_, i32> as std::iter::Iterator>::sum::<i32>) }
-    }
-
-    bb6: {
-        StorageDead(_5);                 // scope 1 at src/main.rs:9:35: 9:36
-        StorageDead(_7);                 // scope 1 at src/main.rs:9:36: 9:37
-        StorageLive(_9);                 // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:142:23: 144:6
-        StorageLive(_10);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:62
-        StorageLive(_11);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_12);                // scope 2 at src/main.rs:10:14: 10:26
-        StorageLive(_13);                // scope 2 at src/main.rs:10:14: 10:26
-        StorageLive(_14);                // scope 2 at src/main.rs:10:14: 10:26
-        _30 = const _;                   // scope 2 at src/main.rs:10:14: 10:26
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:14: 10:26
-                                         // + const_: Const { ty: &[&str; 3], val: Unevaluated(main, [], Some(promoted[0])) }
-        Retag(_30);                      // scope 2 at src/main.rs:10:14: 10:26
-        _14 = &(*_30);                   // scope 2 at src/main.rs:10:14: 10:26
-        _13 = &(*_14);                   // scope 2 at src/main.rs:10:14: 10:26
-        _12 = move _13 as &[&str] (PointerCoercion(Unsize)); // scope 2 at src/main.rs:10:14: 10:26
-        Retag(_12);                      // scope 2 at src/main.rs:10:14: 10:26
-        StorageDead(_13);                // scope 2 at src/main.rs:10:25: 10:26
-        StorageLive(_16);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_17);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_18);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_19);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_20);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_21);                // scope 2 at src/main.rs:10:28: 10:58
-        StorageLive(_22);                // scope 2 at src/main.rs:10:28: 10:58
-        StorageLive(_23);                // scope 2 at src/main.rs:10:33: 10:57
-        _23 = shapes::Point { x: const 3f64, y: const 4f64 }; // scope 2 at src/main.rs:10:33: 10:57
-        _22 = shapes::norm(move _23) -> [return: bb7, unwind: bb13]; // scope 2 at src/main.rs:10:28: 10:58
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:28: 10:32
-                                         // + const_: Const { ty: fn(shapes::Point) -> f64 {shapes::norm}, val: Value(shapes::norm) }
-    }
-
-    bb7: {
-        StorageDead(_23);                // scope 2 at src/main.rs:10:57: 10:58
-        _21 = &_22;                      // scope 2 at src/main.rs:10:28: 10:58
-        StorageLive(_24);                // scope 2 at src/main.rs:10:16: 10:21
-        _24 = &_4;                       // scope 2 at src/main.rs:10:16: 10:21
-        _20 = (move _21, move _24);      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        Retag(_20);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageDead(_24);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        StorageDead(_21);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        PlaceMention(_20);               // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_25);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        _25 = _20;                       // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        Retag(_25);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageLive(_26);                // scope 3 at src/main.rs:10:15: 10:22
-        StorageLive(_27);                // scope 3 at src/main.rs:10:15: 10:22
-        _31 = deref_copy (_25.1: &i32);  // scope 3 at src/main.rs:10:15: 10:22
-        _27 = &(*_31);                   // scope 3 at src/main.rs:10:15: 10:22
-        _26 = core::fmt::rt::Argument::<'_>::new_display::<i32>(move _27) -> [return: bb8, unwind: bb13]; // scope 3 at src/main.rs:10:15: 10:22
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:15: 10:22
-                                         // + user_ty: UserType(5)
-                                         // + const_: Const { ty: for<'b> fn(&'b i32) -> core::fmt::rt::Argument<'b> {core::fmt::rt::Argument::<'_>::new_display::<i32>}, val: Value(core::fmt::rt::Argument::<'_>::new_display::<i32>) }
-    }
-
-    bb8: {
-        Retag(_26);                      // scope 3 at src/main.rs:10:15: 10:22
-        StorageDead(_27);                // scope 3 at src/main.rs:10:21: 10:22
-        StorageLive(_28);                // scope 3 at src/main.rs:10:23: 10:25
-        StorageLive(_29);                // scope 3 at src/main.rs:10:28: 10:58
-        _32 = deref_copy (_25.0: &f64);  // scope 3 at src/main.rs:10:28: 10:58
-        _29 = &(*_32);                   // scope 3 at src/main.rs:10:28: 10:58
-        _28 = core::fmt::rt::Argument::<'_>::new_display::<f64>(move _29) -> [return: bb9, unwind: bb13]; // scope 3 at src/main.rs:10:23: 10:25
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:23: 10:25
-                                         // + user_ty: UserType(6)
-                                         // + const_: Const { ty: for<'b> fn(&'b f64) -> core::fmt::rt::Argument<'b> {core::fmt::rt::Argument::<'_>::new_display::<f64>}, val: Value(core::fmt::rt::Argument::<'_>::new_display::<f64>) }
-    }
-
-    bb9: {
-        Retag(_28);                      // scope 3 at src/main.rs:10:23: 10:25
-        StorageDead(_29);                // scope 3 at src/main.rs:10:24: 10:25
-        _19 = [move _26, move _28];      // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        Retag(_19);                      // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageDead(_28);                // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        StorageDead(_26);                // scope 3 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        StorageDead(_25);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        _18 = &_19;                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        _17 = &(*_18);                   // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        _16 = move _17 as &[core::fmt::rt::Argument<'_>] (PointerCoercion(Unsize)); // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        Retag(_16);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageDead(_17);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        _11 = std::fmt::Arguments::<'_>::new_v1(move _12, move _16) -> [return: bb10, unwind: bb13]; // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-                                         // mir::ConstOperand
-                                         // + span: /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-                                         // + user_ty: UserType(4)
-                                         // + const_: Const { ty: fn(&[&'static str], &[core::fmt::rt::Argument<'_>]) -> std::fmt::Arguments<'_> {std::fmt::Arguments::<'_>::new_v1}, val: Value(std::fmt::Arguments::<'_>::new_v1) }
-    }
-
-    bb10: {
-        Retag(_11);                      // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:28: 143:61
-        StorageDead(_16);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        StorageDead(_12);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:60: 143:61
-        _10 = std::io::_print(move _11) -> [return: bb11, unwind: bb13]; // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:62
-                                         // mir::ConstOperand
-                                         // + span: /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:9: 143:27
-                                         // + const_: Const { ty: for<'a> fn(std::fmt::Arguments<'a>) {std::io::_print}, val: Value(std::io::_print) }
-    }
-
-    bb11: {
-        StorageDead(_11);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:61: 143:62
-        StorageDead(_22);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
-        StorageDead(_20);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
-        StorageDead(_19);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
-        StorageDead(_18);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
-        StorageDead(_14);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
-        StorageDead(_10);                // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:143:62: 143:63
-        _9 = const ();                   // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:142:23: 144:6
-        StorageDead(_9);                 // scope 2 at /home/lyon/Dev/Rust/miri-wasm-rustc/library/std/src/macros.rs:144:5: 144:6
-        _0 = const ();                   // scope 0 at src/main.rs:7:11: 11:2
-        StorageDead(_4);                 // scope 1 at src/main.rs:11:1: 11:2
-        drop(_1) -> [return: bb12, unwind: bb14]; // scope 0 at src/main.rs:11:1: 11:2
-    }
-
-    bb12: {
         StorageDead(_1);                 // scope 0 at src/main.rs:11:1: 11:2
         return;                          // scope 0 at src/main.rs:11:2: 11:2
     }
 
-    bb13 (cleanup): {
-        drop(_1) -> [return: bb14, unwind terminate(cleanup)]; // scope 0 at src/main.rs:11:1: 11:2
+    bb4 (cleanup): {
+        drop(_1) -> [return: bb5, unwind terminate(cleanup)]; // scope 0 at src/main.rs:11:1: 11:2
     }
 
-    bb14 (cleanup): {
+    bb5 (cleanup): {
         resume;                          // scope 0 at src/main.rs:7:1: 11:2
+    }
+
+    bb6: {
+        StorageDead(_2);                 // scope 0 at src/main.rs:8:52: 8:53
+        StorageLive(_4);                 // scope 1 at src/main.rs:9:9: 9:14
+        StorageLive(_5);                 // scope 1 at src/main.rs:9:22: 9:30
+        StorageLive(_16);                // scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:71: 1873:84
+        StorageLive(_18);                // scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:76: 1873:84
+        _18 = copy ((((_1.0: alloc::raw_vec::RawVec<i32>).0: alloc::raw_vec::RawVecInner).0: std::ptr::Unique<u8>).0: std::ptr::NonNull<u8>); // scope 29 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/raw_vec/mod.rs:615:9: 615:17
+        _16 = copy _18 as *const i32 (Transmute); // scope 26 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1977:9: 1977:23
+        StorageDead(_18);                // scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:76: 1873:84
+        _17 = copy (_1.1: usize);        // scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:86: 1873:94
+        _15 = *const [i32] from (copy _16, copy _17); // scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:15: 1873:95
+        StorageDead(_16);                // scope 25 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/alloc/src/vec/mod.rs:1873:94: 1873:95
+        StorageLive(_21);                // scope 35 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/mod.rs:1044:9: 1044:24
+        StorageLive(_19);                // scope 37 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:13: 96:16
+        StorageLive(_20);                // scope 37 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:31: 96:55
+        StorageLive(_24);                // scope 40 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:41
+        _24 = &raw const (*_15);         // scope 40 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:28: 281:29
+        _20 = copy _24 as std::ptr::NonNull<[i32]> (Transmute); // scope 40 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:18: 281:42
+        StorageDead(_24);                // scope 40 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:281:41: 281:42
+        StorageLive(_25);                // scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:28: 501:51
+        StorageLive(_26);                // scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:28: 501:41
+        _26 = copy _20 as *mut [i32] (Transmute); // scope 42 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:404:18: 404:54
+        _25 = copy _26 as *mut i32 (PtrToPtr); // scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:28: 501:51
+        StorageDead(_26);                // scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:50: 501:51
+        _19 = copy _25 as std::ptr::NonNull<i32> (Transmute); // scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:18: 501:52
+        StorageDead(_25);                // scope 41 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:501:51: 501:52
+        StorageDead(_20);                // scope 37 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:96:61: 96:62
+        StorageLive(_22);                // scope 38 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:63: 100:88
+        StorageLive(_23);                // scope 38 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:65: 100:77
+        _23 = copy _19 as *mut i32 (Transmute); // scope 45 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/non_null.rs:404:18: 404:54
+        _22 = Offset(copy _23, copy _17); // scope 46 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/ptr/mut_ptr.rs:970:18: 970:49
+        StorageDead(_23);                // scope 38 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:85: 100:86
+        _21 = copy _22 as *const i32 (PtrToPtr); // scope 38 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:63: 100:88
+        StorageDead(_22);                // scope 38 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:100:87: 100:88
+        _5 = std::slice::Iter::<'_, i32> { ptr: copy _19, end_or_len: copy _21, _marker: const PhantomData::<&i32> }; // scope 39 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:102:13: 102:59
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: PhantomData<&i32>, val: Value(PhantomData::<&i32>) }
+                                         // adt
+                                         // + user_ty: UserType(4)
+        StorageDead(_19);                // scope 37 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/iter.rs:104:5: 104:6
+        StorageDead(_21);                // scope 35 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/slice/mod.rs:1044:9: 1044:24
+        _4 = <std::slice::Iter<'_, i32> as Iterator>::fold::<i32, {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}>(move _5, const 0_i32, const ZeroSized: {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}) -> [return: bb7, unwind: bb4]; // scope 48 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/core/src/iter/traits/accum.rs:74:17: 78:18
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: fn(std::slice::Iter<'_, i32>, i32, {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}) -> i32 {<std::slice::Iter<'_, i32> as Iterator>::fold::<i32, {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}>}, val: Value(<std::slice::Iter<'_, i32> as Iterator>::fold::<i32, {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}>) }
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}, val: Value(ZeroSized: {closure@<i32 as Sum<&i32>>::sum<std::slice::Iter<'_, i32>>::{closure#0}}) }
+    }
+
+    bb7: {
+        StorageDead(_5);                 // scope 1 at src/main.rs:9:35: 9:36
+        StorageLive(_7);                 // scope 2 at /rustc/48a229ceaefd4985c50990b14116b6d856af0985/library/std/src/macros.rs:146:28: 146:61
+        StorageLive(_9);                 // scope 2 at src/main.rs:10:28: 10:58
+        _9 = norm(const Point {{ x: 3f64, y: 4f64 }}) -> [return: bb1, unwind: bb4]; // scope 2 at src/main.rs:10:28: 10:58
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: fn(Point) -> f64 {norm}, val: Value(norm) }
+                                         // mir::ConstOperand
+                                         // + span: no-location
+                                         // + const_: Const { ty: Point, val: Value(Point {{ x: 3f64, y: 4f64 }}) }
     }
 }
 
-promoted[0] in main: &[&str; 3] = {
-    let mut _0: &[&str; 3];              // return place in scope 0 at src/main.rs:10:14: 10:26
-    let mut _1: [&str; 3];               // in scope 0 at src/main.rs:10:14: 10:26
+alloc9 (size: 16, align: 8) {
+    00 00 00 00 00 00 08 40 00 00 00 00 00 00 10 40 │ .......@.......@
+}
 
-    bb0: {
-        _1 = [const "", const " ", const "\n"]; // scope 0 at src/main.rs:10:14: 10:26
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:14: 10:26
-                                         // + const_: Const { ty: &str, val: Value("") }
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:14: 10:26
-                                         // + const_: Const { ty: &str, val: Value(" ") }
-                                         // mir::ConstOperand
-                                         // + span: src/main.rs:10:14: 10:26
-                                         // + const_: Const { ty: &str, val: Value("\n") }
-        Retag(_1);                       // scope 0 at src/main.rs:10:14: 10:26
-        _0 = &_1;                        // scope 0 at src/main.rs:10:14: 10:26
-        return;                          // scope 0 at src/main.rs:10:14: 10:26
-    }
+alloc1 (size: 7, align: 1) {
+    c0 01 20 c0 01 0a 00                            │ .. ....
 }

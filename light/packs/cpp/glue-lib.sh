@@ -25,8 +25,8 @@ raw_size() {
 
 # sizes_json <dir> <path...>: prints a JSON object of each regular file
 # under the paths (relative to <dir>, globs expanded there, .gz and .br
-# siblings left out) to its raw size, keys sorted: what TARGET_SIZES and
-# VM_SIZES are defined to. Nothing found prints {}.
+# siblings left out) to its raw size, keys sorted: what TOOLCHAIN_SIZES and
+# TARGET_SIZES are defined to. Nothing found prints {}.
 sizes_json() {
   local dir=$1 body
   shift

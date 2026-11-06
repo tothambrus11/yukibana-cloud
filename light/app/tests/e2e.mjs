@@ -285,8 +285,8 @@ async function run(language, c) {
 	if (language === 'swift' && existsSync(join(build, 'packs', 'swift', 'runner.js'))) await swiftMacros(page, check, requests);
 	if (language === 'cpp' && existsSync(join(build, 'packs', 'cpp', 'runner.js'))) await testFrameworks(page, check);
 	if (language === 'cpp') {
-		if (existsSync(join(build, 'packs', 'cpp', 'cc-cross.wasm')) && existsSync(join(build, 'packs', 'cpp', 'vm.js'))) await cppTargets(page, check, requests);
-		else console.log('skip cpp: targets, Linux runs and compiler output views (packs/cpp has no cc-cross.wasm or vm.js)');
+		if (existsSync(join(build, 'packs', 'cpp', 'cc-cross.wasm')) && existsSync(join(build, 'packs', 'linux', 'vm.js'))) await cppTargets(page, check, requests);
+		else console.log('skip cpp: targets, Linux runs and compiler output views (packs/cpp has no cc-cross.wasm, or packs/linux no vm.js)');
 	}
 	// After cppTargets, which checks that nothing before it fetched the views.
 	if (language === 'cpp' && existsSync(join(build, 'packs', 'cpp', 'explorer.js'))) await cppOptimization(page, check);
@@ -389,9 +389,9 @@ async function testFrameworks(page, check) {
 	}
 }
 
-/** The pack files of the C++ pack among `urls`, as paths under packs/cpp/. */
+/** The files of the C++ pack and of the Linux pack it runs Linux targets on among `urls`, as paths under packs/cpp/ and packs/linux/ (vm.js, vm/, user/). */
 function cppPackFiles(urls) {
-	return [...new Set(urls.map((u) => /\/packs\/cpp\/([^?#]*)/.exec(u)?.[1]).filter(Boolean))].sort();
+	return [...new Set(urls.map((u) => /\/packs\/(?:cpp|linux)\/([^?#]*)/.exec(u)?.[1]).filter(Boolean))].sort();
 }
 
 /**
@@ -1495,7 +1495,7 @@ async function downloading() {
 	const dialog = page.locator('dialog.export');
 	await dialog.waitFor({ timeout: 10_000 });
 	const builds = await dialog.locator('input[name=export-build]').count();
-	check(builds === 2 && (await dialog.locator('input[name=export-build][value=cmake]').isChecked()), `the dialog offers CMake and Meson for C++, CMake chosen (${builds} choices)`);
+	check(builds === 3 && (await dialog.locator('input[name=export-build][value=cmake]').isChecked()), `the dialog offers CMake, Meson and Conan for C++, CMake chosen (${builds} choices)`);
 	check(await dialog.locator('input[name=export-ci][value=github]').isChecked(), 'GitHub Actions is the CI chosen at first');
 	const [download] = await Promise.all([page.waitForEvent('download'), dialog.getByRole('button', { name: 'Download .zip' }).click()]);
 	const dir = mkdtempSync(join(tmpdir(), 'yukibana-download-'));

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The C/C++ pack's glue (light/scripts/pack-toolchain.sh assemble runs it,
 # from this directory): the workers, bundled over the units' toolchains,
-# already linked into OUT, in seconds. It compiles nothing; every compiler,
-# library and VM file is a unit's (toolchains/<unit>/), and what it reads
+# already linked into OUT, in seconds. It compiles nothing; every compiler
+# and library file is a unit's (toolchains/<unit>/), and what it reads
 # besides them is what glue.paths names.
 #
 #   server.js       clangd's module Worker (src/server.js), with the sizes of
@@ -13,8 +13,9 @@
 #                   the run and the views' workers, with the size of every
 #                   file they fetch (compilers, libs: CC_WASM_SIZE ...
 #                   TARGET_SIZES)
-#   vm.js           the Linux VM's runtime (src/vm/run-linux.js), with the
-#                   size of every file under vm/ and user/ (vm: VM_SIZES)
+#
+# The Linux VM a Linux target runs on is the Linux pack's (packs/linux),
+# which runner-linux.js imports by URL.
 #
 # each with .gz and .br siblings. It prints each file it adds, relative to
 # OUT, one per line, and nothing else on stdout; it never writes a file of
@@ -31,7 +32,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR source=glue-lib.sh
 source "$HERE/glue-lib.sh"
-UNITS=(emsdk musl compilers libs vm tidy)
+UNITS=(emsdk musl compilers libs tidy)
 
 if [ "${1:-}" = --check-versions ]; then
   bad=0
@@ -48,7 +49,9 @@ fi
 
 : "${OUT:?OUT is the pack being assembled, every unit already linked into it}"
 npm_deps "$HERE"
-esbuild() { "$HERE/node_modules/.bin/esbuild" "$@" --format=esm --minify --target=es2022 --log-level=warning; }
+# NODE_PATH: code bundled from ../kit (README.md there) imports its packages
+# by name, and resolves them from this pack's node_modules, which declares them.
+esbuild() { NODE_PATH="$HERE/node_modules" "$HERE/node_modules/.bin/esbuild" "$@" --format=esm --minify --target=es2022 --log-level=warning; }
 for f in clangd.wasm clangd-tidy.wasm tidy-checks.json sysroot.tar.gz cc.wasm cc-cross.wasm wasi-sysroot.tar.gz demangle.wasm; do
   [ -f "$OUT/$f" ] || { echo "glue.sh: $OUT/$f is missing: a unit did not build it" >&2; exit 1; }
 done
@@ -60,8 +63,8 @@ esbuild "$HERE/src/server.js" --bundle --external:./clangd.js --external:./clang
   --define:SYSROOT_SIZE="$(raw_size "$OUT/sysroot.tar.gz")" \
   --define:TOOLCHAIN_SIZES="$(sizes_json "$OUT" cc.js cc.wasm wasi-sysroot.tar.gz cc-cross.js cc-cross.wasm targets)"
 
-# runner-linux.js (linking and running for a Linux target) and vm.js are
-# imported by runner.js only for a Linux target, and sanitizer.js (a
+# runner-linux.js (linking and running for a Linux target) is imported by
+# runner.js only for a Linux target, and sanitizer.js (a
 # sanitized program's host half and report symbolizer) only for a project
 # that asks for a sanitizer, so they stay separate files; the compilers'
 # and the demangler's glue are imported by URL at run time.
@@ -74,16 +77,10 @@ defines=(--define:CC_WASM_SIZE="$(raw_size "$OUT/cc.wasm")" --define:CC_CROSS_WA
   --define:TARGET_SIZES="$(sizes_json "$OUT" targets)")
 for worker in runner runner-linux explorer sanitizer; do
   esbuild "$HERE/src/$worker.js" --bundle --outfile="$OUT/$worker.js" \
-    --external:./runner-linux.js --external:./vm.js --external:./cc.js --external:./cc-cross.js \
+    --external:./runner-linux.js --external:./cc.js --external:./cc-cross.js \
     --external:./sanitizer.js "${defines[@]}"
 done
 
-# vm.js, with the raw size of every file it may fetch.
-vmdirs=()
-for d in vm user; do [ -d "$OUT/$d" ] && vmdirs+=("$d"); done
-[ ${#vmdirs[@]} -gt 0 ] || { echo "glue.sh: $OUT has no vm/: the vm unit did not build it" >&2; exit 1; }
-esbuild "$HERE/src/vm/run-linux.js" --bundle --define:VM_SIZES="$(sizes_json "$OUT" "${vmdirs[@]}")" --outfile="$OUT/vm.js"
-
-made=(server.js runner.js runner-linux.js explorer.js sanitizer.js vm.js)
+made=(server.js runner.js runner-linux.js explorer.js sanitizer.js)
 node "$HERE/compress.mjs" "${made[@]/#/$OUT/}" >&2
 for f in "${made[@]}"; do printf '%s\n%s.gz\n%s.br\n' "$f" "$f" "$f"; done

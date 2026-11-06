@@ -12,21 +12,21 @@
 #                        sample, stdin, exceptions, the test frameworks,
 #                        RapidCheck, the files each run fetches
 #   test-sanitizers.mjs  AddressSanitizer and UBSan on the default target
-#   test-run-linux.mjs   Run on every Linux target, under QEMU-Wasm (vm.js)
+#   test-run-linux.mjs   Run on every Linux target, under QEMU-Wasm: the
+#                        Linux pack's vm.js, assembled beside this pack
+#                        (`uses`)
 #   test-targets.mjs     the target rule, the compile arguments, every Linux
 #                        target linked by cc-cross.wasm and its ELF run by an
 #                        oracle (the host, qemu-user-static), and the
 #                        explorer worker
 #
-# Not here, because they test a unit's build rather than the pack and need
+# Not here, because it tests a unit's build rather than the pack and needs
 # that unit's build trees, which an assembly over stored units never has:
-# test-vm.mjs (the guest's fixtures compiled with the host's clang against
-# the musl sysroots in $PACK_CACHE; test-run-linux.mjs runs the same VM
-# through the runner) and test-demangle.mjs (LLVM's demangler compiled
-# natively from the source tree in $PACK_CACHE; test-targets.mjs's explorer
-# demangles through demangle.wasm). Nor the tests that need no built pack
-# (test-emit, test-cpio, test-build-lib, test-units), which light-ci.yml's
-# pack-units job runs on every change to them.
+# test-demangle.mjs (LLVM's demangler compiled natively from the source
+# tree in $PACK_CACHE; test-targets.mjs's explorer demangles through
+# demangle.wasm). Nor the tests that need no built pack (test-emit,
+# test-build-lib, test-units), which light-ci.yml's pack-units job runs on
+# every change to them.
 #
 # A test that skips because a file of the pack is missing is a failure
 # here: an assembled pack has every unit's outputs (assemble checks them),

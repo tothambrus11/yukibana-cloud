@@ -1,0 +1,3 @@
+# The compilers unit, for its release's pins (build-only/pins.sh): the
+# standard libraries and crates must be of the compilers' version string.
+rust/compilers

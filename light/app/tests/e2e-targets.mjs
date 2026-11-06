@@ -227,11 +227,11 @@ function sizes(path, encoding) {
 	return { raw, br, gz, sent };
 }
 
-/** The pack files among `responses` (paths under packs/cpp/), each once, with sizes. */
+/** The pack files among `responses` (paths under packs/cpp/, and under packs/linux/ for the Linux pack's emulator: vm.js, vm/, user/), each once, with sizes. */
 function packFiles(responses) {
 	const seen = new Map();
 	for (const r of responses) {
-		const m = /^\/packs\/cpp\/(.*)$/.exec(r.path);
+		const m = /^\/packs\/(?:cpp|linux)\/(.*)$/.exec(r.path);
 		if (!m) continue;
 		const prior = seen.get(m[1]);
 		if (prior) {

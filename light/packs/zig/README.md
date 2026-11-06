@@ -7,7 +7,7 @@
 | `runner.js` + `zig.wasm` | the same compiler | **Run** (`zig build-exe`) and **Test** (`zig test`), for the target in `zig.env` |
 | `lib.tar` | the standard library's sources (`lib/std`, the test runner, `lib/*.zig`) | what ZLS and the compiler read; one download, kept by the service worker |
 | `rt/compiler_rt-<target>.a` | compiler_rt, prebuilt per target by `build.sh` with the native Zig | linked into every program (the runner passes `-fno-compiler-rt`) |
-| `linux-worker.js` | a worker that loads the **C/C++ pack's** `vm.js` (QEMU-Wasm and Linux 6.12; `../cpp/vm/README.md`) | runs a Linux program, one worker per run |
+| `linux-worker.js` | a worker that loads the **Linux pack's** `vm.js` (QEMU-Wasm and Linux 6.12; `../linux/README.md`) | runs a Linux program, one worker per run |
 
 The status bar shows `zls 0.17.0`. **Run compiles the program with the real
 compiler.** Zig's compiler has backends of its own besides LLVM: a
@@ -32,7 +32,7 @@ An unknown target, mode or key is a warning diagnostic on its line of
 does not read `zig.env`: Download's README gives its settings as options
 (`zig build run -Dtarget=x86_64-linux -Doptimize=ReleaseSafe`).
 
-Linux needs the C/C++ pack's VM (`packs/cpp/vm.js` and `vm/x86_64/`). Without
+Linux needs the Linux pack's VM (`packs/linux/vm.js` and `vm/x86_64/`). Without
 it, Run says the emulator is not installed.
 
 ### Why only these two

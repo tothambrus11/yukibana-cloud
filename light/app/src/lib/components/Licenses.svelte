@@ -5,8 +5,9 @@
   build put beside it (LICENSE-*.txt, NOTICE*, and SOURCES*.txt where a
   licence asks for the source to be offered), found in offline.json, so a
   pack that adds one is listed without a change here. A pack no language is
-  served by (the debugger, packs/lldb) has a row of its own: the first
-  release with it failed e2e.mjs's licences check for want of one.
+  served by (the debugger, packs/lldb; the Linux emulator, packs/linux) has
+  a row of its own: the first release with the debugger failed e2e.mjs's
+  licences check for want of one.
 -->
 <script lang="ts">
 	import { LANGUAGES } from '../languages';
@@ -27,7 +28,7 @@
 	const nameOf = (path: string) => path.slice(path.lastIndexOf('/') + 1);
 
 	/** What a pack no language is served by is, by its directory; others show their directory's name. */
-	const TOOLS: Record<string, string> = { lldb: 'Debugger (C, C++, Swift)' };
+	const TOOLS: Record<string, string> = { lldb: 'Debugger (C, C++, Swift)', linux: 'Linux emulator (QEMU, for Linux targets)' };
 
 	/** Each installed pack once, with the languages it serves (or what it is) and its legal files. */
 	const packs = $derived.by(() => {

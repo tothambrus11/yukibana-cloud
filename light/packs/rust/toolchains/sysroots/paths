@@ -1,0 +1,8 @@
+# The pack files the sysroots unit builds with, besides this directory:
+# the targets and Miri's targets it builds for, the crates and the script
+# that builds them, and the compressor.
+src/targets.json
+src/miri-targets.json
+crates/
+scripts/build-crates.mjs
+scripts/compress.mjs

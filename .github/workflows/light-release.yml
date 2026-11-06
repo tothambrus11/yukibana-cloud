@@ -168,7 +168,7 @@ jobs:
             else
               echo "$p: $(du -sh "static/packs/$p" | cut -f1), $(cat "$key")"
               read -r kind tree _ < "$key"
-              head="$(git rev-parse "HEAD:light/packs/$p")"
+              head="$(../scripts/pack-store.sh tree "$p")"
               if [ "$kind" = tree ] && [ "$tree" != "$head" ]; then
                 echo "- $p: the stored build of tree $tree, not this commit's ($head)" >> "$RUNNER_TEMP/older"
               fi

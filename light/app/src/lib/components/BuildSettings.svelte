@@ -24,6 +24,7 @@
 	import type { Workspace } from '../workspace.svelte';
 	import Sanitizers from './Sanitizers.svelte';
 	import { TARGETS, type CppTargetId } from '../cpp-targets';
+	import { MIRI_TARGETS, RUST_TARGETS, type MiriTarget, type RustTarget } from '../rust-targets';
 	import { TEST_FRAMEWORKS, type TestFramework } from '../cpp-tests';
 	import { levelsOf } from '../optimization';
 	import { isCFamily } from '../languages';
@@ -63,8 +64,24 @@
 		...(workspace.standard?.kind === 'other' ? [{ value: 'other', label: `-std=${workspace.standard.value}`, disabled: true }] : []),
 	]);
 	const frameworkOptions = $derived<SelectOption[]>(TEST_FRAMEWORKS.map((f) => ({ value: f.id, label: f.label })));
-	/** A C++ project on a Linux target: Run options apply (to Run and Test). */
-	const linuxTarget = $derived(workspace.target?.kind === 'target' && workspace.target.target.runtime === 'linux');
+	const rust = $derived(workspace.language === 'rust');
+	const rustTargetOptions = $derived<SelectOption[]>([
+		...RUST_TARGETS.map((t) => ({ value: t.id, label: t.label })),
+		...(workspace.rustTarget?.kind === 'unsupported' ? [{ value: 'other', label: `Other (${workspace.rustTarget.triple})`, disabled: true }] : []),
+	]);
+	/** The Miri target closest to the one the project compiles for (WebAssembly's: ARMv7, 32-bit as wasm32 is), which says so. */
+	const nearestMiri = $derived(workspace.rustTarget?.kind === 'target' ? workspace.rustTarget.target.miri : null);
+	const miriOptions = $derived<SelectOption[]>([
+		{ value: 'off', label: 'Off', detail: 'compile and run' },
+		...MIRI_TARGETS.map((t) => ({ value: t.id, label: t.label, detail: t.id === nearestMiri ? `${t.detail}; nearest the target` : t.detail, keywords: t.triple })),
+	]);
+	const chooseMiri = (value: string) => workspace.setMiri(value === 'off' ? null : (value as MiriTarget['id']));
+	const rustTargetValue = $derived(!workspace.rustTarget ? '' : workspace.rustTarget.kind === 'unsupported' ? 'other' : workspace.rustTarget.target.id);
+	/** A C, C++ or (compiled) Rust project on a Linux target: Run options apply (to Run and Test). */
+	const linuxTarget = $derived(
+		(workspace.target?.kind === 'target' && workspace.target.target.runtime === 'linux') ||
+			(rust && !workspace.miri && workspace.rustTarget?.kind === 'target' && workspace.rustTarget.target.runtime === 'linux'),
+	);
 	const targetValue = $derived(!workspace.target ? '' : workspace.target.kind === 'unsupported' ? 'other' : workspace.target.target.id);
 	/** The optimisation levels of the project's language, null for one without them (optimization.ts). */
 	const levels = $derived(workspace.optimization ? levelsOf(workspace.language) : null);
@@ -83,7 +100,9 @@
 			? `The level Run${cpp ? ', Test' : ''} and the IR and assembly views compile at. Rewrites the -O line of compile_flags.txt.`
 			: workspace.language === 'scala'
 				? 'Whether Run links with the Scala.js optimizer, as sbt fastLinkJS does. It adds about a second to each Run.'
-				: 'The level Run and Test compile at, saved with the project and written into Package.swift by Download.',
+				: workspace.language === 'rust'
+					? "Cargo's opt-level Run and Test compile at, saved with the project. Level 0 is the dev profile, with full debug info; 3 is release."
+					: 'The level Run and Test compile at, saved with the project and written into Package.swift by Download.',
 	);
 
 	onMount(() => {
@@ -149,6 +168,16 @@
 				</div>
 			{/if}
 		{/if}
+		{#if rust}
+			<!-- The target is .cargo/config.toml's [build] target (rust-targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
+			<div class="row target">
+				<span class="name">Target</span>
+				<span class="field">
+					<Select label="Target" value={rustTargetValue} options={rustTargetOptions} onchange={(v) => workspace.chooseRustTarget(v as RustTarget['id'])} />
+					<small>What the code is compiled for and runs on, and what Miri interprets it for. Rewrites <code>[build] target</code> in .cargo/config.toml, which Cargo reads too.</small>
+				</span>
+			</div>
+		{/if}
 		{#if levels && workspace.optimization}
 			<!-- C and C++: compile_flags.txt's -O line (optimization.ts), shown as it is when hand-edited; Swift and Scala: saved with the project. -->
 			<div class="row optimization">
@@ -156,6 +185,29 @@
 				<span class="field">
 					<Select label="Optimization" value={levelValue} options={levelOptions} onchange={(v) => workspace.chooseOptimization(v)} />
 					<small>{levelHelp}</small>
+				</span>
+			</div>
+		{/if}
+		{#if rust}
+			<!-- Saved with the project: Run and Test interpret the program under Miri, as if on the target chosen here, instead of compiling it. -->
+			<div class="row miri">
+				<span class="name">Miri</span>
+				<span class="field">
+					<Select label="Miri" value={workspace.miri ?? 'off'} options={miriOptions} onchange={chooseMiri} />
+					<small
+						>Interprets the program instead of compiling it, and stops at undefined behaviour (an out-of-bounds pointer, a dangling reference, a data race). Much slower. Sizes, alignments, layouts and byte order are those of the
+						target chosen here, whatever the program is compiled for: run one program on several to compare.</small
+					>
+				</span>
+			</div>
+		{/if}
+		{#if linuxTarget && rust}
+			<div class="row" role="group" aria-label="Run options">
+				<span class="name">Run options</span>
+				<span class="field">
+					{#await import('./RunOptions.svelte') then { default: RunOptions }}
+						<RunOptions {workspace} />
+					{/await}
 				</span>
 			</div>
 		{/if}

@@ -236,7 +236,7 @@ handles errors of the language server's Worker, so it was a page error: the
 C++ e2e failed its "no page errors" check about one run in four on a busy
 machine, with every other check passing. With an aligned number it could
 corrupt memory or spin on the condition's lock instead. QEMU froze on the
-same race (vm/README.md, item 2).
+same race (../linux/README.md, item 2).
 
 Upstream signals before unlocking since 5.0.5 (emscripten-core/emscripten#26582).
 The pack was on 4.0.22 and patched the cached emsdk's `proxying.c` in place,
@@ -355,9 +355,11 @@ unit and a glue edit builds none.
 `test-run.mjs`, `test-sanitizers.mjs`, `test-run-linux.mjs` and
 `test-targets.mjs`, each failing on a skip, since an assembled pack lacks
 nothing they need. The assemble job runs it after every assembly, a
-release's included, so what is uploaded is what passed. `test-vm.mjs` and
-`test-demangle.mjs` are not in it: they compile with the vm and compilers
-units' build trees, which an assembly over stored units does not have.
+release's included, so what is uploaded is what passed. The Linux pack
+is assembled beside it for `test-run-linux.mjs` (this pack's `uses` file):
+a Linux target's program runs on that pack's emulator. `test-demangle.mjs`
+is not in it: it compiles with the compilers unit's build trees, which an
+assembly over stored units does not have.
 
 ### Units
 
@@ -368,14 +370,13 @@ units' build trees, which an assembly over stored units does not have.
 | `cpp/compilers` | emsdk | `clangd.*`, `cc.*`, `cc-cross.*`, `demangle.*`, `LICENSE-llvm.txt`; and for libs, the checked LLVM tarball and its pins (`build-only/`) | `build-clangd.sh`, `build-runner.sh`, `build-cross.sh`, `build-demangle.sh`, `llvm-lib.sh`, the three LLVM patches, `src/demangle/` |
 | `cpp/libs` | compilers, emsdk, musl | `sysroot.tar.gz`, `wasi-sysroot.tar.gz`, `{gtest,catch2,doctest,rapidcheck}.tar`, `{asan,ubsan}.tar`, `targets/<arch>/*.tar`, their licences | `build-cxx-runtime.sh`, `build-test-frameworks*.sh`, `build-test-libs-linux.mjs`, `build-sysroot.sh`, `build-targets.sh`, `build-sanitizers.sh`, `pack-runner.sh`, `libs-lib.sh`, `compiler-rt-wasi.patch`, `src/sanitizer-rt/`, `src/uncaught.cpp`, `src/toolchain.js`, `src/targets.js(on)` |
 | `cpp/tidy` | compilers, emsdk | `clangd-tidy.{js,wasm}` (clangd with clang-tidy's checks) and `tidy-checks.json`, from the compilers unit's checked LLVM tarball | `build-clangd-tidy.sh`, `llvm-lib.sh`, `tidy-checks.mjs`, the clangd patch |
-| `cpp/vm` | emsdk, musl | `vm/<arch>/`, `user/<arch>/`, their licences | `build-vm.sh`, `vm/build-*.sh`, `vm/cc.sh`, `vm/stage.sh`, `vm/{devices,guest,kconfig,patches}/`, `src/vm/cpio.js` |
 
 Every unit also takes `build-lib.sh` (what all the scripts share) and,
 when it compresses, `compress.mjs`. A unit's `needs` line carries the key
 of the unit it needs, so a change to the compilers re-keys libs and
-nothing else, a framework pin re-keys libs alone, and the VM, which needs
-only the Emscripten and musl, is never rebuilt by a compiler or library
-change. Each unit gets the units it needs read-only at `$DEP_<UNIT>`
+nothing else, a framework pin re-keys libs alone, and the Linux pack's VM
+(`linux/vm`, `../linux/README.md`), which needs only this pack's emsdk and
+musl, is never rebuilt by a compiler or library change. Each unit gets the units it needs read-only at `$DEP_<UNIT>`
 (`build-lib.sh`'s `need_unit`, `emsdk_use`, `apk_of`) and sees no other.
 A toolchain's `build-only/` reaches those units and is never linked into
 the pack: the Emscripten install, the source tarballs and the pins a
@@ -383,20 +384,22 @@ dependent must agree with are inputs, not files a page downloads.
 
 The glue (`glue.sh`, and the files `glue.paths` names: `src/`, the tests,
 the documents) bundles `server.js`, `runner.js`, `runner-linux.js`,
-`explorer.js`, `sanitizer.js` and `vm.js` with the sizes of the files they
-fetch, and compresses them. It compiles nothing, so an edit to a worker
+`explorer.js` and `sanitizer.js` with the sizes of the files they fetch,
+and compresses them. It compiles nothing, so an edit to a worker
 rebuilds no toolchain.
 
 Emscripten and musl are units of their own, not part of the compilers: the
-VM and the libraries compile with the same Emscripten (plan D52) and the
-libraries and the VM link the same musl, and a VM that needed the compilers
-would be rebuilt by every compiler change.
+Linux pack's VM and the libraries compile with the same Emscripten (plan
+D52) and the libraries and the VM link the same musl, and a VM that needed
+the compilers would be rebuilt by every compiler change. The VM was this
+pack's `cpp/vm` unit until 2026-11-04, when it became a pack of its own so
+that any language's runner can use it.
 
 Every pin lives in the `pins.sh` of the unit that builds with it
 (`toolchains/<unit>/pins.sh`): LLVM in the compilers', Emscripten in
 emsdk's, musl and the Alpine packages in musl's, wasi-sdk and the test
-frameworks in libs', QEMU, its dependencies, Linux, strace and the firmware
-in vm's. No input is pinned twice: a unit that builds with another's
+frameworks in libs' (QEMU, its dependencies, Linux, strace and the
+firmware in the Linux pack's vm unit's). No input is pinned twice: a unit that builds with another's
 input (libs with LLVM, the VM with musl) reads that unit's pins as it
 exports them (`$DEP_<UNIT>/build-only/pins.sh`). Each unit writes the
 versions it was built from to `versions-<unit>.json`. A unit's system
@@ -484,8 +487,7 @@ reads another unit's files but through these.
 | `pack-runner.sh` (libs) | `C/wasi` tarballs, `C/cxx-headers`, `C/eh`, `C/testfw`; `E`'s `llvm-strip` | `OUT/wasi-sysroot.tar.gz`, `OUT/{gtest,catch2,doctest,rapidcheck}.tar`, licences; runs the next two |
 | `build-test-frameworks-linux.sh`, `build-test-libs-linux.mjs` (libs) | `L/cc-cross.{wasm,js}`, `OUT/sysroot.tar.gz`, `OUT/targets/<arch>/include.tar` (through `C/testfw-linux-view`, the driver's `OUT`); `C/googletest-*.tar.gz`, `C/wasi/wasi-sdk-*/bin/llvm-ar` | `C/testfw-linux`; `OUT/targets/<arch>/{gtest,rapidcheck}.tar` |
 | `build-sanitizers.sh` (libs) | `C/wasi/wasi-sdk-*`; `E`'s compiler-rt sources and `upstream/bin`; `M`'s packages | `C/sanitizers`; `OUT/{asan,ubsan}.tar`, `OUT/targets/<arch>/{asan,ubsan}.tar` |
-| `build-vm.sh` and `vm/*` (vm) | `E`; `M`'s packages (`vm/build-sysroot.sh`, for `cc.sh`) and tarball (user mode's compat headers); `Q` | `C/targets/sysroot/<arch>`, `C/em-cache`, `Q`, `C/vm-artifacts`; `OUT/vm`, `OUT/user`, licences |
-| `glue.sh` (assembly) | the assembled pack: the size of every file a worker fetches | `server.js`, `runner.js`, `runner-linux.js`, `explorer.js`, `sanitizer.js`, `vm.js` and their `.gz`/`.br` |
+| `glue.sh` (assembly) | the assembled pack: the size of every file a worker fetches | `server.js`, `runner.js`, `runner-linux.js`, `explorer.js`, `sanitizer.js` and their `.gz`/`.br` |
 
 ### Settings a build reads from its environment
 
@@ -494,23 +496,18 @@ Each unit's `toolchains/<unit>/env` declares what reaches its build
 
 ```
 musl: ALPINE_MIRROR          source   # every .apk is checked against its pin
-vm:   USER_MODE              variant  # USER_MODE=0 ships no user/ (build-vm.sh)
-vm:   USER_INITIAL_MEMORY_MB variant  # the user-mode QEMU's link (in user.stamp)
-vm:   CLANG                  variant  # cc.sh's compiler for strace (in its stamp)
-vm:   CC_HOST                variant  # build-init.sh's compiler for yk-init
-vm:   KEEP_TREES             source   # 0 deletes the kernel and QEMU trees after a build
 ```
+
+(The Linux pack's vm unit declares its own: `../linux/toolchains/vm/env`.)
 
 `MUSL_INCLUDE`, which named any directory for user mode's musl headers, is
 gone: they are the musl unit's. Not declared: `PACK_CACHE`, `JOBS` and
 `OUT` are fixed variables of every build; `NICE` is set by each script
 itself. `CROSS_BUILD_DIR` only picks a build tree, which records what made
-it; `PRINT_STAMP=1` builds nothing; `QC`, `ART`, `SYSROOTS` and `ARCHES`
-are set by `build-vm.sh` or are for a person running one `vm/` script;
-`CLANG_TIDY` only runs a check, with its default. The host's tools
+it; `PRINT_STAMP=1` builds nothing; `CLANG_TIDY` only runs a check, with its default. The host's tools
 (`clang`, `clang-18`, `cmake`, `ninja`, `python3`, `node`) come from `PATH`
 (each unit's `deps.apt`); a host compiler's version is in the record of the
-tree it compiles (`build-native`, the kernel, strace).
+tree it compiles (`build-native`).
 
 Cold time per unit, from the split's first pull-request runs on
 `ubuntu-24.04` runners (4 cores), the "Build the unit" step with no cache
@@ -522,7 +519,6 @@ assembly and its tests:
 |---|---:|
 | musl | under 1 minute |
 | emsdk | about 1 minute (a download) |
-| vm | 23 to 37 minutes |
 | compilers | 185 minutes |
 | libs | about 13 minutes (3 with the test libraries cached) |
 
@@ -782,8 +778,8 @@ PASS  duplicate main: the link error names main.cpp and lib/other.cpp, non-zero 
 PASS  compiler cannot be instantiated: error on stderr and an exit message  code=1 "clang could not start: WebAssembly.Memory(): could not allocate memory" 559 ms
 PASS  an unsupported --target: the message lists the supported triples, exit 1, nothing downloaded  "Unsupported target \"armv7-linux-musleabihf\" in compile_flags.txt; supported: wasm32-wasip1, x86_64-linux-musl, aarch64-linux-musl, riscv64-linux-musl (or no --target).\n"
 PASS  Catch2 tests on a Linux target: refused, naming why and what works there, exit 1, nothing downloaded  "Catch2 runs on the WebAssembly target only, for now: on AArch64 Linux the tests can use GoogleTest (and RapidCheck).\n"
-PASS  Linux target without vm.js: compiled for x86_64-linux-musl, linked, then "not installed", exit 1  "Running on x86-64 Linux is not installed (packs/cpp/vm.js)\n" Loading the compiler@8, Compiling geometry.cpp (1/2) for x86_64-linux-musl@591, Compiling main.cpp (2/2) for x86_64-linux-musl@1940, Linking@5026
-PASS  a Linux target fetches cc-cross and its own arch only, never cc.wasm or wasi-sysroot  /packs/cpp/cc-cross.js /packs/cpp/cc-cross.wasm /packs/cpp/runner-linux.js /packs/cpp/targets/x86_64/include.tar /packs/cpp/targets/x86_64/lib.tar /packs/cpp/vm.js
+PASS  Linux target without vm.js: compiled for x86_64-linux-musl, linked, then "not installed", exit 1  "Running on x86-64 Linux is not installed (packs/linux/vm.js)\n" Loading the compiler@8, Compiling geometry.cpp (1/2) for x86_64-linux-musl@591, Compiling main.cpp (2/2) for x86_64-linux-musl@1940, Linking@5026
+PASS  a Linux target fetches cc-cross and its own arch only, never cc.wasm or wasi-sysroot  /packs/cpp/cc-cross.js /packs/cpp/cc-cross.wasm /packs/cpp/runner-linux.js /packs/cpp/targets/x86_64/include.tar /packs/cpp/targets/x86_64/lib.tar /packs/linux/vm.js
 PASS  endless loop: terminated by the page, which stays responsive  stopped after 1791 ms; Loading the compiler@11, Compiling main.cpp (1/1)@472, Linking@652, Running@780
 all passed
 ```
@@ -1157,15 +1153,15 @@ line is ours: clang's Linux driver picks them.
   (Running, "Execution target vs. editor target"); with one, the editor and
   the program agree exactly (same triple, same headers).
 
-**Running** is `vm.js`'s (the emulator, built by `build-vm.sh` from `vm/`): `runner.js`
+**Running** is the Linux pack's `vm.js` (the emulator, `../linux/README.md`): `runner.js`
 compiles each source with `cc-cross` (`clang --target=<triple> -c`), then
 `runner-linux.js`, loaded only for a Linux target, links with
 `toolchain.js`'s `linkLinux`: `clang -### --target=<triple> -static
 <objects> -o a.out` prints the `ld.lld` command line clang's driver builds,
 and `ld.lld` runs with exactly those arguments (a browser cannot spawn the
 linker from clang). The ELF goes to `vm.js` `runLinux`, which runs it under
-QEMU-Wasm. Without `vm.js` the runner says so: "Running on x86-64 Linux is
-not installed (packs/cpp/vm.js)".
+QEMU-Wasm. Without the Linux pack the runner says so: "Running on x86-64
+Linux is not installed (packs/linux/vm.js)".
 
 **Files** (fetched only for a project on that target):
 
@@ -1241,10 +1237,10 @@ directory or a URL), then Alpine's CDN, and the SHA-256 pin decides either
 way. A copy of all 15 pinned packages is on the project share,
 `/mnt/project-files/monaco-lsp/alpine-v3.23/` (72 MB); building with
 `ALPINE_MIRROR` set to it and the network cut off gives byte-identical
-`targets/` files. The same build also leaves
-`$CACHE/targets/sysroot/<arch>`, the musl sysroot `vm/cc.sh` builds the
-VM's strace and test programs with, so the guest's tools and users'
-programs link the same pinned musl.
+`targets/` files. The Linux pack's VM builds its strace and test
+programs (`../linux/vm/cc.sh`) against a sysroot of the same musl unit's
+packages, so the guest's tools and users' programs link the same pinned
+musl.
 
 **How the toolchain is driven.** Nothing is re-decided in JavaScript:
 `compileArgs` adds `--target=<triple> -resource-dir=/usr/lib/clang/21` and
@@ -1318,7 +1314,7 @@ PASS  session 3: the worker raised no errors  []
 PASS  the default target fetches exactly the files it always did  /packs/cpp/cc.js /packs/cpp/cc.wasm /packs/cpp/runner.js /packs/cpp/sysroot.tar.gz /packs/cpp/wasi-sysroot.tar.gz
 PASS  an unsupported --target: the message lists the supported triples, exit 1, nothing downloaded  "Unsupported target \"armv7-linux-musleabihf\" in compile_flags.txt; supported: wasm32-wasip1, x86_64-linux-musl, aarch64-linux-musl, riscv6
 PASS  Catch2 tests on a Linux target: refused, naming why and what works there, exit 1, nothing downloaded  "Catch2 runs on the WebAssembly target only, for now: on AArch64 Linux the tests can use GoogleTest (and RapidCheck).\n"
-PASS  Linux target without vm.js: compiled for x86_64-linux-musl, linked, then "not installed", exit 1  "Running on x86-64 Linux is not installed (packs/cpp/vm.js)\n" Loading the compiler@6, Compiling geometry.cpp (1/2) for x86_64-linux-mus
+PASS  Linux target without vm.js: compiled for x86_64-linux-musl, linked, then "not installed", exit 1  "Running on x86-64 Linux is not installed (packs/linux/vm.js)\n" Loading the compiler@6, Compiling geometry.cpp (1/2) for x86_64-linux-mus
 PASS  a Linux target fetches cc-cross and its own arch only, never cc.wasm or wasi-sysroot  /packs/cpp/cc-cross.js /packs/cpp/cc-cross.wasm /packs/cpp/runner-linux.js /packs/cpp/targets/x86_64/include.tar /packs/cpp/targets/x86_64/lib.tar /
 ```
 
@@ -1602,7 +1598,7 @@ every function and data section of the assembly, once what line tables
 add around them is taken out); and `test-emit.mjs` compares the filtered
 outputs of the checked-in fixtures.
 
-**Filtering** (`src/emit-filter.js`, pure functions, as Compiler Explorer
+**Filtering** (`../kit/emit-filter.js`, shared with the Rust and Swift packs; pure functions, as Compiler Explorer
 filters):
 
 * Assembly: `.loc`/`.file` give each instruction its source line; then

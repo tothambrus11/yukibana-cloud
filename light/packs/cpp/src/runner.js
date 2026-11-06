@@ -6,8 +6,8 @@
 // WebAssembly program and runs that program in this worker on the small
 // WASI host in wasi.js. On a Linux target (x86_64, aarch64, riscv64) it
 // compiles with cc-cross, and runner-linux.js, imported only then, links a
-// static ELF with ld.lld and hands it to vm.js (the emulator's bundle,
-// QEMU-Wasm; P/vm/README.md). Everything happens here, in the browser:
+// static ELF with ld.lld and hands it to the Linux pack's vm.js (QEMU-Wasm;
+// packs/linux/README.md). Everything happens here, in the browser:
 //
 //   cc.wasm              clang + wasm-ld, one Emscripten binary (LLVM's
 //                        multi-call driver), built by build-runner.sh

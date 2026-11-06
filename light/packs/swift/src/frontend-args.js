@@ -50,3 +50,89 @@ export const MACRO_MODULES = ['StringifyMacros', 'ObservationMacros', 'TestingMa
 export function macroPluginArgs() {
     return ['-load-resolved-plugin', `${MACRO_PLUGIN_PATH}##${MACRO_MODULES.join(',')}`];
 }
+
+// ---------------------------------------------------------------- Linux
+
+/**
+ * The Linux targets a project can build for instead of WebAssembly (swift.env,
+ * target.js), with swift-toolchain-wasm's cross compiler and Swift's Static
+ * Linux SDK: static musl executables, run under the C++ pack's QEMU. `arch`
+ * is the SDK's and QEMU's name, `triple` the frontend's target,
+ * `emulation` ld.lld's `-m`, `frontend` what `swiftc -v` adds for the
+ * target. There is no riscv64: Swift has no SDK for it (README, "Linux
+ * targets").
+ */
+export const LINUX_TARGETS = {
+    'x86_64-linux': { arch: 'x86_64', triple: 'x86_64-swift-linux-musl', emulation: 'elf_x86_64', frontend: [], label: 'x86-64 Linux' },
+    'aarch64-linux': { arch: 'aarch64', triple: 'aarch64-swift-linux-musl', emulation: 'aarch64linux', frontend: ['-Xllvm', '-aarch64-use-tbi'], label: 'AArch64 Linux' },
+};
+
+/**
+ * Where a Linux target's sysroot (swift-sysroot-linux-<arch>.tar, the SDK's
+ * own layout) is unpacked, next to the WebAssembly one at SYSROOT, so that a
+ * worker can hold both.
+ */
+export const linuxSysroot = (arch) => `/sysroot-linux-${arch}`;
+
+/**
+ * `swift-frontend -frontend -c` for a Linux target: what `swiftc -v
+ * -static-executable -static-stdlib` passes with the Static Linux SDK at
+ * linuxSysroot(arch), plus DWARF debug info (the program's own; the SDK's
+ * archives come without theirs). The same vector, with native paths, is
+ * swift-toolchain-wasm's Stage 58.
+ */
+export function linuxCompileArgs(target, sources, output, moduleName = 'main', optimization = '-Onone') {
+    const sdk = linuxSysroot(target.arch);
+    return [
+        'swift-frontend', '-frontend', '-c', ...sources,
+        '-target', target.triple, ...target.frontend,
+        '-disable-objc-interop',
+        '-sdk', sdk,
+        '-resource-dir', `${sdk}/usr/lib/swift_static`,
+        '-use-static-resource-dir',
+        '-no-color-diagnostics',
+        '-Xcc', '-fno-color-diagnostics',
+        '-module-cache-path', MODULE_CACHE,
+        ...macroPluginArgs(),
+        '-g', '-debug-info-format=dwarf', '-dwarf-version=4',
+        '-module-name', moduleName,
+        optimization, '-empty-abi-descriptor', '-o', output,
+    ];
+}
+
+/**
+ * The libraries every Linux program links, after its objects and their
+ * autolink entries: the SDK's static-executable-args.lnk, which `swiftc
+ * -static-executable` reads, as ld.lld arguments.
+ */
+const LINUX_RUNTIME_LIBRARIES = [
+    '-lswiftCore', '-lswift_RegexParser',
+    '-undefined=pthread_self', '-undefined=pthread_once', '-undefined=pthread_key_create',
+    '-ldispatch', '-lBlocksRuntime', '-lpthread', '-ldl', '-lc++', '-lc++abi', '-lm',
+];
+
+/**
+ * `ld.lld` for a Linux target, as clang drives it for `swiftc
+ * -static-executable`: musl's start files, compiler-rt's crtbegin/crtend and
+ * builtins, the objects and `autolink` (their autolink entries, which name
+ * every Swift library a module imports, transitively) in a group. `args[0]`
+ * is `ld.lld`, which is what makes lld (wasm-ld.wasm is the multiplexed
+ * driver) link ELF.
+ */
+export function linuxLinkArgs(target, objects, output, autolink = []) {
+    const sdk = linuxSysroot(target.arch);
+    const lib = `${sdk}/usr/lib/swift_static/linux-static`;
+    const crt = `${sdk}/usr/lib/swift_static/clang/lib/linux`;
+    return [
+        'ld.lld', `--sysroot=${sdk}`, '-z', 'relro', '--hash-style=gnu', '--eh-frame-hdr',
+        '-m', target.emulation, '-static', '-o', output,
+        `${sdk}/usr/lib/crt1.o`, `${sdk}/usr/lib/crti.o`, `${crt}/clang_rt.crtbegin-${target.arch}.o`,
+        `-L${lib}`, `-L${lib}/${target.arch}`, `-L${sdk}/usr/lib`,
+        '--build-id', `${lib}/${target.arch}/swiftrt.o`,
+        '--start-group', ...objects, ...autolink, '--end-group',
+        ...LINUX_RUNTIME_LIBRARIES,
+        '--start-group', `${crt}/libclang_rt.builtins-${target.arch}.a`, '-l:libunwind.a', '-lc', '--end-group',
+        `${crt}/clang_rt.crtend-${target.arch}.o`, `${sdk}/usr/lib/crtn.o`,
+        '--error-limit=0', '--threads=1',
+    ];
+}

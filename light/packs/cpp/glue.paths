@@ -13,7 +13,5 @@ README.md
 src/
 test*.mjs
 test.sh
+uses
 tests/
-vm/README.md
-vm/fixtures/
-vm/.shellcheckrc
