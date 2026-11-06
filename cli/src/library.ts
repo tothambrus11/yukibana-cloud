@@ -62,6 +62,19 @@ export { publish, type PublishInput } from './publish.js';
 export { assemble, submissionRoot, teacherRoot, tampered, type Assembled, type Assembly, type Tampering } from './lib/assemble.js';
 export { planSubmission, type Packing } from './lib/pack.js';
 export {
+  planUpdate,
+  wantedPaths,
+  onlyTheStamp,
+  isText,
+  type Change,
+  type ChooseReason,
+  type Folder,
+  type FolderEntry,
+  type Planned,
+  type UpdatePlan,
+  type Version,
+} from './lib/update.js';
+export {
   parseConfig,
   parseSettings,
   protectedPaths,

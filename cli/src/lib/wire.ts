@@ -55,6 +55,13 @@ export interface Project {
   readonly role: EditionRole;
   /** Whether a starter has been released and the caller may download it. */
   readonly starterReady: boolean;
+  /** The newest release whose starter the caller may download now: what an
+   *  IDE compares with the folder's `releaseId` to know an update exists,
+   *  and the id to download it by (`downloadRelease(id, 'starter')`), so
+   *  that a release published meanwhile cannot slip in. Null when the
+   *  project has no release, when the caller may not download from it now,
+   *  and from a registry older than this field. */
+  readonly currentReleaseId: string | null;
   /** Whether the caller may submit right now. Only ever true for a student. */
   readonly canSubmit: boolean;
   /** How many submissions the caller has made to it. */
@@ -164,6 +171,7 @@ const project = z.object({
   late: z.boolean(),
   role,
   starterReady: z.boolean(),
+  currentReleaseId: maybeText,
   canSubmit: z.boolean(),
   mySubmissions: count,
   myLastSubmittedAt: maybeText,
