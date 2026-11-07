@@ -1,0 +1,31 @@
+{
+	"name": "@yukibana/std",
+	"version": "0.1.0",
+	"description": "The standard tokens of Yukibana Light (run, test and mutate a program) and the helpers that make a language's providers of them from its pack.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tothambrus11/yukibana-cloud.git",
+		"directory": "light/modules/std"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@yukibana/source": "./index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"*.ts",
+		"README.md"
+	],
+	"dependencies": {
+		"@yukibana/protocol": "^0.1.0",
+		"@yukibana/runtime": "^0.1.0"
+	},
+	"peerDependencies": {
+		"@yukibana/core": "^0.1.0"
+	}
+}

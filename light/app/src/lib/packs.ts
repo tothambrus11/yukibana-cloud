@@ -5,8 +5,9 @@
  * module of the app spells out `packs/<pack>/` for itself, and the session
  * code that will take any locator (@yukibana/runtime) is handed this one.
  */
-import { PROTOCOL_MAJOR, type Requires } from '@yukibana/protocol';
+import type { Requires } from '@yukibana/protocol';
 import { packIdOf, PackLocator, type PackId, type SessionSource, type UnpinnedPackLocator } from '@yukibana/runtime';
+import { sourceOf } from '@yukibana/std';
 import type { Language } from './languages';
 
 let packs: UnpinnedPackLocator | null = null;
@@ -64,17 +65,16 @@ export function packsOf(language: Language): PackId[] {
  * it, so it always meets this; a page that is not isolated is told that
  * programs cannot read input, as before.
  */
-const APP_RUNNER_NEEDS: Requires = { runner: { default: { crossOriginIsolated: 'optional-stdin', sameOriginPacks: true } } };
+export const APP_RUNNER_NEEDS: Requires = { runner: { default: { crossOriginIsolated: 'optional-stdin', sameOriginPacks: true } } };
 
 /**
  * What a language's runs start from: its pack (packOf), found through
  * the app's locator, under the language's name. Languages that share a
  * pack share its runner (the page's RunnerPool keys runners by where the
- * pack is, not by this object).
+ * pack is, not by this object). The same source the language's run
+ * providers start from (@yukibana/std's `sourceOf`), so that keeping one
+ * warm and letting it go reach the runner they run on.
  */
 export function runnerSourceOf(language: Language): SessionSource {
-	return {
-		pack: { id: packOf(language), name: language.label, protocol: PROTOCOL_MAJOR, build: null, requires: APP_RUNNER_NEEDS },
-		locator: appPacks(),
-	};
+	return sourceOf({ pack: packOf(language), label: language.label }, appPacks(), APP_RUNNER_NEEDS);
 }

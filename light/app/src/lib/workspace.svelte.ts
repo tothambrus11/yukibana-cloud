@@ -27,7 +27,10 @@ import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
+import { pathOf, type ProjectSnapshot } from '@yukibana/core';
+import { run, test, tokenOf } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
+import { pageHost, subjectOf, yukibana } from './yukibana';
 import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
 import { holdsProject } from './project-link';
 
@@ -191,7 +194,7 @@ export class Workspace {
 	 * contents. The guest kernel's log and the run's timings go to the
 	 * Log panel.
 	 */
-	readonly runner = new Runner({
+	readonly runner = new Runner(pageHost(), {
 		kernel: (line) => this.write('log', `[kernel] ${line}`, 'run'),
 		mark: (name, ms) => this.write('log', `timing: ${name} ${(ms / 1000).toFixed(2)} s`, 'run'),
 		problem: (text) => this.write('warning', text, 'run'),
@@ -227,6 +230,12 @@ export class Workspace {
 	private saveTimer: ReturnType<typeof setTimeout> | undefined;
 	private logId = 0;
 	private host: EditorHost | null = null;
+	/**
+	 * Changes on every change to the project's files or saved settings, so
+	 * a snapshot (`snapshot`) says which project it answers for. A number
+	 * bumped, not a state: nothing re-renders on it.
+	 */
+	private revision = 0;
 	/** Whether the user chose run options for this project: only then are they saved with it. */
 	private runOptionsChosen = false;
 	/** The level chosen for a language whose level no project file holds (Swift, Scala), saved with the project; null: the default. */
@@ -372,14 +381,43 @@ export class Workspace {
 	}
 
 	/**
+	 * The project as the core sees it (@yukibana/core's `ProjectSnapshot`),
+	 * over the editor's models: nothing is read until a provider asks, and
+	 * every file only when one dispatches (`files`), never per keystroke. It
+	 * reads through to the models, so it answers for the project as it is
+	 * while `revision` is unchanged.
+	 */
+	snapshot(): ProjectSnapshot {
+		const models = this.models;
+		return {
+			revision: this.revision,
+			paths: () => [...models.keys()].map(pathOf),
+			file: (path) => models.get(path)?.getValue() ?? null,
+			files: () => {
+				const files: Record<string, string> = {};
+				for (const [path, model] of models) files[path] = model.getValue();
+				return files;
+			},
+			meta: (binding) => {
+				const stored: unknown = new Map<string, unknown>(Object.entries(this.savedSettings())).get(binding.key);
+				return stored === undefined ? null : binding.parse(stored);
+			},
+		};
+	}
+
+	/**
 	 * Runs the project: the language's entry file when the project has one,
-	 * else the file shown; `mode` 'test' runs its tests instead (languages with
-	 * `tests`), 'mutate' mutation-tests the project against them (languages
-	 * with `mutates`). Every file goes along, as last edited.
+	 * else the file shown; `mode` 'test' runs its tests instead, 'mutate'
+	 * mutation-tests the project against them, where the language's
+	 * providers offer that (providers/run.ts). Every file goes along, as last
+	 * edited.
 	 */
 	run(mode: RunMode = 'run'): void {
 		const language = languageOf(this.language);
-		if (mode === 'run' ? !language.runs : mode === 'test' ? !language.tests : !language.mutates) return;
+		const subject = subjectOf(this.language);
+		const token = tokenOf(mode);
+		const snapshot = this.snapshot();
+		if (yukibana().availability(subject, token, snapshot).kind === 'unavailable') return;
 		if (mode === 'run' && language.preview) {
 			this.host?.showPreview();
 			this.host?.showTerminal();
@@ -394,7 +432,7 @@ export class Workspace {
 		}
 		// On a Linux target the runner runs GoogleTest tests (and RapidCheck)
 		// under QEMU, and refuses Catch2 and doctest by name (packs/cpp README).
-		const files = this.currentFiles();
+		const files = snapshot.files();
 		this.host?.showTerminal();
 		// A C or C++ runner reads its level from compile_flags.txt; Swift's is sent.
 		const cFamily = isCFamily(this.language);
@@ -402,7 +440,19 @@ export class Workspace {
 		const rust = this.language === 'rust';
 		// A Rust program on a Linux target runs under QEMU with the C++ pack's Run options.
 		const options = cFamily ? { ...this.runOptions } : { ...(level ? { optimization: level } : {}), ...(rust ? { ...this.runOptions, ...(this.miri ? { miri: this.miri } : {}) } : {}) };
-		this.runner.start(runnerSourceOf(language), files, entry, mode, Object.keys(options).length ? options : undefined);
+		const listener = this.runner.begin();
+		const input = { files, entry: pathOf(entry), options: Object.keys(options).length ? options : null, ...listener };
+		// The provider is eager: the run is handed to the pool within this
+		// task, before the next event, as when the app asked the pool itself.
+		yukibana()
+			.perform(subject, token, input, snapshot, new AbortController().signal)
+			.then(
+				(outcome) => {
+					if (outcome.kind === 'done') this.runner.start(outcome.value);
+					else this.write('warning', outcome.reason);
+				},
+				(e: unknown) => this.write('error', `Could not ${mode} the project: ${e instanceof Error ? e.message : String(e)}`),
+			);
 	}
 
 	/**
@@ -430,7 +480,7 @@ export class Workspace {
 			if (this.debugger.active) this.debugger.end(false);
 		};
 		this.debugger.start({
-			run: (channel) => this.runner.start(source, files, entry, 'run', options, channel),
+			run: (channel) => this.runner.startDebug(source, files, entry, options, channel),
 			stopRun: () => this.runner.stop(false),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
 			log: (text) => this.write('info', text, 'run'),
@@ -543,7 +593,7 @@ export class Workspace {
 			this.write('info', `Optimization: ${flag} (${how}).`);
 		} else {
 			this.chosenLevel = level.default ? null : flag;
-			const what = languageOf(this.language).tests ? 'Run and Test' : 'Run';
+			const what = yukibana().has(subjectOf(this.language), test) ? 'Run and Test' : 'Run';
 			this.write('info', `Optimization: ${level.label}, for ${what}${level.default ? ' (the default)' : ''}.`);
 		}
 		this.refreshOptimization();
@@ -906,6 +956,7 @@ export class Workspace {
 			this.explorer?.edited();
 		});
 		this.models.set(path, model);
+		this.revision += 1;
 		if (created) this.preview.changed(path);
 		this.client?.addModel(model, created);
 	}
@@ -916,6 +967,7 @@ export class Workspace {
 		this.host?.close(path);
 		this.client?.removeModel(model);
 		this.models.delete(path);
+		this.revision += 1;
 		this.preview.changed(path);
 		model.dispose();
 		// The file was deleted or renamed: an edit across files that
@@ -927,6 +979,7 @@ export class Workspace {
 		this.host?.closeAll();
 		for (const model of this.models.values()) model.dispose();
 		this.models.clear();
+		this.revision += 1;
 		this.files = [];
 		this.problems = [];
 	}
@@ -1004,7 +1057,7 @@ export class Workspace {
 		this.runner.keepWarm(null);
 		client.start(() => this.models.values()).then(
 			() => {
-				if (this.client === client && language.warmRunner && language.runs) this.runner.keepWarm(runnerSourceOf(language));
+				if (this.client === client && language.warmRunner && yukibana().has(subjectOf(language.id), run)) this.runner.keepWarm(runnerSourceOf(language));
 			},
 			async (e: unknown) => {
 				if (this.client !== client) return;
@@ -1111,6 +1164,7 @@ export class Workspace {
 	 * every keystroke in any file.
 	 */
 	private scheduleSave(edited?: string, change = true): void {
+		this.revision += 1;
 		if (change) this.changed = true;
 		if (edited === undefined || edited.startsWith(TESTS_DIR)) this.refreshTestFramework();
 		if (edited === undefined || edited === COMPILE_FLAGS || edited === CARGO_CONFIG) {
@@ -1132,7 +1186,12 @@ export class Workspace {
 	/** The project as it is now, as it is saved. */
 	private currentProject(): Project {
 		const files = this.currentFiles();
-		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: this.miri } : {}) };
+		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...this.savedSettings() };
+	}
+
+	/** The settings saved with the project beside its files, as they are now: only those set. */
+	private savedSettings(): Pick<Project, 'runOptions' | 'optimization' | 'clangTidy' | 'miri'> {
+		return { ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: this.miri } : {}) };
 	}
 
 	/**

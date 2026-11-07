@@ -2,13 +2,12 @@
 
 The code that the app (`light/app`), the packs' glue (`light/packs/*`), the
 runner frame and other hosts (a documentation site's playground, the course
-platform) share, as four packages that point one way:
+platform) share, as five packages that point one way:
 
 ```text
-app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol
-                         \                  |                    ^      ^
-                          `---------->  @yukibana/core  ---(types)'      |
-                                                         packs' glue, runner frame
+app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol  <-  packs' glue, runner frame
+app, embeds  ->  @yukibana/std     ->  @yukibana/runtime
+monaco, std, runtime  ->  @yukibana/core  --(types only)-->  @yukibana/protocol
 ```
 
 `DESIGN.md` is the settled design these modules are being rewritten
@@ -20,6 +19,7 @@ into which package, and the order.
 | `protocol/` | types and pure codecs for what crosses a boundary: LSP connection, stdin buffer, runner messages, loading progress, a pack's requirements, the frame messages | itself |
 | `core/` | the embeddable core, with no platform: tokens, providers, the instance that answers for them, a project's shape, properties, slots, the editor port (types) | itself, and `import type` from protocol |
 | `runtime/` | workers, packs and sessions in a browser: workspace paths, pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, core, protocol |
+| `std/` | the tokens any language may provide (run, test, mutate) and the helpers that make a language's providers of them from its pack; it names no language | itself, runtime, core, protocol |
 | `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme | itself, runtime, core, protocol, and `import type` from `monaco-editor` |
 
 Rules every module keeps, so that a host can import one without taking on
@@ -61,8 +61,8 @@ beside them rather than in them, since a test imports `node:test`; the same
 `@yukibana/protocol` and `@yukibana/runtime` are also packages a site
 outside this repository installs (step MP1 of the architecture plan; the
 Monaco integration follows once its feature API is settled, MP2).
-`@yukibana/core` has a package's manifest but is not published until a
-published module imports it: then it joins `build.mjs`'s `PUBLISHED`, the
+`@yukibana/core` and `@yukibana/std` have a package's manifest but are not
+published until a published module imports them: then it joins `build.mjs`'s `PUBLISHED`, the
 release workflow and the runtime's dependencies together. A host's
 Node refuses to strip types inside `node_modules`, and Vite's SSR leaves
 dependencies external, so the sources alone fail in a prerender such as

@@ -32,6 +32,8 @@
 	import Licenses from '../lib/components/Licenses.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
+	import { subjectOf, yukibana } from '../lib/yukibana';
+	import { mutate, run, test } from '@yukibana/std';
 	import { serverLabel } from '../lib/format';
 	import { followViewport } from '../lib/viewport';
 	import { startEditor } from '../lib/monaco';
@@ -92,6 +94,18 @@
 	const warnings = $derived(workspace.problems.filter((p) => p.severity === 'warning').length);
 	const percent = $derived(workspace.progress && workspace.progress.total > 0 ? Math.min(100, (100 * workspace.progress.loaded) / workspace.progress.total) : null);
 	const language = $derived(languageOf(workspace.language));
+	// What the top bar offers, as the language's providers say (providers/run.ts):
+	// a button is shown where the language has the token, and enabled where it is
+	// available for the project. The snapshot reads nothing until a provider asks.
+	// These re-derive when the language changes, not on an edit: no provider's
+	// answer reads the project yet, and the first that does (a C++ target) needs
+	// the workspace's revision to be state the page can follow.
+	const subject = $derived(subjectOf(workspace.language));
+	const runAvailable = $derived(yukibana().availability(subject, run, workspace.snapshot()));
+	const hasTest = $derived(yukibana().has(subject, test));
+	const testAvailable = $derived(yukibana().availability(subject, test, workspace.snapshot()));
+	const hasMutate = $derived(yukibana().has(subject, mutate));
+	const mutateAvailable = $derived(yukibana().availability(subject, mutate, workspace.snapshot()));
 	/** The language picker's choices; a language whose pack is kept for offline use says so. */
 	const languageOptions = $derived<SelectOption[]>(
 		pickerLanguages().map((l) => ({
@@ -203,18 +217,18 @@
 				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg><span class="run-label" data-other="Run"><span>Stop</span></span>
 			</button>
 		{:else}
-			<button class="btn run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
+			<button class="btn run" onclick={() => workspace.run()} disabled={runAvailable.kind === 'unavailable'} title={runAvailable.kind === 'available' ? 'Run the project (Ctrl+Enter)' : runAvailable.reason}>
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg><span class="run-label" data-other="Stop"><span>Run</span></span>
 			</button>
 		{/if}
-		{#if language.tests}
-			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+		{#if hasTest}
+			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy || testAvailable.kind === 'unavailable'} title={testAvailable.kind === 'available' ? "Run the project's tests (Ctrl+Shift+Enter)" : testAvailable.reason}>Test</button>
 		{/if}
 		{#if language.debugs}
 			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
 		{/if}
-		{#if language.mutates}
-			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
+		{#if hasMutate}
+			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy || mutateAvailable.kind === 'unavailable'} title={mutateAvailable.kind === 'available' ? 'Mutation testing: change the code in small ways and check that the tests notice' : mutateAvailable.reason}>Mutate</button>
 		{/if}
 
 		{#if hasBuild}
@@ -255,10 +269,10 @@
 			{#if language.debugs}
 				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || workspace.debugger.active} onclick={() => workspace.debug()}>Debug</button>
 			{/if}
-			{#if language.mutates}
-				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
+			{#if hasMutate}
+				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || mutateAvailable.kind === 'unavailable'} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
 			{/if}
-			{#if language.debugs || language.mutates}
+			{#if language.debugs || hasMutate}
 				<div class="menu-divider" role="separator" data-fold="70"></div>
 			{/if}
 			{#if hasBuild}

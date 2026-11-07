@@ -3,6 +3,7 @@
  * `static/packs/` its server comes from), the Monaco languages that server
  * answers for, and the sample project a first visit starts with.
  */
+import type { JsonValue } from '@yukibana/core';
 
 /** Identifies a language, and with it a pack and a saved project. */
 export type LanguageId = 'python' | 'javascript' | 'typescript' | 'web' | 'p5' | 'p5-global' | 'c' | 'cpp' | 'swift' | 'scala' | 'rust' | 'php' | 'java' | 'kotlin' | 'haskell' | 'go' | 'zig';
@@ -23,32 +24,19 @@ export interface Language {
 	/** Monaco language ids whose editor features the pack's server answers. */
 	monacoLanguages: readonly string[];
 	/** Answers to the server's `workspace/configuration` requests, by section. */
-	settings: Record<string, unknown>;
+	settings: Readonly<Record<string, JsonValue>>;
 	/** The file the editor opens first. */
 	entry: string;
 	/** What a fresh project contains. Files refer to each other on purpose. */
 	sample: Files;
 	/** Extension suggested for a new file. */
 	extension: string;
-	/**
-	 * Whether the pack has a runner (`runner.js`) that can run the project
-	 * from `entry`. When false, `cannotRun` says why, for the Run button.
+	/*
+	 * Whether the pack's runner runs the project, its tests or a mutation
+	 * test of it is no longer said here: those are the language's providers
+	 * of Run, Test and Mutate (providers/run.ts), which the app asks
+	 * through its instance (yukibana.ts).
 	 */
-	runs: boolean;
-	cannotRun?: string;
-	/**
-	 * Whether the runner also takes `type: 'test'` (packs/CONTRACT.md,
-	 * "Running a program"): it builds the project's tests instead of its
-	 * program and runs them, with the same messages as a run.
-	 */
-	tests?: boolean;
-	/**
-	 * Whether the runner also takes `type: 'mutate'` (packs/CONTRACT.md,
-	 * "Running a program"): mutation testing of the project against its
-	 * tests, with a report and a mutation score, with the same messages as a
-	 * run. Only with `tests`.
-	 */
-	mutates?: boolean;
 	/**
 	 * Whether the runner can run the program under the debugger (a run
 	 * message's `debug`, packs/lldb/README.md): the top bar offers Debug,
@@ -202,8 +190,6 @@ export const LANGUAGES: readonly Language[] = [
 		settings: { python: { analysis: { typeCheckingMode: 'standard', diagnosticMode: 'workspace' } } },
 		entry: 'main.py',
 		extension: '.py',
-		runs: true,
-		tests: true,
 		sample: {
 			'main.py': `from geometry import Point, distance
 
@@ -278,9 +264,6 @@ def test_points_are_immutable() -> None:
 		settings: {},
 		entry: 'main.js',
 		extension: '.js',
-		runs: true,
-		tests: true,
-		mutates: true,
 		sample: {
 			'main.js': `// @ts-check
 import { Point, distance } from './geometry.js';
@@ -373,9 +356,6 @@ describe('distance', () => {
 		settings: {},
 		entry: 'main.ts',
 		extension: '.ts',
-		runs: true,
-		tests: true,
-		mutates: true,
 		sample: {
 			'main.ts': `import { Point, distance, type Shape, area } from './geometry.ts';
 
@@ -483,7 +463,6 @@ describe('distance and area', () => {
 		entry: 'main.ts',
 		preview: 'index.html',
 		extension: '.ts',
-		runs: true,
 		sample: {
 			'index.html': `<!doctype html>
 <html lang="en">
@@ -582,7 +561,6 @@ export class Counter {
 		entry: 'main.ts',
 		preview: 'index.html',
 		extension: '.ts',
-		runs: true,
 		sample: {
 			'index.html': `<!doctype html>
 <html lang="en">
@@ -664,7 +642,6 @@ new p5((p: p5) => {
 		entry: 'sketch.ts',
 		preview: 'index.html',
 		extension: '.ts',
-		runs: true,
 		sample: {
 			'index.html': `<!doctype html>
 <html lang="en">
@@ -745,7 +722,6 @@ function draw() {
 		entry: 'main.c',
 		extension: '.c',
 		configFiles: C_FAMILY_CONFIG,
-		runs: true,
 		debugs: true,
 		sample: {
 			'main.c': `#include <stdio.h>
@@ -806,9 +782,7 @@ double point_distance(struct point a, struct point b) {
 		entry: 'main.cpp',
 		extension: '.cpp',
 		configFiles: C_FAMILY_CONFIG,
-		runs: true,
 		debugs: true,
-		tests: true,
 		sample: {
 			'main.cpp': `#include <cstdio>
 #include <vector>
@@ -883,10 +857,8 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		settings: {},
 		entry: 'main.swift',
 		extension: '.swift',
-		runs: true,
 		uses: ['linux'],
 		debugs: true,
-		tests: true,
 		sample: {
 			'swift.env': `# The target Run builds for. With nothing set it is WebAssembly, run in
 # the browser; TARGET=x86_64-linux or TARGET=aarch64-linux builds a static
@@ -940,7 +912,6 @@ final class GeometryTests: XCTestCase {
 		settings: {},
 		entry: 'Main.scala',
 		extension: '.scala',
-		runs: true,
 		sample: {
 			'Main.scala': `@main def run(): Unit =
   val a = Point(0, 0)
@@ -972,8 +943,6 @@ def distance(a: Point, b: Point): Double =
 		settings: {},
 		entry: 'src/main.rs',
 		extension: '.rs',
-		runs: true,
-		tests: true,
 		sample: {
 			'Cargo.toml': `[package]
 name = "geometry"
@@ -1076,8 +1045,6 @@ fn points_print_as_pairs() {
 		settings: {},
 		entry: 'main.php',
 		extension: '.php',
-		runs: true,
-		tests: true,
 		sample: {
 			'main.php': `<?php
 
@@ -1186,8 +1153,6 @@ final class GeometryTest extends TestCase
 		settings: {},
 		entry: 'src/main/java/geometry/Main.java',
 		extension: '.java',
-		runs: true,
-		tests: true,
 		sample: {
 			'src/main/java/geometry/Main.java': `package geometry;
 
@@ -1263,8 +1228,6 @@ class GeometryTest {
 		settings: {},
 		entry: 'src/main/kotlin/Main.kt',
 		extension: '.kt',
-		runs: true,
-		tests: true,
 		warmRunner: true,
 		sample: {
 			'src/main/kotlin/Main.kt': `fun main() {
@@ -1322,8 +1285,6 @@ class GeometryTest {
 		settings: {},
 		entry: 'Main.hs',
 		extension: '.hs',
-		runs: true,
-		tests: true,
 		warmRunner: true,
 		sample: {
 			'Main.hs': `module Main (main) where
@@ -1411,8 +1372,6 @@ main = hspec $ do
 		settings: {},
 		entry: 'main.go',
 		extension: '.go',
-		runs: true,
-		tests: true,
 		sample: {
 			'go.mod': `module example.com/geometry
 
@@ -1521,8 +1480,6 @@ func ExampleDistance() {
 		settings: {},
 		entry: 'main.zig',
 		extension: '.zig',
-		runs: true,
-		tests: true,
 		sample: {
 			'zig.env': `# The target Run and Test build for. With nothing set it is WebAssembly
 # (wasm32-wasi), run in the browser; TARGET=x86_64-linux builds an x86-64

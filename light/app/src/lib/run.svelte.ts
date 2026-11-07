@@ -7,8 +7,8 @@
  * project, so it holds one run at a time; a docs page holds one of these
  * per snippet over the same pool.
  */
-import type { DebugChannel, DebugProgram, OutputStream, RunMode, RunnerOptions } from '@yukibana/protocol';
-import { RunnerPool, workerTransport, type RunEvent, type RunHandle, type RunState, type SessionSource } from '@yukibana/runtime';
+import type { DebugChannel, DebugProgram, OutputStream, RunnerOptions } from '@yukibana/protocol';
+import type { RunEvent, RunHandle, RunnerPool, RunState, SessionSource } from '@yukibana/runtime';
 import { AnsiStream } from './ansi';
 import type { Files } from './languages';
 
@@ -47,6 +47,29 @@ export interface RunnerLog {
 	problem(text: string): void;
 }
 
+/**
+ * The page's runners, as the terminal reaches them: the page host's pool
+ * (yukibana.ts), which the run providers hand runs to as well.
+ */
+export interface PageRunners {
+	/** The page's pool, made on first read: making it reads the page's origin, which a prerendered page has not. */
+	readonly pool: RunnerPool;
+	/** The pool if it has been made, else null. */
+	readonly made: RunnerPool | null;
+}
+
+/**
+ * Where a run's events go from its first one, for the run the terminal
+ * was just cleared for (`Runner.begin`): what a run provider is given as
+ * its input's `snippet` and `onEvent`.
+ */
+export interface RunListener {
+	/** The app's one snippet, as the pool names it. */
+	readonly snippet: string;
+	/** Takes each event of the run; those before `Runner.start` are kept and shown then. */
+	readonly onEvent: (event: RunEvent) => void;
+}
+
 /** More terminal text than this drops the oldest; a runaway loop must not exhaust memory. */
 const MAX_CHARS = 2_000_000;
 
@@ -57,10 +80,13 @@ export class Runner {
 	state = $state<TerminalState>({ kind: 'idle' });
 	chunks = $state<Chunk[]>([]);
 
-	/** The page's runners, made on first use: making them reads the page's origin, which a prerendered page has not. */
-	#pool: RunnerPool | null = null;
 	/** The run the terminal shows; events of any other (a run it replaced) are dropped. */
 	#run: RunHandle | null = null;
+	/**
+	 * The run `begin` cleared the terminal for, until `start` is given its
+	 * handle: the events that arrived before it, and the handle once known.
+	 */
+	#pending: { handle: RunHandle | null; readonly early: RunEvent[] } | null = null;
 	/** The source kept warm (`keepWarm`), or null. */
 	#warm: SessionSource | null = null;
 	/** Whether the run being stopped is noted in the terminal ("Stopped."). */
@@ -86,12 +112,23 @@ export class Runner {
 	/** Called when the run the terminal shows ends, however it ends (the debugger ends its session then). */
 	ended: (() => void) | null = null;
 
-	/** `log` receives what the Log panel shows of a run; without it, that is dropped. */
-	constructor(private readonly log: RunnerLog | null = null) {}
+	/**
+	 * `runners` are the page's, which the run providers use too; `log`
+	 * receives what the Log panel shows of a run; without it, that is
+	 * dropped.
+	 */
+	constructor(
+		private readonly runners: PageRunners,
+		private readonly log: RunnerLog | null = null,
+	) {}
 
 	get #runners(): RunnerPool {
-		this.#pool ??= new RunnerPool({ transport: workerTransport() });
-		return this.#pool;
+		return this.runners.pool;
+	}
+
+	/** The page's pool if it has been made: letting runners go makes none. */
+	get #pool(): RunnerPool | null {
+		return this.runners.made;
 	}
 
 	/** True while a program is queued, loading or running. */
@@ -101,39 +138,60 @@ export class Runner {
 	}
 
 	/**
-	 * Runs `entry` of `files` with `source`'s runner, stopping the run the
-	 * terminal shows; `mode` 'test' runs the project's tests instead,
-	 * 'mutate' mutation-tests it. Output from the previous run is cleared.
-	 * `options` go to the runner as they are (packs/CONTRACT.md: how a C++
-	 * program built for Linux is emulated, or the optimisation level a
-	 * Swift program is compiled at; a runner with no use for them ignores
-	 * them). `debug`: run it under the debugger, through that channel
-	 * (debug.svelte.ts); the runner's program arrives at `debugProgram`.
+	 * Clears the terminal for a new run and stops showing the one it showed;
+	 * returns where the new run's events go. The run is asked for with that
+	 * listener (a run provider's input, @yukibana/std), and its handle given
+	 * to `start`: the first events arrive before the handle does, and belong
+	 * to the run asked for here all the same.
 	 */
-	start(source: SessionSource, files: Files, entry: string, mode: RunMode = 'run', options?: RunnerOptions, debug?: DebugChannel): void {
+	begin(): RunListener {
 		this.chunks = [];
 		this.#chars = 0;
 		this.#kernelRest = '';
 		this.#ansi = { stdout: new AnsiStream(), stderr: new AnsiStream() };
 		this.#say = true;
 		this.#heading = null;
-		const request = { type: mode, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}), ...(debug ? { debug } : {}) };
-		// The handle is not known until run() returns, and the first events
-		// arrive before; they belong to the run asked for here all the same.
-		let handle: RunHandle | null = null;
-		const early: RunEvent[] = [];
+		const pending: { handle: RunHandle | null; readonly early: RunEvent[] } = { handle: null, early: [] };
+		this.#pending = pending;
 		this.#run = null;
-		handle = this.#runners.run({
+		return {
 			snippet: PROJECT,
-			source,
-			request,
 			onEvent: (event) => {
-				if (handle === null) early.push(event);
-				else if (handle === this.#run) this.#event(event);
+				if (pending.handle === null) pending.early.push(event);
+				else if (pending.handle === this.#run) this.#event(event);
 			},
-		});
+		};
+	}
+
+	/**
+	 * Shows the run `handle`, asked for with the listener the last `begin`
+	 * returned: the events that arrived before it first, then the rest as
+	 * they come.
+	 *
+	 * - Requires: `begin` was called, and `start` not since.
+	 */
+	start(handle: RunHandle): void {
+		const pending = this.#pending;
+		if (pending === null) throw new Error('Runner.start without a begin: there is no listener for the run');
+		this.#pending = null;
+		pending.handle = handle;
 		this.#run = handle;
-		for (const event of early) this.#event(event);
+		for (const event of pending.early) this.#event(event);
+	}
+
+	/**
+	 * Runs `entry` of `files` with `source`'s runner under the debugger,
+	 * through `debug`'s channel (debug.svelte.ts), stopping the run the
+	 * terminal shows; the runner's program arrives at `debugProgram`.
+	 * `options` go to the runner as they are (packs/CONTRACT.md). Output
+	 * from the previous run is cleared. Until a debug provider builds this
+	 * run (light/modules/DESIGN.md, step 4), the one run asked of the pool
+	 * here rather than of a provider.
+	 */
+	startDebug(source: SessionSource, files: Files, entry: string, options: RunnerOptions | undefined, debug: DebugChannel): void {
+		const request = { type: 'run' as const, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}), debug };
+		const listener = this.begin();
+		this.start(this.#runners.run({ snippet: listener.snippet, source, request, onEvent: listener.onEvent }));
 	}
 
 	/**
