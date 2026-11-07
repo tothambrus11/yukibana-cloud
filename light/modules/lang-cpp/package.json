@@ -78,6 +78,7 @@
 		"README.md"
 	],
 	"dependencies": {
+		"@yukibana/protocol": "^0.1.0",
 		"@yukibana/std": "^0.1.0"
 	},
 	"peerDependencies": {

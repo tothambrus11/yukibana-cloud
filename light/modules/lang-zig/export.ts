@@ -109,13 +109,13 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Zig projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	zig: {
 		paths: ['build.zig'],
 		generate: (p) => ({ 'build.zig': buildZig(p.language.entry) }),
 		ci: (p) => ({ jobs: [testJob('Build and test', steps(['Build', 'zig build'], ...(zigTests(p.files) ? [['Test', 'zig build test --summary all'] as const] : [])))] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Zig projects. */
 const TOOLING: LanguageTooling = {

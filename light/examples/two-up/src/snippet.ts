@@ -44,13 +44,16 @@ function span(className: string, text: string): HTMLElement {
 }
 
 /**
- * Makes `section` a snippet of `language` editing `editor`'s project, run
- * by `instance`: Run is enabled exactly when the instance says `run` is
- * available on the project as it is, and says why when it is not.
+ * Makes `section` the snippet `snippet` of `language` editing `editor`'s
+ * project, run by `instance`: Run is enabled exactly when the instance says
+ * `run` is available on the project as it is, and says why when it is not.
+ * `snippet` is the pool's name for its runs: a Run stops the earlier run of
+ * the same name only, so two snippets of one language each keep their own.
  *
- * - Requires: `language` is one of `instance`'s languages.
+ * - Requires: `language` is one of `instance`'s languages, and `snippet` is
+ *   unique among the page's snippets.
  */
-export function mountSnippet(section: HTMLElement, instance: Instance<PackHost>, language: LanguageMeta, editor: SnippetEditor): void {
+export function mountSnippet(section: HTMLElement, snippet: string, instance: Instance<PackHost>, language: LanguageMeta, editor: SnippetEditor): void {
 	const subject: Subject = { kind: 'language', id: language.key };
 	const button = part<HTMLButtonElement>(section, '.run');
 	const stop = part<HTMLButtonElement>(section, '.stop');
@@ -92,10 +95,12 @@ export function mountSnippet(section: HTMLElement, instance: Instance<PackHost>,
 		const snapshot = editor.project.snapshot();
 		const mine = {};
 		current = mine;
+		// Until this run's handle arrives, Stop has nothing to stop: never the replaced run.
+		handle = null;
 		const onEvent = (event: RunEvent): void => {
 			if (current === mine) show(event);
 		};
-		const input = { files: snapshot.files(), entry: editor.port.path, options: null, snippet: language.key, onEvent };
+		const input = { files: snapshot.files(), entry: editor.port.path, options: null, snippet, onEvent };
 		instance.perform(subject, run, input, snapshot, new AbortController().signal).then(
 			(outcome) => {
 				if (current !== mine) return;

@@ -65,13 +65,13 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Go projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	go: {
 		paths: ['go.mod'],
 		generate: () => ({ 'go.mod': `module example\n\ngo ${GO_VERSION}\n` }),
 		ci: () => ({ ecosystems: ['gomod'], prepare: 'go mod download', jobs: [testJob('Build and test', [GO_SAFE_DIRECTORY, ...steps(['Build', 'go build ./...'], ['Test', 'go test ./...'])])] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Go projects. */
 const TOOLING: LanguageTooling = {

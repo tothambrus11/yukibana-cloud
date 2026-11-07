@@ -18,7 +18,7 @@ test('GoogleTest selects a test by suite and name, however the suite was declare
 });
 
 test('GoogleTest is told the test in its environment, and that selecting none fails', () => {
-    const { args, env, problem, hook } = selectionFor('gtest', { tests: one('Geometry', 'NormIsFive') });
+    const { args, env, problem, hook } = selectionFor('gtest', { test: one('Geometry', 'NormIsFive') });
     assert.deepEqual(args, []);
     assert.deepEqual(env, { GTEST_FILTER: gtestFilter('Geometry', 'NormIsFive'), GTEST_FAIL_IF_NO_TEST_SELECTED: '1' });
     assert.equal(problem, null);
@@ -27,7 +27,7 @@ test('GoogleTest is told the test in its environment, and that selecting none fa
 
 test('a GoogleTest name that is no identifier is refused rather than read as a pattern', () => {
     for (const [suite, name] of [['Geometry', 'Norm:Other'], ['Geo-metry', 'Norm'], ['Geometry', '*'], ['Geometry', 'a b']]) {
-        const { problem, env } = selectionFor('gtest', { tests: one(suite, name) });
+        const { problem, env } = selectionFor('gtest', { test: one(suite, name) });
         assert.match(problem ?? '', /^GoogleTest names a test by two identifiers/, `${suite}.${name}`);
         assert.deepEqual(env, {});
     }
@@ -46,12 +46,12 @@ test('doctest escapes its separator and backslash, and nothing else', () => {
 });
 
 test('doctest selects a test case by name, suite and file, case-sensitively', () => {
-    assert.deepEqual(selectionFor('doctest', { tests: one(null, 'the norm, of (3, 4)') }).args, [
+    assert.deepEqual(selectionFor('doctest', { test: one(null, 'the norm, of (3, 4)') }).args, [
         '-tc=the norm\\, of (3\\, 4)',
         '-sf=tests/geometry_test.cpp,*/tests/geometry_test.cpp',
         '-cs',
     ]);
-    assert.deepEqual(selectionFor('doctest', { tests: one('geometry', 'norm', 'tests/a,b.cpp') }).args, [
+    assert.deepEqual(selectionFor('doctest', { test: one('geometry', 'norm', 'tests/a,b.cpp') }).args, [
         '-tc=norm',
         '-ts=geometry',
         '-sf=tests/a\\,b.cpp,*/tests/a\\,b.cpp',
@@ -76,30 +76,30 @@ test("Catch2's spec quotes the name and escapes what its parser would read", () 
 });
 
 test('Catch2 gets the spec as one argument and ignores the suite', () => {
-    assert.deepEqual(selectionFor('catch2', { tests: one('ignored', 'a, b') }), { args: ['"a\\, b"'], env: {}, hook: null, problem: null, note: null });
+    assert.deepEqual(selectionFor('catch2', { test: one('ignored', 'a, b') }), { args: ['"a\\, b"'], env: {}, hook: null, problem: null, note: null });
 });
 
 test('no selection adds nothing, for every framework and none', () => {
     for (const fw of ['gtest', 'doctest', 'catch2', null]) {
         assert.deepEqual(selectionFor(fw, {}), { args: [], env: {}, hook: null, problem: null, note: null }, String(fw));
-        assert.deepEqual(selectionFor(fw, { tests: null, breakOnFailure: false, debug: true }), { args: [], env: {}, hook: null, problem: null, note: null }, String(fw));
+        assert.deepEqual(selectionFor(fw, { test: null, breakOnFailure: false, debug: true }), { args: [], env: {}, hook: null, problem: null, note: null }, String(fw));
     }
 });
 
 test('a test asked for without a framework to select it is refused, not run as the whole suite', () => {
-    assert.match(selectionFor(null, { tests: one(null, 'x') }).problem ?? '', /^One test can be run only with GoogleTest, doctest or Catch2/);
+    assert.match(selectionFor(null, { test: one(null, 'x') }).problem ?? '', /^One test can be run only with GoogleTest, doctest or Catch2/);
 });
 
 test('a malformed selector is refused', () => {
-    for (const tests of [{ file: 'tests/a.cpp', suite: null, name: '' }, { file: 'tests/a.cpp', suite: 3, name: 'x' }, { suite: null, name: 'x' }]) {
-        assert.match(selectionFor('catch2', { tests }).problem ?? '', /^The test to run is not named/, JSON.stringify(tests));
+    for (const test of [{ file: 'tests/a.cpp', suite: null, name: '' }, { file: 'tests/a.cpp', suite: 3, name: 'x' }, { suite: null, name: 'x' }]) {
+        assert.match(selectionFor('catch2', { test }).problem ?? '', /^The test to run is not named/, JSON.stringify(test));
     }
 });
 
 test('stopping at a failed assertion compiles a hook into a debugged run only', () => {
     for (const fw of ['gtest', 'doctest', 'catch2']) {
         assert.equal(selectionFor(fw, { breakOnFailure: true, debug: false }).hook, null, `${fw} without the debugger`);
-        const { hook, note } = selectionFor(fw, { breakOnFailure: true, debug: true, tests: one(fw === 'gtest' ? 'Geometry' : null, 'Norm') });
+        const { hook, note } = selectionFor(fw, { breakOnFailure: true, debug: true, test: one(fw === 'gtest' ? 'Geometry' : null, 'Norm') });
         assert.ok(hook?.includes(`void ${TEST_FAILED_FUNCTION}(const char *file, int line)`), fw);
         assert.ok(hook?.includes(`extern "C"`), `${fw}: a C name, which a function breakpoint can name`);
         assert.equal(note, null);

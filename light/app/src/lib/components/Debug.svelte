@@ -4,13 +4,14 @@
   stack (a row shows that frame's line and variables) and the selected
   frame's variables as a tree, each opened on demand. Breakpoints are set
   in the editors' margin (breakpoints.svelte.ts, decorate); this lists them.
-  Where the language narrows Debug tests (std's `debugTestCase`), it offers
-  "Stop on failed assertion" for the next debugged test run.
+  Where the language's runner stops at a failed assertion (std's
+  `failureStop`), it offers "Stop on failed assertion" for the next
+  debugged test run.
   It loads with the debugger, on the first Debug or when the panel is
   first opened (dock.ts).
 -->
 <script lang="ts">
-	import { debug, debugTest, debugTestCase } from '@yukibana/std';
+	import { debug, debugTest, debugTestCase, failureStop } from '@yukibana/std';
 	import type { Debugger, Variable } from '../debug.svelte';
 	import type { Workspace } from '../workspace.svelte';
 	import { subjectOf, yukibana } from '../yukibana';
@@ -27,6 +28,7 @@
 	const hasDebugTest = $derived(yukibana().has(subject, debugTest));
 	const debugTestAvailable = $derived(yukibana().availability(subject, debugTest, workspace.snapshot()));
 	const hasDebugTestCase = $derived(yukibana().has(subject, debugTestCase));
+	const hasFailureStop = $derived(yukibana().has(subject, failureStop));
 	/** Opened variables, by the path of names from their scope. */
 	let open = $state<Record<string, boolean>>({});
 	const breakpoints = $derived(Object.entries(workspace.breakpoints.lines).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
@@ -38,7 +40,7 @@
 		entry: 'Paused at the start',
 		exception: 'The program crashed',
 		signal: 'The program crashed',
-		// The one function breakpoint the app sets is a test run's failed-assertion hook (workspace.debug).
+		// The only function breakpoints the app sets are a language's failure stop (std's `failureStop`, workspace.debug).
 		'function breakpoint': 'Paused at a failed assertion',
 	};
 
@@ -127,7 +129,7 @@
 				{/if}
 			</p>
 		{/if}
-		{#if !dbg.active && hasDebugTestCase}
+		{#if !dbg.active && hasFailureStop}
 			<label class="option" title="Debug tests and Debug test pause where an assertion fails; Continue goes on with the tests">
 				<input type="checkbox" bind:checked={workspace.stopOnFailure} /> Stop on failed assertion
 			</label>

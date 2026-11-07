@@ -111,13 +111,13 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Scala projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	sbt: {
 		paths: ['build.sbt', 'project/build.properties'],
 		generate: (p) => ({ 'build.sbt': buildSbt(p.files), 'project/build.properties': `sbt.version=${SBT_VERSION}\n` }),
 		ci: () => ({ jobs: [testJob('Build and test', steps(['sbt', 'sbt -batch test']))] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Scala projects. */
 const TOOLING: LanguageTooling = {

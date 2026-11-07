@@ -69,6 +69,12 @@ async function describe(path) {
 //   precached with the shell: offline, a language works as it does online.
 // - Kit's own (the client entry, the page's nodes, its error page) are part
 //   of starting up.
+// - The app's on-use roots (`ON_USE`: the download, the debugger, the call
+//   hierarchy and their panels) are lazy so that the first load does not
+//   wait for them (DESIGN.md, step 9), but on main they were the page's and
+//   need no pack, so they are precached bodies as the modules' are: offline,
+//   and in a tab left open across a deploy, Download, a Debug panel and a
+//   Call Hierarchy panel restored with a layout work as they did.
 //
 // Then the graph decides: the shell is every file the startup roots and the
 // precached bodies reach by static imports, and the lazy files are what the
@@ -85,10 +91,20 @@ const ownerOf = (src) =>
 			: modules().some((module) => src.startsWith(`${modulesDir}/${module.name}/`))
 				? 'module'
 				: 'kit';
+const ON_USE = new Set([
+	'src/lib/export.ts',
+	'src/lib/zip.ts',
+	'src/lib/components/Export.svelte',
+	'src/lib/debug.svelte.ts',
+	'src/lib/components/Debug.svelte',
+	'src/lib/call-hierarchy.svelte.ts',
+	'src/lib/components/CallHierarchy.svelte',
+]);
+for (const src of ON_USE) if (!viteManifest[src]?.isDynamicEntry) throw new Error(`offline-manifest.mjs: ${src} is not a dynamic entry of the build; update ON_USE`);
 const startup = new Set();
 const lazyRoots = [];
 for (const [src, chunk] of Object.entries(viteManifest)) {
-	if (chunk.isDynamicEntry && (ownerOf(src) === 'monaco' || ownerOf(src) === 'app')) lazyRoots.push(src);
+	if (chunk.isDynamicEntry && !ON_USE.has(src) && (ownerOf(src) === 'monaco' || ownerOf(src) === 'app')) lazyRoots.push(src);
 	else if (chunk.isEntry || chunk.isDynamicEntry) startup.add(src);
 }
 const closure = (roots, dynamic) => {

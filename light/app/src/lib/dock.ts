@@ -304,8 +304,8 @@ class EditorRenderer implements IContentRenderer {
 				id: 'yukibana.runTestAtCursor',
 				label: 'Run Test at Cursor',
 				run: async () => {
-					const tests = await this.workspace.testAt(path, editor.getPosition()?.lineNumber ?? 1);
-					if (tests !== null) this.workspace.runTest(tests);
+					const found = await this.workspace.testAt(path, editor.getPosition()?.lineNumber ?? 1);
+					if (found !== null) this.workspace.runTest(found);
 				},
 			});
 		if (debugs) {
@@ -328,8 +328,8 @@ class EditorRenderer implements IContentRenderer {
 					label: 'Debug Test at Cursor',
 					run: async () => {
 						if (workspace.debugging) return;
-						const tests = await workspace.testAt(path, editor.getPosition()?.lineNumber ?? 1);
-						if (tests !== null && !workspace.debugging) void workspace.debug(tests);
+						const found = await workspace.testAt(path, editor.getPosition()?.lineNumber ?? 1);
+						if (found !== null && !workspace.debugging) void workspace.debug(found);
 					},
 				});
 			editor.addAction({ id: 'yukibana.stepOver', label: 'Step Over', keybindings: [KeyCode.F10], run: () => workspace.debugger?.next() });

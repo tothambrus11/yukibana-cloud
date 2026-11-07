@@ -215,7 +215,7 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Haskell projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	cabal: {
 		paths: ['haskell-project.cabal', 'cabal.project'],
 		generate: (p) => ({ 'haskell-project.cabal': haskellCabal(p.files, p.language.entry), 'cabal.project': 'packages: .\n' }),
@@ -239,7 +239,7 @@ const BUILDS: LanguageExport['builds'] = {
 			jobs: [testJob('Build and test', steps(['Build', 'stack build --install-ghc --allow-different-user'], ...(haskellTests(p.files) ? [['Test', 'stack test --install-ghc --allow-different-user'] as const] : [])))],
 		}),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Haskell projects. */
 const TOOLING: LanguageTooling = {

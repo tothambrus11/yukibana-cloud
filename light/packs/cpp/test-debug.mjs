@@ -6,7 +6,7 @@
 // message with `debug` and `breakOnFailure`, with a function breakpoint on
 // the protocol's TEST_FAILED_FUNCTION: the program stops there once, the
 // failed test's body is the third frame, at the assertion's line, with its
-// locals; Continue runs the rest. Once with `tests` naming the failing test
+// locals; Continue runs the rest. Once with `test` naming the failing test
 // (the other does not run) and once without (it does).
 //
 //   node test-debug.mjs      (after ./build.sh and the LLDB pack's; needs playwright-core)
@@ -203,10 +203,10 @@ try {
     }, TEST_FAILED_FUNCTION);
 
     for (const [fw, { source, failing, body }] of Object.entries(PROJECTS)) {
-        for (const tests of [failing, null]) {
+        for (const test of [failing, null]) {
             const files = { 'compile_flags.txt': '-std=c++20\n', 'main.cpp': 'int main() {}\n', 'tests/pick_test.cpp': source };
-            const label = `${fw}${tests ? ', the failing test alone' : ', every test'}`;
-            const r = await page.evaluate((m) => window.debugTests(m), { type: 'test', files, entry: 'main.cpp', breakOnFailure: true, ...(tests ? { tests } : {}) });
+            const label = `${fw}${test ? ', the failing test alone' : ', every test'}`;
+            const r = await page.evaluate((m) => window.debugTests(m), { type: 'test', files, entry: 'main.cpp', breakOnFailure: true, ...(test ? { test } : {}) });
             const [stop] = r.stops;
             check(`${label}: the function breakpoint on ${TEST_FAILED_FUNCTION} resolves`, JSON.stringify(r.verified) === '[true]', JSON.stringify(r.verified));
             check(
@@ -222,8 +222,8 @@ try {
             check(`${label}: the failed test's locals are there (answer = 41)`, stop?.locals.answer === '41', JSON.stringify(stop?.locals));
             check(`${label}: stopped before the test went on`, stop !== undefined && !stop.stdout.includes('after the failure'), JSON.stringify(stop?.stdout.slice(-200)));
             check(
-                `${label}: Continue runs the rest${tests ? ', and not the other test' : ', the other test too'}, exit non-zero`,
-                r.code !== 0 && r.code !== null && r.stdout.includes('after the failure') && r.stdout.includes('other ran') === !tests,
+                `${label}: Continue runs the rest${test ? ', and not the other test' : ', the other test too'}, exit non-zero`,
+                r.code !== 0 && r.code !== null && r.stdout.includes('after the failure') && r.stdout.includes('other ran') === !test,
                 `code=${r.code} ${JSON.stringify(r.stderr.slice(0, 300))}`
             );
         }

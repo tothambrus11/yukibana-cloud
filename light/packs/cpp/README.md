@@ -1055,13 +1055,13 @@ Linux target, which runs under QEMU: its gdbstub is the plan for those.
 
 ### One test, and stopping at a failed assertion
 
-A test run's `tests` and a debugged test run's `breakOnFailure`
+A test run's `test` and a debugged test run's `breakOnFailure`
 (CONTRACT.md, "Tests (optional)") become, in `src/test-selection.js` (pure,
 glue, tested as tables by `node --test test-selection.mjs`):
 
 | Framework | One test (`{ file, suite, name }`) | Stop on failed assertion |
 | --- | --- | --- |
-| GoogleTest | `GTEST_FILTER=S.N:*/S.N/*:S/*.N:*/S/*.N` (TEST and TEST_F, TEST_P, TYPED_TEST, TYPED_TEST_P), `GTEST_FAIL_IF_NO_TEST_SELECTED=1`; suite and name must be identifiers, a null suite is any | a `TestEventListener`'s `OnTestPartResult` |
+| GoogleTest | `GTEST_FILTER=S.N:*/S.N/*:S/*.N:*/S/*.N` (TEST and TEST_F, TEST_P, TYPED_TEST, TYPED_TEST_P; a parametrised or typed test selects every instance), `GTEST_FAIL_IF_NO_TEST_SELECTED=1`; suite and name must be identifiers, a null suite is any | a `TestEventListener`'s `OnTestPartResult` |
 | doctest | `-tc=<name>`, `-ts=<suite>` when there is one, `-sf=<file>,*/<file>`, `-cs`; `,` and `\` escaped | a `DOCTEST_REGISTER_LISTENER` reporter's `log_assert` |
 | Catch2 | one test spec, `"<name>"`, with `\`, `"`, `,`, `[`, `]` and `*` escaped; the suite is ignored | a `CATCH_REGISTER_LISTENER` listener's `assertionEnded` |
 
@@ -1087,7 +1087,8 @@ no project file has that path): the framework's listener above, registered
 by a static initialiser so a project's own main gets it too, calling
 `extern "C" void yukibana_test_failed(const char *file, int line)` at each
 failed assertion. The host sets a function breakpoint on that name (the
-protocol's `TEST_FAILED_FUNCTION`); the stop is a real breakpoint, so
+protocol's `TEST_FAILED_FUNCTION`, which lang-cpp's provider of std's
+`failureStop` names, so the host learns how to stop from the language); the stop is a real breakpoint, so
 Continue goes on with the tests. The call stack at the stop is
 `yukibana_test_failed`, the listener (both in `.yukibana/test-failed.cpp`),
 then the failed test's body at the assertion's line, with its locals: the
@@ -1110,14 +1111,14 @@ their libraries have no probe sites, and the stub stops a breakpoint
 between sites at the next site, which could be anywhere.
 
 **Tested.** `test-run.mjs`: a project of two tests in each framework runs
-both, and with `tests` only the chosen one, whose name in doctest and
+both, and with `test` only the chosen one, whose name in doctest and
 Catch2 holds a comma (and, in Catch2, brackets, quotes, a backslash, a `*`
 and a `~`) that unescaped would select the other; a test that is not there;
 `breakOnFailure` without the debugger compiles no hook; a GoogleTest name
 that is no identifier and tests with their own main are refused.
 `test-debug.mjs` (by hand, with the LLDB pack assembled beside this one;
 test.sh does not run it, see there) debugs the same kind of project under
-lldb-dap in Chromium, in each framework, with and without `tests`: one stop
+lldb-dap in Chromium, in each framework, with and without `test`: one stop
 at `yukibana_test_failed`, the test's body as the third frame at the
 assertion's line with `answer = 41`, nothing printed after the assertion
 yet, and Continue running the rest (42 s for the six runs, warm).

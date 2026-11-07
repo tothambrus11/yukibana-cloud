@@ -44,13 +44,13 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Rust projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	cargo: {
 		paths: ['Cargo.toml'],
 		generate: (p) => ({ 'Cargo.toml': cargoToml(p.files) }),
 		ci: () => ({ ecosystems: ['cargo'], prepare: 'cargo fetch', jobs: [testJob('Build and test', steps(['Build', 'cargo build --all-targets'], ['Test', 'cargo test']))] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Rust projects. */
 const TOOLING: LanguageTooling = {

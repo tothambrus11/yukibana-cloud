@@ -179,13 +179,13 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Swift projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	swiftpm: {
 		paths: ['Package.swift'],
 		generate: (p) => ({ 'Package.swift': packageSwift(p.files, p.paths, p.optimization) }),
 		ci: (p) => ({ ecosystems: ['swift'], prepare: 'swift package resolve', jobs: [testJob('Build and test', steps(['Build', 'swift build'], ...(swiftTests(p.files) ? [['Test', 'swift test'] as const] : [])))] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Swift projects. */
 const TOOLING: LanguageTooling = {

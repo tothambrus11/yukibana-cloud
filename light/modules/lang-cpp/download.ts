@@ -4,21 +4,20 @@
  * Cheap to import: each build system's key, label and availability; what
  * writes the files (export.ts) loads on a first download.
  */
-import type { LanguageMeta } from '../core/index.ts';
 import { always, exportProviders, type ExportBuildSpec, type LanguageDownloads } from '../std/index.ts';
 
 /** The build systems a download offers, the usual one first. */
-const BUILDS: readonly ExportBuildSpec[] = [
+const BUILDS = [
 	{ key: 'cmake', label: 'CMake', available: always },
 	{ key: 'meson', label: 'Meson', available: always },
 	{ key: 'conan', label: 'CMake with Conan', available: always },
-];
+] as const satisfies readonly ExportBuildSpec[];
 
-/** Returns the package's downloads, loading what writes them. */
-const load = async () => (await import('./export.ts')).EXPORTS;
+/** Returns what writes the package's downloads, loading it on a first download. */
+const body = async () => (await import('./export.ts')).EXPORTS;
 
-/** Returns a language's download providers. */
-const downloads: LanguageDownloads = <H,>(language: LanguageMeta) => exportProviders<H>(language, BUILDS, load);
-
-/** The package's languages' download providers, by key. */
-export const DOWNLOADS = { c: downloads, cpp: downloads } as const satisfies Readonly<Record<string, LanguageDownloads>>;
+/**
+ * The package's languages' download providers, by key. Each build system's
+ * key is one of its body's `builds`, which `exportProviders` checks.
+ */
+export const DOWNLOADS = { c: exportProviders(BUILDS, async () => (await body()).c), cpp: exportProviders(BUILDS, async () => (await body()).cpp) } as const satisfies Readonly<Record<string, LanguageDownloads>>;

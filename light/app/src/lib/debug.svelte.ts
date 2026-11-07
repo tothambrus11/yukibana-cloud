@@ -17,6 +17,7 @@
  * (DAP's configurationDone), then runs to the first one.
  */
 import type { DebugChannel, DebugProgram } from '@yukibana/protocol';
+import type { FailureStop } from '@yukibana/std';
 import type { BreakpointSession, Breakpoints } from './breakpoints.svelte';
 
 /** The workspace path of a project file in the program's debug info (packs/cpp: compiled in /workspace). */
@@ -61,7 +62,7 @@ export type DebugStatus =
 	/** Loading LLDB, building, attaching. */
 	| { kind: 'starting'; text: string }
 	| { kind: 'running' }
-	/** `reason` as DAP says it: breakpoint, step, pause, exception, entry; `function breakpoint` for a stop in one of the host's `functionBreakpoints`. */
+	/** `reason` as DAP says it: breakpoint, step, pause, exception, entry; `function breakpoint` for a stop in one of the host's `failureStop` functions. */
 	| { kind: 'stopped'; reason: string; description: string }
 	| { kind: 'ended'; text: string };
 
@@ -72,11 +73,12 @@ export interface DebugHost {
 	/** Stops the run, if it is still going. */
 	stopRun(): void;
 	/**
-	 * The functions to stop in, by name, set with the breakpoints before the
-	 * program runs (DAP's function breakpoints): a test run's
-	 * failed-assertion hook (protocol `TEST_FAILED_FUNCTION`), or none.
+	 * How the run stops at a failed assertion, set with the breakpoints
+	 * before the program runs (DAP's function and exception breakpoints),
+	 * as the language's package says (std's `failureStop`); null when it is
+	 * not to stop there.
 	 */
-	readonly functionBreakpoints: readonly string[];
+	readonly failureStop: FailureStop | null;
 	/**
 	 * `true` iff `path`, a path under the program's /workspace, is a file of
 	 * the project: a frame in another (the runner's own sources) is shown
@@ -231,8 +233,9 @@ export class Debugger implements BreakpointSession {
 			// when breakpoints can be set (DAP's launch sequence).
 			await Promise.race([initialized, attached]);
 			await this.#sendBreakpoints();
-			const functions = this.#host?.functionBreakpoints ?? [];
-			if (functions.length) await this.#request('setFunctionBreakpoints', { breakpoints: functions.map((name) => ({ name })) });
+			const stop = this.#host?.failureStop ?? null;
+			if (stop !== null && stop.functions.length > 0) await this.#request('setFunctionBreakpoints', { breakpoints: stop.functions.map((name) => ({ name })) });
+			if (stop !== null && stop.exceptionFilters.length > 0) await this.#request('setExceptionBreakpoints', { filters: [...stop.exceptionFilters] });
 			await this.#request('configurationDone', {});
 			await attached;
 			if (this.status.kind === 'starting') this.status = { kind: 'running' };
@@ -328,7 +331,7 @@ export class Debugger implements BreakpointSession {
 		});
 		// lldb-dap says "breakpoint" for a function breakpoint too: the stop is one when the innermost frame is that function.
 		const top = this.frames[0]?.name.replace(/^::/, '').replace(/\(.*$/, '') ?? '';
-		const functionStop = reason === 'breakpoint' && (this.#host?.functionBreakpoints.includes(top) ?? false);
+		const functionStop = reason === 'breakpoint' && (this.#host?.failureStop?.functions.includes(top) ?? false);
 		this.status = { kind: 'stopped', reason: functionStop ? 'function breakpoint' : reason, description };
 		this.children = {};
 		// The innermost frame of the project's: a stop in a library shows where the project called it.

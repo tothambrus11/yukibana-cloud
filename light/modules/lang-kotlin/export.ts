@@ -235,7 +235,7 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Kotlin projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	gradle: {
 		paths: ['build.gradle.kts', 'settings.gradle.kts'],
 		generate: (p) => ({ 'build.gradle.kts': buildGradleKts(p.files, p.language.entry), 'settings.gradle.kts': 'rootProject.name = "kotlin-project"\n' }),
@@ -248,7 +248,7 @@ const BUILDS: LanguageExport['builds'] = {
 		ignored: ['target/'],
 		ci: (p) => ({ extra: MAVEN_IMAGE, ecosystems: ['maven'], jobs: [testJob('Build and test', steps(['Maven', 'mvn -B -ntp verify'])), ...spotlessJob(p.files, 'pom.xml', kotlinFiles(p.files), 'mvn -B -ntp spotless:check', MAVEN_LOCAL)] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Kotlin projects. */
 const TOOLING: LanguageTooling = {

@@ -84,7 +84,8 @@ export function testAt(tests: readonly FoundTest[], line: number): FoundTest | n
 
 /**
  * Returns a language's providers of one test (std's `testCase`,
- * `debugTestCase` and `findTests`): what a language package's
+ * `debugTestCase`, `failureStop` and `findTests`, whichever its runner
+ * honours): what a language package's
  * `/single-test` entry gives for each language whose runner selects a
  * test, apart from its root's providers, so that a host that runs whole
  * projects only (an embed) loads none of it. A host appends them to the

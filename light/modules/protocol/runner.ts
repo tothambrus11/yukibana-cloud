@@ -83,14 +83,16 @@ export interface RunMessage {
 	 * for a language whose package provides std's `testCase` or
 	 * `debugTestCase`, never because the pack is new enough.
 	 */
-	tests?: TestSelector;
+	test?: TestSelector;
 	/**
-	 * `type: 'test'` with `debug` only. True: at each failed assertion, the
-	 * test program calls {@link TEST_FAILED_FUNCTION}, compiled with debug
-	 * information, so a function breakpoint the host sets on it stops there
-	 * and Continue goes on with the tests. Absent or false: it does not. A
-	 * runner that does not know it ignores it; a host offers it only where
-	 * the language provides std's `debugTestCase`.
+	 * `type: 'test'` with `debug` only. True: the program stops at each failed
+	 * assertion, in the way the language's package says through std's
+	 * `failureStop` (the breakpoints the host's debugger sets before the
+	 * program runs), and Continue goes on with the tests. The C++ runner calls
+	 * {@link TEST_FAILED_FUNCTION}, for a function breakpoint; another runner
+	 * may stop otherwise (an exception breakpoint on a failed assert). Absent
+	 * or false: it does not. A runner that does not know it ignores it; a
+	 * host offers it only where the language provides std's `failureStop`.
 	 */
 	breakOnFailure?: boolean;
 }
@@ -103,6 +105,22 @@ export interface RunMessage {
  * `{ suite: null, name: 'x' }` (tags are not a suite), and a Catch2
  * SCENARIO("x") is named as Catch2 names it, "Scenario: x".
  *
+ * `suite` is the framework's own qualified path of what holds the test,
+ * however deep, joined with the framework's own separator, and opaque to
+ * the host: the runner of that language parses it. So pytest's
+ * `tests/test_x.py::TestOuter::TestInner::test_y` is `{ file:
+ * 'tests/test_x.py', suite: 'TestOuter::TestInner', name: 'test_y' }`,
+ * Rust's `a::b::tests::it_works` is `{ suite: 'a::b::tests', name:
+ * 'it_works' }`, and XCTest's `ModuleTests.FooTests/testBar` is `{ suite:
+ * 'ModuleTests.FooTests', name: 'testBar' }`, its module or target the
+ * path's first part.
+ *
+ * A parametrised test is selected by its name as the framework writes its
+ * declaration: every instance runs (GoogleTest's TEST_P and typed tests,
+ * every instantiation). Where the framework names one instance (pytest's
+ * `test_y[case-1]`), `name` with that instance's part selects that one
+ * alone; a runner that cannot select an instance refuses such a name.
+ *
  * Invariant: `file` is a key of the run's `files`, the file the test is
  * defined in; a framework whose names are unique in a program may ignore
  * it, and one whose names are not (doctest) reads it. Sections and subcases
@@ -111,17 +129,19 @@ export interface RunMessage {
  */
 export interface TestSelector {
 	file: string;
-	/** The suite, as the framework names it, or null for none or any. */
+	/** The framework's qualified path of the test's suite (see above), or null for none or any. */
 	suite: string | null;
 	/** The test's own name, without its suite. Never empty. */
 	name: string;
 }
 
 /**
- * The function a runner's test program calls at each failed assertion of a
- * run with `breakOnFailure`, with C linkage, so that the host's debugger
+ * The function the C++ runner's test program calls at each failed assertion
+ * of a run with `breakOnFailure`, with C linkage, so that the host's debugger
  * stops there through a function breakpoint on this name (DAP
- * `setFunctionBreakpoints`). The failed test is the nearest frame of the
+ * `setFunctionBreakpoints`): lang-cpp's provider of std's `failureStop`
+ * names it, and a host sets what that provider says, never this constant
+ * itself. The failed test is the nearest frame of the
  * project's code below it. The C++ pack defines it (packs/cpp/src/test-selection.js,
  * which checks it against this constant in its tests).
  */

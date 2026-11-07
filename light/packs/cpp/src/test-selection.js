@@ -141,7 +141,7 @@ DOCTEST_REGISTER_LISTENER("yukibana-test-failed", 0, YukibanaTestFailed);
  * or null for none, as runner.js's FRAMEWORKS names them):
  *
  * - `args`, after the framework's own, and `env`, beside its own: the
- *   selected test only, when `tests` names one ({ file, suite, name }, the
+ *   selected test only, when `test` names one ({ file, suite, name }, the
  *   protocol's TestSelector), else nothing;
  * - `hook`: the failure hook's source, when `breakOnFailure` and `debug`
  *   are both set (without a debugger there is nothing to stop), else null;
@@ -152,12 +152,12 @@ DOCTEST_REGISTER_LISTENER("yukibana-test-failed", 0, YukibanaTestFailed);
  * - `note`: a sentence for stderr about what was left out, or null: Stop on
  *   failed assertion without a framework to hook.
  */
-export function selectionFor(framework, { tests = null, breakOnFailure = false, debug = false } = {}) {
+export function selectionFor(framework, { test = null, breakOnFailure = false, debug = false } = {}) {
     const none = { args: [], env: {}, hook: null, problem: null, note: null };
     const hook = breakOnFailure && debug && framework ? HOOKS[framework] : null;
     const note = breakOnFailure && debug && !framework ? 'Stop on failed assertion needs GoogleTest, doctest or Catch2; the tests run without it.\n' : null;
-    if (!tests) return { ...none, hook, note };
-    const { file, suite, name } = tests;
+    if (!test) return { ...none, hook, note };
+    const { file, suite, name } = test;
     if (typeof name !== 'string' || name === '' || (suite !== null && typeof suite !== 'string') || typeof file !== 'string')
         return { ...none, problem: 'The test to run is not named: a test selector needs a file, a suite (or null) and a name.\n' };
     switch (framework) {

@@ -6,7 +6,7 @@
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
-import { TEST_FAILED_FUNCTION, type DebugChannel, type LoadingProgress, type PartStatus, type RunMode, type TestSelector } from '@yukibana/protocol';
+import { type DebugChannel, type LoadingProgress, type PartStatus, type RunMode, type TestSelector } from '@yukibana/protocol';
 import { LanguageSession, type LogLevel, type RunHandle, type ServerState } from '@yukibana/runtime';
 import { MonacoBinding, toLspPosition } from '@yukibana/monaco';
 import { internals } from './monaco-internals';
@@ -35,6 +35,7 @@ import {
 	debugTestCase,
 	debugTokenOf,
 	explore,
+	failureStop,
 	findTests,
 	preview,
 	runOptionsOf,
@@ -44,6 +45,7 @@ import {
 	tokenOf,
 	warm,
 	type DebugMode,
+	type FailureStop,
 	type FoundTest,
 	type PreviewSession,
 	type RunInput,
@@ -267,8 +269,8 @@ export class Workspace implements CoreProject {
 	debugger = $state.raw<Debugger | null>(null);
 	/**
 	 * Whether Debug tests stops at each failed assertion: the Debug panel's
-	 * "Stop on failed assertion", offered where the language narrows Debug
-	 * tests (std's `debugTestCase`). The page's, not the project's: it is
+	 * "Stop on failed assertion", offered where the language's runner stops
+	 * there (std's `failureStop`). The page's, not the project's: it is
 	 * not saved.
 	 */
 	stopOnFailure = $state(false);
@@ -540,12 +542,12 @@ export class Workspace implements CoreProject {
 	}
 
 	/**
-	 * Runs one of the project's tests alone, `tests` (the code lens's Run
+	 * Runs one of the project's tests alone, `test` (the code lens's Run
 	 * test, Run Test at Cursor), where the language's providers offer that
 	 * (std's `testCase`): its test run, with the test named, so the runner
 	 * runs that test and no other.
 	 */
-	runTest(tests: TestSelector): void {
+	runTest(selector: TestSelector): void {
 		const subject = subjectOf(this.language);
 		const snapshot = this.snapshot();
 		const availability = yukibana().availability(subject, testCase, snapshot);
@@ -553,7 +555,7 @@ export class Workspace implements CoreProject {
 			if (yukibana().has(subject, testCase)) this.write('warning', availability.reason);
 			return;
 		}
-		this.startRun('test', snapshot, (input, frozen) => yukibana().perform(subject, testCase, { ...input, tests }, frozen, new AbortController().signal));
+		this.startRun('test', snapshot, (input, frozen) => yukibana().perform(subject, testCase, { ...input, test: selector }, frozen, new AbortController().signal));
 	}
 
 	/**
@@ -679,8 +681,9 @@ export class Workspace implements CoreProject {
 	 * Runs the project under the debugger, where the language's providers
 	 * offer that (modules/lang-<pack>/index.ts): its program, or with `what`
 	 * 'test' its tests, or with a test's selector that test alone (Debug
-	 * test). Where the language narrows Debug tests (std's `debugTestCase`),
-	 * its tests stop at each failed assertion while `stopOnFailure` is set.
+	 * test). Where the language's runner stops at a failed assertion (std's
+	 * `failureStop`), its tests stop there while `stopOnFailure` is set, in
+	 * the way that provider says.
 	 * The debugger's worker starts, then the run, with the channel it
 	 * listens on; the program stops at the breakpoints set in the editors'
 	 * margins. The terminal shows the program's output and takes its input,
@@ -695,12 +698,11 @@ export class Workspace implements CoreProject {
 		// Debug tests is narrowed (one test, or a stop at each failed
 		// assertion) where the language provides that, and then always
 		// performs `debugTestCase`, which with neither is Debug tests exactly.
-		const tests = typeof what === 'string' ? null : what;
+		const selected = typeof what === 'string' ? null : what;
 		const mode: DebugMode = typeof what === 'string' ? what : 'test';
 		const narrowed = mode === 'test' && yukibana().has(subject, debugTestCase);
-		if (tests !== null && !narrowed) return;
+		if (selected !== null && !narrowed) return;
 		const token = narrowed ? debugTestCase : debugTokenOf(mode);
-		const breakOnFailure = narrowed && this.stopOnFailure;
 		const snapshot = this.snapshot();
 		const availability = yukibana().availability(subject, token, snapshot);
 		if (availability.kind === 'unavailable') {
@@ -721,7 +723,11 @@ export class Workspace implements CoreProject {
 		const generation = this.generation;
 		this.debuggerLoading = true;
 		let dbg: Debugger;
+		let stop: FailureStop | null;
 		try {
+			// How the runner stops at a failed assertion is the language's to
+			// say, asked of the project as it was at the click.
+			stop = narrowed && this.stopOnFailure ? await this.failureStopOf(subject, snapshot) : null;
 			dbg = await this.loadDebugger();
 		} catch (e) {
 			this.write('error', `The debugger could not be loaded: ${e instanceof Error ? e.message : String(e)}`);
@@ -731,6 +737,7 @@ export class Workspace implements CoreProject {
 		}
 		// The language changed while the debugger's code downloaded: the click was for the old project.
 		if (generation !== this.generation) return;
+		const breakOnFailure = stop !== null;
 		this.host?.showTerminal();
 		this.host?.showDebug();
 		this.runner.ended = () => {
@@ -741,7 +748,7 @@ export class Workspace implements CoreProject {
 			const input = { files, entry: pathOf(entry), options, ...listener, channel };
 			const signal = new AbortController().signal;
 			const session = narrowed
-				? yukibana().perform(subject, debugTestCase, { ...input, tests, breakOnFailure }, frozen, signal)
+				? yukibana().perform(subject, debugTestCase, { ...input, test: selected, breakOnFailure }, frozen, signal)
 				: yukibana().perform(subject, debugTokenOf(mode), input, frozen, signal);
 			session.then(
 				(outcome) => {
@@ -767,13 +774,31 @@ export class Workspace implements CoreProject {
 		dbg.start({
 			run: start,
 			stopRun: () => this.runner.stop(false),
-			// The runner calls it at each failed assertion (std's `debugTestCase`, `breakOnFailure`).
-			functionBreakpoints: breakOnFailure ? [TEST_FAILED_FUNCTION] : [],
+			// Set before the program runs, for `breakOnFailure` (std's `failureStop`).
+			failureStop: stop,
 			// A frame in a file of the runner's own (its failed-assertion hook) is not the project's.
 			inProject: (path) => Object.hasOwn(files, path),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
 			log: (text) => this.write('info', text, 'run'),
 		});
+	}
+
+	/**
+	 * Returns how `subject`'s runner stops at a failed assertion on
+	 * `snapshot` (std's `failureStop`), or null where it does not, or the
+	 * provider is unavailable or fails; says why on the Log panel when it
+	 * is the language's and refused.
+	 */
+	private async failureStopOf(subject: LanguageSubject, snapshot: ProjectSnapshot): Promise<FailureStop | null> {
+		if (!yukibana().has(subject, failureStop)) return null;
+		try {
+			const outcome = await yukibana().perform(subject, failureStop, null, snapshot, new AbortController().signal);
+			if (outcome.kind === 'done') return outcome.value;
+			this.write('warning', `The tests run without stopping at a failed assertion: ${outcome.reason}`);
+		} catch (e) {
+			this.write('error', `The tests run without stopping at a failed assertion: ${e instanceof Error ? e.message : String(e)}`);
+		}
+		return null;
 	}
 
 	/**

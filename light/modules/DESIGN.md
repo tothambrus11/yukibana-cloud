@@ -4,7 +4,7 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 18 record how steps 1 to 9 were built, and
+`light/modules`. Sections 8 to 20 record how steps 1 to 9 and one test alone were built, and
 what the reviews of them changed, and where they depart from the sketches
 here; the code and its `/** */`
 contracts are the authority where the two differ.
@@ -13,7 +13,7 @@ This design is grounded in today's code: `languages.ts` (the `Language` booleans
 
 Governing rule: the rewrite moves decisions out of the app into providers that send today's pack messages unchanged. No pack contract changes. No new execution architecture.
 
-One exception, agreed with Ambrus after the rewrite's steps: a test run's optional `tests` and `breakOnFailure` (packs/CONTRACT.md, "Tests (optional)"), additive fields a runner that does not know them ignores, offered only through std's `testCase` and `debugTestCase`, which a language provides only where its runner honours them. The messages of every other token are unchanged.
+One exception, agreed with Ambrus after the rewrite's steps: a test run's optional `test` and `breakOnFailure` (packs/CONTRACT.md, "Tests (optional)"; `test` was `tests` until section 20), additive fields a runner that does not know them ignores, offered only through std's `testCase`, `debugTestCase` and `failureStop`, which a language provides only where its runner honours them. The messages of every other token are unchanged.
 
 ## 1. Decisions
 
@@ -1389,3 +1389,79 @@ governing rule above). Where it departs from the plan:
   `e2e-targets`, which fail only where main fails. One run of `e2e.mjs`
   alongside other suites saw clangd report one error after a framework
   switch; alone, and in a second full run, it passed.
+
+## 20. The review of steps 8 and 9, and of one test alone
+
+What the review found, and what changed:
+
+* **Stop on failed assertion was C++'s mechanism, built into the protocol
+  and the host.** The app set a function breakpoint on protocol's
+  `TEST_FAILED_FUNCTION` itself, and `debugTestCase` required a runner to
+  honour both the selection and `breakOnFailure`, so a language that stops
+  otherwise (pytest under a Python debugger, through an exception
+  breakpoint on `AssertionError`) could not offer even Debug test. Now the
+  stop is a token of its own, std's `failureStop` (`Token<null,
+  FailureStop>`, requires `debugTestCase`, `failureStopProvider`): its
+  answer is what the host's debugger sets before the program runs, DAP
+  function breakpoints and exception breakpoint filters. lang-cpp's
+  `/single-test` provides it with `{ functions: [TEST_FAILED_FUNCTION],
+  exceptionFilters: [] }`; the workspace performs it at the click when
+  "Stop on failed assertion" is set, sends `breakOnFailure` only when it
+  answered, and hands the answer to the debugger (`DebugHost.failureStop`,
+  in place of `functionBreakpoints`), which sends
+  `setFunctionBreakpoints` and `setExceptionBreakpoints` from it. The
+  Debug panel offers the option where `failureStop` is provided, not
+  where `debugTestCase` is. `TEST_FAILED_FUNCTION` stays in protocol, as
+  the C++ runner's name (its tests check it there); the protocol and the
+  contract now say that how a runner stops is its own, told to the host
+  through `failureStop`. lang-cpp gains a dependency on
+  `@yukibana/protocol` for it (two-up's lock entry follows).
+* **The selector field is `test`, not `tests`.** It holds one selector:
+  the message field, `TestCaseInput` and `DebugTestCaseInput` are renamed
+  (packs/cpp's runner, test-selection.js and its tests, the contract).
+  The installed C++ pack's runner.js was rebuilt from the sources (the
+  glue's esbuild of runner.js alone, with its defines; built from the
+  previous sources it is byte-identical to what was installed, so the
+  rebuild changes the rename only).
+* **`TestSelector.suite` is specified for more than C++.** The contract
+  and protocol say it is the framework's own qualified path of what holds
+  the test, however deep, joined with the framework's separator and parsed
+  by the runner (pytest's `TestOuter::TestInner`, Rust's `a::b::tests`,
+  XCTest's `ModuleTests.FooTests`), and what selects a parametrised test:
+  its declared name runs every instance (GoogleTest's `TEST_P`), and where
+  the framework names one instance (pytest's `test_y[case-1]`) that name
+  selects it, or is refused. A string, not `readonly string[]`: every
+  framework named joins its path itself, and C++'s runner reads it as it
+  was.
+* **A build system was two records joined by a bare string.** The key and
+  label in download.ts and the body in export.ts are still apart (that is
+  what keeps the body lazy), but the key is now a type parameter:
+  `ExportBuildSpec<K>`, `LanguageExport<K>` with `builds: Record<K,
+  BuildSystem>`, and `exportProviders(builds, load)` infers `K` from
+  `load`, which gives one language's export, so a spec naming a build
+  system its body lacks is a compile error (tried: renaming `meson` in
+  lang-cpp's download.ts fails the type-check). `exportProviders` now
+  returns the `LanguageDownloads` itself, so the twelve download.ts files
+  lost their `load` by language key and the `RangeError`s for a missing
+  language or build system; the bodies' `BUILDS` are `satisfies` rather
+  than annotated, to keep their keys. The app's `OfferedBuild` is left:
+  it is the dialog's join of the instance's entry (key, label) with the
+  body the instance performed, not a second source of either.
+* **two-up named the pool's snippet by the language key.** `mountSnippet`
+  takes the snippet's name (the section's id), so two snippets of one
+  language no longer stop each other, and clears the run's handle at each
+  Run, as Hylo's page does. The snippet wiring two-up and Hylo share
+  (`part`, `show`, the stale-run guard) stays copied: each example is a
+  package of its own that a reader copies whole, and a shared module
+  would be a third package for some forty lines.
+* **Download, Debug and the call hierarchy did not work offline.** Step 9
+  made them lazy, and offline-manifest.mjs classified every lazy root of
+  the app's as `lazy` (fetched on use), where on main they were the
+  page's and so precached. Now its `ON_USE` list (export.ts, zip.ts,
+  Export.svelte, debug.svelte.ts, Debug.svelte, call-hierarchy.svelte.ts,
+  CallHierarchy.svelte) is precached with the shell like the modules'
+  lazy bodies: still not in the first load, but there offline and in a
+  tab left open across a deploy. A name in the list that is no dynamic
+  entry of the build fails the build. bundle.test.mjs's offline test
+  checks each one's static files are in the shell.
+

@@ -185,17 +185,22 @@ export const exportBuild: Token<null, BuildSystem, 'many'> = /* @__PURE__ */ def
 /** A language's tools, which every build system of it shares. */
 export const exportTooling: Token<null, LanguageTooling, 'one'> = /* @__PURE__ */ defineToken<null, LanguageTooling>()('@yukibana/std#export-tooling');
 
-/** What a language package's export body gives for one of its languages: its build systems by key, and its tooling. */
-export interface LanguageExport {
+/**
+ * What a language package's export body gives for one of its languages:
+ * its build systems by key, and its tooling. `K` is the keys, so that a
+ * provider's spec naming a build system the body lacks is a compile error
+ * (`exportProviders`), not a `RangeError` on the first download.
+ */
+export interface LanguageExport<K extends string = string> {
 	/** Every build system its providers offer (`exportProviders`'s `builds`), by key. */
-	readonly builds: Readonly<Record<string, BuildSystem>>;
+	readonly builds: Readonly<Record<K, BuildSystem>>;
 	readonly tooling: LanguageTooling;
 }
 
 /** A build system as a language offers it, before its body is loaded. */
-export interface ExportBuildSpec {
-	/** Its id: the entry's key, and what a host saves a choice of it as (`cmake`). */
-	readonly key: string;
+export interface ExportBuildSpec<K extends string = string> {
+	/** Its id: the entry's key, a key of its body's `builds`, and what a host saves a choice of it as (`cmake`). */
+	readonly key: K;
 	/** What a host shows (`CMake with Conan`). */
 	readonly label: string;
 	/** Whether it can build a project; read from the snapshot only (N1). */
@@ -203,50 +208,50 @@ export interface ExportBuildSpec {
 }
 
 /**
- * Returns `language`'s providers of `exportTooling` and, in the order of
- * `builds` (the usual one first), of `exportBuild`, each keyed and labelled
- * as its spec says: lazy, each loading its package's exports (`load`, an
- * `import()` of the package's export body) on its first perform, and giving
- * `language`'s tooling, or that build system, from them.
+ * Returns a language's download providers (`LanguageDownloads`): of
+ * `exportTooling` and, in the order of `builds` (the usual one first), of
+ * `exportBuild`, each keyed and labelled as its spec says; lazy, each
+ * loading the language's export (`load`, an `import()` of its package's
+ * export body) on its first perform, and giving its tooling, or that build
+ * system, from it. Every spec's key is a key of the export's `builds`, which
+ * the compiler checks: `K` is inferred from `load` alone.
  *
- * - Requires: what `load` resolves to has an export for `language.key`
- *   whose `builds` has every key of `builds`; a perform of one it lacks
- *   rejects, naming it.
+ * - Requires: `load` gives the export of the language the providers are
+ *   made for.
  */
-export function exportProviders<H>(language: LanguageMeta, builds: readonly ExportBuildSpec[], load: () => Promise<Readonly<Record<string, LanguageExport>>>): AnyProvider<H>[] {
-	const subject: LanguageSubject = { kind: 'language', id: language.key };
-	const own = async (): Promise<LanguageExport> => {
-		const found = (await load())[language.key];
-		if (found === undefined) throw new RangeError(`The ${language.key} package exports no download of ${language.key}.`);
-		return found;
-	};
-	const tooling = provide<null, LanguageTooling, H, 'one'>({
-		token: exportTooling,
-		subject,
-		entry: { kind: 'one' },
-		requires: [],
-		available: () => AVAILABLE,
-		body: { kind: 'lazy', load: async () => {
-			const { tooling } = await own();
-			return () => tooling;
-		} },
-	});
-	const build = ({ key, label, available }: ExportBuildSpec): Provider<null, BuildSystem, H, 'many'> => ({
-		token: exportBuild,
-		subject,
-		entry: { kind: 'many', key, label },
-		requires: [],
-		available,
-		body: {
-			kind: 'lazy',
-			load: async () => {
-				const system = (await own()).builds[key];
-				if (system === undefined) throw new RangeError(`The ${language.key} export has no build system ${key}.`);
-				return () => system;
+export function exportProviders<K extends string>(builds: readonly ExportBuildSpec<NoInfer<K>>[], load: () => Promise<LanguageExport<K>>): LanguageDownloads {
+	return <H,>(language: LanguageMeta): AnyProvider<H>[] => {
+		const subject: LanguageSubject = { kind: 'language', id: language.key };
+		const tooling = provide<null, LanguageTooling, H, 'one'>({
+			token: exportTooling,
+			subject,
+			entry: { kind: 'one' },
+			requires: [],
+			available: () => AVAILABLE,
+			body: {
+				kind: 'lazy',
+				load: async () => {
+					const { tooling } = await load();
+					return () => tooling;
+				},
 			},
-		},
-	});
-	return [tooling, ...builds.map(build)];
+		});
+		const build = ({ key, label, available }: ExportBuildSpec<K>): Provider<null, BuildSystem, H, 'many'> => ({
+			token: exportBuild,
+			subject,
+			entry: { kind: 'many', key, label },
+			requires: [],
+			available,
+			body: {
+				kind: 'lazy',
+				load: async () => {
+					const system = (await load()).builds[key];
+					return () => system;
+				},
+			},
+		});
+		return [tooling, ...builds.map(build)];
+	};
 }
 
 /**

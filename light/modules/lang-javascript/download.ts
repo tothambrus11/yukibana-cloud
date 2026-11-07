@@ -5,19 +5,24 @@
  * system's key, label and availability; what writes the files (export.ts)
  * loads on a first download.
  */
-import type { LanguageMeta } from '../core/index.ts';
 import { always, exportProviders, type ExportBuildSpec, type LanguageDownloads } from '../std/index.ts';
 
-/** Returns the package's downloads, loading what writes them. */
-const load = async () => (await import('./export.ts')).EXPORTS;
-
-/** Returns the download providers of a language built with `build` alone. */
-const only = (build: ExportBuildSpec): LanguageDownloads => <H,>(language: LanguageMeta) => exportProviders<H>(language, [build], load);
+/** Returns what writes the package's downloads, loading it on a first download. */
+const body = async () => (await import('./export.ts')).EXPORTS;
 
 /** A language that runs as a script: npm. */
-const scripted = only({ key: 'npm', label: 'npm', available: always });
+const SCRIPT = [{ key: 'npm', label: 'npm', available: always }] as const satisfies readonly ExportBuildSpec[];
 /** A web language: Vite. */
-const page = only({ key: 'vite', label: 'Vite', available: always });
+const PAGE = [{ key: 'vite', label: 'Vite', available: always }] as const satisfies readonly ExportBuildSpec[];
 
-/** The package's languages' download providers, by key. */
-export const DOWNLOADS = { javascript: scripted, typescript: scripted, web: page, p5: page, 'p5-global': page } as const satisfies Readonly<Record<string, LanguageDownloads>>;
+/**
+ * The package's languages' download providers, by key. Each build system's
+ * key is one of its body's `builds`, which `exportProviders` checks.
+ */
+export const DOWNLOADS = {
+	javascript: exportProviders(SCRIPT, async () => (await body()).javascript),
+	typescript: exportProviders(SCRIPT, async () => (await body()).typescript),
+	web: exportProviders(PAGE, async () => (await body()).web),
+	p5: exportProviders(PAGE, async () => (await body()).p5),
+	'p5-global': exportProviders(PAGE, async () => (await body())['p5-global']),
+} as const satisfies Readonly<Record<string, LanguageDownloads>>;

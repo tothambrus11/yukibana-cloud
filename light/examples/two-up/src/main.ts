@@ -50,13 +50,13 @@ const instances: TwoUp = {
 globalThis.twoUp = instances;
 
 const pythonSection = part<HTMLElement>(document.body, '#python');
-mountSnippet(pythonSection, instances.python, python, textareaEditor(part<HTMLTextAreaElement>(pythonSection, '.code'), python.entry));
+mountSnippet(pythonSection, pythonSection.id, instances.python, python, textareaEditor(part<HTMLTextAreaElement>(pythonSection, '.code'), python.entry));
 
 const cppSection = part<HTMLElement>(document.body, '#cpp');
 const cppText = part<HTMLTemplateElement>(cppSection, 'template.code').content.textContent ?? '';
 import('./cpp-editor.ts').then(
 	({ cppEditor }) => {
-		mountSnippet(cppSection, instances.cpp, cpp, cppEditor(part<HTMLElement>(cppSection, '.editor'), cpp.entry, cppText));
+		mountSnippet(cppSection, cppSection.id, instances.cpp, cpp, cppEditor(part<HTMLElement>(cppSection, '.editor'), cpp.entry, cppText));
 		cppSection.dataset['editor'] = 'ready';
 	},
 	(error: unknown) => {

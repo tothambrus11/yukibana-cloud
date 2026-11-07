@@ -84,7 +84,7 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Python projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	pyproject: {
 		paths: ['pyproject.toml'],
 		generate: (p) => ({ 'pyproject.toml': pyprojectToml(p.files) }),
@@ -104,7 +104,7 @@ const BUILDS: LanguageExport['builds'] = {
 			],
 		}),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Python projects. */
 const TOOLING: LanguageTooling = {

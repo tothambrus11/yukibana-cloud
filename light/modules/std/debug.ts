@@ -16,7 +16,7 @@
  * Debug tests.
  */
 
-import { defineToken, type Provider, type Token } from '../core/index.ts';
+import { defineToken, type LanguageKey, type Provider, type Token } from '../core/index.ts';
 import type { DebugChannel, DebugProgram, TestSelector } from '../protocol/index.ts';
 import type { RunEvent, RunHandle, SessionRequest } from '../runtime/index.ts';
 import type { PackLanguage } from './language.ts';
@@ -148,23 +148,27 @@ function performDebug(language: PackLanguage, host: RunHost, input: DebugInput, 
  */
 export interface DebugTestCaseInput extends DebugInput {
 	/** The test to debug alone (protocol `TestSelector`), or null for every test. */
-	readonly tests: TestSelector | null;
+	readonly test: TestSelector | null;
 	/**
-	 * Whether the program stops at each failed assertion: the runner calls
-	 * protocol's `TEST_FAILED_FUNCTION` there, and the host's debugger is to
-	 * set a function breakpoint on it before the program runs. Continue goes
-	 * on with the tests.
+	 * Whether the program stops at each failed assertion, in the way the
+	 * language's `failureStop` says, whose breakpoints the host's debugger
+	 * sets before the program runs. Continue goes on with the tests.
+	 *
+	 * - Requires: false unless `failureStop` is available for the language
+	 *   on the snapshot performed: a runner that does not stop would run
+	 *   every test through while the host said it stops.
 	 */
 	readonly breakOnFailure: boolean;
 }
 
 /**
- * Debug tests, narrowed: one test, or all of them, and optionally a stop at
- * each failed assertion; a runner's `type: 'test'` with `debug`, `tests`
- * and `breakOnFailure` (packs/CONTRACT.md, "Tests (optional)"). A provider
- * of it requires `debugTest` for the same language, and a language provides
- * it only when its runner honours both fields: one that ignored `tests`
- * would debug every test while the host said it debugs one.
+ * Debug tests, narrowed: one test, or all of them, and, where the language
+ * also provides `failureStop`, a stop at each failed assertion; a runner's
+ * `type: 'test'` with `debug`, `test` and `breakOnFailure`
+ * (packs/CONTRACT.md, "Tests (optional)"). A provider of it requires
+ * `debugTest` for the same language, and a language provides it only when
+ * its runner selects a test: one that ignored `test` would debug every test
+ * while the host said it debugs one.
  */
 export const debugTestCase: Token<DebugTestCaseInput, DebugSession, 'one'> = /* @__PURE__ */ defineToken<DebugTestCaseInput, DebugSession>()(
 	'@yukibana/std#debug-test-case',
@@ -172,15 +176,69 @@ export const debugTestCase: Token<DebugTestCaseInput, DebugSession, 'one'> = /* 
 
 /**
  * Returns the message a runner is sent to debug `input`'s tests: Debug
- * tests' message (`debugMessage('test', …)`) with `tests` when one is
+ * tests' message (`debugMessage('test', …)`) with `test` when one is
  * named and `breakOnFailure` only when it is true, so that a run asking for
  * neither is exactly Debug tests' message.
  */
 export function debugTestCaseMessage(input: DebugTestCaseInput, options: DebugOptions): SessionRequest {
 	return {
 		...debugMessage('test', input, options),
-		...(input.tests !== null ? { tests: { ...input.tests } } : {}),
+		...(input.test !== null ? { test: { ...input.test } } : {}),
 		...(input.breakOnFailure ? { breakOnFailure: true } : {}),
+	};
+}
+
+/**
+ * How a language's debugged test run stops at a failed assertion: what the
+ * host's debugger sets before the program runs, as DAP names it. The
+ * runner decides how it stops (packs/CONTRACT.md, "Tests (optional)"), so
+ * the language's package says it and the host sets exactly this.
+ *
+ * Invariant: at least one of the two is non-empty.
+ */
+export interface FailureStop {
+	/**
+	 * Function breakpoints (DAP `setFunctionBreakpoints`), by function name:
+	 * the C++ runner's protocol `TEST_FAILED_FUNCTION`. A stop in one of
+	 * them is the failure, and the failed test is the nearest frame of the
+	 * project's code below it.
+	 */
+	readonly functions: readonly string[];
+	/**
+	 * Exception breakpoint filters (DAP `setExceptionBreakpoints`), as the
+	 * debug adapter names them in its capabilities: a runner whose
+	 * framework fails a test by raising (pytest's `AssertionError`) stops
+	 * through one of these.
+	 */
+	readonly exceptionFilters: readonly string[];
+}
+
+/**
+ * Debug tests' stop at each failed assertion: how the language's runner
+ * stops (`FailureStop`), which the host's debugger sets before the program
+ * runs, and whose availability is where "Stop on failed assertion" is
+ * offered. Apart from `debugTestCase`, so that a language may debug one
+ * test without stopping on failures. A provider of it requires
+ * `debugTestCase` for the same language, and a language provides it only
+ * when its runner honours `breakOnFailure`.
+ */
+export const failureStop: Token<null, FailureStop, 'one'> = /* @__PURE__ */ defineToken<null, FailureStop>()('@yukibana/std#failure-stop');
+
+/**
+ * Returns the provider of `failureStop` for the language `key`, of any
+ * host, answering `stop`: eager, since it is data.
+ *
+ * - Requires: `stop` keeps `FailureStop`'s invariant, and is how the
+ *   language's runner stops with `breakOnFailure`.
+ */
+export function failureStopProvider<H>(key: LanguageKey, stop: FailureStop, when: RunAvailability): Provider<null, FailureStop, H, 'one'> {
+	return {
+		token: failureStop,
+		subject: { kind: 'language', id: key },
+		entry: { kind: 'one' },
+		requires: when.requires,
+		available: when.available,
+		body: { kind: 'eager', perform: () => stop },
 	};
 }
 

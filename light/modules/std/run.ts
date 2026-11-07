@@ -65,14 +65,14 @@ export const mutate: Token<RunInput, RunHandle, 'one'> = /* @__PURE__ */ defineT
 /** What one test is run with: a test run's input and the test. */
 export interface TestCaseInput extends RunInput {
 	/** The test to run alone, as its framework names it (protocol `TestSelector`). */
-	readonly tests: TestSelector;
+	readonly test: TestSelector;
 }
 
 /**
  * Builds the project's tests and runs one of them: a runner's `type:
- * 'test'` with `tests` (packs/CONTRACT.md, "Tests (optional)"). A provider
+ * 'test'` with `test` (packs/CONTRACT.md, "Tests (optional)"). A provider
  * of it requires `test` for the same language. A runner that does not know
- * `tests` runs every test, so a language provides this token only when its
+ * `test` runs every test, so a language provides this token only when its
  * runner selects: a host offers "Run test" where it is available, and
  * nowhere else.
  */
@@ -137,9 +137,9 @@ export function runMessage(mode: RunMode, input: RunInput): SessionRequest {
 	return { type: mode, files: { ...input.files }, entry: input.entry, ...(input.options !== null ? { options: { ...input.options } } : {}) };
 }
 
-/** Returns the message a runner is sent to run the one test of `input`: the test run's message (`runMessage`) and `tests`, copied. */
+/** Returns the message a runner is sent to run the one test of `input`: the test run's message (`runMessage`) and `test`, copied. */
 export function testCaseMessage(input: TestCaseInput): SessionRequest {
-	return { ...runMessage('test', input), tests: { ...input.tests } };
+	return { ...runMessage('test', input), test: { ...input.test } };
 }
 
 /** When a run provider can be performed: what it requires, and its own answer. */

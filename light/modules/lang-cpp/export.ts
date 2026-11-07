@@ -922,7 +922,7 @@ function cFamilyInstructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of C and C++ projects, by key: CMake, the usual one, Meson, and CMake with Conan. */
-const BUILDS: LanguageExport['builds'] = { cmake: CMAKE, meson: MESON, conan: CONAN };
+const BUILDS = { cmake: CMAKE, meson: MESON, conan: CONAN } satisfies LanguageExport['builds'];
 
 /** The tools of C and C++ projects: clang's, on Debian. */
 const TOOLING: LanguageTooling = {

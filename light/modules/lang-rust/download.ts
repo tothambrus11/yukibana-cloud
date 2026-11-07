@@ -4,17 +4,16 @@
  * label and availability; what writes the files (export.ts) loads on a
  * first download.
  */
-import type { LanguageMeta } from '../core/index.ts';
 import { always, exportProviders, type ExportBuildSpec, type LanguageDownloads } from '../std/index.ts';
 
 /** The build systems a download offers, the usual one first. */
-const BUILDS: readonly ExportBuildSpec[] = [{ key: 'cargo', label: 'Cargo', available: always }];
+const BUILDS = [{ key: 'cargo', label: 'Cargo', available: always }] as const satisfies readonly ExportBuildSpec[];
 
-/** Returns the package's downloads, loading what writes them. */
-const load = async () => (await import('./export.ts')).EXPORTS;
+/** Returns what writes the package's downloads, loading it on a first download. */
+const body = async () => (await import('./export.ts')).EXPORTS;
 
-/** Returns a language's download providers. */
-const downloads: LanguageDownloads = <H,>(language: LanguageMeta) => exportProviders<H>(language, BUILDS, load);
-
-/** The package's languages' download providers, by key. */
-export const DOWNLOADS = { rust: downloads } as const satisfies Readonly<Record<string, LanguageDownloads>>;
+/**
+ * The package's languages' download providers, by key. Each build system's
+ * key is one of its body's `builds`, which `exportProviders` checks.
+ */
+export const DOWNLOADS = { rust: exportProviders(BUILDS, async () => (await body()).rust) } as const satisfies Readonly<Record<string, LanguageDownloads>>;

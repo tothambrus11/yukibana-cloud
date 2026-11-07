@@ -16,7 +16,8 @@
  *   a run or a test run under the debugger, and `debugProvider`, which
  *   makes a language's provider of one that sends today's run message with
  *   the debugger's channel; `debugTestCase` and `debugTestCaseProvider`,
- *   Debug tests narrowed to one test and stopping at failed assertions.
+ *   Debug tests narrowed to one test; `failureStop` and
+ *   `failureStopProvider`, how its runs stop at a failed assertion.
  * - tests.ts: `findTests` (`Token<FindTestsInput, readonly FoundTest[]>`),
  *   where the tests of a file are, as the selectors `testCase` and
  *   `debugTestCase` take, and `findTestsProvider`; `testAt`, the test at

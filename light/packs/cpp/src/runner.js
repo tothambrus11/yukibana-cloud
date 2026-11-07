@@ -196,7 +196,7 @@ const toolchain = createToolchain({ base: new URL('./', import.meta.url), post, 
  * target GoogleTest and RapidCheck only: Catch2 and doctest are built for
  * wasm32 alone, and are refused there by name before anything is fetched.
  *
- * A test run's `tests` runs one test, and a debugged one's
+ * A test run's `test` runs one test, and a debugged one's
  * `breakOnFailure` compiles a hook that stops at each failed assertion
  * (src/test-selection.js; README, "One test, and stopping at a failed
  * assertion"); a selection the framework cannot take is refused before
@@ -216,7 +216,7 @@ async function run(request) {
     }
 }
 
-async function build({ type, files, entry, stdin, options, debug, tests, breakOnFailure }) {
+async function build({ type, files, entry, stdin, options, debug, test, breakOnFailure }) {
     const which = targetOf(files);
     if (which.kind === 'unsupported') throw new UserError(unsupportedMessage(which.triple));
     const target = which.target;
@@ -252,7 +252,7 @@ async function build({ type, files, entry, stdin, options, debug, tests, breakOn
     if (testing && !framework && !ownMain)
         throw new UserError('No test framework: the files in tests/ include none of <gtest/gtest.h>, <doctest/doctest.h> or <catch2/...>, and none defines main.\n');
     const fw = framework ? FRAMEWORKS[framework] : null;
-    const selection = selectionFor(framework, { tests: testing ? tests ?? null : null, breakOnFailure: testing && breakOnFailure === true, debug: Boolean(debug) });
+    const selection = selectionFor(framework, { test: testing ? test ?? null : null, breakOnFailure: testing && breakOnFailure === true, debug: Boolean(debug) });
     if (selection.problem) throw new UserError(selection.problem);
     if (selection.note) stderr(selection.note);
     // The failure hook is compiled as one more source, from a path no

@@ -124,7 +124,7 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of PHP projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	composer: {
 		paths: ['composer.json', 'phpunit.xml'],
 		generate: (p) => ({ 'composer.json': composerJson(p.language.entry, p.files), 'phpunit.xml': phpunitXml(p.files) }),
@@ -143,7 +143,7 @@ const BUILDS: LanguageExport['builds'] = {
 			],
 		}),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of PHP projects. */
 const TOOLING: LanguageTooling = {

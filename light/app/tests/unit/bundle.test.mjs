@@ -8,7 +8,7 @@
 // the grammars Monaco lacks only with their language, and a download's,
 // the debugger's and the call hierarchy's code only when first used; and what the service
 // worker precaches (build/offline.json's shell) holds the first load and
-// every shared module's lazy body.
+// every shared module's lazy body and what the download, the debugger and the call hierarchy load on use.
 //
 //   npm run build && node --test tests/unit/bundle.test.mjs
 //
@@ -124,7 +124,7 @@ test('a download, the debugger and the call hierarchy load when first used, not 
 	}
 });
 
-test("the service worker precaches the first load and every shared module's lazy body", { skip }, () => {
+test("the service worker precaches the first load, every shared module's lazy body and what Download and Debug load on use", { skip }, () => {
 	const chunks = manifest();
 	const offline = JSON.parse(readFileSync(join(build, 'offline.json'), 'utf8'));
 	const shell = new Set(offline.shell.map((file) => file.path));
@@ -133,5 +133,8 @@ test("the service worker precaches the first load and every shared module's lazy
 	const bodies = Object.entries(chunks).filter(([src, chunk]) => chunk.isDynamicEntry && src.startsWith('../modules/'));
 	assert.ok(bodies.length >= 3, `the shared modules' lazy bodies were not found: ${bodies.map(([src]) => src).join(', ')}`);
 	for (const [src] of bodies) for (const file of staticFiles(chunks, src)) assert.ok(shell.has(file), `${src}'s ${file} is not precached`);
+	// Loaded on use, but needing no pack, so offline they work as they did when they were the page's.
+	const onUse = ['src/lib/export.ts', 'src/lib/zip.ts', 'src/lib/components/Export.svelte', 'src/lib/debug.svelte.ts', 'src/lib/components/Debug.svelte', 'src/lib/call-hierarchy.svelte.ts', 'src/lib/components/CallHierarchy.svelte'];
+	for (const src of onUse) for (const file of staticFiles(chunks, src)) assert.ok(shell.has(file), `${src}'s ${file}, which Download, Debug or the call hierarchy needs offline, is not precached`);
 	for (const src of ['src/lib/explorer.svelte.ts', 'src/lib/compiler-view.ts']) assert.ok(!shell.has(chunks[src].file), `${src}, fetched when a view first opens, is in the shell`);
 });

@@ -251,7 +251,7 @@ function instructions(language: LanguageMeta, files: Files): string[] {
 }
 
 /** The build systems of Java projects, by key, the usual one first. */
-const BUILDS: LanguageExport['builds'] = {
+const BUILDS = {
 	maven: {
 		paths: ['pom.xml'],
 		generate: (p) => ({ 'pom.xml': pomXml(p.files, p.language.entry) }),
@@ -265,7 +265,7 @@ const BUILDS: LanguageExport['builds'] = {
 		ignored: ['build/', '.gradle/', 'bin/'],
 		ci: (p) => ({ extra: GRADLE_IMAGE, ecosystems: ['gradle'], jobs: [testJob('Build and test', steps(['Gradle', 'gradle build --no-daemon --console=plain'])), ...spotlessJob(p.files, 'build.gradle.kts', javaFiles(p.files), SPOTLESS_GRADLE_CHECK, GRADLE_LOCAL)] }),
 	},
-};
+} satisfies LanguageExport['builds'];
 
 /** The tools of Java projects. */
 const TOOLING: LanguageTooling = {
