@@ -265,7 +265,8 @@ ignored without a word.
 ## Debugging (optional)
 
 A runner that can run its program under the debugger (the app offers Debug
-for languages with `debugs: true` in `app/src/lib/languages.ts`) takes the
+for the languages with a debug provider in `app/src/lib/providers/debug.ts`,
+and Debug tests where that runner debugs a `type: 'test'` run too) takes the
 run message with one more field:
 
 ```ts

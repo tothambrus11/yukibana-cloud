@@ -1,6 +1,7 @@
 /**
  * The app's instance of @yukibana/core: every language of languages.ts as
- * `LanguageMeta`, the providers of what each can do (providers/), and the
+ * `LanguageMeta`, the providers of what each can do (providers/: run,
+ * test and mutate, debug, preview), and the
  * host they borrow from, the page's one runner pool and pack locator.
  *
  * Made on first use, once per page, so importing this module does nothing:
@@ -14,6 +15,8 @@ import { RunnerPool, workerTransport, type PackLocator } from '@yukibana/runtime
 import type { PackLanguage, RunHost } from '@yukibana/std';
 import { LANGUAGES, type Language } from './languages.ts';
 import { APP_RUNNER_NEEDS, appPacks, packsOf } from './packs.ts';
+import { debugProvidersOf } from './providers/debug.ts';
+import { previewProvidersOf } from './providers/preview.ts';
 import { runProvidersOf } from './providers/run.ts';
 import { settingsOf } from './properties/index.ts';
 
@@ -78,7 +81,7 @@ function made(): { readonly host: PageHost; readonly instance: Instance<RunHost>
 		const languages = LANGUAGES.map((language) => ({ id: language.id, meta: metaOf(language) }));
 		const instance = createInstance<RunHost>({
 			languages: languages.map(({ meta }) => meta),
-			providers: languages.flatMap(({ id, meta }) => runProvidersOf(id, meta)),
+			providers: languages.flatMap(({ id, meta }) => [...runProvidersOf(id, meta), ...debugProvidersOf(id, meta), ...previewProvidersOf(id, meta)]),
 			host,
 		});
 		page = { host, instance };

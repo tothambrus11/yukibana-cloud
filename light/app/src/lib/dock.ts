@@ -51,7 +51,8 @@ import Terminal from './components/Terminal.svelte';
 import CallHierarchy from './components/CallHierarchy.svelte';
 import Debug from './components/Debug.svelte';
 import { decorate } from './debug.svelte';
-import { languageOf } from './languages';
+import { debug, debugTest } from '@yukibana/std';
+import { subjectOf, yukibana } from './yukibana';
 
 const EDITOR_PREFIX = 'file:';
 const editorId = (path: string) => EDITOR_PREFIX + path;
@@ -198,7 +199,8 @@ class EditorRenderer implements IContentRenderer {
 		const path = String(params.params['path']);
 		this.path = path;
 		const model = this.workspace.model(path);
-		const debugs = languageOf(this.workspace.language).debugs === true;
+		const subject = subjectOf(this.workspace.language);
+		const debugs = yukibana().has(subject, debug);
 		this.editor = monaco.editor.create(this.element, {
 			model: model ?? null,
 			// The breakpoints' margin, for a language the debugger runs.
@@ -262,6 +264,8 @@ class EditorRenderer implements IContentRenderer {
 				keybindings: [KeyCode.F5],
 				run: () => (dbg.status.kind === 'stopped' ? dbg.continue() : dbg.active ? undefined : this.workspace.debug()),
 			});
+			// No key of its own: Shift+F5 is the debugger's Stop (+page.svelte, debugKeys).
+			if (yukibana().has(subject, debugTest)) editor.addAction({ id: 'yukibana.debugTests', label: 'Debug Tests', run: () => (dbg.active ? undefined : this.workspace.debug('test')) });
 			editor.addAction({ id: 'yukibana.stepOver', label: 'Step Over', keybindings: [KeyCode.F10], run: () => dbg.next() });
 			editor.addAction({ id: 'yukibana.stepInto', label: 'Step Into', keybindings: [KeyCode.F11], run: () => dbg.stepIn() });
 			editor.addAction({ id: 'yukibana.stepOut', label: 'Step Out', keybindings: [KeyMod.Shift | KeyCode.F11], run: () => dbg.stepOut() });

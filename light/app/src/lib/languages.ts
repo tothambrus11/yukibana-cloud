@@ -36,14 +36,11 @@ export interface Language {
 	 * test of it is no longer said here: those are the language's providers
 	 * of Run, Test and Mutate (providers/run.ts), which the app asks
 	 * through its instance (yukibana.ts); nor whether a runner is kept warm
-	 * ahead of a run (its provider of `warm`, there too).
+	 * ahead of a run (its provider of `warm`, there too); nor whether it
+	 * runs the program or its tests under the debugger (its providers of
+	 * Debug and Debug tests, providers/debug.ts), nor which page a web
+	 * project's Run previews (its provider of Preview, providers/preview.ts).
 	 */
-	/**
-	 * Whether the runner can run the program under the debugger (a run
-	 * message's `debug`, packs/lldb/README.md): the top bar offers Debug,
-	 * and the editors take breakpoints in their margin.
-	 */
-	debugs?: boolean;
 	/**
 	 * The directory under `static/packs/` whose server and runner serve this
 	 * language, when it is not `id`: TypeScript and web projects use the
@@ -57,11 +54,6 @@ export interface Language {
 	 * for one. A language works without them on its default target.
 	 */
 	uses?: readonly string[];
-	/**
-	 * For a web project, the page Run shows in the Preview panel (live
-	 * reloaded as files change) instead of running `entry` in the terminal.
-	 */
-	preview?: string;
 	/**
 	 * The names of the project's configuration files, which the explorer
 	 * hides until "Show configuration files" is on: a file of one of these
@@ -455,7 +447,6 @@ describe('distance and area', () => {
 		monacoLanguages: ['typescript', 'javascript'],
 		settings: {},
 		entry: 'main.ts',
-		preview: 'index.html',
 		extension: '.ts',
 		sample: {
 			'index.html': `<!doctype html>
@@ -553,7 +544,6 @@ export class Counter {
 		monacoLanguages: ['typescript', 'javascript'],
 		settings: {},
 		entry: 'main.ts',
-		preview: 'index.html',
 		extension: '.ts',
 		sample: {
 			'index.html': `<!doctype html>
@@ -634,7 +624,6 @@ new p5((p: p5) => {
 		monacoLanguages: ['typescript', 'javascript'],
 		settings: {},
 		entry: 'sketch.ts',
-		preview: 'index.html',
 		extension: '.ts',
 		sample: {
 			'index.html': `<!doctype html>
@@ -716,7 +705,6 @@ function draw() {
 		entry: 'main.c',
 		extension: '.c',
 		configFiles: C_FAMILY_CONFIG,
-		debugs: true,
 		sample: {
 			'main.c': `#include <stdio.h>
 
@@ -776,7 +764,6 @@ double point_distance(struct point a, struct point b) {
 		entry: 'main.cpp',
 		extension: '.cpp',
 		configFiles: C_FAMILY_CONFIG,
-		debugs: true,
 		sample: {
 			'main.cpp': `#include <cstdio>
 #include <vector>
@@ -852,7 +839,6 @@ TEST(Geometry, DistanceToItselfIsZero) {
 		entry: 'main.swift',
 		extension: '.swift',
 		uses: ['linux'],
-		debugs: true,
 		sample: {
 			'swift.env': `# The target Run builds for. With nothing set it is WebAssembly, run in
 # the browser; TARGET=x86_64-linux or TARGET=aarch64-linux builds a static

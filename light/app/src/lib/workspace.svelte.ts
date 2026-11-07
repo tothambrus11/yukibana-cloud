@@ -6,9 +6,9 @@
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
-import type { LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
+import type { DebugChannel, LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
 import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
-import { isCFamily, isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
+import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
 import { viewOf, viewsOf, type ExploreKind } from './explore-views';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
@@ -27,8 +27,8 @@ import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
-import { pathOf, writeProperty, type ProjectEdit, type ProjectSnapshot, type Property } from '@yukibana/core';
-import { test, tokenOf, warm } from '@yukibana/std';
+import { pathOf, writeProperty, type Files, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
+import { debugTokenOf, preview, test, tokenOf, warm, type DebugMode, type PreviewSession } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, subjectOf, yukibana } from './yukibana';
 import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
@@ -421,11 +421,34 @@ export class Workspace {
 	}
 
 	/**
+	 * The project as `files` and the saved settings are now, as a snapshot
+	 * that never goes stale: for a provider performed after something that
+	 * changes the project (showing the terminal moves the tabs), or later
+	 * still (a debugged run starts once the debugger's worker is ready).
+	 * `files` are read once, by the caller, from the live snapshot.
+	 */
+	private frozen(files: Files): ProjectSnapshot {
+		const revision = this.revision;
+		const meta = new Map<string, unknown>(Object.entries(this.savedSettings()));
+		return {
+			revision,
+			paths: () => Object.keys(files).map(pathOf),
+			file: (path) => (Object.hasOwn(files, path) ? (files[path] ?? null) : null),
+			files: () => files,
+			meta: (binding) => {
+				const stored = meta.get(binding.key);
+				return stored === undefined ? null : binding.parse(stored);
+			},
+		};
+	}
+
+	/**
 	 * Runs the project: the language's entry file when the project has one,
 	 * else the file shown; `mode` 'test' runs its tests instead, 'mutate'
 	 * mutation-tests the project against them, where the language's
 	 * providers offer that (providers/run.ts). Every file goes along, as last
-	 * edited.
+	 * edited. A web project's Run previews its page instead, where the
+	 * language has a provider of `preview` (providers/preview.ts).
 	 */
 	run(mode: RunMode = 'run'): void {
 		const language = languageOf(this.language);
@@ -433,11 +456,8 @@ export class Workspace {
 		const token = tokenOf(mode);
 		const snapshot = this.snapshot();
 		if (yukibana().availability(subject, token, snapshot).kind === 'unavailable') return;
-		if (mode === 'run' && language.preview) {
-			this.host?.showPreview();
-			this.host?.showTerminal();
-			this.runner.attach(`Previewing ${language.preview}. Its console appears here; edits reload the page, and a stylesheet edit is applied without a reload.`);
-			this.preview.start(packOf(language), language.preview, () => this.currentFiles());
+		if (mode === 'run' && yukibana().has(subject, preview)) {
+			this.startPreview(subject, snapshot);
 			return;
 		}
 		const entry = this.models.has(language.entry) ? language.entry : this.active;
@@ -454,13 +474,14 @@ export class Workspace {
 		// Read before the terminal is shown: showing it moves the tabs, which
 		// is a change of the project, and the snapshot is then stale.
 		const options = runnerOptionsOf(this.settings, snapshot);
+		const frozen = this.frozen(files);
 		this.host?.showTerminal();
 		const listener = this.runner.begin();
 		const input = { files, entry: pathOf(entry), options, ...listener };
 		// The provider is eager: the run is handed to the pool within this
 		// task, before the next event, as when the app asked the pool itself.
 		yukibana()
-			.perform(subject, token, input, snapshot, new AbortController().signal)
+			.perform(subject, token, input, frozen, new AbortController().signal)
 			.then(
 				(outcome) => {
 					if (outcome.kind === 'done') this.runner.start(outcome.value);
@@ -471,34 +492,93 @@ export class Workspace {
 	}
 
 	/**
-	 * Runs the project under the debugger (languages with `debugs`): the
-	 * debugger's worker starts, then the run, with the channel it listens
-	 * on; the program stops at the breakpoints set in the editors' margins.
-	 * The terminal shows the program's output and takes its input, as for
-	 * a run; ending the run ends the session, and the other way round.
+	 * Shows the project's page in the Preview panel, built by the session of
+	 * the language's provider of `preview`: the session already showing it,
+	 * if there is one, so the runner (and TypeScript) is loaded once.
 	 */
-	debug(): void {
+	private startPreview(subject: Subject, snapshot: ProjectSnapshot): void {
+		const show = (session: PreviewSession): void => {
+			this.host?.showPreview();
+			this.host?.showTerminal();
+			this.runner.attach(`Previewing ${session.entry}. Its console appears here; edits reload the page, and a stylesheet edit is applied without a reload.`);
+			this.preview.start(subject.id, session, () => this.currentFiles());
+		};
+		const shown = this.preview.sessionOf(subject.id);
+		if (shown !== null) {
+			show(shown);
+			return;
+		}
+		yukibana()
+			.perform(subject, preview, { report: (text) => this.runner.print('stderr', text) }, snapshot, new AbortController().signal)
+			.then(
+				(outcome) => {
+					if (outcome.kind === 'done') show(outcome.value);
+					else this.write('warning', outcome.reason);
+				},
+				(e: unknown) => this.write('error', `Could not preview the project: ${e instanceof Error ? e.message : String(e)}`),
+			);
+	}
+
+	/**
+	 * Runs the project under the debugger, where the language's providers
+	 * offer that (providers/debug.ts): its program, or with `mode` 'test' its
+	 * tests. The debugger's worker starts, then the run, with the channel it
+	 * listens on; the program stops at the breakpoints set in the editors'
+	 * margins. The terminal shows the program's output and takes its input,
+	 * as for a run; ending the run ends the session, and the other way round.
+	 * What is run, and whether it may be, is decided at the click: the run
+	 * starts later, once the debugger is ready, on the project as it was.
+	 */
+	debug(mode: DebugMode = 'run'): void {
 		const language = languageOf(this.language);
-		if (!language.debugs) return;
+		const subject = subjectOf(this.language);
+		const token = debugTokenOf(mode);
+		const snapshot = this.snapshot();
+		const availability = yukibana().availability(subject, token, snapshot);
+		if (availability.kind === 'unavailable') {
+			// F5 reaches here with the Debug button disabled: say why, where the language debugs at all.
+			if (yukibana().has(subject, token)) this.write('warning', availability.reason);
+			return;
+		}
 		const entry = this.models.has(language.entry) ? language.entry : this.active;
 		if (!entry) {
 			this.write('warning', `There is no ${language.entry} to debug.`);
 			return;
 		}
-		const files = this.currentFiles();
-		const source = runnerSourceOf(language);
-		// Left as a language branch: no property says it. A Rust debug run is
-		// sent no options, as it always was, though its Run is sent the run
-		// options and Miri; the debug providers of step 4 (DESIGN.md) decide.
-		const options = isCFamily(this.language) ? { ...this.runOptions } : undefined;
+		const files = snapshot.files();
+		// What a debugged run is sent of these, the provider says (C and C++
+		// the run options, Swift none, as they always were).
+		const options = runnerOptionsOf(this.settings, snapshot);
+		const frozen = this.frozen(files);
 		this.host?.showTerminal();
 		this.host?.showDebug();
-		this.runner.debugProgram = (program) => void this.debugger.attach(program);
 		this.runner.ended = () => {
 			if (this.debugger.active) this.debugger.end(false);
 		};
+		const start = (channel: DebugChannel): void => {
+			const listener = this.runner.begin();
+			const input = { files, entry: pathOf(entry), options, ...listener, channel };
+			yukibana()
+				.perform(subject, token, input, frozen, new AbortController().signal)
+				.then(
+					(outcome) => {
+						if (outcome.kind !== 'done') {
+							this.write('warning', outcome.reason);
+							this.debugger.end(false);
+							return;
+						}
+						const { run, program } = outcome.value;
+						this.runner.start(run);
+						// Only to the session of the run the terminal still shows.
+						void program.then((linked) => {
+							if (linked !== null && this.runner.shows(run)) void this.debugger.attach(linked);
+						});
+					},
+					(e: unknown) => this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`),
+				);
+		};
 		this.debugger.start({
-			run: (channel) => this.runner.startDebug(source, files, entry, options, channel),
+			run: start,
 			stopRun: () => this.runner.stop(false),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
 			log: (text) => this.write('info', text, 'run'),

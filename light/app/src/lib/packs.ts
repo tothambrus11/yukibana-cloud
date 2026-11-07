@@ -73,8 +73,7 @@ export const APP_RUNNER_NEEDS: Requires = { runner: { default: { crossOriginIsol
  * pack share its runner (the page's RunnerPool keys runners by where the
  * pack is, not by this object). The same source the language's run
  * providers start from (@yukibana/std's `sourceOf`), so that letting one
- * go and a debug run (until a debug provider builds it) reach the runner
- * they run on.
+ * go reaches the runner they run on.
  */
 export function runnerSourceOf(language: Language): SessionSource {
 	return sourceOf({ pack: packOf(language), label: language.label }, appPacks(), APP_RUNNER_NEEDS);

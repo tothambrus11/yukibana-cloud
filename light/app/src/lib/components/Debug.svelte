@@ -6,8 +6,10 @@
   in the editors' margin (debug.svelte.ts, decorate); this lists them.
 -->
 <script lang="ts">
+	import { debug, debugTest } from '@yukibana/std';
 	import type { Variable } from '../debug.svelte';
 	import type { Workspace } from '../workspace.svelte';
+	import { subjectOf, yukibana } from '../yukibana';
 	import { languageOf } from '../languages';
 
 	let { workspace }: { workspace: Workspace } = $props();
@@ -15,7 +17,12 @@
 	const dbg = $derived(workspace.debugger);
 	const status = $derived(dbg.status);
 	const stopped = $derived(status.kind === 'stopped');
-	const language = $derived(languageOf(workspace.language));
+	// Offered as the language's providers say (providers/debug.ts), as the top bar does.
+	const subject = $derived(subjectOf(workspace.language));
+	const hasDebug = $derived(yukibana().has(subject, debug));
+	const debugAvailable = $derived(yukibana().availability(subject, debug, workspace.snapshot()));
+	const hasDebugTest = $derived(yukibana().has(subject, debugTest));
+	const debugTestAvailable = $derived(yukibana().availability(subject, debugTest, workspace.snapshot()));
 	/** Opened variables, by the path of names from their scope. */
 	let open = $state<Record<string, boolean>>({});
 	const breakpoints = $derived(Object.entries(dbg.breakpoints).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
@@ -79,9 +86,14 @@
 			<button class="step" title="Step Out (Shift+F11)" aria-label="Step Out" disabled={!stopped} onclick={() => dbg.stepOut()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13V3" /><path d="M7.5 7.5 12 3l4.5 4.5" /><circle class="solid" cx="12" cy="18.5" r="2" /></svg></button>
 			<button class="stop" title="Stop debugging" aria-label="Stop" onclick={() => dbg.end()}><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="solid" x="6" y="6" width="12" height="12" rx="2" /></svg></button>
 		{:else}
-			<button class="start" disabled={!language.debugs || workspace.runner.busy} onclick={() => workspace.debug()} title={language.debugs ? 'Run the project under the debugger (F5)' : `${language.label} has no debugger yet`}>
+			<button class="start" disabled={!hasDebug || debugAvailable.kind === 'unavailable' || workspace.runner.busy} onclick={() => workspace.debug()} title={!hasDebug ? `${languageOf(workspace.language).label} has no debugger yet` : debugAvailable.kind === 'available' ? 'Run the project under the debugger (F5)' : debugAvailable.reason}>
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M7 5.8v12.4a.8.8 0 0 0 1.2.7l9.3-6.2a.8.8 0 0 0 0-1.4L8.2 5.1a.8.8 0 0 0-1.2.7z" /></svg> Debug
 			</button>
+			{#if hasDebugTest}
+				<button class="start tests" disabled={debugTestAvailable.kind === 'unavailable' || workspace.runner.busy} onclick={() => workspace.debug('test')} title={debugTestAvailable.kind === 'available' ? "Run the project's tests under the debugger" : debugTestAvailable.reason}>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M7 5.8v12.4a.8.8 0 0 0 1.2.7l9.3-6.2a.8.8 0 0 0 0-1.4L8.2 5.1a.8.8 0 0 0-1.2.7z" /></svg> Debug tests
+				</button>
+			{/if}
 		{/if}
 		<span class="state" role="status">
 			{#if status.kind === 'starting'}
@@ -99,7 +111,9 @@
 	<div class="body">
 		{#if !dbg.active && status.kind !== 'ended'}
 			<p class="empty">
-				{#if language.debugs}
+				{#if hasDebugTest}
+					Click left of a line number to set a breakpoint, then Debug, or Debug tests for a breakpoint in tests/: the program stops there, and its call stack and variables show here.
+				{:else if hasDebug}
 					Click left of a line number to set a breakpoint, then Debug: the program stops there, and its call stack and variables show here.
 				{:else}
 					The debugger runs C, C++ and Swift programs for now.

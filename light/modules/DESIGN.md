@@ -565,3 +565,78 @@ Where it departs from the sketches above:
   runner refuses (section 9); the property is now there to read, but the
   rule changes what the top bar offers.
 
+
+## 11. Step 4 as built: Debug, Debug tests and Preview
+
+Step 4 made Debug, a new Debug tests, and a web project's Preview
+providers of std's tokens, still app-side (`light/app/src/lib/providers/`
+`debug.ts` and `preview.ts`), and deleted `debugs` and `preview` from
+`Language`. Where it departs from the sketches above:
+
+* **Two debug tokens, `debug` and `debugTest`** (`std/debug.ts`), of one
+  shape: `DebugInput` is a `RunInput` with the debugger's `channel`, and
+  the result is `DebugSession = { run: RunHandle; program: Promise<DebugProgram | null> }`.
+  `program` resolves with the runner's `debug` event, or null once the run
+  ends without one (it did not compile). One token with a mode in its
+  input could not be offered per mode, since an availability is asked of
+  a token, never of an input. `debugTest` requires `[test, debug]`, and
+  only C++ provides it: its runner debugs a `type: 'test'` run as it does
+  a run (`packs/cpp/src/runner.js` `build()`). Swift's runner runs its
+  tests uninstrumented, once per testing library, so Swift has Debug only;
+  C has no tests. Rust has never debugged, so section 4's
+  `languages/rust/debug` does not exist: the debug languages are C, C++
+  and Swift.
+* **`debugProvider(mode, language, { requires, available, options })`**,
+  whose `options` (`'as-run' | 'none'`) says whether the input's runner
+  options go along: C and C++ send their run options, as before; Swift
+  sends none, as before (its runner compiles a debugged program at
+  -Onone). The workspace computes the options as for a Run
+  (`runnerOptionsOf`), so `debug()`'s `isCFamily` branch is gone.
+* **The input and availability are fixed at the click, and `perform` runs
+  when the debugger's worker is ready**, on a frozen snapshot: the
+  workspace's `frozen(files)`, an eager copy of the files and the saved
+  settings that never goes stale. Run and Test perform on one too, since
+  showing the terminal moves the tabs, a change of the project (section
+  10), and an availability that reads the project would then read a stale
+  snapshot. The terminal's `startDebug` and `debugProgram` are gone: a
+  debugged run is `begin()`, `perform`, `start(run.handle)`, and the
+  program goes to the debugger only while the terminal still shows that
+  run (`Runner.shows`).
+* **UI.** Debug, its ⋯ menu item, the Debug panel's start and F5 are
+  unchanged, read from `has(debug)` and its availability. Debug tests is a
+  ⋯ menu item (no `data-fold`: it has no top-bar button), a button beside
+  the Debug panel's Debug, and the editors' `yukibana.debugTests` action,
+  with no key (Shift+F5 is the debugger's Stop). Each is disabled with its
+  availability's reason as its title. The breakpoints' margin is offered
+  where the language has `debug`.
+* **Preview's token is a session, not a page handle**
+  (`std/preview.ts`): `PreviewInput = { report }` (what the person is told
+  about the runner), and `PreviewSession = { entry; build(files); stop() }`
+  whose `build` gives a `BuiltPage` (`page`, `errors` or `unanswered`).
+  The provider owns the `type: 'preview'` worker, the request ids and the
+  15 s watchdog that `preview.ts` had; the iframe, the stale set, the CSS
+  swap, the 300 ms delay and the error check stay in `preview.ts`. Section
+  5's `update(changed): 'swapped' | 'reloaded'` is dropped: the swap needs
+  the app's frame. `build` takes no signal: no build is ever given up (the
+  page it brings is shown, as every finished build was), and a build asked
+  for while another is waited for settles the older one as `unanswered`.
+  The session's entry (`index.html`) is the provider's, so the workspace
+  names no page. It finds its runner through `host.packs.file` at each
+  build, not at `perform`, so opening a session reads nothing.
+* **One session per Run of a language**: Run again with the preview
+  showing keeps its session (`Preview.sessionOf`), so TypeScript stays
+  loaded, as it did when the panel kept its worker per pack.
+* **busy/again is a `Slot`** whose job checks, builds and renders: what a
+  build brings is shown inside the job, guarded by the preview's
+  generation (bumped by start and stop), not by the slot's result, so the
+  page an edit overtook is still shown. A newer update aborts the job's
+  signal, which gives up the error check only. An edit aborts the check as
+  before through the job's own controller, not through the caller's
+  signal of `submit`: aborting that would drop a Reload waiting in the
+  slot.
+* **The web languages keep their run providers** for the Run button's
+  availability; Run prefers `preview` where the language has it.
+* **Debug tests and `tests/` files.** The debugger maps a project path to
+  `/workspace/<path>` in the program's DWARF; a test build compiles
+  `tests/*.cpp` there too, so breakpoints in tests need no change
+  (`e2e-debug.mjs`'s C++ test case).

@@ -9,6 +9,12 @@
  *   language's provider of one of them that sends its pack's runner today's
  *   run message; `warm` and `warmProvider`, the runner a host keeps
  *   started ahead of a run.
+ * - debug.ts: `debug` and `debugTest` (`Token<DebugInput, DebugSession>`),
+ *   a run or a test run under the debugger, and `debugProvider`, which
+ *   makes a language's provider of one that sends today's run message with
+ *   the debugger's channel.
+ * - preview.ts: `preview` (`Token<PreviewInput, PreviewSession>`), a web
+ *   project's page built by its pack's runner, again at every edit.
  * - language.ts: `PackLanguage`, a language whose runner and server come
  *   from a pack, as the run providers need it.
  *
@@ -17,3 +23,5 @@
  */
 export type * from './language.ts';
 export * from './run.ts';
+export * from './debug.ts';
+export * from './preview.ts';

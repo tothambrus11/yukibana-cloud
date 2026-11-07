@@ -7,10 +7,9 @@
  * project, so it holds one run at a time; a docs page holds one of these
  * per snippet over the same pool.
  */
-import type { DebugChannel, DebugProgram, OutputStream, RunnerOptions } from '@yukibana/protocol';
+import type { OutputStream } from '@yukibana/protocol';
 import type { RunEvent, RunHandle, RunnerPool, RunState, SessionSource } from '@yukibana/runtime';
 import { AnsiStream } from './ansi';
-import type { Files } from './languages';
 
 /**
  * One stretch of terminal text in one style; consecutive text of one kind
@@ -104,11 +103,6 @@ export class Runner {
 	/** What the terminal shows above a source's output (`attach`), until a run replaces it; null while a runner's run is shown. */
 	#heading: string | null = null;
 
-	/**
-	 * Where a debugging runner's program goes (the debugger loads it), for
-	 * the run the terminal shows; null drops it.
-	 */
-	debugProgram: ((program: DebugProgram) => void) | null = null;
 	/** Called when the run the terminal shows ends, however it ends (the debugger ends its session then). */
 	ended: (() => void) | null = null;
 
@@ -180,18 +174,12 @@ export class Runner {
 	}
 
 	/**
-	 * Runs `entry` of `files` with `source`'s runner under the debugger,
-	 * through `debug`'s channel (debug.svelte.ts), stopping the run the
-	 * terminal shows; the runner's program arrives at `debugProgram`.
-	 * `options` go to the runner as they are (packs/CONTRACT.md). Output
-	 * from the previous run is cleared. Until a debug provider builds this
-	 * run (light/modules/DESIGN.md, step 4), the one run asked of the pool
-	 * here rather than of a provider.
+	 * `true` iff the terminal shows the run `handle`: no run has replaced it
+	 * since `start` was given it. A debugged run's program is handed to the
+	 * debugger only then.
 	 */
-	startDebug(source: SessionSource, files: Files, entry: string, options: RunnerOptions | undefined, debug: DebugChannel): void {
-		const request = { type: 'run' as const, files: { ...files }, entry, ...(options ? { options: { ...options } } : {}), debug };
-		const listener = this.begin();
-		this.start(this.#runners.run({ snippet: listener.snippet, source, request, onEvent: listener.onEvent }));
+	shows(handle: RunHandle): boolean {
+		return this.#run === handle;
 	}
 
 	/**
@@ -306,7 +294,8 @@ export class Runner {
 				// Reserved for grading; the terminal already shows the report the runner printed.
 				break;
 			case 'debug':
-				this.debugProgram?.(event);
+				// The debugger's: a debug provider hands it on (@yukibana/std's
+				// `DebugSession.program`), not the terminal.
 				break;
 		}
 	}

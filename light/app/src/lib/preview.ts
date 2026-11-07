@@ -3,11 +3,12 @@
  * reloaded live as the project changes, with the page's console in the
  * terminal.
  *
- * The page is built by the pack's runner (`type: 'preview'`, see
- * packs/javascript/README.md, "Preview"), a worker kept for as long as the
- * preview is shown, so TypeScript is loaded once: it answers with one HTML
- * document in which the stylesheets are inlined and the scripts are `data:`
- * URLs. That document is the iframe's `srcdoc`:
+ * The page is built by the language's provider of @yukibana/std's
+ * `preview` (providers/preview.ts: the pack's runner, `type: 'preview'`,
+ * see packs/javascript/README.md, "Preview"), whose session keeps its
+ * worker for as long as the preview is shown, so TypeScript is loaded once:
+ * it answers with one HTML document in which the stylesheets are inlined
+ * and the scripts are `data:` URLs. That document is the iframe's `srcdoc`:
  *
  * - The iframe is sandboxed without `allow-same-origin`, so the page has an
  *   opaque origin: it cannot reach the app's storage, cookies or DOM, and
@@ -27,24 +28,19 @@
  * `<style>` is replaced in place (the page keeps its state) without asking;
  * any other change rebuilds the page and reloads the iframe. One check or
  * build runs at a time, and edits made meanwhile are taken together by the
- * next one: each edit used to post a build to the runner, which answered
+ * next one (a @yukibana/core `Slot`, whose job checks, builds and shows the
+ * page): each edit used to post a build to the runner, which answered
  * them all in turn, so a burst of typing left the page seconds behind. With
  * Auto reload off, edits wait for the Reload button. This is live reload,
  * not module hot replacement.
  */
-import { isFromPage, readFromRunner, type Page, type PreviewMessage, type ToPage } from '@yukibana/protocol';
-import type { PackId } from '@yukibana/runtime';
+import { slot, type Slot } from '@yukibana/core';
+import { isFromPage, type ToPage } from '@yukibana/protocol';
+import type { PreviewSession } from '@yukibana/std';
 import type { Files } from './languages';
-import { appPacks } from './packs';
 
 /** How long the project must go without an edit before the page is rebuilt. */
 const RELOAD_DELAY_MS = 300;
-/**
- * How long the runner may stay silent while building before it is given up
- * on. Its download progress counts as an answer, so the first build, which
- * loads the runner and for TypeScript the compiler, is not cut short.
- */
-const SILENT_RUNNER_MS = 15_000;
 /** Where Auto reload is remembered, per browser. */
 const AUTO_KEY = 'yukibana-light.preview.auto-reload';
 
@@ -76,12 +72,11 @@ export class Preview {
 	private placeholder: HTMLElement | null = null;
 	/** The bar above the page: Auto reload, Reload and what is going on. */
 	private bar: { auto: HTMLInputElement; reload: HTMLButtonElement; status: HTMLElement } | null = null;
-	private worker: Worker | null = null;
-	private pack: PackId | null = null;
-	private entry = '';
+	/** The session building the page shown, while previewing (providers/preview.ts). */
+	private session: PreviewSession | null = null;
+	/** Whose session it is: the language it was opened for, while previewing. */
+	private owner: string | null = null;
 	private files: () => Files = () => ({});
-	/** The id of the latest request; older answers are dropped. */
-	private requested = 0;
 	/** Stylesheets of the page shown, which an edit can swap in place. */
 	private styles: string[] = [];
 	/** The document shown, kept so that a panel mounted later (or moved by dockview) shows it too. */
@@ -92,27 +87,26 @@ export class Preview {
 	private forced = false;
 	/** Whether edits rebuild the page by themselves (the bar's checkbox). */
 	private auto = loadAuto();
-	/** Whether an update (a check, then a build) is running; at most one is. */
-	private busy = false;
-	/** Whether something asked for an update while one was running: another follows. */
-	private again = false;
+	/**
+	 * The updates (a check, then a build, then the page shown): at most one
+	 * runs, and of those asked for meanwhile only the newest follows it.
+	 */
+	private readonly updates: Slot<null, void> = slot((_, signal) => this.update(signal));
 	/** Bumped by start and stop, so an update from before either drops what it was doing. */
-	private session = 0;
+	private generation = 0;
 	/** Aborts the error check running, when an edit makes it moot or the preview stops. */
 	private checking: AbortController | null = null;
-	/** Settles the build waited for: with the runner's page, or null when it will not come. */
-	private answer: ((page: Page | null) => void) | null = null;
 	/** The errors last printed, so the same ones are not printed at every edit. */
 	private printed = '';
 	private status = '';
 	private timer: ReturnType<typeof setTimeout> | undefined;
-	/** Fires when the runner went silent for SILENT_RUNNER_MS during a build. */
-	private watchdog: ReturnType<typeof setTimeout> | undefined;
+	private readonly output: PreviewOutput;
+	private readonly check: ErrorCheck;
 
-	constructor(
-		private readonly output: PreviewOutput,
-		private readonly check: ErrorCheck,
-	) {
+	/** `output` takes the page's console and why it was not reloaded; `check` says whether the project has errors. */
+	constructor(output: PreviewOutput, check: ErrorCheck) {
+		this.output = output;
+		this.check = check;
 		addEventListener('message', (e: MessageEvent<unknown>) => {
 			// Only the iframe's own messages: anything else may post to the app too.
 			if (!this.frame || e.source !== this.frame.contentWindow) return;
@@ -127,7 +121,12 @@ export class Preview {
 
 	/** Whether a page is being previewed (Run was pressed and nothing stopped it). */
 	get active(): boolean {
-		return this.pack !== null;
+		return this.session !== null;
+	}
+
+	/** Returns the session previewing a page for `owner`, which `start` keeps, or null when there is none. */
+	sessionOf(owner: string): PreviewSession | null {
+		return this.owner === owner ? this.session : null;
 	}
 
 	/** Shows the preview in the panel's element. */
@@ -224,15 +223,18 @@ export class Preview {
 	}
 
 	/**
-	 * Shows the page `entry` of the project, built with the runner of the
-	 * pack `pack`; `files` gives the project as it is now, at each rebuild.
+	 * Shows the project's page, built by `session`, opened for `owner`;
+	 * `files` gives the project as it is now, at each rebuild. Any other
+	 * session is stopped first. To show the page again with
+	 * the session it has, a caller passes that one (`sessionOf`): a new
+	 * session would start a new worker.
 	 */
-	start(pack: PackId, entry: string, files: () => Files): void {
-		if (pack !== this.pack) this.stop();
-		this.session++;
+	start(owner: string, session: PreviewSession, files: () => Files): void {
+		if (session !== this.session) this.stop();
+		this.generation++;
 		this.checking?.abort();
-		this.pack = pack;
-		this.entry = entry;
+		this.session = session;
+		this.owner = owner;
 		this.files = files;
 		this.stale.clear();
 		this.printed = '';
@@ -240,19 +242,17 @@ export class Preview {
 		this.flush();
 	}
 
-	/** Stops previewing: the worker ends and the panel is emptied. */
+	/** Stops previewing: the session's worker ends and the panel is emptied. */
 	stop(): void {
-		this.session++;
+		this.generation++;
 		clearTimeout(this.timer);
-		clearTimeout(this.watchdog);
 		this.checking?.abort();
-		this.answer?.(null);
 		this.stale.clear();
 		this.forced = false;
 		this.printed = '';
-		this.worker?.terminate();
-		this.worker = null;
-		this.pack = null;
+		this.session?.stop();
+		this.session = null;
+		this.owner = null;
 		this.styles = [];
 		this.showStatus('');
 		this.render(null);
@@ -269,31 +269,28 @@ export class Preview {
 		else this.showStatus(this.idleStatus());
 	}
 
-	/** Runs an update, or another one after the one running. */
+	/**
+	 * Runs an update, or another one after the one running, which is told to
+	 * give up its check: updates asked for meanwhile are taken together.
+	 */
 	private flush(): void {
-		if (this.busy) {
-			this.again = true;
-			return;
-		}
-		this.busy = true;
-		void (async () => {
-			try {
-				do {
-					this.again = false;
-					await this.update();
-				} while (this.again);
-			} catch (e) {
-				this.output.print('stderr', `The preview could not be updated: ${e instanceof Error ? e.message : String(e)}\n`);
-			} finally {
-				this.busy = false;
-			}
-		})();
+		void this.updates.submit(null).then((result) => {
+			if (result.kind === 'failed') this.output.print('stderr', `The preview could not be updated: ${result.error.message}\n`);
+		});
 	}
 
-	/** Shows the stale files: a stylesheet swapped in place, or the page rebuilt if the project has no errors. */
-	private async update(): Promise<void> {
+	/**
+	 * Shows the stale files: a stylesheet swapped in place, or the page
+	 * rebuilt if the project has no errors, and shown. `signal` is aborted
+	 * when a newer update is asked for: the check then gives up, and the
+	 * newer update checks the newer text. A build is not given up: the page
+	 * it brings is shown, as every finished build always was, unless the
+	 * preview was started again or stopped meanwhile.
+	 */
+	private async update(signal: AbortSignal): Promise<void> {
+		const generation = this.generation;
 		const session = this.session;
-		if (this.pack === null) return;
+		if (session === null) return;
 		const paths = [...this.stale];
 		const files = this.files();
 		const window = this.frame?.contentWindow;
@@ -311,13 +308,22 @@ export class Preview {
 		if (paths.length === 0 && !this.forced) return;
 
 		this.showStatus('Checking for errors…');
+		// Its own controller, which an edit aborts (`changed`) as well as a
+		// newer update: an edit must not drop a Reload asked for meanwhile.
 		const controller = new AbortController();
+		const supersede = (): void => controller.abort();
+		signal.addEventListener('abort', supersede, { once: true });
 		this.checking = controller;
-		const errors = await this.check(controller.signal);
-		if (this.checking === controller) this.checking = null;
+		let errors: string[];
+		try {
+			errors = await this.check(controller.signal);
+		} finally {
+			signal.removeEventListener('abort', supersede);
+			if (this.checking === controller) this.checking = null;
+		}
 		// Edited meanwhile: the next update checks the newer text (with
 		// Auto reload off, the next Reload does).
-		if (session !== this.session) return;
+		if (generation !== this.generation) return;
 		if (controller.signal.aborted) {
 			this.showStatus(this.idleStatus());
 			return;
@@ -336,21 +342,22 @@ export class Preview {
 		this.forced = false;
 		this.stale.clear();
 		this.showStatus('Building…');
-		const page = await this.build();
-		if (session !== this.session) return;
-		if (page === null) {
-			this.showStatus('Not reloaded: the runner did not answer');
-			return;
+		const page = await session.build({ ...this.files() });
+		if (generation !== this.generation) return;
+		switch (page.kind) {
+			case 'unanswered':
+				this.showStatus('Not reloaded: the runner did not answer');
+				return;
+			case 'errors':
+				// The page shown stays as it was; the reasons go to the terminal.
+				this.output.print('stderr', page.errors.join('\n') + '\n');
+				this.showStatus('Not reloaded: the page could not be built, see the terminal');
+				return;
+			case 'page':
+				this.styles = [...page.styles];
+				this.render(page.html);
+				this.showStatus(this.idleStatus());
 		}
-		if (page.html === null) {
-			// The page shown stays as it was; the reasons go to the terminal.
-			this.output.print('stderr', page.errors.join('\n') + '\n');
-			this.showStatus('Not reloaded: the page could not be built, see the terminal');
-			return;
-		}
-		this.styles = page.styles;
-		this.render(page.html);
-		this.showStatus(this.idleStatus());
 	}
 
 	/** What the bar says while nothing runs. */
@@ -364,80 +371,6 @@ export class Preview {
 		this.bar.status.textContent = text;
 		this.bar.status.title = text;
 		this.bar.reload.disabled = !this.active;
-	}
-
-	/** Asks the runner for the page; null when it cannot answer (its worker failed or went silent). */
-	private build(): Promise<Page | null> {
-		// Only start() makes the preview active, after setting the pack; said rather than skipped, should that change.
-		if (this.pack === null) {
-			this.output.print('stderr', 'The preview has no pack to build it with: start() was never called.\n');
-			return Promise.resolve(null);
-		}
-		const url = appPacks().url(this.pack, 'runner.js');
-		if (!this.worker) {
-			const worker = new Worker(url, { type: 'module' });
-			worker.onmessage = (e: MessageEvent<unknown>) => {
-				if (this.worker !== worker) return;
-				// Anything from the runner, its download progress included, shows it is alive.
-				this.watch(url);
-				// The runner's other messages (its download progress) are not
-				// the page's; one the contract does not allow is said, since a
-				// malformed page would otherwise leave the panel blank in silence.
-				const read = readFromRunner(e.data);
-				if (read.kind === 'rejected') this.output.print('stderr', `The preview runner sent a message the pack contract does not allow: ${read.reason}.\n`);
-				else if (read.kind === 'known' && read.message.type === 'page' && read.message.id === this.requested) {
-					clearTimeout(this.watchdog);
-					this.answer?.(read.message);
-				}
-			};
-			worker.onerror = (e) => {
-				if (this.worker !== worker) return;
-				e.preventDefault();
-				clearTimeout(this.watchdog);
-				this.worker = null;
-				this.output.print('stderr', `The preview could not be built: ${e.message || `the runner (${url.pathname}) did not load`}\n`);
-				this.answer?.(null);
-			};
-			this.worker = worker;
-		}
-		const worker = this.worker;
-		return new Promise<Page | null>((resolve) => {
-			this.answer?.(null);
-			this.answer = (page) => {
-				this.answer = null;
-				clearTimeout(this.watchdog);
-				resolve(page);
-			};
-			const request: PreviewMessage = { type: 'preview', id: ++this.requested, files: { ...this.files() }, entry: this.entry };
-			worker.postMessage(request);
-			this.watch(url);
-		});
-	}
-
-	/**
-	 * (Re)starts the watchdog on the build waited for. A runner that never
-	 * answers left the panel blank and said nothing, so the terminal says so,
-	 * without guessing why, and the runner is ended: the next build starts a
-	 * new one rather than queueing behind it. The one case seen so far was a
-	 * runner.js from before previews existed, which ignores `preview`
-	 * requests, served by a service worker from before 2026-10-24 (see
-	 * switchIfStale in pwa.ts). That case is gone after 2027-01-31, when
-	 * switchIfStale is removed; the watchdog stays, for any runner that
-	 * hangs or never loads.
-	 */
-	private watch(url: URL): void {
-		clearTimeout(this.watchdog);
-		if (!this.answer) return;
-		this.watchdog = setTimeout(() => {
-			this.output.print(
-				'stderr',
-				`The preview runner (${url.pathname}) has not answered for ${SILENT_RUNNER_MS / 1000} s and was stopped. ` +
-					'Press Reload to try again; if it happens again, reload the app.\n',
-			);
-			this.worker?.terminate();
-			this.worker = null;
-			this.answer?.(null);
-		}, SILENT_RUNNER_MS);
 	}
 
 	/**

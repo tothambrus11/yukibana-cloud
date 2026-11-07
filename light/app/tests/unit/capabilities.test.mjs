@@ -1,9 +1,10 @@
-// What the top bar offers for each language (src/lib/providers/run.ts,
-// through the app's instance in src/lib/yukibana.ts): Run, Test and Mutate
+// What the top bar offers for each language (src/lib/providers/, through
+// the app's instance in src/lib/yukibana.ts): Run, Test, Mutate and Debug
 // are shown and enabled exactly where they were when the Language table
-// said it with `runs`, `tests`, `mutates` and `cannotRun`, and a runner is
-// kept warm where `warmRunner` said. That table is gone; TODAY below is
-// what it said.
+// said it with `runs`, `tests`, `mutates`, `cannotRun` and `debugs`, a
+// runner is kept warm where `warmRunner` said, and a web project's Run
+// previews its page where `preview` said. That table is gone; TODAY below
+// is what it said. Debug tests is new: C++'s alone.
 //
 //   node --test tests/unit/capabilities.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
@@ -30,12 +31,12 @@ const TODAY = {
 	python: { runs: true, tests: true },
 	javascript: { runs: true, tests: true, mutates: true },
 	typescript: { runs: true, tests: true, mutates: true },
-	web: { runs: true },
-	p5: { runs: true },
-	'p5-global': { runs: true },
-	c: { runs: true },
-	cpp: { runs: true, tests: true },
-	swift: { runs: true, tests: true },
+	web: { runs: true, preview: 'index.html' },
+	p5: { runs: true, preview: 'index.html' },
+	'p5-global': { runs: true, preview: 'index.html' },
+	c: { runs: true, debugs: true },
+	cpp: { runs: true, tests: true, debugs: true, debugsTests: true },
+	swift: { runs: true, tests: true, debugs: true },
 	scala: { runs: true },
 	rust: { runs: true, tests: true },
 	php: { runs: true, tests: true },
@@ -110,6 +111,34 @@ test('a runner is kept warm for the languages that kept one, and only where Run 
 	}
 });
 
+test('Debug and Debug tests are offered and enabled for each language as the Language table said, Debug tests for C++ alone', () => {
+	const instance = yukibana();
+	for (const language of LANGUAGES) {
+		const was = TODAY[language.id];
+		const subject = subjectOf(language.id);
+		const snapshot = snapshotOf(language.sample);
+		assert.equal(offered(instance, subject, std.debug, snapshot), was.debugs ? 'enabled' : 'absent', `Debug: ${language.id}`);
+		assert.equal(offered(instance, subject, std.debugTest, snapshot), was.debugsTests ? 'enabled' : 'absent', `Debug tests: ${language.id}`);
+		if (instance.has(subject, std.debugTest)) assert.ok(instance.has(subject, std.test) && instance.has(subject, std.debug), language.id);
+	}
+});
+
+test("a web project's Run previews the page the Language table named, and no other language's does", async () => {
+	const instance = yukibana();
+	for (const language of LANGUAGES) {
+		const subject = subjectOf(language.id);
+		const was = TODAY[language.id];
+		assert.equal(instance.has(subject, std.preview), was.preview !== undefined, language.id);
+		if (was.preview === undefined) continue;
+		// Opening a session starts nothing: its worker starts at the first build.
+		const outcome = await instance.perform(subject, std.preview, { report: () => {} }, snapshotOf(language.sample), new AbortController().signal);
+		assert.equal(outcome.kind, 'done');
+		assert.equal(outcome.value.entry, was.preview);
+		outcome.value.stop();
+		assert.deepEqual(await outcome.value.build({}), { kind: 'unanswered' }, 'a stopped session builds nothing');
+	}
+});
+
 test('mutation testing is offered only where tests are', () => {
 	const instance = yukibana();
 	for (const language of LANGUAGES) {
@@ -123,7 +152,7 @@ test('asking what a language offers never reads the whole project, as the top ba
 	const untouchable = { ...snapshotOf({ 'main.cpp': 'int main() {}\n' }), files: () => assert.fail('every file was read') };
 	for (const language of LANGUAGES) {
 		const subject = subjectOf(language.id);
-		for (const token of [std.run, std.test, std.mutate]) instance.availability(subject, token, untouchable);
+		for (const token of [std.run, std.test, std.mutate, std.debug, std.debugTest, std.preview]) instance.availability(subject, token, untouchable);
 	}
 });
 
