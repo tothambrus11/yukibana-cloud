@@ -1,0 +1,35 @@
+---
+/**
+ * <Tabs labels={['JavaScript', 'C++', …]}> <Tab>…</Tab> … </Tabs>
+ *
+ * Tabs made of radio buttons and CSS, with no script: the first tab is
+ * shown, and a panel that is not shown is `display: none`, so a playground
+ * in it is not "visible" and does not hydrate until its tab is chosen.
+ * Without CSS every panel is shown, one after another, each under its
+ * label. At most eight tabs (site.css has a rule per position).
+ *
+ * - Requires: as many <Tab> children as `labels`, in the same order.
+ */
+interface Props {
+	labels: string[];
+	/** A name for the radio group, unique on the page. */
+	name: string;
+}
+const { labels, name } = Astro.props;
+---
+
+<div class="tabs" data-tabs={name}>
+	<div class="tab-list" role="radiogroup" aria-label={`${name}: choose one`}>
+		{
+			labels.map((label, index) => (
+				<label class="tab">
+					<input type="radio" name={name} value={label} checked={index === 0} data-tab={index + 1} />
+					<span>{label}</span>
+				</label>
+			))
+		}
+	</div>
+	<div class="tab-panels">
+		<slot />
+	</div>
+</div>

@@ -39,6 +39,13 @@
 #   budget, Monaco and every compiler lazy). Its end-to-end test needs the
 #   cpp, rust, python, javascript and lldb packs built (swift optional), which
 #   this workflow never builds, and is run where they are (node test.mjs).
+# - astro-docs-example: light/examples/astro-docs, a static Astro docs site
+#   whose code samples are playground islands: type-check (astro check,
+#   tsc), `astro build`, and the built site driven in Chromium under
+#   `astro preview` (test.mjs) with the packs the pack store has (fetched
+#   with --any, so the newest build of each), JavaScript required and
+#   built here when the store has none; a playground whose pack could not
+#   be fetched is reported as skipped by name.
 # - exports: a smoke test of every build system Download offers. The sample
 #   project of a language it builds is downloaded with it, and the CI job
 #   that builds and tests it (tests/export-ci.mjs) runs in the image the
@@ -105,6 +112,8 @@ jobs:
       svelte-course-example-key: ${{ steps.svelte-course-example.outputs.key }}
       react-explorer-example-done: ${{ steps.react-explorer-example.outputs.done }}
       react-explorer-example-key: ${{ steps.react-explorer-example.outputs.key }}
+      astro-docs-example-done: ${{ steps.astro-docs-example.outputs.done }}
+      astro-docs-example-key: ${{ steps.astro-docs-example.outputs.key }}
       exports-done: ${{ steps.exports.outputs.done }}
       exports-key: ${{ steps.exports.outputs.key }}
     steps:
@@ -225,6 +234,15 @@ jobs:
           paths: |
             light/examples/react-explorer
             light/modules
+            .github/workflows/light-ci.yml
+      - id: astro-docs-example
+        uses: ./.github/actions/once
+        with:
+          name: light-astro-docs-example
+          paths: |
+            light/examples/astro-docs
+            light/modules
+            light/packs/javascript
             .github/workflows/light-ci.yml
       # What a download is made of: the generators (the languages'
       # packages' export.ts under light/modules, composed by the app's
@@ -545,6 +563,66 @@ jobs:
   # here). Every job the download's CI has: build and test, and the format
   # and lint checks, whose tools the build files now pin (Spotless in pom.xml
   # and build.gradle.kts, Prettier in package.json, and so on).
+  astro-docs-example:
+    name: Astro docs example
+    needs: plan
+    if: needs.plan.outputs.astro-docs-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: light/examples/astro-docs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 24 as two-up; packs.ts runs under node's type stripping (22.18 and later).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/examples/astro-docs/package-lock.json
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      # The newest stored build of each pack the site uses (pack-store.sh
+      # reads without an account; the token only lifts the rate limit). A
+      # pack the store has none of is said as a warning and its playgrounds
+      # are skipped by name; JavaScript, which every page but the cookbook
+      # needs, is built here instead (a minute or two from npm).
+      - name: The packs
+        working-directory: light
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for pack in javascript python cpp rust swift; do
+            scripts/pack-store.sh fetch "$pack" --any || echo "::warning title=$pack::the pack store has no build of $pack; the astro-docs playgrounds in $pack are skipped"
+          done
+          [ -f app/static/packs/javascript/runner.js ] || (cd packs/javascript && ./build.sh)
+
+      - name: End-to-end (Chromium, astro preview, the packs above)
+        env:
+          REQUIRE_PACKS: javascript
+          SKIP_BUILD: '1'
+        run: npm run test:e2e
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.astro-docs-example-key }}
+
+
   svelte-course-example:
     name: Svelte course example
     needs: plan

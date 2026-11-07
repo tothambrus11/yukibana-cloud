@@ -8,6 +8,7 @@ tried before it is called stable (section 5 of the architecture plan).
 
 | Example | What it shows |
 |---|---|
+| `astro-docs/` | a static Astro 5 docs site (MDX) whose samples are Preact islands hydrated with `client:visible`: one recipe in five languages in script-free tabs, a live web preview (std's `preview`), a Python page reading a CSV it ships, and snippets that continue earlier ones |
 | `hylo/` | a docs page of Hylo snippets running Hylo's own compiler, bundled by the page, through one runner pool (step HY1), run through an instance of `@yukibana/core` (DESIGN.md step 8) |
 | `react-explorer/` | a systems-programming article in React 19 whose C++, Rust, Swift, Python and JavaScript samples compile, run, show their assembly (source and output lines linked), step under LLDB and report AddressSanitizer errors in the page; reusable hooks `useInstance`, `useRun`, `useExplore`, `useDebug` |
 | `two-up/` | two instances of `@yukibana/core` on one page, C++ in Monaco and Python in a textarea, sharing one runner pool (DESIGN.md step 8) |
