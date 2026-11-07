@@ -2,19 +2,22 @@
  * Debug and Debug tests for the languages whose runner runs a program
  * under the debugger (packs/lldb/README.md), as providers of
  * @yukibana/std's `debug` and `debugTest`: which languages have them, what
- * their runs are sent, and when they may be pressed. The app asks the
+ * their runs are sent, and when they may be pressed: not where the runner
+ * would refuse (refusals.ts), which the button then says. The app asks the
  * instance (yukibana.ts); this table is the only place that knows.
  *
  * Temporary and app-side: step 6 of light/modules/DESIGN.md moves each
  * language's providers into its own package, unchanged.
  */
-import { AVAILABLE, type AnyProvider, type Availability, type ProjectSnapshot } from '@yukibana/core';
+import type { AnyProvider, Availability, ProjectSnapshot } from '@yukibana/core';
 import { debug, debugProvider, run, test, type DebugOptions, type PackLanguage, type RunHost } from '@yukibana/std';
 import type { LanguageId } from '../languages';
+import { cppDebugAvailable, cppDebugTestAvailable, swiftDebugAvailable } from './refusals.ts';
 
 /**
  * What a language's runner does under the debugger: nothing, or debugs its
- * program, sent `options`, and its tests too where `tests` is `true`.
+ * program, sent `options`, where `available` says, and its tests too
+ * where `tests` is not null.
  */
 export type Debugging =
 	| {
@@ -30,12 +33,16 @@ export type Debugging =
 			 * was, since its runner compiles a debugged program at -Onone.
 			 */
 			readonly options: DebugOptions;
+			/** Returns whether the project can be debugged: not where the runner refuses (a Linux target). */
+			readonly available: (snapshot: ProjectSnapshot) => Availability;
 			/**
-			 * `true` iff its runner debugs a test run as it does a run (C++'s
-			 * builds both with the same flags and runs both under the stub);
-			 * Swift's runs its tests uninstrumented, once per testing library.
+			 * Returns whether the project's tests can be debugged, besides Test
+			 * and Debug, which Debug tests requires; null where the runner does
+			 * not debug a test run as it does a run (C++'s builds both with the
+			 * same flags and runs both under the stub; Swift's runs its tests
+			 * uninstrumented, once per testing library).
 			 */
-			readonly tests: boolean;
+			readonly tests: ((snapshot: ProjectSnapshot) => Availability) | null;
 	  };
 
 /** What each language's runner does under the debugger, every language listed. */
@@ -47,9 +54,9 @@ export const DEBUGGERS: Readonly<Record<LanguageId, Debugging>> = {
 	p5: { kind: 'none' },
 	'p5-global': { kind: 'none' },
 	// C has no tests (providers/run.ts), so no Debug tests.
-	c: { kind: 'debugs', options: 'as-run', tests: false },
-	cpp: { kind: 'debugs', options: 'as-run', tests: true },
-	swift: { kind: 'debugs', options: 'none', tests: false },
+	c: { kind: 'debugs', options: 'as-run', available: cppDebugAvailable, tests: null },
+	cpp: { kind: 'debugs', options: 'as-run', available: cppDebugAvailable, tests: cppDebugTestAvailable },
+	swift: { kind: 'debugs', options: 'none', available: swiftDebugAvailable, tests: null },
 	scala: { kind: 'none' },
 	rust: { kind: 'none' },
 	php: { kind: 'none' },
@@ -59,12 +66,6 @@ export const DEBUGGERS: Readonly<Record<LanguageId, Debugging>> = {
 	go: { kind: 'none' },
 	zig: { kind: 'none' },
 };
-
-/** Returns an availability that does not change with the project. */
-const always =
-	(answer: Availability): ((snapshot: ProjectSnapshot) => Availability) =>
-	() =>
-		answer;
 
 /**
  * Returns the debug providers of the language `id`, whose metadata is
@@ -78,7 +79,7 @@ export function debugProvidersOf(id: LanguageId, language: PackLanguage): AnyPro
 	if (language.key !== id) throw new RangeError(`The metadata of ${language.key} was given for ${id}.`);
 	const debugging = DEBUGGERS[id];
 	if (debugging.kind === 'none') return [];
-	const providers: AnyProvider<RunHost>[] = [debugProvider('run', language, { requires: [run], available: always(AVAILABLE), options: debugging.options })];
-	if (debugging.tests) providers.push(debugProvider('test', language, { requires: [test, debug], available: always(AVAILABLE), options: debugging.options }));
+	const providers: AnyProvider<RunHost>[] = [debugProvider('run', language, { requires: [run], available: debugging.available, options: debugging.options })];
+	if (debugging.tests !== null) providers.push(debugProvider('test', language, { requires: [test, debug], available: debugging.tests, options: debugging.options }));
 	return providers;
 }

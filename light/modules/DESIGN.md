@@ -640,3 +640,19 @@ providers of std's tokens, still app-side (`light/app/src/lib/providers/`
   `/workspace/<path>` in the program's DWARF; a test build compiles
   `tests/*.cpp` there too, so breakpoints in tests need no change
   (`e2e-debug.mjs`'s C++ test case).
+* **Availability reads the project (N1), in a commit of its own**
+  (`providers/refusals.ts`). Each rule restates a runner's refusal and
+  says it in the runner's own sentence, so a button the runner would
+  refuse is shown, disabled, with what the terminal would have printed:
+  C and C++ Debug (and so Debug tests) on a Linux target of
+  compile_flags.txt; Swift Debug on a Linux TARGET of swift.env, read as
+  the runner reads it; C++ Test on a Linux target with Catch2 or doctest,
+  and with tests that mix frameworks (the runner refuses those on every
+  target). Debug tests is also unavailable when tests/ includes no
+  framework, or there are no tests: a new button need not offer what
+  would only print that there is nothing to debug. Test stays enabled
+  there, as it was, and the runner says so. Each rule reads tests/,
+  compile_flags.txt or swift.env through `file`, never `files`. The
+  workspace's `testFramework` (the header's framework choice) still has
+  its own detector, `refreshTestFramework`: it is view state, not
+  availability, and moves with the generic settings panel.

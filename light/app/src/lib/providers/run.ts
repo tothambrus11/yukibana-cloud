@@ -8,9 +8,10 @@
  * Temporary and app-side: step 6 of light/modules/DESIGN.md moves each
  * language's providers into its own package, unchanged.
  */
-import { AVAILABLE, type AnyProvider, type Availability } from '@yukibana/core';
+import { AVAILABLE, type AnyProvider, type Availability, type ProjectSnapshot } from '@yukibana/core';
 import { runProvider, test, warmProvider, type PackLanguage, type RunHost } from '@yukibana/std';
 import type { LanguageId } from '../languages';
+import { cppTestAvailable } from './refusals.ts';
 
 /**
  * What a language's runner does: nothing, and why not (the Run button says
@@ -58,9 +59,8 @@ export const RUNNERS: Readonly<Record<LanguageId, RunnerModes>> = {
 	c: { kind: 'runs', also: [], warm: false },
 	// On a Linux target the runner runs GoogleTest tests (and RapidCheck)
 	// under QEMU, and refuses Catch2 and doctest by name (packs/cpp README),
-	// with Test offered and enabled all the same, as it always was. A
-	// candidate for `available` to read the target (compile_flags.txt) and
-	// the framework (tests/) from the snapshot, and say so on the button.
+	// and tests that mix frameworks anywhere: Test is disabled there, with
+	// the runner's sentence (TESTS_AVAILABLE).
 	cpp: { kind: 'runs', also: ['test'], warm: false },
 	swift: { kind: 'runs', also: ['test'], warm: false },
 	scala: { kind: 'runs', also: [], warm: false },
@@ -74,6 +74,15 @@ export const RUNNERS: Readonly<Record<LanguageId, RunnerModes>> = {
 	haskell: { kind: 'runs', also: ['test'], warm: true },
 	go: { kind: 'runs', also: ['test'], warm: false },
 	zig: { kind: 'runs', also: ['test'], warm: false },
+};
+
+/**
+ * Where a language's Test reads the project: it is unavailable where the
+ * runner would refuse it (refusals.ts). A language not listed may always
+ * run its tests.
+ */
+export const TESTS_AVAILABLE: Readonly<Partial<Record<LanguageId, (snapshot: ProjectSnapshot) => Availability>>> = {
+	cpp: cppTestAvailable,
 };
 
 /** Returns an availability that does not change with the project. */
@@ -90,9 +99,8 @@ const always =
  * mutation testing, and a warm provider, requiring Run, where a runner is
  * kept warm.
  *
- * Every answer is the same for every project, as the buttons' always were:
- * the first that reads the snapshot (a C++ target, DESIGN.md N1) would
- * change what the top bar offers, which this step does not.
+ * Every answer is the same for every project, as the buttons' always were,
+ * but Test where `TESTS_AVAILABLE` reads the project (DESIGN.md N1).
  *
  * - Requires: `language.key` is `id`.
  */
@@ -101,7 +109,7 @@ export function runProvidersOf(id: LanguageId, language: PackLanguage): AnyProvi
 	const runner = RUNNERS[id];
 	if (runner.kind === 'none') return [runProvider('run', language, { requires: [], available: always({ kind: 'unavailable', reason: runner.reason }) })];
 	const providers: AnyProvider<RunHost>[] = [runProvider('run', language, { requires: [], available: always(AVAILABLE) })];
-	if (runner.also.includes('test')) providers.push(runProvider('test', language, { requires: [], available: always(AVAILABLE) }));
+	if (runner.also.includes('test')) providers.push(runProvider('test', language, { requires: [], available: TESTS_AVAILABLE[id] ?? always(AVAILABLE) }));
 	if (runner.also.includes('mutate')) providers.push(runProvider('mutate', language, { requires: [test], available: always(AVAILABLE) }));
 	if (runner.warm) providers.push(warmProvider(language));
 	return providers;

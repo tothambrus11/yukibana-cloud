@@ -25,6 +25,8 @@ const { LANGUAGES } = await import('../../src/lib/languages.ts');
 const { metaOf, subjectOf, yukibana } = await import('../../src/lib/yukibana.ts');
 const std = await import('../../../modules/std/index.ts');
 const { pathOf } = await import('../../../modules/core/index.ts');
+const { withTarget } = await import('../../src/lib/cpp-targets.ts');
+const { chooseTestFramework } = await import('../../src/lib/cpp-tests.ts');
 
 /** What the Language table said of each language before it moved into providers. */
 const TODAY = {
@@ -82,11 +84,9 @@ test("a language whose pack is not a pack id is refused when it is described, no
 	assert.throws(() => metaOf({ ...first, uses: ['Linux'] }), /is not a pack id/);
 });
 
-// Every provider of the app answers alike for every project (providers/run.ts:
-// none reads the snapshot yet), so each language is asked about its own sample
-// project. This does not hold that the answers ignore the project: the first
-// provider whose answer reads it (a C++ target, DESIGN.md N1) adds the
-// projects where it differs here.
+// Each language is asked about its own sample project here; the projects
+// where an answer differs, because the runner would refuse (DESIGN.md N1),
+// are the matrix further down.
 test('Run, Test and Mutate are offered and enabled for each language as the Language table said', () => {
 	const instance = yukibana();
 	for (const language of LANGUAGES) {
@@ -137,6 +137,80 @@ test("a web project's Run previews the page the Language table named, and no oth
 		outcome.value.stop();
 		assert.deepEqual(await outcome.value.build({}), { kind: 'unanswered' }, 'a stopped session builds nothing');
 	}
+});
+
+/** The sample of language `id`. */
+const sampleOf = (id) => LANGUAGES.find((l) => l.id === id).sample;
+
+/** The C++ sample with its tests rewritten for `framework` (the header's choice), on `target`. */
+function cppProject(framework, target = 'wasm32-wasi') {
+	const sample = sampleOf('cpp');
+	const files = { ...sample, ...chooseTestFramework(sample, framework, sample).write };
+	return { ...files, 'compile_flags.txt': withTarget(files['compile_flags.txt'], target) };
+}
+
+const DEBUG_ON_LINUX = (label) => `disabled: The debugger runs programs for WebAssembly only, for now: remove the --target line (${label}) from compile_flags.txt to debug.`;
+
+// What the runner refuses, the button says before it is pressed (providers/refusals.ts,
+// in the runner's own words); everywhere else it is offered as before.
+test('C and C++: Debug and Debug tests are disabled on a Linux target, with the sentence the runner would print', () => {
+	const instance = yukibana();
+	for (const [target, label] of [['x86_64-linux', 'x86-64 Linux'], ['aarch64-linux', 'AArch64 Linux'], ['riscv64-linux', 'RISC-V 64 Linux']]) {
+		const snapshot = snapshotOf(cppProject('gtest', target));
+		assert.equal(offered(instance, subjectOf('cpp'), std.debug, snapshot), DEBUG_ON_LINUX(label), target);
+		assert.equal(offered(instance, subjectOf('cpp'), std.debugTest, snapshot), DEBUG_ON_LINUX(label), target);
+		assert.equal(offered(instance, subjectOf('cpp'), std.test, snapshot), 'enabled', `GoogleTest runs on ${target}`);
+		assert.equal(offered(instance, subjectOf('cpp'), std.run, snapshot), 'enabled');
+		const c = { ...sampleOf('c'), 'compile_flags.txt': withTarget(sampleOf('c')['compile_flags.txt'], target) };
+		assert.equal(offered(instance, subjectOf('c'), std.debug, snapshotOf(c)), DEBUG_ON_LINUX(label), `C on ${target}`);
+	}
+	assert.equal(offered(instance, subjectOf('cpp'), std.debug, snapshotOf(cppProject('gtest'))), 'enabled');
+});
+
+test("C++: Test is disabled on a Linux target for Catch2 and doctest, and for tests that mix frameworks, as the runner refuses them", () => {
+	const instance = yukibana();
+	const cpp = subjectOf('cpp');
+	for (const [framework, name] of [['doctest', 'doctest'], ['catch2', 'Catch2']]) {
+		assert.equal(offered(instance, cpp, std.test, snapshotOf(cppProject(framework))), 'enabled', `${name} on WebAssembly`);
+		assert.equal(offered(instance, cpp, std.debugTest, snapshotOf(cppProject(framework))), 'enabled', `Debug tests with ${name} on WebAssembly`);
+		assert.equal(
+			offered(instance, cpp, std.test, snapshotOf(cppProject(framework, 'x86_64-linux'))),
+			`disabled: ${name} runs on the WebAssembly target only, for now: on x86-64 Linux the tests can use GoogleTest (and RapidCheck).`,
+		);
+	}
+	const mixed = { ...cppProject('gtest'), 'tests/other_test.cpp': '#include <doctest/doctest.h>\n' };
+	const said =
+		'disabled: The tests mix test frameworks: tests/geometry_test.cpp includes <gtest/...> (GoogleTest), tests/other_test.cpp includes <doctest/...> (doctest). A test program links one of them; convert or remove the others.';
+	assert.equal(offered(instance, cpp, std.test, snapshotOf(mixed)), said);
+	assert.equal(offered(instance, cpp, std.debugTest, snapshotOf(mixed)), said);
+	assert.equal(offered(instance, cpp, std.debug, snapshotOf(mixed)), 'enabled', 'the program is debugged without its tests');
+});
+
+test('C++: Debug tests is disabled where the tests use no framework, or there are none', () => {
+	const instance = yukibana();
+	const cpp = subjectOf('cpp');
+	const { 'tests/geometry_test.cpp': _, ...noTests } = sampleOf('cpp');
+	assert.equal(
+		offered(instance, cpp, std.debugTest, snapshotOf(noTests)),
+		'disabled: No tests to debug: put test files (GoogleTest, doctest or Catch2) in tests/, for example tests/geometry_test.cpp.',
+	);
+	assert.equal(offered(instance, cpp, std.test, snapshotOf(noTests)), 'enabled', 'Test is pressed and the runner says there are none, as before');
+	const ownMain = { ...noTests, 'tests/main_test.cpp': 'int main() { return 0; }\n' };
+	assert.equal(offered(instance, cpp, std.debugTest, snapshotOf(ownMain)), 'disabled: No test framework: the files in tests/ include none of <gtest/gtest.h>, <doctest/doctest.h> or <catch2/...>.');
+	assert.equal(offered(instance, cpp, std.test, snapshotOf(ownMain)), 'enabled');
+});
+
+test("Swift: Debug is disabled when swift.env names a Linux target, with the runner's sentence; its comment lines change nothing", () => {
+	const instance = yukibana();
+	const swift = subjectOf('swift');
+	const sample = sampleOf('swift');
+	assert.equal(offered(instance, swift, std.debug, snapshotOf(sample)), 'enabled', 'the sample names its Linux target in a comment only');
+	for (const [target, label] of [['x86_64-linux', 'x86-64 Linux'], ['aarch64-linux', 'AArch64 Linux']]) {
+		const snapshot = snapshotOf({ ...sample, 'swift.env': `${sample['swift.env']}TARGET=${target}\n` });
+		assert.equal(offered(instance, swift, std.debug, snapshot), `disabled: error: the debugger runs WebAssembly programs only; ${label} cannot be debugged yet (comment out TARGET in swift.env to debug)`);
+		assert.equal(offered(instance, swift, std.run, snapshot), 'enabled');
+	}
+	assert.equal(offered(instance, swift, std.debug, snapshotOf({ ...sample, 'swift.env': 'TARGET=x86_64-linux\nTARGET=wasm32-wasi\n' })), 'enabled', 'the last TARGET wins');
 });
 
 test('mutation testing is offered only where tests are', () => {

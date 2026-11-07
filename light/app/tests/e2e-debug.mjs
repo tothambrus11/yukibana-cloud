@@ -3,7 +3,7 @@
 // variables in the Debug panel, a step or a second breakpoint into another
 // file, Continue (F5) to the end. Where the language debugs its tests (C++),
 // a breakpoint in a test, Debug tests from the ⋯ menu, and Continue until
-// the tests pass. Needs the lldb pack and each language's.
+// the tests pass; then, on a Linux target, both disabled, saying why. Needs the lldb pack and each language's.
 //
 //   npm run build && node tests/e2e-debug.mjs [language ...]
 //
@@ -15,7 +15,7 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { choose, LANGUAGE_PICKER } from './ui.mjs';
+import { buildSetting, choose, closePopovers, LANGUAGE_PICKER, menuItem } from './ui.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = process.env.BUILD_DIR ?? join(here, '..', 'build');
@@ -40,7 +40,14 @@ const CASES = {
  */
 const TEST_CASES = {
 	// tests/geometry_test.cpp:7 is `EXPECT_DOUBLE_EQ(p.norm(), 5.0);` in TEST(Geometry, NormOfThreeFourIsFive).
-	cpp: { file: 'geometry_test.cpp', line: 7, frame: /NormOfThreeFourIsFive.*geometry_test\.cpp:7$/, local: 'p', output: /\[  PASSED  \] 3 tests\./ },
+	cpp: {
+		file: 'geometry_test.cpp',
+		line: 7,
+		frame: /NormOfThreeFourIsFive.*geometry_test\.cpp:7$/,
+		local: 'p',
+		output: /\[  PASSED  \] 3 tests\./,
+		linux: { target: 'x86_64-linux', reason: 'The debugger runs programs for WebAssembly only, for now: remove the --target line (x86-64 Linux) from compile_flags.txt to debug.' },
+	},
 };
 
 const only = process.argv.slice(2);
@@ -192,6 +199,20 @@ async function runTests(language, c) {
 	const said = (await status.textContent({ timeout: 5000 }).catch(() => '?'))?.trim() ?? '';
 	const shown = (await page.locator('.terminal pre').textContent({ timeout: 5000 }).catch(() => '')) ?? '';
 	check(done && /code 0/.test(said) && c.output.test(shown), `Continue runs the tests to their end, passing (${said}: ${JSON.stringify(shown.slice(-100))})`);
+
+	// On a Linux target the runner refuses to debug: Debug and Debug tests
+	// stay shown, disabled, with the sentence the runner would print.
+	if (c.linux) {
+		await choose(page, await buildSetting(page, 'target'), c.linux.target);
+		await closePopovers(page);
+		const debugButton = page.locator('header .btn.debug');
+		await page.waitForFunction(() => document.querySelector('header .btn.debug')?.hasAttribute('disabled'), null, { timeout: 10_000 }).catch(() => {});
+		const title = await debugButton.getAttribute('title');
+		check((await debugButton.isDisabled()) && title === c.linux.reason, `on ${c.linux.target} Debug is disabled and says why (${title})`);
+		const item = await menuItem(page, /^Debug tests$/);
+		check((await item.isDisabled()) && (await item.getAttribute('title')) === c.linux.reason, `on ${c.linux.target} Debug tests is disabled and says why (${await item.getAttribute('title')})`);
+		await closePopovers(page);
+	}
 	check(errors.length === 0, `no page errors (${errors.join('; ')})`);
 	await page.close();
 }
