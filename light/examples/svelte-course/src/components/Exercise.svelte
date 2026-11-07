@@ -45,6 +45,12 @@ failed, broken) and `data-editor` on the editor.
 	let stdin = $state(untrack(() => spec.stdin));
 	let showSolution = $state(false);
 	onDestroy(() => session.detach());
+	// A reload or a closed tab destroys no component: the draft waiting for its delay is saved here.
+	$effect(() => {
+		const save = (): void => session.saveDraftNow();
+		window.addEventListener('pagehide', save);
+		return () => window.removeEventListener('pagehide', save);
+	});
 
 	function ready(editor: EditorHandle): void {
 		session.attach(editor);

@@ -19,7 +19,15 @@ run too:
 | Run-length encoding | JavaScript | `node:test` with two fast-check properties | Node's spec reporter |
 | Roman numerals | Rust | `#[test]`s in `tests/roman.rs`, as `cargo test` runs them | libtest |
 | Counting bits | C++ | GoogleTest (`tests/bits_test.cpp`) | GoogleTest |
-| Balanced brackets | Swift | XCTest (`Tests/BracketsTests.swift`, `@testable import App`) | XCTest |
+| Balanced brackets | Swift (**untested**, see below) | XCTest (`Tests/BracketsTests.swift`, `@testable import App`) | XCTest |
+
+**Swift is untested.** The Swift exercise has never been compiled or run:
+no machine this was built on had the Swift pack (`light/packs/swift`,
+`./build.sh`, needs about 5 GB of disk for the toolchain it downloads), and
+CI does not build it. Its files follow the Swift pack's README and its
+report reader is tested on the format that README documents, but until
+`node test.mjs` has passed with `light/app/static/packs/swift` installed,
+treat the Swift exercise as a draft, not as a working language.
 
 Built with Svelte 5 and Vite (no SvelteKit: a course page is one page), on
 the embeddable packages of `light/modules`, imported by name as another
@@ -122,7 +130,8 @@ reload the progress, badges and drafts are back; the theme switches the
 page and Monaco; and on a phone (390 px, touch) the editor is the textarea,
 no Monaco is fetched, what is typed is what Check tests, and nothing
 scrolls sideways. An exercise whose pack is not installed is skipped and
-the test says so (Swift's pack is often not installed: it is large).
+the test says so (Swift's pack has never been installed where this ran,
+so Swift is always among them so far).
 
 ## Bundle
 
@@ -174,9 +183,10 @@ of file at once (the runtime says so in the output).
 
 * No language server: Monaco highlights, and nothing more (DESIGN.md
   section 17 says what binding one takes).
-* The Swift exercise's e2e was not run where this was built (the Swift pack
-  was not installed); its files follow the Swift pack's README (XCTest
-  discovery, `@testable import App`, `main.swift` left out of a test run)
-  and its report reader is tested on the format that pack prints.
-* The example has no CI job yet; two-up's (`light-ci.yml`) is the one to
-  copy.
+* Swift is untested (above): its files follow the Swift pack's README
+  (XCTest discovery, `@testable import App`, `main.swift` left out of a
+  test run), and nothing has compiled them.
+* CI (`light-ci.yml`, job `svelte-course-example`) type-checks, builds,
+  runs the unit tests and bundle fixtures, and runs `test.mjs` with the
+  JavaScript pack only, the one pack that workflow builds; Python, Rust,
+  C++ and Swift run end to end only where their packs are installed.

@@ -99,6 +99,16 @@ export class ExerciseSession {
 		});
 	}
 
+	/**
+	 * Saves the draft now if one is waiting for its delay. The page calls it
+	 * on `pagehide`: a reload or a closed tab runs no component's teardown,
+	 * so without it what was typed (or a solution just put in) in the last
+	 * {@link DRAFT_DELAY_MS} was lost. Once was the bug.
+	 */
+	saveDraftNow(): void {
+		this.#flushDraft();
+	}
+
 	/** Stops following the editor, saving a draft still waiting; the run, if any, carries on until it ends. */
 	detach(): void {
 		this.#flushDraft();
