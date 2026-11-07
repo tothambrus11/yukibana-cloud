@@ -4,11 +4,13 @@
   stack (a row shows that frame's line and variables) and the selected
   frame's variables as a tree, each opened on demand. Breakpoints are set
   in the editors' margin (breakpoints.svelte.ts, decorate); this lists them.
+  Where the language narrows Debug tests (std's `debugTestCase`), it offers
+  "Stop on failed assertion" for the next debugged test run.
   It loads with the debugger, on the first Debug or when the panel is
   first opened (dock.ts).
 -->
 <script lang="ts">
-	import { debug, debugTest } from '@yukibana/std';
+	import { debug, debugTest, debugTestCase } from '@yukibana/std';
 	import type { Debugger, Variable } from '../debug.svelte';
 	import type { Workspace } from '../workspace.svelte';
 	import { subjectOf, yukibana } from '../yukibana';
@@ -24,6 +26,7 @@
 	const debugAvailable = $derived(yukibana().availability(subject, debug, workspace.snapshot()));
 	const hasDebugTest = $derived(yukibana().has(subject, debugTest));
 	const debugTestAvailable = $derived(yukibana().availability(subject, debugTest, workspace.snapshot()));
+	const hasDebugTestCase = $derived(yukibana().has(subject, debugTestCase));
 	/** Opened variables, by the path of names from their scope. */
 	let open = $state<Record<string, boolean>>({});
 	const breakpoints = $derived(Object.entries(workspace.breakpoints.lines).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
@@ -35,7 +38,8 @@
 		entry: 'Paused at the start',
 		exception: 'The program crashed',
 		signal: 'The program crashed',
-		'function breakpoint': 'Paused at a breakpoint',
+		// The one function breakpoint the app sets is a test run's failed-assertion hook (workspace.debug).
+		'function breakpoint': 'Paused at a failed assertion',
 	};
 
 	async function toggle(key: string, v: Variable) {
@@ -102,7 +106,7 @@
 			{:else if status.kind === 'running'}
 				Running
 			{:else if status.kind === 'stopped'}
-				{REASONS[status.reason] ?? 'Paused'}{status.description && status.reason !== 'breakpoint' && status.reason !== 'step' ? `: ${status.description}` : ''}
+				{REASONS[status.reason] ?? 'Paused'}{status.description && !['breakpoint', 'step', 'function breakpoint'].includes(status.reason) ? `: ${status.description}` : ''}
 			{:else if status.kind === 'ended'}
 				{status.text}
 			{/if}
@@ -112,7 +116,9 @@
 	<div class="body">
 		{#if !dbg.active && status.kind !== 'ended'}
 			<p class="empty">
-				{#if hasDebugTest}
+				{#if hasDebugTestCase}
+					Click left of a line number to set a breakpoint, then Debug, or Debug tests for a breakpoint in tests/, or Debug test above one test to run it alone: the program stops there, and its call stack and variables show here.
+				{:else if hasDebugTest}
 					Click left of a line number to set a breakpoint, then Debug, or Debug tests for a breakpoint in tests/: the program stops there, and its call stack and variables show here.
 				{:else if hasDebug}
 					Click left of a line number to set a breakpoint, then Debug: the program stops there, and its call stack and variables show here.
@@ -120,6 +126,11 @@
 					The debugger runs C, C++ and Swift programs for now.
 				{/if}
 			</p>
+		{/if}
+		{#if !dbg.active && hasDebugTestCase}
+			<label class="option" title="Debug tests and Debug test pause where an assertion fails; Continue goes on with the tests">
+				<input type="checkbox" bind:checked={workspace.stopOnFailure} /> Stop on failed assertion
+			</label>
 		{/if}
 
 		{#if stopped}
@@ -263,6 +274,15 @@
 	.note {
 		margin: 0.5rem 0.9rem;
 		color: var(--gray-3);
+	}
+	.option {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		min-height: 1.75rem;
+		margin: 0.4rem 0.9rem;
+		color: var(--gray-2);
+		cursor: pointer;
 	}
 	h3 {
 		margin: 0.6rem 0.8rem 0.2rem;

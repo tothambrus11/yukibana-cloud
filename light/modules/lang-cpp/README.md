@@ -20,6 +20,8 @@ do, as providers of `@yukibana/std`'s tokens; the pack
 | `body.ts` | `@yukibana/lang-cpp/body` | `BODIES`: each language's sample project, server settings, build settings (`PropertyModel`) and configuration files |
 | `monaco.ts` | `@yukibana/lang-cpp/monaco` | `MONACO_LANGUAGES`: the Monaco languages its server answers for |
 | `download.ts` | `@yukibana/lang-cpp/download` | `DOWNLOADS`: each language's providers of std's `exportBuild` and `exportTooling` (`LanguageDownloads`), apart from `providers` so that a host that downloads nothing loads none of them |
+| `single-test.ts` | `@yukibana/lang-cpp/single-test` | `SINGLE_TEST`: C++'s providers of std's `testCase`, `debugTestCase` and `findTests` (`LanguageSingleTest`), one test run or debugged alone and where the tests are, apart from `providers` so that a host that runs whole projects only loads none of them |
+| `test-cases.ts` | none: `single-test.ts`'s finder imports it on a first request | `testCasesIn`: the test cases of a test file, per framework, as the runner selects them (`../tests/cpp-test-cases.test.mjs`) |
 | `export.ts` | none: `download.ts`'s providers import it on a first download | `EXPORTS`: each language's build systems (the files each writes, its CI) and tools (its image, format checks, editors' settings, README sections), what a downloaded project is made of |
 | `levels.ts` | `@yukibana/lang-cpp/levels` | read by name by the app's Build settings and pickers |
 | `properties.ts` | `@yukibana/lang-cpp/properties` | read by name by the app's Build settings and pickers |
@@ -28,4 +30,4 @@ do, as providers of `@yukibana/std`'s tokens; the pack
 | `targets.ts` | `@yukibana/lang-cpp/targets` | read by name by the app's Build settings and pickers |
 | `tests.ts` | `@yukibana/lang-cpp/tests` | read by name by the app's Build settings and pickers |
 | `tidy.ts` | `@yukibana/lang-cpp/tidy` | read by name by the app's Build settings and pickers |
-| `refusals.ts`, `views.ts` | through `index.ts` | when Test, Debug and Debug tests are unavailable, in the runner's words; the compiler output views |
+| `refusals.ts`, `views.ts` | through `index.ts` | when Test, Debug and Debug tests are unavailable, in the runner's words (and `cppTestFramework`, the tests' framework, kept per snapshot); the compiler output views |

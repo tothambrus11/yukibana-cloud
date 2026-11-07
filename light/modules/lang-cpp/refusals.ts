@@ -34,8 +34,11 @@ function once<T>(read: (snapshot: ProjectSnapshot) => T): (snapshot: ProjectSnap
 /** Returns the C or C++ project's target as the runner reads it from compile_flags.txt: the default for none, and for one it does not support. */
 const cppTarget = once((snapshot): ReturnType<typeof targetById> => targetById(valueOf(snapshot, CPP_TARGET)));
 
-/** Returns which test framework the files under tests/ include (tests.ts), reading those files alone. */
-const testFramework = once((snapshot): Detected => {
+/**
+ * Returns which test framework the files under tests/ include (tests.ts),
+ * reading those files alone, kept per snapshot as the rules here keep it.
+ */
+export const cppTestFramework: (snapshot: ProjectSnapshot) => Detected = once((snapshot): Detected => {
 	const tests: Record<string, string> = {};
 	for (const path of snapshot.paths()) {
 		if (!path.startsWith(TESTS_DIR)) continue;
@@ -70,7 +73,7 @@ export function cppDebugAvailable(snapshot: ProjectSnapshot): Availability {
  * only (Catch2, doctest), both of which the runner refuses.
  */
 export function cppTestAvailable(snapshot: ProjectSnapshot): Availability {
-	const detected = testFramework(snapshot);
+	const detected = cppTestFramework(snapshot);
 	if (detected.mixed) return { kind: 'unavailable', reason: mixedReason(detected.files) };
 	const target = cppTarget(snapshot);
 	if (target.runtime === 'linux' && detected.framework !== null && detected.framework !== 'gtest') {
@@ -86,7 +89,7 @@ export function cppTestAvailable(snapshot: ProjectSnapshot): Availability {
  * own main is not one Debug tests is offered for.
  */
 export function cppDebugTestAvailable(snapshot: ProjectSnapshot): Availability {
-	const detected = testFramework(snapshot);
+	const detected = cppTestFramework(snapshot);
 	if (detected.mixed) return { kind: 'unavailable', reason: mixedReason(detected.files) };
 	if (detected.framework !== null) return AVAILABLE;
 	const any = snapshot.paths().some((path) => path.startsWith(TESTS_DIR));

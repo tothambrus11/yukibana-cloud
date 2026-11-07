@@ -15,6 +15,7 @@ import type { JsonValue, PropertyModel } from '@yukibana/core';
 import { LANGUAGES as CPP } from '@yukibana/lang-cpp';
 import { BODIES as CPP_BODIES } from '@yukibana/lang-cpp/body';
 import { DOWNLOADS as CPP_DOWNLOADS } from '@yukibana/lang-cpp/download';
+import { SINGLE_TEST as CPP_SINGLE_TEST } from '@yukibana/lang-cpp/single-test';
 import { MONACO_LANGUAGES as CPP_MONACO } from '@yukibana/lang-cpp/monaco';
 import { LANGUAGES as GO } from '@yukibana/lang-go';
 import { BODIES as GO_BODIES } from '@yukibana/lang-go/body';
@@ -60,7 +61,7 @@ import { LANGUAGES as ZIG } from '@yukibana/lang-zig';
 import { BODIES as ZIG_BODIES } from '@yukibana/lang-zig/body';
 import { DOWNLOADS as ZIG_DOWNLOADS } from '@yukibana/lang-zig/download';
 import { MONACO_LANGUAGES as ZIG_MONACO } from '@yukibana/lang-zig/monaco';
-import type { LanguageDownloads, PackageLanguage, PackHost, PackLanguageBody } from '@yukibana/std';
+import type { LanguageDownloads, LanguageSingleTest, PackageLanguage, PackHost, PackLanguageBody } from '@yukibana/std';
 
 /** The installed languages, by key, in the order the app lists them before the picker sorts them. */
 const INSTALLED = { ...PYTHON, ...JAVASCRIPT, ...CPP, ...SWIFT, ...SCALA, ...RUST, ...PHP, ...JAVA, ...KOTLIN, ...HASKELL, ...GO, ...ZIG };
@@ -99,6 +100,9 @@ const DOWNLOADS: Readonly<Record<LanguageId, LanguageDownloads>> = {
 	...GO_DOWNLOADS,
 	...ZIG_DOWNLOADS,
 };
+
+/** The providers of one test (a package's `/single-test`), by key, of the languages whose runner selects a test. */
+const SINGLE_TEST: Partial<Readonly<Record<LanguageId, LanguageSingleTest>>> = { ...CPP_SINGLE_TEST };
 
 /** Every installed language's Monaco languages, by key. */
 const MONACO: Readonly<Record<LanguageId, readonly string[]>> = {
@@ -211,7 +215,7 @@ function languageFrom(id: LanguageId, language: PackageLanguage<PackHost>): Lang
 		uses: spec.uses,
 		configFiles: body.configFiles,
 		properties: body.properties,
-		providers: (meta) => [...language.providers(meta), ...DOWNLOADS[id]<PackHost>(meta)],
+		providers: (meta) => [...language.providers(meta), ...DOWNLOADS[id]<PackHost>(meta), ...(SINGLE_TEST[id]?.(meta) ?? [])],
 	};
 }
 

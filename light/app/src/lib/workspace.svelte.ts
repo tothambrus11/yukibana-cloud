@@ -6,8 +6,8 @@
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
-import type { DebugChannel, LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
-import { LanguageSession, type LogLevel, type ServerState } from '@yukibana/runtime';
+import { TEST_FAILED_FUNCTION, type DebugChannel, type LoadingProgress, type PartStatus, type RunMode, type TestSelector } from '@yukibana/protocol';
+import { LanguageSession, type LogLevel, type RunHandle, type ServerState } from '@yukibana/runtime';
 import { MonacoBinding, toLspPosition } from '@yukibana/monaco';
 import { internals } from './monaco-internals';
 import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
@@ -26,10 +26,30 @@ import type { Explorer } from './explorer.svelte';
 import type { CallHierarchy } from './call-hierarchy.svelte';
 import type { Debugger } from './debug.svelte';
 import { Breakpoints } from './breakpoints.svelte';
+import { registerTestLenses } from './test-lens';
 import type { SelectionRange } from '@yukibana/protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
-import { pathOf, writeProperty, type Disposable, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type LanguageSubject } from '@yukibana/core';
-import { DEFAULT_RUN_OPTIONS, debugTokenOf, explore, preview, runOptionsOf, test, tokenOf, warm, type DebugMode, type PreviewSession, type RunOptions, type ViewKind } from '@yukibana/std';
+import { pathOf, writeProperty, type Disposable, type Outcome, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type LanguageSubject } from '@yukibana/core';
+import {
+	DEFAULT_RUN_OPTIONS,
+	debugTestCase,
+	debugTokenOf,
+	explore,
+	findTests,
+	preview,
+	runOptionsOf,
+	test,
+	testAt,
+	testCase,
+	tokenOf,
+	warm,
+	type DebugMode,
+	type FoundTest,
+	type PreviewSession,
+	type RunInput,
+	type RunOptions,
+	type ViewKind,
+} from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, releaseExplorer, subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
 import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
@@ -245,6 +265,13 @@ export class Workspace implements CoreProject {
 	 * same one for the rest of the page's life.
 	 */
 	debugger = $state.raw<Debugger | null>(null);
+	/**
+	 * Whether Debug tests stops at each failed assertion: the Debug panel's
+	 * "Stop on failed assertion", offered where the language narrows Debug
+	 * tests (std's `debugTestCase`). The page's, not the project's: it is
+	 * not saved.
+	 */
+	stopOnFailure = $state(false);
 	/** True while the first Debug waits for the debugger's code: Debug is not offered twice. */
 	private debuggerLoading = $state(false);
 	/** The debugger's code, loading or loaded; null before the first Debug and after a load that failed. */
@@ -298,6 +325,8 @@ export class Workspace implements CoreProject {
 
 	constructor() {
 		monaco.editor.onDidChangeMarkers(() => this.refreshProblems());
+		// "Run test | Debug test" above each test, where the language finds them (test-lens.ts).
+		registerTestLenses(this);
 	}
 
 	/**
@@ -494,7 +523,6 @@ export class Workspace implements CoreProject {
 	 * language has a provider of `preview` (lang-javascript/index.ts).
 	 */
 	run(mode: RunMode = 'run'): void {
-		const language = languageOf(this.language);
 		const subject = subjectOf(this.language);
 		const token = tokenOf(mode);
 		const snapshot = this.snapshot();
@@ -508,6 +536,34 @@ export class Workspace implements CoreProject {
 			this.startPreview(subject, snapshot);
 			return;
 		}
+		this.startRun(mode, snapshot, (input, frozen) => yukibana().perform(subject, token, input, frozen, new AbortController().signal));
+	}
+
+	/**
+	 * Runs one of the project's tests alone, `tests` (the code lens's Run
+	 * test, Run Test at Cursor), where the language's providers offer that
+	 * (std's `testCase`): its test run, with the test named, so the runner
+	 * runs that test and no other.
+	 */
+	runTest(tests: TestSelector): void {
+		const subject = subjectOf(this.language);
+		const snapshot = this.snapshot();
+		const availability = yukibana().availability(subject, testCase, snapshot);
+		if (availability.kind === 'unavailable') {
+			if (yukibana().has(subject, testCase)) this.write('warning', availability.reason);
+			return;
+		}
+		this.startRun('test', snapshot, (input, frozen) => yukibana().perform(subject, testCase, { ...input, tests }, frozen, new AbortController().signal));
+	}
+
+	/**
+	 * Starts a run in the terminal: the entry, the run options and a frozen
+	 * snapshot are read from `snapshot` before the terminal is shown, and
+	 * `perform` is handed them with the terminal's listener; what it gives
+	 * is shown, and a refusal or failure is said in the Log panel.
+	 */
+	private startRun(mode: RunMode, snapshot: ProjectSnapshot, perform: (input: RunInput, frozen: ProjectSnapshot) => Promise<Outcome<RunHandle>>): void {
+		const language = languageOf(this.language);
 		const entry = this.models.has(language.entry) ? language.entry : this.active;
 		if (!entry) {
 			this.write('warning', `There is no ${language.entry} to run.`);
@@ -528,15 +584,43 @@ export class Workspace implements CoreProject {
 		const input = { files, entry: pathOf(entry), options, ...listener };
 		// The provider is eager: the run is handed to the pool within this
 		// task, before the next event, as when the app asked the pool itself.
-		yukibana()
-			.perform(subject, token, input, frozen, new AbortController().signal)
-			.then(
-				(outcome) => {
-					if (outcome.kind === 'done') this.runner.start(outcome.value);
-					else this.write('warning', outcome.reason);
-				},
-				(e: unknown) => this.write('error', `Could not ${mode} the project: ${e instanceof Error ? e.message : String(e)}`),
-			);
+		perform(input, frozen).then(
+			(outcome) => {
+				if (outcome.kind === 'done') this.runner.start(outcome.value);
+				else this.write('warning', outcome.reason);
+			},
+			(e: unknown) => this.write('error', `Could not ${mode} the project: ${e instanceof Error ? e.message : String(e)}`),
+		);
+	}
+
+	/**
+	 * Returns the tests of the project file `path` (std's `findTests`), where
+	 * the language finds them and one can be run alone; empty anywhere
+	 * else, and when finding them failed (said in the Log panel).
+	 */
+	async testsIn(path: string): Promise<readonly FoundTest[]> {
+		const subject = subjectOf(this.language);
+		if (!yukibana().has(subject, findTests)) return [];
+		const snapshot = this.snapshot();
+		if (yukibana().availability(subject, findTests, snapshot).kind !== 'available') return [];
+		try {
+			const outcome = await yukibana().perform(subject, findTests, { path: pathOf(path) }, snapshot, new AbortController().signal);
+			return outcome.kind === 'done' ? outcome.value : [];
+		} catch (e) {
+			this.write('error', `Could not find the tests of ${path}: ${e instanceof Error ? e.message : String(e)}`);
+			return [];
+		}
+	}
+
+	/**
+	 * Returns the test the cursor on `line` of `path` is in (Run Test at
+	 * Cursor, Debug Test at Cursor), or null, having said in the Log panel
+	 * that there is none.
+	 */
+	async testAt(path: string, line: number): Promise<TestSelector | null> {
+		const found = testAt(await this.testsIn(path), line);
+		if (found === null) this.write('warning', `There is no test at line ${line} of ${path}.`);
+		return found?.selector ?? null;
 	}
 
 	/**
@@ -568,17 +652,6 @@ export class Workspace implements CoreProject {
 	}
 
 	/**
-	 * Runs the project under the debugger, where the language's providers
-	 * offer that (modules/lang-<pack>/index.ts): its program, or with `mode` 'test' its
-	 * tests. The debugger's worker starts, then the run, with the channel it
-	 * listens on; the program stops at the breakpoints set in the editors'
-	 * margins. The terminal shows the program's output and takes its input,
-	 * as for a run; ending the run ends the session, and the other way round.
-	 * What is run, and whether it may be, is decided at the click: the run
-	 * starts later, once the debugger is ready, on the project as it was.
-	 * The first Debug of the page loads the debugger's code first.
-	 */
-	/**
 	 * `true` iff a debugging session is starting or running, or Debug is
 	 * waiting for the debugger's code: what disables Debug.
 	 */
@@ -602,10 +675,32 @@ export class Workspace implements CoreProject {
 		return this.debuggerLoad;
 	}
 
-	async debug(mode: DebugMode = 'run'): Promise<void> {
+	/**
+	 * Runs the project under the debugger, where the language's providers
+	 * offer that (modules/lang-<pack>/index.ts): its program, or with `what`
+	 * 'test' its tests, or with a test's selector that test alone (Debug
+	 * test). Where the language narrows Debug tests (std's `debugTestCase`),
+	 * its tests stop at each failed assertion while `stopOnFailure` is set.
+	 * The debugger's worker starts, then the run, with the channel it
+	 * listens on; the program stops at the breakpoints set in the editors'
+	 * margins. The terminal shows the program's output and takes its input,
+	 * as for a run; ending the run ends the session, and the other way round.
+	 * What is run, and whether it may be, is decided at the click: the run
+	 * starts later, once the debugger is ready, on the project as it was.
+	 * The first Debug of the page loads the debugger's code first.
+	 */
+	async debug(what: DebugMode | TestSelector = 'run'): Promise<void> {
 		const language = languageOf(this.language);
 		const subject = subjectOf(this.language);
-		const token = debugTokenOf(mode);
+		// Debug tests is narrowed (one test, or a stop at each failed
+		// assertion) where the language provides that, and then always
+		// performs `debugTestCase`, which with neither is Debug tests exactly.
+		const tests = typeof what === 'string' ? null : what;
+		const mode: DebugMode = typeof what === 'string' ? what : 'test';
+		const narrowed = mode === 'test' && yukibana().has(subject, debugTestCase);
+		if (tests !== null && !narrowed) return;
+		const token = narrowed ? debugTestCase : debugTokenOf(mode);
+		const breakOnFailure = narrowed && this.stopOnFailure;
 		const snapshot = this.snapshot();
 		const availability = yukibana().availability(subject, token, snapshot);
 		if (availability.kind === 'unavailable') {
@@ -644,32 +739,38 @@ export class Workspace implements CoreProject {
 		const start = (channel: DebugChannel): void => {
 			const listener = this.runner.begin();
 			const input = { files, entry: pathOf(entry), options, ...listener, channel };
-			yukibana()
-				.perform(subject, token, input, frozen, new AbortController().signal)
-				.then(
-					(outcome) => {
-						if (outcome.kind !== 'done') {
-							this.write('warning', outcome.reason);
-							dbg.end(false);
-							return;
-						}
-						const { run, program } = outcome.value;
-						this.runner.start(run);
-						// Only to the session of the run the terminal still shows.
-						void program.then((linked) => {
-							if (linked !== null && this.runner.shows(run)) void dbg.attach(linked);
-						});
-					},
-					(e: unknown) => {
-						// The provider's body did not load (it is lazy) or threw: no run started, so the session ends.
-						this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`);
+			const signal = new AbortController().signal;
+			const session = narrowed
+				? yukibana().perform(subject, debugTestCase, { ...input, tests, breakOnFailure }, frozen, signal)
+				: yukibana().perform(subject, debugTokenOf(mode), input, frozen, signal);
+			session.then(
+				(outcome) => {
+					if (outcome.kind !== 'done') {
+						this.write('warning', outcome.reason);
 						dbg.end(false);
-					},
-				);
+						return;
+					}
+					const { run, program } = outcome.value;
+					this.runner.start(run);
+					// Only to the session of the run the terminal still shows.
+					void program.then((linked) => {
+						if (linked !== null && this.runner.shows(run)) void dbg.attach(linked);
+					});
+				},
+				(e: unknown) => {
+					// The provider's body did not load (it is lazy) or threw: no run started, so the session ends.
+					this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`);
+					dbg.end(false);
+				},
+			);
 		};
 		dbg.start({
 			run: start,
 			stopRun: () => this.runner.stop(false),
+			// The runner calls it at each failed assertion (std's `debugTestCase`, `breakOnFailure`).
+			functionBreakpoints: breakOnFailure ? [TEST_FAILED_FUNCTION] : [],
+			// A frame in a file of the runner's own (its failed-assertion hook) is not the project's.
+			inProject: (path) => Object.hasOwn(files, path),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
 			log: (text) => this.write('info', text, 'run'),
 		});

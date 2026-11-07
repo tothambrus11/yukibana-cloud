@@ -39,7 +39,7 @@ export interface Frame {
 	id: number;
 	/** The function, as LLDB names it (demangled). */
 	name: string;
-	/** The project file it is in, or null for a file of the toolchain's (libc++) or none. */
+	/** The project file it is in, or null for a file of the toolchain's (libc++) or the runner's (its failed-assertion hook), or none. */
 	path: string | null;
 	/** The file as the debug info names it, for a frame outside the project. */
 	file: string | null;
@@ -61,7 +61,7 @@ export type DebugStatus =
 	/** Loading LLDB, building, attaching. */
 	| { kind: 'starting'; text: string }
 	| { kind: 'running' }
-	/** `reason` as DAP says it: breakpoint, step, pause, exception, entry. */
+	/** `reason` as DAP says it: breakpoint, step, pause, exception, entry; `function breakpoint` for a stop in one of the host's `functionBreakpoints`. */
 	| { kind: 'stopped'; reason: string; description: string }
 	| { kind: 'ended'; text: string };
 
@@ -71,6 +71,18 @@ export interface DebugHost {
 	run(channel: DebugChannel): void;
 	/** Stops the run, if it is still going. */
 	stopRun(): void;
+	/**
+	 * The functions to stop in, by name, set with the breakpoints before the
+	 * program runs (DAP's function breakpoints): a test run's
+	 * failed-assertion hook (protocol `TEST_FAILED_FUNCTION`), or none.
+	 */
+	readonly functionBreakpoints: readonly string[];
+	/**
+	 * `true` iff `path`, a path under the program's /workspace, is a file of
+	 * the project: a frame in another (the runner's own sources) is shown
+	 * as outside it, and a stop shows the innermost frame of the project's.
+	 */
+	inProject(path: string): boolean;
 	/** Shows a project file at a line: the frame the user picked, or where the program stopped. */
 	reveal(path: string, line: number): void;
 	/** A line for the Log panel: everything LLDB says, its warnings among them. */
@@ -219,6 +231,8 @@ export class Debugger implements BreakpointSession {
 			// when breakpoints can be set (DAP's launch sequence).
 			await Promise.race([initialized, attached]);
 			await this.#sendBreakpoints();
+			const functions = this.#host?.functionBreakpoints ?? [];
+			if (functions.length) await this.#request('setFunctionBreakpoints', { breakpoints: functions.map((name) => ({ name })) });
 			await this.#request('configurationDone', {});
 			await attached;
 			if (this.status.kind === 'starting') this.status = { kind: 'running' };
@@ -309,9 +323,13 @@ export class Debugger implements BreakpointSession {
 		this.frames = frames.map((f): Frame => {
 			const source = isRecord(f['source']) ? f['source'] : {};
 			const file = str(source['path']) || null;
-			return { id: num(f['id']), name: str(f['name']), path: file?.startsWith(ROOT) ? file.slice(ROOT.length) : null, file, line: num(f['line']) };
+			const path = file?.startsWith(ROOT) ? file.slice(ROOT.length) : null;
+			return { id: num(f['id']), name: str(f['name']), path: path !== null && (this.#host?.inProject(path) ?? true) ? path : null, file, line: num(f['line']) };
 		});
-		this.status = { kind: 'stopped', reason, description };
+		// lldb-dap says "breakpoint" for a function breakpoint too: the stop is one when the innermost frame is that function.
+		const top = this.frames[0]?.name.replace(/^::/, '').replace(/\(.*$/, '') ?? '';
+		const functionStop = reason === 'breakpoint' && (this.#host?.functionBreakpoints.includes(top) ?? false);
+		this.status = { kind: 'stopped', reason: functionStop ? 'function breakpoint' : reason, description };
 		this.children = {};
 		// The innermost frame of the project's: a stop in a library shows where the project called it.
 		const first = Math.max(0, this.frames.findIndex((f) => f.path !== null));

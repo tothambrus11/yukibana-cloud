@@ -49,7 +49,7 @@ import Log from './components/Log.svelte';
 import Terminal from './components/Terminal.svelte';
 import { decorate } from './breakpoints.svelte';
 import type { Subject } from '@yukibana/core';
-import { debug, debugTest, viewKind, type ViewKind } from '@yukibana/std';
+import { debug, debugTest, debugTestCase, testCase, viewKind, type ViewKind } from '@yukibana/std';
 import { subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
 
 const EDITOR_PREFIX = 'file:';
@@ -298,6 +298,16 @@ class EditorRenderer implements IContentRenderer {
 			keybindings: [KeyMod.CtrlCmd | KeyMod.Shift | KeyCode.Enter],
 			run: () => this.workspace.run('test'),
 		});
+		// The test the cursor is in, alone, where the language can run one (std's `testCase`); no key.
+		if (yukibana().has(subject, testCase))
+			editor.addAction({
+				id: 'yukibana.runTestAtCursor',
+				label: 'Run Test at Cursor',
+				run: async () => {
+					const tests = await this.workspace.testAt(path, editor.getPosition()?.lineNumber ?? 1);
+					if (tests !== null) this.workspace.runTest(tests);
+				},
+			});
 		if (debugs) {
 			const workspace = this.workspace;
 			this.undecorate = decorate(editor, path, workspace.breakpoints, monaco);
@@ -312,6 +322,16 @@ class EditorRenderer implements IContentRenderer {
 			});
 			// No key of its own: Shift+F5 is the debugger's Stop (+page.svelte, debugKeys).
 			if (yukibana().has(subject, debugTest)) editor.addAction({ id: 'yukibana.debugTests', label: 'Debug Tests', run: () => (workspace.debugging ? undefined : void workspace.debug('test')) });
+			if (yukibana().has(subject, debugTestCase))
+				editor.addAction({
+					id: 'yukibana.debugTestAtCursor',
+					label: 'Debug Test at Cursor',
+					run: async () => {
+						if (workspace.debugging) return;
+						const tests = await workspace.testAt(path, editor.getPosition()?.lineNumber ?? 1);
+						if (tests !== null && !workspace.debugging) void workspace.debug(tests);
+					},
+				});
 			editor.addAction({ id: 'yukibana.stepOver', label: 'Step Over', keybindings: [KeyCode.F10], run: () => workspace.debugger?.next() });
 			editor.addAction({ id: 'yukibana.stepInto', label: 'Step Into', keybindings: [KeyCode.F11], run: () => workspace.debugger?.stepIn() });
 			editor.addAction({ id: 'yukibana.stepOut', label: 'Step Out', keybindings: [KeyMod.Shift | KeyCode.F11], run: () => workspace.debugger?.stepOut() });

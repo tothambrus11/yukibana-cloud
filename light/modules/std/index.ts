@@ -17,6 +17,10 @@
  *   makes a language's provider of one that sends today's run message with
  *   the debugger's channel; `debugTestCase` and `debugTestCaseProvider`,
  *   Debug tests narrowed to one test and stopping at failed assertions.
+ * - tests.ts: `findTests` (`Token<FindTestsInput, readonly FoundTest[]>`),
+ *   where the tests of a file are, as the selectors `testCase` and
+ *   `debugTestCase` take, and `findTestsProvider`; `testAt`, the test at
+ *   a line.
  * - preview.ts: `preview` (`Token<PreviewInput, PreviewSession>`), a web
  *   project's page built by its pack's runner, again at every edit.
  * - explore.ts: `explore` (`Token<EmitInput, Promise<EmitResult>>`), one
@@ -56,6 +60,7 @@
 export * from './language.ts';
 export * from './run.ts';
 export * from './debug.ts';
+export * from './tests.ts';
 export * from './preview.ts';
 export * from './explore.ts';
 export * from './explore-views.ts';

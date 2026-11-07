@@ -1292,3 +1292,100 @@ Where it departs from sections 2 to 5 and D13:
   (`e2e.mjs` over the installed packs, `e2e-debug`, `e2e-layout`,
   `e2e-links`, `e2e-targets`, `export.mjs`), which fail only where main
   fails.
+
+## 19. One test alone: Run test, Debug test, Stop on failed assertion
+
+The app half of "Debug tests" phases 3 and 4 (the pack half, the runner's
+`tests` and `breakOnFailure` and std's `testCase` and `debugTestCase`,
+is the `test-selector` branch, merged first; see the exception under the
+governing rule above). Where it departs from the plan:
+
+* **Two tokens of their own, not a `tests` field on `test` and
+  `debugTest`.** The plan had std's test and Debug tests inputs carry
+  `tests: TestSelector | null`. The pack half made them `testCase`
+  (`TestCaseInput`, requires `test`) and `debugTestCase`
+  (`DebugTestCaseInput`, with `tests: TestSelector | null` and
+  `breakOnFailure`, requires `debugTest`), for D3's reason: a runner that
+  does not know `tests` runs every test, so only a token a language
+  provides can say that it selects, and `test`'s message stays unchanged.
+  The app follows: Debug tests performs `debugTestCase` (with `tests:
+  null`) wherever the language has it, which with "Stop on failed
+  assertion" unchecked sends Debug tests' message exactly.
+* **Where the tests are is a token too, `findTests`** (std/tests.ts):
+  `{ path }` gives the file's `FoundTest`s (the selector, the line of the
+  macro, the line its body ends on), read from the snapshot alone. It
+  requires `testCase`, so a test is offered only where it can run alone
+  (not with tests that mix frameworks, nor Catch2 or doctest on a Linux
+  target). `findTestsProvider` makes a lazy provider over a finder the
+  package loads at the first request; `testAt` is the test at a line.
+* **lang-cpp/test-cases.ts finds them**, from a small lexer (comments,
+  strings, raw strings, character literals and directives skipped, so a
+  test in a comment is none) and a macro table per framework: GoogleTest
+  TEST, TEST_F, TEST_P and the typed tests (`{ suite, name }`); doctest
+  TEST_CASE and TEST_CASE_FIXTURE, its suite the innermost TEST_SUITE
+  block or TEST_SUITE_BEGIN/END; Catch2 TEST_CASE, TEST_CASE_METHOD and
+  SCENARIO (named "Scenario: x", as Catch2 does). A call counts only when
+  a `{` follows it. A name it cannot read exactly (an escape other than
+  `\" \\ \n \t`, glued literals, a raw string) gives no lens, rather than a
+  selector that would run another test. The framework is the project's
+  (`cppTestFramework`, refusals.ts's detector, now exported), so a test
+  file that includes it through a header of its own has its tests found.
+  Table tests in `tests/cpp-test-cases.test.mjs`.
+* **The three providers are an entry of their own,
+  `@yukibana/lang-cpp/single-test`** (`SINGLE_TEST`, a
+  `LanguageSingleTest` per language), not part of `providers`, as step 9
+  did for the download. The merged branch had `testCase` and
+  `debugTestCase` in `providers`, which put two-up's first load at
+  19,590 B, over its 19,562 B budget; with `findTests` there too it was
+  19,731 B. From the entry, two-up is at 19,420 B (+4 B on step 9).
+  Light's languages.ts appends `SINGLE_TEST` to the languages that have
+  one, as it does `DOWNLOADS`. A shared factory for std's provider
+  literals was tried first and saved nothing gzip did not already.
+* **The code lens** (app/src/lib/test-lens.ts) is one provider for every
+  Monaco language, registered by the workspace, asking `findTests` of the
+  model's project file: "Run test" above each test, and "Debug test"
+  beside it only while `debugTestCase` is available (not on a Linux
+  target). Monaco joins the two with its own " | ", not the plan's " · ".
+  It is asked again at every change of the project, since another file
+  (compile_flags.txt, a second framework) changes what is offered. Its
+  commands read their argument through a guard (`isSelector`).
+* **The palette has "Run Test at Cursor" and "Debug Test at Cursor"**
+  (dock.ts, no keys), where the language has `testCase` and
+  `debugTestCase`; with the cursor in no test, the Log panel says so.
+* **The workspace**: `run()` and the new `runTest(selector)` share
+  `startRun`; `debug(what)` takes `'run' | 'test' | TestSelector`;
+  `stopOnFailure` is the page's state, not saved with the project.
+* **The debugger** (debug.svelte.ts) sends `setFunctionBreakpoints` with
+  the host's `functionBreakpoints` (protocol `TEST_FAILED_FUNCTION` when
+  stopping on failures) after the line breakpoints and before
+  `configurationDone`, and takes a frame under /workspace for the
+  project's only when the host's `inProject` says the run's files hold
+  it, so a stop in the runner's `.yukibana/test-failed.cpp` shows the
+  failed test's frame, two below. The panel calls the stop "Paused at a
+  failed assertion": lldb-dap reports a function breakpoint's stop as
+  `breakpoint`, so the debugger names it `function breakpoint` itself when
+  the innermost frame is one of the host's functions.
+* **The Debug panel** offers "Stop on failed assertion" under its
+  empty-state text, which now mentions Debug test, where the language
+  has `debugTestCase`.
+* **The installed C++ pack's runner.js** was rebuilt from the merged
+  sources (the glue only) for the e2e; `light/app/static/packs` is not in
+  the repository.
+* **Light's initial set is 1,219,823 B gzip in 39 files**, 1,498 B over
+  step 9 (the merged runner contract and std tokens, the single-test
+  entry, the lens and the workspace's and debugger's additions), under
+  main's 1,242,711 B; the finder is a lazy chunk of its own.
+* **e2e-debug's C++ case** gains `runOneTest`: a lens above each of the
+  sample's three tests; Run test on the second runs it alone ("1 test",
+  no other test's name); its Debug test, with a breakpoint in the first
+  test and one in it, stops at its own; with "Stop on failed assertion"
+  and an assertion made to fail, the test pauses there, the frame shown
+  is the test's at the assertion's line, and Continue ends the run
+  failing.
+* **Checked**: `npm run check`, the unit tests (600), the build and its
+  bundle fixtures, `build.mjs` and package.test.mjs, two-up's type-check,
+  build and fixtures, and the e2e suites: `e2e.mjs` (306 ok), `e2e-debug`
+  (37 ok, the new case among them), `e2e-links`, and `e2e-layout` and
+  `e2e-targets`, which fail only where main fails. One run of `e2e.mjs`
+  alongside other suites saw clangd report one error after a framework
+  switch; alone, and in a second full run, it passed.

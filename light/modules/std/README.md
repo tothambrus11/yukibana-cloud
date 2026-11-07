@@ -38,7 +38,13 @@ downloaded project.
   language provides only when its runner honours them, and which a host
   offers ("Run test", "Debug test", "Stop on failed assertion") only where
   they are available. With neither field set, their messages are Test's
-  and Debug tests' exactly.
+  and Debug tests' exactly. Where the tests are is `findTests`, which
+  requires `testCase`: a file's tests, each with the selector that runs it
+  and its lines, found from the snapshot alone by a body loaded on the
+  first request. A package gives these three from an entry of its own
+  (`/single-test`, a `LanguageSingleTest` for each language whose runner
+  selects), not from `providers`, so that a host that runs whole projects
+  only (an embed) carries none of them.
 * **A preview provider owns its worker.** `preview`'s session builds the
   page in a runner worker of its own, kept for as long as the session; the
   host shows the page and decides when to rebuild it.
@@ -66,7 +72,7 @@ downloaded project.
   compose over them. What the bodies share (environments, steps,
   Spotless) is `@yukibana/std/export-kit`, which std's index does not
   import.
-* **No side effects.** Importing it defines ten tokens and some plain
+* **No side effects.** Importing it defines thirteen tokens and some plain
   data (the shared toggles) and does nothing else
   (`../tests/imports.test.mjs`); the explorer workers' code is not even
   loaded until a request needs it.
@@ -83,9 +89,12 @@ downloaded project.
 | `export-kit.ts` (`@yukibana/std/export-kit`) | What the language packages' export bodies share: `withExtra`, `env`, `sources`, `trackedFiles`, `steps`, `testJob`, and Spotless (`spotlessJob`, `spotlessMaven`, `spotlessGradle` and its pins) |
 | `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`), `isExplorerProvider` |
 | `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
+| `tests.ts` | `findTests` (`Token<FindTestsInput, readonly FoundTest[]>`), `TestFinder`, `findTestsProvider`, `testAt`, `LanguageSingleTest` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
 | `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `PoolHost`, `RunHost`, `sourceOf`, `runMessage`, `runProviderFrom`, `runProvider`; `testCase` (`Token<TestCaseInput, RunHandle>`), `testCaseMessage`, `testCaseProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 
 It may import core, runtime and protocol. Its tests are in
-`../tests/std-run.test.mjs`, `../tests/std-debug.test.mjs` and
+`../tests/std-run.test.mjs`, `../tests/std-debug.test.mjs`,
+`../tests/std-test-case.test.mjs`, `../tests/cpp-test-cases.test.mjs`
+(`findTests` and `testAt`, through C++'s) and
 `../tests/std-explore.test.mjs`.

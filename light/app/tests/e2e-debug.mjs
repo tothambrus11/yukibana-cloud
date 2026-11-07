@@ -5,7 +5,11 @@
 // a breakpoint in a test, Debug tests from the ⋯ menu, and Continue until
 // the tests pass; then, on a Linux target, both disabled, saying why; and
 // Test Project (Ctrl+Shift+Enter) on tests the runner refuses says why in
-// the Log panel. Needs the lldb pack and each language's.
+// the Log panel. Where the language runs one test alone (C++), the code
+// lens above a test runs only it, its Debug test stops at a breakpoint in
+// that test and not at one in the test before it, and with "Stop on failed
+// assertion" a failing assertion pauses the test there. Needs the lldb pack
+// and each language's.
 //
 //   npm run build && node tests/e2e-debug.mjs [language ...]
 //
@@ -51,6 +55,17 @@ const TEST_CASES = {
 		linux: { target: 'x86_64-linux', reason: 'The debugger runs programs for WebAssembly only, for now: remove the --target line (x86-64 Linux) from compile_flags.txt to debug.' },
 		// A second framework in the tests: the runner refuses to build them, and Test is disabled.
 		refused: { include: '#include <doctest/doctest.h>\n', reason: 'The tests mix test frameworks: ' },
+		// The second test, TEST(Geometry, DistanceIsSymmetric), lines 10 to 15: its lens, a breakpoint at
+		// line 13 (`EXPECT_DOUBLE_EQ(distance(a, b), distance(b, a));`), and line 14's assertion made to fail.
+		one: {
+			lens: 1,
+			name: 'Geometry.DistanceIsSymmetric',
+			others: ['NormOfThreeFourIsFive', 'DistanceToItselfIsZero'],
+			passed: /\[  PASSED  \] 1 test\./,
+			line: 13,
+			frame: /DistanceIsSymmetric.*geometry_test\.cpp:13$/,
+			fail: { line: 14, to: 'distance(a, b), 5.5', frame: /DistanceIsSymmetric.*geometry_test\.cpp:14$/ },
+		},
 	},
 };
 
@@ -236,11 +251,116 @@ async function runTests(language, c) {
 	await page.close();
 }
 
+/** The code lens commands shown above the tests of the editor, by line from the top: each its link texts ("Run test", "Debug test"). */
+const lenses = (page) =>
+	page.locator('.dv-groupview .monaco-editor .codelens-decoration').evaluateAll((rows) =>
+		rows
+			.map((r) => ({ top: r.getBoundingClientRect().top, links: [...r.querySelectorAll('a')].map((a) => a.textContent?.trim() ?? '') }))
+			.sort((a, b) => a.top - b.top)
+			.map((r) => r.links),
+	);
+
+/** Clicks `text` in the `index`th code lens from the top of the editor. */
+async function clickLens(page, index, text) {
+	const handle = await page.evaluateHandle(
+		([i, t]) => {
+			const rows = [...document.querySelectorAll('.dv-groupview .monaco-editor .codelens-decoration')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+			return [...(rows[i]?.querySelectorAll('a') ?? [])].find((a) => a.textContent?.trim() === t) ?? null;
+		},
+		[index, text],
+	);
+	const link = handle.asElement();
+	if (!link) throw new Error(`no "${text}" in code lens ${index}`);
+	await link.click();
+}
+
+/** The terminal's text once its run has exited (or what it shows after 120 s), and its status line. */
+async function finished(page) {
+	await page.locator('.dv-tab', { hasText: 'Terminal' }).first().click();
+	const status = page.locator('.terminal .status');
+	const done = await status.filter({ hasText: /Exited/ }).waitFor({ timeout: 300_000 }).then(() => true, () => false);
+	const said = (await status.textContent({ timeout: 5000 }).catch(() => '?'))?.trim() ?? '';
+	const shown = (await page.locator('.terminal pre').textContent({ timeout: 5000 }).catch(() => '')) ?? '';
+	return { done, said, shown };
+}
+
+/** One test alone: its code lens's Run test, its Debug test to a breakpoint inside it, and a stop at its failed assertion. */
+async function runOneTest(language, c) {
+	const where = `${language} one test`;
+	const check = (ok, what) => {
+		console.log(`${ok ? 'ok  ' : 'FAIL'} ${where}: ${what}`);
+		if (!ok) failures.push(`${where}: ${what}`);
+	};
+	const one = c.one;
+	const page = await browser.newPage({ viewport: { width: 1400, height: 850 } });
+	const errors = [];
+	page.on('pageerror', (e) => errors.push(e.message));
+	await page.goto(`http://127.0.0.1:${port}/`);
+	await page.evaluate(() => localStorage.clear());
+	await page.reload();
+	await choose(page, LANGUAGE_PICKER, language);
+	await page.locator('footer .state').filter({ hasNotText: /Starting|Loading|stopped/ }).waitFor({ timeout: 240_000 });
+
+	await page.locator('.explorer').getByText(c.file, { exact: true }).first().click();
+	await page.locator('.dv-groupview .monaco-editor .codelens-decoration a').first().waitFor({ timeout: 15_000 }).catch(() => {});
+	const shownLenses = await lenses(page);
+	check(shownLenses.length === 3 && shownLenses.every((l) => l.join(' | ') === 'Run test | Debug test'), `a "Run test | Debug test" lens above each of the three tests (${JSON.stringify(shownLenses)})`);
+
+	await clickLens(page, one.lens, 'Run test');
+	const ran = await finished(page);
+	check(ran.done && /code 0/.test(ran.said) && one.passed.test(ran.shown) && ran.shown.includes(one.name) && one.others.every((o) => !ran.shown.includes(o)), `Run test runs ${one.name} and no other test (${ran.said}: ${JSON.stringify(ran.shown.slice(-160))})`);
+
+	// A breakpoint in the test before it, and one in it: Debug test stops at the second, as only that test runs.
+	await cursorTo(page, c.line);
+	await page.keyboard.press('F9');
+	await cursorTo(page, one.line);
+	await page.keyboard.press('F9');
+	const t0 = Date.now();
+	await clickLens(page, one.lens, 'Debug test');
+	const paused = await debugState(page, /Paused|ended|could not|failed/, 300_000);
+	check(paused === 'Paused at a breakpoint', `Debug test stops at a breakpoint (${paused}) after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+	const stack = await frames(page);
+	check(one.frame.test(stack[0] ?? ''), `it stops in that test, not in the one before it (${stack.join(' | ')})`);
+	await page.keyboard.press('F5');
+	await debugState(page, /exited|ended/, 60_000);
+	const debugged = await finished(page);
+	check(debugged.done && /code 0/.test(debugged.said) && one.passed.test(debugged.shown), `Continue runs that test to its end, passing (${debugged.said}: ${JSON.stringify(debugged.shown.slice(-100))})`);
+
+	// Stop on failed assertion: the breakpoints gone and an assertion made to fail, the test pauses there.
+	await page.locator('.dv-tab .dock-tab', { hasText: /^Debug$/ }).first().click();
+	await page.locator('.debug .breakpoints .remove').first().waitFor({ timeout: 5000 }).catch(() => {});
+	for (let n = 0; n < 5 && (await page.locator('.debug .breakpoints .remove').count()) > 0; n++) await page.locator('.debug .breakpoints .remove').first().click();
+	check((await page.locator('.debug .breakpoints .remove').count()) === 0, 'the Debug panel removes the breakpoints');
+	const option = page.locator('.debug .option input[type="checkbox"]');
+	check(await option.isVisible().catch(() => false), 'the Debug panel offers "Stop on failed assertion"');
+	await option.check();
+	// Line 14, from its first character to its end: `EXPECT_DOUBLE_EQ(distance(a, b), 5.0);` made to expect 5.5.
+	await cursorTo(page, one.fail.line);
+	await page.keyboard.press('End');
+	await page.keyboard.press('Home');
+	await page.keyboard.press('Shift+End');
+	await page.keyboard.type(`EXPECT_DOUBLE_EQ(${one.fail.to});`);
+	await clickLens(page, one.lens, 'Debug test');
+	const stopped = await debugState(page, /Paused|ended|could not|failed/, 300_000);
+	check(stopped === 'Paused at a failed assertion', `with it checked, the failing assertion pauses the test (${stopped})`);
+	const failedAt = await frames(page);
+	check(one.fail.frame.test(failedAt.find((f) => !/test-failed/.test(f)) ?? ''), `the call stack shows the assertion that failed, in the test (${failedAt.join(' | ')})`);
+	const selected = await page.locator('.debug .frame.selected').textContent().catch(() => '');
+	check(one.fail.frame.test(selected?.replace(/\s+/g, ' ').trim() ?? ''), `the frame shown is the test's, not the runner's hook (${selected})`);
+	await page.keyboard.press('F5');
+	await debugState(page, /exited|ended/, 60_000);
+	const failed = await finished(page);
+	check(failed.done && !/code 0/.test(failed.said), `Continue finishes the test, failing (${failed.said})`);
+	check(errors.length === 0, `no page errors (${errors.join('; ')})`);
+	await page.close();
+}
+
 try {
 	for (const language of languages) {
 		try {
 			await run(language, CASES[language]);
 			if (TEST_CASES[language]) await runTests(language, TEST_CASES[language]);
+			if (TEST_CASES[language]?.one) await runOneTest(language, TEST_CASES[language]);
 		} catch (e) {
 			console.log(`FAIL ${language}: ${e instanceof Error ? e.message.split('\n')[0] : e}`);
 			failures.push(`${language}: ${e}`);

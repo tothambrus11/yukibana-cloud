@@ -4,7 +4,8 @@
  * tokens. Cheap to import: the languages' specs, and providers whose
  * bodies are std's (a run, a debugged run) or loaded at a first request
  * (the compiler output views). The sample projects, the server's settings
- * and the build settings are `./body`; the Monaco languages `./monaco`.
+ * and the build settings are `./body`; the Monaco languages `./monaco`; one
+ * test alone `./single-test`.
  *
  * C and C++ share one pack, and so one runner, server and explorer: the
  * same clangd, compilers, sysroot and runner, downloaded once for both. What
@@ -17,8 +18,9 @@
  * and C++'s tests too (Debug tests), since the runner builds a test run
  * with the same flags as a run and runs both under the stub. It also runs or
  * debugs one test alone, and stops a debugged test run at each failed
- * assertion (`testCase`, `debugTestCase`), for each of the three
- * frameworks, so both are available wherever Test and Debug tests are. Tests would be
+ * assertion, for each of the three frameworks: those providers
+ * (`testCase`, `debugTestCase`, and `findTests`, where the tests are) are
+ * `./single-test`'s, available wherever Test and Debug tests are. Tests would be
  * C++ (GoogleTest, Catch2 and doctest are C++ frameworks) compiled with a C
  * project's C flags, so C has none, and so no Debug tests.
  *
@@ -28,7 +30,7 @@
  * runner's sentence (refusals.ts).
  */
 import { AVAILABLE } from '../core/index.ts';
-import { debug, debugProvider, debugTest, debugTestCaseProvider, explorerProvider, run, runProvider, test, testCaseProvider, type PackageLanguage, type PackHost } from '../std/index.ts';
+import { debug, debugProvider, explorerProvider, run, runProvider, test, type PackageLanguage, type PackHost } from '../std/index.ts';
 import { cppDebugAvailable, cppDebugTestAvailable, cppTestAvailable } from './refusals.ts';
 import { CPP_VIEWS } from './views.ts';
 
@@ -43,9 +45,8 @@ const C: PackageLanguage<PackHost> = {
 };
 
 /**
- * C++: Run, Test, Debug and Debug tests, one test of each framework run or
- * debugged alone with a stop at each failed assertion (the runner's
- * src/test-selection.js), and the LLVM IR and assembly views.
+ * C++: Run, Test, Debug and Debug tests, and the LLVM IR and assembly
+ * views; one test run or debugged alone is `./single-test`'s.
  */
 const CPP: PackageLanguage<PackHost> = {
 	spec: { key: 'cpp', label: 'C++', short: null, pack: 'cpp', uses: ['linux'], entry: 'main.cpp', extension: '.cpp' },
@@ -54,8 +55,6 @@ const CPP: PackageLanguage<PackHost> = {
 		runProvider('test', language, { requires: [], available: cppTestAvailable }),
 		debugProvider('run', language, { requires: [run], available: cppDebugAvailable, options: 'as-run' }),
 		debugProvider('test', language, { requires: [test, debug], available: cppDebugTestAvailable, options: 'as-run' }),
-		testCaseProvider(language, { requires: [test], available: cppTestAvailable }),
-		debugTestCaseProvider(language, { requires: [debugTest], available: cppDebugTestAvailable, options: 'as-run' }),
 		explorerProvider(language, CPP_VIEWS),
 	],
 };

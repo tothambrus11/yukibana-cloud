@@ -46,6 +46,11 @@
 			"types": "./dist/sanitizers.d.ts",
 			"default": "./dist/sanitizers.js"
 		},
+		"./single-test": {
+			"@yukibana/source": "./single-test.ts",
+			"types": "./dist/single-test.d.ts",
+			"default": "./dist/single-test.js"
+		},
 		"./standards": {
 			"@yukibana/source": "./standards.ts",
 			"types": "./dist/standards.d.ts",
