@@ -189,8 +189,11 @@ jobs:
             light/examples/two-up
             light/modules
             .github/workflows/light-ci.yml
-      # What a download is made of: the generators, the samples, and what
-      # they read of the C++ pack (export.ts's pins of its libraries).
+      # What a download is made of: the generators (the languages'
+      # packages' export.ts under light/modules, composed by the app's
+      # export.ts and export-tooling.ts), the samples, the instance that
+      # loads them, and what they read of the C++ pack (lang-cpp's
+      # export.ts's pins of its libraries).
       - id: exports
         uses: ./.github/actions/once
         with:
@@ -199,9 +202,11 @@ jobs:
             light/app/src/lib/export.ts
             light/app/src/lib/export-tooling.ts
             light/app/src/lib/languages.ts
-            light/app/src/lib/optimization.ts
+            light/app/src/lib/packs.ts
+            light/app/src/lib/yukibana.ts
             light/modules
             light/app/tests/export-ci.mjs
+            light/app/tests/export-loaded.mjs
             .github/workflows/light-ci.yml
 
   app:
@@ -501,7 +506,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Node 24 loads export.ts as it is, without the app's dependencies.
+      # Node 24 loads export.ts and the packages it composes as they are,
+      # without the app's dependencies.
       - uses: actions/setup-node@v7
         with:
           node-version: 24

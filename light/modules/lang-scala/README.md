@@ -19,4 +19,6 @@ do, as providers of `@yukibana/std`'s tokens; the pack
 | `index.ts` | `@yukibana/lang-scala` | `LANGUAGES`: each language's spec (std's `PackLanguageSpec`) and the providers it has (`providers(language)`) |
 | `body.ts` | `@yukibana/lang-scala/body` | `BODIES`: each language's sample project, server settings, build settings (`PropertyModel`) and configuration files |
 | `monaco.ts` | `@yukibana/lang-scala/monaco` | `MONACO_LANGUAGES`: the Monaco languages its server answers for |
+| `download.ts` | `@yukibana/lang-scala/download` | `DOWNLOADS`: each language's providers of std's `exportBuild` and `exportTooling` (`LanguageDownloads`), apart from `providers` so that a host that downloads nothing loads none of them |
+| `export.ts` | none: `download.ts`'s providers import it on a first download | `EXPORTS`: each language's build systems (the files each writes, its CI) and tools (its image, format checks, editors' settings, README sections), what a downloaded project is made of |
 | `properties.ts` | `@yukibana/lang-scala/properties` | read by name by the app's Build settings and pickers |

@@ -68,6 +68,16 @@ export interface Instance<H> {
 	/** Returns the entries of the providers of `token` that `subject` has, in the host's order. */
 	entries(subject: Subject, token: AnyToken<'many'>): readonly ManyEntry[];
 	/**
+	 * Returns whether the provider of `token` keyed `key` can be performed for
+	 * `subject` on `snapshot`, as `availability` answers for a `'one'` token:
+	 * unavailable when there is no such provider, else the first unavailable
+	 * of its required tokens, else its own answer. The per-key twin of
+	 * `performKey`, which performs exactly when this is available.
+	 *
+	 * - Requires: `token.cardinality` is `'many'`.
+	 */
+	availabilityOf(subject: Subject, token: AnyToken<'many'>, key: string, snapshot: ProjectSnapshot): Availability;
+	/**
 	 * Performs the provider of `token` keyed `key` for `subject`, as `perform`
 	 * does; `unavailable` when there is none.
 	 *
@@ -222,6 +232,10 @@ export function createInstance<H>(config: InstanceConfig<H>): Instance<H> {
 		return loading;
 	};
 
+	const keyed = (subject: Subject, token: AnyToken, key: string): Filed<H> | undefined =>
+		providersOf(subject, token).find(({ provider }) => provider.entry.kind === 'many' && provider.entry.key === key);
+	const unkeyed = (subject: Subject, token: AnyToken, key: string): string => `Nothing provides ${token.id} as "${key}" for the ${describe(subject)}.`;
+
 	const run = async <I, R>(subject: Subject, entry: Filed<H> | undefined, input: I, snapshot: ProjectSnapshot, signal: AbortSignal, missing: string): Promise<Outcome<R>> => {
 		if (entry === undefined) return { kind: 'unavailable', reason: missing };
 		const answer = availabilityOf(subject, entry.provider, snapshot);
@@ -251,10 +265,14 @@ export function createInstance<H>(config: InstanceConfig<H>): Instance<H> {
 			}
 			return found;
 		},
+		availabilityOf: (subject, token, key, snapshot) => {
+			if (token.cardinality !== 'many') throw new RangeError(`${token.id} has one provider: availability answers for it.`);
+			const entry = keyed(subject, token, key);
+			return entry === undefined ? { kind: 'unavailable', reason: unkeyed(subject, token, key) } : availabilityOf(subject, entry.provider, snapshot);
+		},
 		performKey: (subject, token, key, input, snapshot, signal) => {
 			if (token.cardinality !== 'many') throw new RangeError(`${token.id} has one provider: perform performs it.`);
-			const entry = providersOf(subject, token).find(({ provider }) => provider.entry.kind === 'many' && provider.entry.key === key);
-			return run(subject, entry, input, snapshot, signal, `Nothing provides ${token.id} as "${key}" for the ${describe(subject)}.`);
+			return run(subject, keyed(subject, token, key), input, snapshot, signal, unkeyed(subject, token, key));
 		},
 	};
 }

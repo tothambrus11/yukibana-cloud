@@ -186,6 +186,22 @@ test('a token of many providers lists the entries a language has and performs th
 	assert.throws(() => instance.perform(cpp, exporter, null, snapshot, signal), RangeError);
 });
 
+test('one entry of a token of many providers is asked its availability alone, as performKey would answer it', async () => {
+	const exporter = defineToken()('@yukibana/std#export', 'many');
+	const test_ = defineToken()('@yukibana/std#test');
+	const keyed = (key, extra = {}) => eager(exporter, cpp, `${key} files`, { entry: { kind: 'many', key, label: key }, ...extra });
+	const instance = createInstance({ languages, providers: [keyed('cmake'), keyed('make', { available: no('No Makefile here.') }), keyed('ci', { requires: [test_] })], host: null });
+	assert.deepEqual(instance.availabilityOf(cpp, exporter, 'cmake', snapshot), { kind: 'available' });
+	assert.deepEqual(instance.availabilityOf(cpp, exporter, 'make', snapshot), { kind: 'unavailable', reason: 'No Makefile here.' });
+	assert.equal(instance.availabilityOf(cpp, exporter, 'ci', snapshot).kind, 'unavailable', 'a required token the language lacks makes the entry unavailable');
+	assert.equal(instance.availabilityOf(cpp, exporter, 'bazel', snapshot).kind, 'unavailable');
+	assert.equal(instance.availabilityOf(python, exporter, 'cmake', snapshot).kind, 'unavailable', "another language's entry is not this one's");
+	for (const key of ['cmake', 'make', 'bazel']) {
+		assert.equal((await instance.performKey(cpp, exporter, key, null, snapshot, signal)).kind === 'done', instance.availabilityOf(cpp, exporter, key, snapshot).kind === 'available', key);
+	}
+	assert.throws(() => instance.availabilityOf(cpp, defineToken()('@yukibana/std#one'), 'cmake', snapshot), RangeError);
+});
+
 test('a string becomes a language only through languageOf, and only one the instance has', () => {
 	const instance = createInstance({ languages, providers: [], host: null });
 	assert.equal(instance.languageOf('cpp')?.key, 'cpp');

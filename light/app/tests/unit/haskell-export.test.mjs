@@ -1,5 +1,5 @@
 // The Haskell project's cabal file names the packages its imports come from
-// (src/lib/export.ts, haskellDepends and haskellCabal), so `cabal build`
+// (lang-haskell's export.ts, haskellDepends and haskellCabal), so `cabal build`
 // of a downloaded project finds what the browser's GHC found.
 //
 //   node --test tests/unit/haskell-export.test.mjs
@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import '../modules-hook.mjs';
 
-const { haskellCabal, haskellDepends } = await import('../../src/lib/export.ts');
+const { haskellCabal, haskellDepends } = await import('../../../modules/lang-haskell/export.ts');
 
 test('a project that imports only the Prelude depends on base alone', () => {
 	assert.deepEqual(haskellDepends({ 'Main.hs': 'main :: IO ()\nmain = print 1\n' }), []);

@@ -5,7 +5,8 @@
 // moving the app's decisions into light/modules (light/modules/DESIGN.md)
 // cannot make Light heavier unnoticed; no lazy import is one that fetches
 // nothing; the languages' descriptions and bodies load with the page and
-// the grammars Monaco lacks only with their language; and what the service
+// the grammars Monaco lacks only with their language, and a download's,
+// the debugger's and the call hierarchy's code only when first used; and what the service
 // worker precaches (build/offline.json's shell) holds the first load and
 // every shared module's lazy body.
 //
@@ -108,6 +109,18 @@ test("the languages' descriptions and bodies load with the page, and Haskell's a
 	for (const grammar of ['../modules/lang-haskell/grammar.ts', '../modules/lang-zig/grammar.ts']) {
 		assert.ok(lazy.includes(grammar), `${grammar} is not a lazy chunk of its own`);
 		assert.ok(!initial.has(chunks[grammar].file), `${grammar} is in the first load`);
+	}
+});
+
+test('a download, the debugger and the call hierarchy load when first used, not with the page', { skip }, () => {
+	const chunks = manifest();
+	const initial = new Set(initialSet());
+	const exports = Object.keys(chunks).filter((src) => /^\.\.\/modules\/lang-[^/]+\/export\.ts$/.test(src));
+	assert.ok(exports.length > 0, 'no language package has an export body');
+	const lazy = ['src/lib/export.ts', 'src/lib/zip.ts', 'src/lib/components/Export.svelte', 'src/lib/debug.svelte.ts', 'src/lib/components/Debug.svelte', 'src/lib/call-hierarchy.svelte.ts', 'src/lib/components/CallHierarchy.svelte', ...exports];
+	for (const src of lazy) {
+		assert.ok(chunks[src]?.isDynamicEntry, `${src} is not a lazy chunk of its own`);
+		assert.ok(!initial.has(chunks[src].file), `${src} is in the first load`);
 	}
 });
 

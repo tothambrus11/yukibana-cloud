@@ -3,18 +3,19 @@
   Step Into, Step Out, Stop), where the program stopped and why, its call
   stack (a row shows that frame's line and variables) and the selected
   frame's variables as a tree, each opened on demand. Breakpoints are set
-  in the editors' margin (debug.svelte.ts, decorate); this lists them.
+  in the editors' margin (breakpoints.svelte.ts, decorate); this lists them.
+  It loads with the debugger, on the first Debug or when the panel is
+  first opened (dock.ts).
 -->
 <script lang="ts">
 	import { debug, debugTest } from '@yukibana/std';
-	import type { Variable } from '../debug.svelte';
+	import type { Debugger, Variable } from '../debug.svelte';
 	import type { Workspace } from '../workspace.svelte';
 	import { subjectOf, yukibana } from '../yukibana';
 	import { languageOf } from '../languages';
 
-	let { workspace }: { workspace: Workspace } = $props();
+	let { workspace, dbg }: { workspace: Workspace; dbg: Debugger } = $props();
 
-	const dbg = $derived(workspace.debugger);
 	const status = $derived(dbg.status);
 	const stopped = $derived(status.kind === 'stopped');
 	// Offered as the language's providers say (modules/lang-<pack>/index.ts), as the top bar does.
@@ -25,7 +26,7 @@
 	const debugTestAvailable = $derived(yukibana().availability(subject, debugTest, workspace.snapshot()));
 	/** Opened variables, by the path of names from their scope. */
 	let open = $state<Record<string, boolean>>({});
-	const breakpoints = $derived(Object.entries(dbg.breakpoints).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
+	const breakpoints = $derived(Object.entries(workspace.breakpoints.lines).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
 
 	const REASONS: Record<string, string> = {
 		breakpoint: 'Paused at a breakpoint',
@@ -162,7 +163,7 @@
 							<button class="bp" onclick={() => workspace.show(bp.path, { startLineNumber: bp.line, startColumn: 1, endLineNumber: bp.line, endColumn: 1 })}>
 								<span class="dot" aria-hidden="true"></span>{bp.path}:{bp.line}
 							</button>
-							<button class="remove" title="Remove this breakpoint" aria-label="Remove breakpoint {bp.path}:{bp.line}" onclick={() => dbg.toggleBreakpoint(bp.path, bp.line)}>
+							<button class="remove" title="Remove this breakpoint" aria-label="Remove breakpoint {bp.path}:{bp.line}" onclick={() => workspace.breakpoints.toggle(bp.path, bp.line)}>
 								<span class="codicon codicon-close"></span>
 							</button>
 						</li>

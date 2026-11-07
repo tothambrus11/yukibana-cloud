@@ -1,5 +1,5 @@
-// Downloads each sample project as the app does (src/lib/export.ts and
-// src/lib/zip.ts), unpacks the zip, and builds, runs and tests it with the
+// Downloads each sample project as the app does (src/lib/export.ts over
+// the languages' packages' exports, tests/export-loaded.mjs, and src/lib/zip.ts), unpacks the zip, and builds, runs and tests it with the
 // language's own tools where this machine has them: CMake and a C++
 // compiler with CTest, SwiftPM, Node, Python with pytest (installed into a
 // venv), sbt. A tool that is missing is reported as skipped, not as passed.
@@ -17,7 +17,9 @@ import { PROPERTIES } from '../../packs/cpp/tests/fixtures/properties.mjs';
 import './modules-hook.mjs';
 
 const { LANGUAGES } = await import('../src/lib/languages.ts');
-const { buildSbt, exportProject, parseCompileFlags } = await import('../src/lib/export.ts');
+const { exportProject } = await import('./export-loaded.mjs');
+const { buildSbt } = await import('../../modules/lang-scala/export.ts');
+const { parseCompileFlags } = await import('../../modules/lang-cpp/export.ts');
 const { zip } = await import('../src/lib/zip.ts');
 const { chooseTestFramework } = await import('../../modules/lang-cpp/tests.ts');
 
@@ -129,8 +131,7 @@ for (const language of LANGUAGES) {
 // ---- CI files: every service's YAML parses, and says what the jobs are
 
 {
-	const { buildSystems } = await import('../src/lib/export.ts');
-	const { CI_SERVICES, jobsFor } = await import('../src/lib/export-tooling.ts');
+	const { buildSystems, CI_SERVICES, jobsFor } = await import('./export-loaded.mjs');
 	// Each file's structure as the service reads it, checked by Python's YAML parser.
 	const checker = `
 import sys, json, yaml

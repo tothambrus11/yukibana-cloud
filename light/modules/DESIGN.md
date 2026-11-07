@@ -4,7 +4,7 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 17 record how steps 1 to 8 were built, and
+`light/modules`. Sections 8 to 18 record how steps 1 to 9 were built, and
 what the reviews of them changed, and where they depart from the sketches
 here; the code and its `/** */`
 contracts are the authority where the two differ.
@@ -1196,3 +1196,97 @@ Where it departs from sections 2 to 5, D10 and D11:
 * **Light is unchanged**: its initial set is 1,250,360 B gzip (24 files),
   44 B more than after section 16 (monaco's port), under the 1,255,138 B
   budget.
+
+## 18. Step 9 as built: the download, and what loads on use
+
+Step 9 moved the download into std and the language packages (section 4's
+row for `export.ts` and `export-tooling.ts`), made the debugger and the call
+hierarchy load on use (D13), and left the languages' bodies as they were.
+Where it departs from sections 2 to 5 and D13:
+
+* **std's `export.ts`: two tokens and the CI model.** `exportBuild`
+  (`Token<null, BuildSystem, 'many'>`, one entry per build system, keyed
+  by its id, labelled as the dialog shows it, the usual one first) and
+  `exportTooling` (`'one'`, a `LanguageTooling`: the image, the editors'
+  extensions and indent, the format and lint jobs, the binaries and files
+  the .gitignore leaves out, the README's instructions). The CI model the
+  app had (`Environment`, `Extra`, `Step`, `JobSpec`, `LocalCheck`,
+  `BuildCi`) moved with them; the app keeps `Job`, its composed form. A
+  `BuildSystem` has no `id`, `label` or `fits`: the first two are its
+  provider's entry, and whether it can build a project is its provider's
+  `available`, read from the snapshot without loading the body (Kotlin's
+  Maven only for Maven's layout, `lang-kotlin/layout.ts`).
+* **core's `Instance.availabilityOf(subject, token, key, snapshot)`**, the
+  twin of `performKey`: `availability` of a `'many'` token answers for the
+  token, and the dialog lists only the build systems that can build the
+  project, each asked alone. A `'one'` token is a `RangeError`, as for
+  `performKey`.
+* **Each package's `export.ts` is the body** (`EXPORTS`, by language key:
+  `{ builds, tooling }`), moved from the app's `export.ts` and
+  `export-tooling.ts` as they were, with `language.id` read as
+  `language.key`, `Language` as `LanguageMeta` and `Project` as std's
+  `ExportProject`. What more than one body uses (environments, steps,
+  `testJob`, Spotless and its pins) is `@yukibana/std/export-kit`, an entry
+  of its own that std's index does not import, so that a host importing
+  std loads none of it.
+* **The providers are an entry of their own, `/download`, not part of
+  `providers`.** `exportProviders(language, builds, load)` makes them, and
+  each package's `download.ts` gives one `LanguageDownloads` per language
+  (`DOWNLOADS`); the app's `languages.ts` appends them to the package's
+  providers. In `providers` they put two-up at 20,010 B, over its
+  19,562 B budget: the factory, the tokens and the specs, and a chunk of
+  core and std that rolldown split off once lang-cpp's export body
+  shared it. A host that downloads nothing (an embed) now carries none of
+  it: two-up is at 19,416 B, 47 B over step 8 for `availabilityOf`.
+* **The app's `export.ts` is the aggregator**: `downloadOf` performs the
+  tooling and each available build system, and `exportProject(download,
+  files, …)` composes the README, the .gitignore, the CI services' files,
+  the dev container and the editors' settings over them, as before. A
+  language with no build system offered downloads with `NO_BUILD` (D7).
+  The dialog (`Export.svelte`), `export.ts` and `zip.ts` load on the first
+  Download, and the dialog opens once its code and the download's bodies
+  have loaded: a first open waits for them, where the preview used to be
+  computed at once.
+* **The downloads are byte-identical to main's.** Every language, every
+  sample and its variants (targets, sanitizers, own build files, levels),
+  every build system, every CI service and option: 1,761 cases, their
+  files and their zips (with a fixed date) hashed against main 236a5de,
+  all equal. `tests/export-loaded.mjs` gives the Node tests
+  (`export.mjs`, `export-ci.mjs`, the unit tests) the synchronous API they
+  had, over the downloads the instance loads.
+* **Stale comments left on purpose**: `packs/cpp/toolchains/libs/pins.sh`
+  and the packs' READMEs still name `app/src/lib/export.ts` as where the
+  libraries' pins are read. Editing them would re-key the packs' and
+  toolchains' build caches for a comment; `export-pins.test.mjs` reads
+  the new files (`lang-*/export.ts`, `std/export-kit.ts`).
+* **D13: breakpoints are a small eager store.** `breakpoints.svelte.ts`
+  holds `Breakpoints` (the lines by path, `toggle`, `move`) and `decorate`,
+  which reads the stopped line through `BreakpointSession`, null until a
+  session exists. `debug.svelte.ts` (the DAP client) loads on the first
+  Debug (`Workspace.loadDebugger`) and makes itself the store's session;
+  `workspace.debugger` is null until then, and `workspace.debugging`
+  keeps Debug disabled while its code downloads. F9 before a first Debug
+  sets a breakpoint, as before; the step keys do nothing until there is a
+  session, as they did nothing without one. The Debug and Call Hierarchy
+  panels are `LazyRenderer`s in `dock.ts`, and `call-hierarchy.svelte.ts`
+  loads on the first Show Call Hierarchy. The `?trace` global
+  `yukibanaDebugger` is a getter. SvelteKit still links the lazy
+  components' CSS with the page (Debug 990 B, Call Hierarchy 715 B,
+  Export 705 B), as it did RunOptions'.
+* **Light's initial set is 1,218,325 B gzip in 39 files**, from 1,250,360 B
+  in 24: below main's 1,242,711 B for the first time. More files, since
+  rolldown puts what the page shares with the new lazy chunks into small
+  chunks of their own. `bundle-baseline.json` keeps main's number (the
+  reference) and records this one in its note. `bundle.test.mjs` checks
+  that the download, the debugger and the call hierarchy are lazy chunks
+  not in the first load.
+* **Not done: lazy bodies of the languages.** Section 16's reason holds:
+  a new project and a language switch read `sample`, `configFiles`,
+  `properties` and `settings` synchronously, so a lazy body would make
+  either wait where today it does not. They stay with the page, and
+  bundle.test.mjs's "bodies load with the page" stays as it is.
+* **Checked**: `npm run check`, the unit tests, the build and its bundle
+  fixtures, two-up's type-check, build and fixtures, and the e2e suites
+  (`e2e.mjs` over the installed packs, `e2e-debug`, `e2e-layout`,
+  `e2e-links`, `e2e-targets`, `export.mjs`), which fail only where main
+  fails.

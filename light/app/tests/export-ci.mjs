@@ -19,8 +19,7 @@ import { dirname, join } from 'node:path';
 import './modules-hook.mjs';
 
 const { LANGUAGES } = await import('../src/lib/languages.ts');
-const { buildSystems, exportProject } = await import('../src/lib/export.ts');
-const { imageSetup, jobsFor } = await import('../src/lib/export-tooling.ts');
+const { buildSystems, exportProject, imageSetup, jobsFor } = await import('./export-loaded.mjs');
 
 /**
  * Behind an HTTPS proxy with its own CA (HTTPS_PROXY and a CA bundle in

@@ -3,12 +3,14 @@
   language has more than one build system), which CI service it is set up
   for, whether it gets a dev container and a .gitattributes, and the files
   that will be generated, before the zip is made (workspace.download, which
-  export.ts fills). The choices are remembered in this browser.
+  export.ts fills). The choices are remembered in this browser. The page
+  imports it on the first Download, with what downloads a project
+  (workspace.downloadable), so neither loads with the page.
 -->
 <script lang="ts">
-	import type { Workspace } from '../workspace.svelte';
+	import type { Downloadable, Workspace } from '../workspace.svelte';
 	import { CI_SERVICES, isCiServiceId, type CiServiceId } from '../export-tooling';
-	import type { BuildSystem, ExportOptions } from '../export';
+	import type { ExportOptions, OfferedBuild } from '../export';
 	import type { LanguageId } from '../languages';
 
 	/** The choices as this browser keeps them: the CI service and switches, and each language's build system. */
@@ -53,8 +55,8 @@
 
 	let dialog: HTMLDialogElement;
 	let choices = $state<Choices>(load());
-	/** Bumped when the dialog opens, so the preview reads the project as it is now. */
-	let opened = $state(0);
+	/** What Download makes of the project, prepared when the dialog opens, so the preview is of the project as it is now. */
+	let prepared = $state.raw<Downloadable | null>(null);
 
 	const options = $derived<ExportOptions>({
 		ci: choices.ci,
@@ -62,15 +64,16 @@
 		gitattributes: choices.gitattributes,
 		...(choices.build[workspace.language] ? { build: choices.build[workspace.language] } : {}),
 	});
-	const preview = $derived.by((): { buildSystems: BuildSystem[]; generated: string[] } => {
-		void opened;
-		return workspace.exportPreview(options);
-	});
+	const preview = $derived.by((): { buildSystems: readonly OfferedBuild[]; generated: string[] } =>
+		prepared === null ? { buildSystems: [], generated: [] } : { buildSystems: prepared.builds, generated: prepared.exported(options).generated },
+	);
 	const chosenBuild = $derived(preview.buildSystems.find((b) => b.id === choices.build[workspace.language])?.id ?? preview.buildSystems[0]?.id);
 
-	/** Opens the dialog on the current project. */
-	export function show(): void {
-		opened++;
+	/** Opens the dialog on the current project, once what downloads it is loaded; not when it does not load (the Log panel says why). */
+	export async function show(): Promise<void> {
+		const ready = await workspace.downloadable();
+		if (ready === null) return;
+		prepared = ready;
 		dialog.showModal();
 	}
 
@@ -86,7 +89,7 @@
 
 	async function download(): Promise<void> {
 		dialog.close();
-		await workspace.download(options);
+		await workspace.download(options, prepared);
 	}
 </script>
 

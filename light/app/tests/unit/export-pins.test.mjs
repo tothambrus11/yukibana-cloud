@@ -1,17 +1,25 @@
 // A download builds and tests with the same versions the browser does: each
-// pin the download generators write (src/lib/export.ts,
+// pin the download generators write (each language package's export.ts,
+// std's export-kit.ts, and the app's src/lib/export.ts and
 // src/lib/export-tooling.ts) that names something a pack also pins is
 // checked against that pack's pin, read from the pack's own files, so
 // upgrading a pack without its downloads (or the other way round) fails
 // here rather than in a student's CI. Each pin is also defined once: a
 // second copy is how ZIG_VERSION drifted into two files.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const app = (path) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 const light = (path) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
-const SOURCES = ['src/lib/export.ts', 'src/lib/export-tooling.ts'];
+const SOURCES = [
+	'src/lib/export.ts',
+	'src/lib/export-tooling.ts',
+	'../modules/std/export-kit.ts',
+	...readdirSync(new URL('../../../modules/', import.meta.url))
+		.filter((name) => name.startsWith('lang-') && existsSync(new URL(`../../../modules/${name}/export.ts`, import.meta.url)))
+		.map((name) => `../modules/${name}/export.ts`),
+];
 
 /** Every `const NAME = '…'` (exported or not) of the generators, as [file, name, value]. */
 function generatorPins() {

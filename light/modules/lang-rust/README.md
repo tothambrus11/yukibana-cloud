@@ -19,5 +19,7 @@ do, as providers of `@yukibana/std`'s tokens; the pack
 | `index.ts` | `@yukibana/lang-rust` | `LANGUAGES`: each language's spec (std's `PackLanguageSpec`) and the providers it has (`providers(language)`) |
 | `body.ts` | `@yukibana/lang-rust/body` | `BODIES`: each language's sample project, server settings, build settings (`PropertyModel`) and configuration files |
 | `monaco.ts` | `@yukibana/lang-rust/monaco` | `MONACO_LANGUAGES`: the Monaco languages its server answers for |
+| `download.ts` | `@yukibana/lang-rust/download` | `DOWNLOADS`: each language's providers of std's `exportBuild` and `exportTooling` (`LanguageDownloads`), apart from `providers` so that a host that downloads nothing loads none of them |
+| `export.ts` | none: `download.ts`'s providers import it on a first download | `EXPORTS`: each language's build systems (the files each writes, its CI) and tools (its image, format checks, editors' settings, README sections), what a downloaded project is made of |
 | `properties.ts` | `@yukibana/lang-rust/properties` | read by name by the app's Build settings and pickers |
 | `targets.ts` | `@yukibana/lang-rust/targets` | read by name by the app's Build settings and pickers |

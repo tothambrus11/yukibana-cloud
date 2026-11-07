@@ -27,6 +27,14 @@
  *   exported here, so that importing std loads none of it.
  * - explore-views.ts: what each kind of view is called (`exploreView`) and
  *   the toggles more than one language's views offer.
+ * - export.ts: `exportBuild` (`'many'`, one provider per build system) and
+ *   `exportTooling`, what a language gives a downloaded project, and
+ *   `exportProviders`, which makes a language's providers of both over
+ *   its package's export body, loaded on a first download, and
+ *   `LanguageDownloads`, what a package's `/download` entry gives.
+ * - export-kit.ts: what those bodies share (environments, steps,
+ *   Spotless), an entry of its own (`@yukibana/std/export-kit`) so that
+ *   importing std loads none of it.
  * - language.ts: `PackLanguage`, a language whose runner and server come
  *   from a pack, as the run providers need it; `PackLanguageSpec`, the
  *   plain data a language package describes one with, and
@@ -49,6 +57,7 @@ export * from './debug.ts';
 export * from './preview.ts';
 export * from './explore.ts';
 export * from './explore-views.ts';
+export * from './export.ts';
 export type { ExplorerWorkers } from './explore-workers.ts';
 export * from './read.ts';
 export * from './levels.ts';

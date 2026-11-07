@@ -21,6 +21,11 @@
 			"types": "./dist/body.d.ts",
 			"default": "./dist/body.js"
 		},
+		"./download": {
+			"@yukibana/source": "./download.ts",
+			"types": "./dist/download.d.ts",
+			"default": "./dist/download.js"
+		},
 		"./monaco": {
 			"@yukibana/source": "./monaco.ts",
 			"types": "./dist/monaco.d.ts",

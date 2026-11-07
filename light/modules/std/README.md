@@ -5,7 +5,8 @@ make a language's providers of them from its pack. Step 2 of
 `../DESIGN.md`: run, test and mutate; step 4: debug, debug tests and
 preview; step 5: explore; step 6: what the language packages share (the
 spec a package describes a language with, levels, a Linux target's run
-options, the views' kinds). Export follows in a later step.
+options, the views' kinds); step 9: export, what a language gives a
+downloaded project.
 
 ## Contract
 
@@ -44,7 +45,20 @@ options, the views' kinds). Export follows in a later step.
   the provider's body are loaded at the first request
   (`explore-workers.ts`); an answer that is not what the contract says is
   `broken`, naming the field.
-* **No side effects.** Importing it defines eight tokens and some plain
+* **A download is the host's, made of the languages' parts.** A
+  language's providers of `exportBuild` (one per build system, keyed by
+  its id, the usual one first) and `exportTooling` (its tools) are made by
+  `exportProviders` over its package's export body, which they import on
+  their first perform; whether a build system can build a project is its
+  provider's `available`, read without loading it. A package gives them
+  from an entry of its own (`/download`, a `LanguageDownloads` for each
+  of its languages), not from `providers`, so that a host that downloads
+  nothing (an embed) carries none of them. The README, the
+  .gitignore, the CI services and the dev container are the host's to
+  compose over them. What the bodies share (environments, steps,
+  Spotless) is `@yukibana/std/export-kit`, which std's index does not
+  import.
+* **No side effects.** Importing it defines ten tokens and some plain
   data (the shared toggles) and does nothing else
   (`../tests/imports.test.mjs`); the explorer workers' code is not even
   loaded until a request needs it.
@@ -57,6 +71,8 @@ options, the views' kinds). Export follows in a later step.
 | `linux.ts` | `TargetId`, `TARGET_SHORT`, `RunOptions`, `DEFAULT_RUN_OPTIONS`, `runOptionsOf`, `runOptionsProperty`, `describeRunOptions` |
 | `read.ts` | `valueOf` (a property's value as a build uses it), `always`, `NO_PROPERTIES` |
 | `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider` |
+| `export.ts` | `exportBuild` (`Token<null, BuildSystem, 'many'>`), `exportTooling` (`Token<null, LanguageTooling>`), the CI model (`Environment`, `Extra`, `Step`, `JobSpec`, `LocalCheck`, `BuildCi`), `ExportProject`, `LanguageExport`, `ExportBuildSpec`, `exportProviders`, `LanguageDownloads` |
+| `export-kit.ts` (`@yukibana/std/export-kit`) | What the language packages' export bodies share: `withExtra`, `env`, `sources`, `trackedFiles`, `steps`, `testJob`, and Spotless (`spotlessJob`, `spotlessMaven`, `spotlessGradle` and its pins) |
 | `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`), `isExplorerProvider` |
 | `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |

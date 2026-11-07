@@ -1,8 +1,8 @@
 /**
  * The languages the app offers: the language packages it installs
  * (light/modules/lang-<pack>), each language's description, providers,
- * body and Monaco languages read from its package, in the order the
- * packages are listed here. Each one names its pack (the directory under
+ * body, download and Monaco languages read from its package, in the
+ * order the packages are listed here. Each one names its pack (the directory under
  * `static/packs/` its server comes from), the Monaco languages that server
  * answers for, and the sample project a first visit starts with.
  *
@@ -14,41 +14,53 @@
 import type { JsonValue, PropertyModel } from '@yukibana/core';
 import { LANGUAGES as CPP } from '@yukibana/lang-cpp';
 import { BODIES as CPP_BODIES } from '@yukibana/lang-cpp/body';
+import { DOWNLOADS as CPP_DOWNLOADS } from '@yukibana/lang-cpp/download';
 import { MONACO_LANGUAGES as CPP_MONACO } from '@yukibana/lang-cpp/monaco';
 import { LANGUAGES as GO } from '@yukibana/lang-go';
 import { BODIES as GO_BODIES } from '@yukibana/lang-go/body';
+import { DOWNLOADS as GO_DOWNLOADS } from '@yukibana/lang-go/download';
 import { MONACO_LANGUAGES as GO_MONACO } from '@yukibana/lang-go/monaco';
 import { LANGUAGES as HASKELL } from '@yukibana/lang-haskell';
 import { BODIES as HASKELL_BODIES } from '@yukibana/lang-haskell/body';
+import { DOWNLOADS as HASKELL_DOWNLOADS } from '@yukibana/lang-haskell/download';
 import { MONACO_LANGUAGES as HASKELL_MONACO } from '@yukibana/lang-haskell/monaco';
 import { LANGUAGES as JAVA } from '@yukibana/lang-java';
 import { BODIES as JAVA_BODIES } from '@yukibana/lang-java/body';
+import { DOWNLOADS as JAVA_DOWNLOADS } from '@yukibana/lang-java/download';
 import { MONACO_LANGUAGES as JAVA_MONACO } from '@yukibana/lang-java/monaco';
 import { LANGUAGES as JAVASCRIPT } from '@yukibana/lang-javascript';
 import { BODIES as JAVASCRIPT_BODIES } from '@yukibana/lang-javascript/body';
+import { DOWNLOADS as JAVASCRIPT_DOWNLOADS } from '@yukibana/lang-javascript/download';
 import { MONACO_LANGUAGES as JAVASCRIPT_MONACO } from '@yukibana/lang-javascript/monaco';
 import { LANGUAGES as KOTLIN } from '@yukibana/lang-kotlin';
 import { BODIES as KOTLIN_BODIES } from '@yukibana/lang-kotlin/body';
+import { DOWNLOADS as KOTLIN_DOWNLOADS } from '@yukibana/lang-kotlin/download';
 import { MONACO_LANGUAGES as KOTLIN_MONACO } from '@yukibana/lang-kotlin/monaco';
 import { LANGUAGES as PHP } from '@yukibana/lang-php';
 import { BODIES as PHP_BODIES } from '@yukibana/lang-php/body';
+import { DOWNLOADS as PHP_DOWNLOADS } from '@yukibana/lang-php/download';
 import { MONACO_LANGUAGES as PHP_MONACO } from '@yukibana/lang-php/monaco';
 import { LANGUAGES as PYTHON } from '@yukibana/lang-python';
 import { BODIES as PYTHON_BODIES } from '@yukibana/lang-python/body';
+import { DOWNLOADS as PYTHON_DOWNLOADS } from '@yukibana/lang-python/download';
 import { MONACO_LANGUAGES as PYTHON_MONACO } from '@yukibana/lang-python/monaco';
 import { LANGUAGES as RUST } from '@yukibana/lang-rust';
 import { BODIES as RUST_BODIES } from '@yukibana/lang-rust/body';
+import { DOWNLOADS as RUST_DOWNLOADS } from '@yukibana/lang-rust/download';
 import { MONACO_LANGUAGES as RUST_MONACO } from '@yukibana/lang-rust/monaco';
 import { LANGUAGES as SCALA } from '@yukibana/lang-scala';
 import { BODIES as SCALA_BODIES } from '@yukibana/lang-scala/body';
+import { DOWNLOADS as SCALA_DOWNLOADS } from '@yukibana/lang-scala/download';
 import { MONACO_LANGUAGES as SCALA_MONACO } from '@yukibana/lang-scala/monaco';
 import { LANGUAGES as SWIFT } from '@yukibana/lang-swift';
 import { BODIES as SWIFT_BODIES } from '@yukibana/lang-swift/body';
+import { DOWNLOADS as SWIFT_DOWNLOADS } from '@yukibana/lang-swift/download';
 import { MONACO_LANGUAGES as SWIFT_MONACO } from '@yukibana/lang-swift/monaco';
 import { LANGUAGES as ZIG } from '@yukibana/lang-zig';
 import { BODIES as ZIG_BODIES } from '@yukibana/lang-zig/body';
+import { DOWNLOADS as ZIG_DOWNLOADS } from '@yukibana/lang-zig/download';
 import { MONACO_LANGUAGES as ZIG_MONACO } from '@yukibana/lang-zig/monaco';
-import type { PackageLanguage, PackHost, PackLanguageBody } from '@yukibana/std';
+import type { LanguageDownloads, PackageLanguage, PackHost, PackLanguageBody } from '@yukibana/std';
 
 /** The installed languages, by key, in the order the app lists them before the picker sorts them. */
 const INSTALLED = { ...PYTHON, ...JAVASCRIPT, ...CPP, ...SWIFT, ...SCALA, ...RUST, ...PHP, ...JAVA, ...KOTLIN, ...HASKELL, ...GO, ...ZIG };
@@ -70,6 +82,22 @@ const BODIES: Readonly<Record<LanguageId, PackLanguageBody>> = {
 	...HASKELL_BODIES,
 	...GO_BODIES,
 	...ZIG_BODIES,
+};
+
+/** Every installed language's download providers (its package's `/download`), by key. */
+const DOWNLOADS: Readonly<Record<LanguageId, LanguageDownloads>> = {
+	...PYTHON_DOWNLOADS,
+	...JAVASCRIPT_DOWNLOADS,
+	...CPP_DOWNLOADS,
+	...SWIFT_DOWNLOADS,
+	...SCALA_DOWNLOADS,
+	...RUST_DOWNLOADS,
+	...PHP_DOWNLOADS,
+	...JAVA_DOWNLOADS,
+	...KOTLIN_DOWNLOADS,
+	...HASKELL_DOWNLOADS,
+	...GO_DOWNLOADS,
+	...ZIG_DOWNLOADS,
 };
 
 /** Every installed language's Monaco languages, by key. */
@@ -147,7 +175,7 @@ export interface Language {
 	configFiles: readonly string[];
 	/** Its build settings, the model its body carries (properties/index.ts holds them by role). */
 	properties: PropertyModel;
-	/** Returns its providers, made for the language as the instance knows it (yukibana.ts). */
+	/** Returns its providers, made for the language as the instance knows it (yukibana.ts): its package's root's, then its download's. */
 	providers: PackageLanguage<PackHost>['providers'];
 }
 
@@ -183,7 +211,7 @@ function languageFrom(id: LanguageId, language: PackageLanguage<PackHost>): Lang
 		uses: spec.uses,
 		configFiles: body.configFiles,
 		properties: body.properties,
-		providers: language.providers,
+		providers: (meta) => [...language.providers(meta), ...DOWNLOADS[id]<PackHost>(meta)],
 	};
 }
 

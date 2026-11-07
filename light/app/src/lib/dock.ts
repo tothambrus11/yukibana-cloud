@@ -47,9 +47,7 @@ import Explorer from './components/Explorer.svelte';
 import Problems from './components/Problems.svelte';
 import Log from './components/Log.svelte';
 import Terminal from './components/Terminal.svelte';
-import CallHierarchy from './components/CallHierarchy.svelte';
-import Debug from './components/Debug.svelte';
-import { decorate } from './debug.svelte';
+import { decorate } from './breakpoints.svelte';
 import type { Subject } from '@yukibana/core';
 import { debug, debugTest, viewKind, type ViewKind } from '@yukibana/std';
 import { subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
@@ -176,6 +174,39 @@ class SvelteRenderer implements IContentRenderer {
 	}
 }
 
+/**
+ * A panel whose component loads when the panel is first made (the Debug
+ * and Call Hierarchy panels, which most sessions never open): `load`
+ * resolves to a function that mounts it in the panel's element. Empty
+ * until then; a panel closed first never mounts it.
+ */
+class LazyRenderer implements IContentRenderer {
+	readonly element = document.createElement('div');
+	private instance: ReturnType<typeof mount> | null = null;
+	private disposed = false;
+
+	constructor(
+		private readonly load: () => Promise<(target: HTMLElement) => ReturnType<typeof mount>>,
+		private readonly report: (text: string) => void,
+	) {
+		this.element.className = 'dock-panel';
+	}
+
+	init(): void {
+		void this.load().then(
+			(mountIn) => {
+				if (!this.disposed) this.instance = mountIn(this.element);
+			},
+			(e: unknown) => this.report(`The panel could not be loaded: ${e instanceof Error ? e.message : String(e)}`),
+		);
+	}
+
+	dispose(): void {
+		this.disposed = true;
+		if (this.instance) void unmount(this.instance);
+	}
+}
+
 /** The Preview panel: the workspace's preview puts its iframe here. */
 class PreviewRenderer implements IContentRenderer {
 	readonly element = document.createElement('div');
@@ -268,21 +299,22 @@ class EditorRenderer implements IContentRenderer {
 			run: () => this.workspace.run('test'),
 		});
 		if (debugs) {
-			this.undecorate = decorate(editor, path, this.workspace.debugger, monaco);
-			const dbg = this.workspace.debugger;
+			const workspace = this.workspace;
+			this.undecorate = decorate(editor, path, workspace.breakpoints, monaco);
 			// VS Code's keys: F9 a breakpoint, F5 debug or continue, F10 step over, F11 in, Shift+F11 out.
-			editor.addAction({ id: 'yukibana.breakpoint', label: 'Toggle Breakpoint', keybindings: [KeyCode.F9], run: () => dbg.toggleBreakpoint(path, editor.getPosition()?.lineNumber ?? 1) });
+			// The debugger is null until the first Debug loads it, and the steps do nothing until then.
+			editor.addAction({ id: 'yukibana.breakpoint', label: 'Toggle Breakpoint', keybindings: [KeyCode.F9], run: () => workspace.breakpoints.toggle(path, editor.getPosition()?.lineNumber ?? 1) });
 			editor.addAction({
 				id: 'yukibana.debug',
 				label: 'Debug Project / Continue',
 				keybindings: [KeyCode.F5],
-				run: () => (dbg.status.kind === 'stopped' ? dbg.continue() : dbg.active ? undefined : this.workspace.debug()),
+				run: () => (workspace.debugger?.status.kind === 'stopped' ? workspace.debugger.continue() : workspace.debugging ? undefined : void workspace.debug()),
 			});
 			// No key of its own: Shift+F5 is the debugger's Stop (+page.svelte, debugKeys).
-			if (yukibana().has(subject, debugTest)) editor.addAction({ id: 'yukibana.debugTests', label: 'Debug Tests', run: () => (dbg.active ? undefined : this.workspace.debug('test')) });
-			editor.addAction({ id: 'yukibana.stepOver', label: 'Step Over', keybindings: [KeyCode.F10], run: () => dbg.next() });
-			editor.addAction({ id: 'yukibana.stepInto', label: 'Step Into', keybindings: [KeyCode.F11], run: () => dbg.stepIn() });
-			editor.addAction({ id: 'yukibana.stepOut', label: 'Step Out', keybindings: [KeyMod.Shift | KeyCode.F11], run: () => dbg.stepOut() });
+			if (yukibana().has(subject, debugTest)) editor.addAction({ id: 'yukibana.debugTests', label: 'Debug Tests', run: () => (workspace.debugging ? undefined : void workspace.debug('test')) });
+			editor.addAction({ id: 'yukibana.stepOver', label: 'Step Over', keybindings: [KeyCode.F10], run: () => workspace.debugger?.next() });
+			editor.addAction({ id: 'yukibana.stepInto', label: 'Step Into', keybindings: [KeyCode.F11], run: () => workspace.debugger?.stepIn() });
+			editor.addAction({ id: 'yukibana.stepOut', label: 'Step Out', keybindings: [KeyMod.Shift | KeyCode.F11], run: () => workspace.debugger?.stepOut() });
 		}
 		editor.addAction({
 			id: 'yukibana.mutate',
@@ -424,6 +456,8 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	const tabs = new Map<string, TabRenderer>();
 	const history = new NavigationHistory();
 	const exists = (path: string) => workspace.model(path) !== undefined;
+	/** Says in the Log that a lazy panel's code did not load. */
+	const reportLoad = (text: string) => workspace.write('error', text);
 	const goTo = (place: Place | null) => {
 		if (place) host.open(place.path, monaco.Range.fromPositions({ lineNumber: place.line, column: place.column }));
 	};
@@ -483,10 +517,17 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 					return new SvelteRenderer(Terminal, workspace);
 				case 'preview':
 					return new PreviewRenderer(workspace);
+				// Loaded when first opened: Show Call Hierarchy and Debug load their code (workspace.svelte.ts).
 				case 'call-hierarchy':
-					return new SvelteRenderer(CallHierarchy, workspace);
+					return new LazyRenderer(async () => {
+						const { default: CallHierarchy } = await import('./components/CallHierarchy.svelte');
+						return (target) => mount(CallHierarchy, { target, props: { workspace } });
+					}, reportLoad);
 				case 'debug':
-					return new SvelteRenderer(Debug, workspace);
+					return new LazyRenderer(async () => {
+						const [{ default: Debug }, dbg] = await Promise.all([import('./components/Debug.svelte'), workspace.loadDebugger()]);
+						return (target) => mount(Debug, { target, props: { workspace, dbg } });
+					}, reportLoad);
 				default: {
 					const view = viewOfComponent(subjectOf(workspace.language), name);
 					if (view) return new CompilerViewRenderer(view, workspace, () => viewHost);

@@ -15,14 +15,14 @@
   problems, which open the Problems panel.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { createDock } from '../lib/dock';
 	import { isCFamily, languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf, packsOf } from '../lib/packs';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
-	import Export from '../lib/components/Export.svelte';
+	import type Export from '../lib/components/Export.svelte';
 	import BuildSettings from '../lib/components/BuildSettings.svelte';
 	import { buildSummary, openBuildSettings } from '../lib/build-settings';
 	import MoreMenu from '../lib/components/MoreMenu.svelte';
@@ -46,8 +46,16 @@
 	let dockElement: HTMLElement;
 	let dock: ReturnType<typeof createDock> | undefined;
 	let offlineDialog = $state<Offline>();
+	/** The Download dialog's component, imported on the first Download (it brings export.ts, which nothing else needs). */
+	let ExportDialog = $state.raw<typeof Export | null>(null);
 	let exportDialog = $state<Export>();
-	workspace.exportDialog = () => exportDialog?.show();
+	workspace.exportDialog = () => {
+		void (async () => {
+			ExportDialog ??= (await import('../lib/components/Export.svelte')).default;
+			await tick();
+			await exportDialog?.show();
+		})().catch((e: unknown) => workspace.write('error', `Could not open the Download dialog: ${e instanceof Error ? e.message : String(e)}`));
+	};
 	let serverMenu = $state<Popover>();
 	let licensesDialog = $state<Licenses>();
 	/** Set when a new build is installed and waiting: activates it and reloads. */
@@ -55,7 +63,8 @@
 
 	onMount(() => {
 		// Tests read the debugger's session through this, as they read Monaco (startEditor).
-		if (new URLSearchParams(location.search).has('trace')) Object.assign(globalThis, { yukibanaDebugger: workspace.debugger });
+		// A getter: the debugger is there from the first Debug on (Workspace.loadDebugger).
+		if (new URLSearchParams(location.search).has('trace')) Object.defineProperty(globalThis, 'yukibanaDebugger', { get: () => workspace.debugger, configurable: true });
 		dock = createDock(dockElement, workspace);
 		workspace.attach(dock);
 		registerServiceWorker({
@@ -188,7 +197,7 @@
 	 */
 	function debugKeys(e: KeyboardEvent) {
 		const dbg = workspace.debugger;
-		if (e.defaultPrevented || !dbg.active || e.ctrlKey || e.metaKey || e.altKey) return;
+		if (e.defaultPrevented || !dbg?.active || e.ctrlKey || e.metaKey || e.altKey) return;
 		const act =
 			e.key === 'F5' ? (e.shiftKey ? () => dbg.end() : () => dbg.continue())
 			: e.key === 'F10' && !e.shiftKey ? () => dbg.next()
@@ -230,7 +239,7 @@
 			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy || testAvailable.kind === 'unavailable'} title={testAvailable.kind === 'available' ? "Run the project's tests (Ctrl+Shift+Enter)" : testAvailable.reason}>Test</button>
 		{/if}
 		{#if hasDebug}
-			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active || debugAvailable.kind === 'unavailable'} title={debugAvailable.kind === 'available' ? DEBUG_TITLE : debugAvailable.reason}>Debug</button>
+			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugging || debugAvailable.kind === 'unavailable'} title={debugAvailable.kind === 'available' ? DEBUG_TITLE : debugAvailable.reason}>Debug</button>
 		{/if}
 		{#if hasMutate}
 			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy || mutateAvailable.kind === 'unavailable'} title={mutateAvailable.kind === 'available' ? 'Mutation testing: change the code in small ways and check that the tests notice' : mutateAvailable.reason}>Mutate</button>
@@ -272,10 +281,10 @@
 
 		<MoreMenu>
 			{#if hasDebug}
-				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || workspace.debugger.active || debugAvailable.kind === 'unavailable'} onclick={() => workspace.debug()} title={debugAvailable.kind === 'available' ? DEBUG_TITLE : debugAvailable.reason}>Debug</button>
+				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || workspace.debugging || debugAvailable.kind === 'unavailable'} onclick={() => workspace.debug()} title={debugAvailable.kind === 'available' ? DEBUG_TITLE : debugAvailable.reason}>Debug</button>
 			{/if}
 			{#if hasDebugTest}
-				<button class="menu-item debug-tests" role="menuitem" disabled={workspace.runner.busy || workspace.debugger.active || debugTestAvailable.kind === 'unavailable'} onclick={() => workspace.debug('test')} title={debugTestAvailable.kind === 'available' ? DEBUG_TESTS_TITLE : debugTestAvailable.reason}>Debug tests</button>
+				<button class="menu-item debug-tests" role="menuitem" disabled={workspace.runner.busy || workspace.debugging || debugTestAvailable.kind === 'unavailable'} onclick={() => workspace.debug('test')} title={debugTestAvailable.kind === 'available' ? DEBUG_TESTS_TITLE : debugTestAvailable.reason}>Debug tests</button>
 			{/if}
 			{#if hasMutate}
 				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || mutateAvailable.kind === 'unavailable'} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
@@ -314,7 +323,7 @@
 <main class="dock" bind:this={dockElement}></main>
 
 <Offline bind:this={offlineDialog} />
-<Export bind:this={exportDialog} {workspace} />
+{#if ExportDialog}<ExportDialog bind:this={exportDialog} {workspace} />{/if}
 <Licenses bind:this={licensesDialog} />
 
 <div class="toast" role="status" aria-live="polite" class:shown={toast !== null}>{toast ?? ''}</div>

@@ -19,3 +19,5 @@ do, as providers of `@yukibana/std`'s tokens; the pack
 | `index.ts` | `@yukibana/lang-haskell` | `LANGUAGES`: each language's spec (std's `PackLanguageSpec`) and the providers it has (`providers(language)`) |
 | `body.ts` | `@yukibana/lang-haskell/body` | `BODIES`: each language's sample project, server settings, build settings (`PropertyModel`) and configuration files |
 | `monaco.ts` | `@yukibana/lang-haskell/monaco` | `MONACO_LANGUAGES`: the Monaco languages its server answers for, and the grammar Monaco lacks (`register…`; its tokenizer, `grammar.ts`, loads with the first model of the language) |
+| `download.ts` | `@yukibana/lang-haskell/download` | `DOWNLOADS`: each language's providers of std's `exportBuild` and `exportTooling` (`LanguageDownloads`), apart from `providers` so that a host that downloads nothing loads none of them |
+| `export.ts` | none: `download.ts`'s providers import it on a first download | `EXPORTS`: each language's build systems (the files each writes, its CI) and tools (its image, format checks, editors' settings, README sections), what a downloaded project is made of |

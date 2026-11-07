@@ -14,8 +14,7 @@ import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './language
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
-import { buildSystems, exportProject, type BuildSystem, type ExportOptions } from './export';
-import { zip } from './zip';
+import type { ExportedProject, ExportOptions, OfferedBuild } from './export';
 import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from '@yukibana/lang-cpp/tests';
 import { targetById, targetOf, type CppTargetId, type TargetChoice } from '@yukibana/lang-cpp/targets';
 import { describeSanitizers, sanitizersOf, type SanitizerChoice } from '@yukibana/lang-cpp/sanitizers';
@@ -24,8 +23,9 @@ import { cppLevelOf, defaultLevel, levelsOf, type LevelChoice } from './optimiza
 import { describeStandard, standardOf, type Standard, type StandardChoice } from '@yukibana/lang-cpp/standards';
 import { checksOf, TIDY_FILE, type CheckGlob } from '@yukibana/lang-cpp/tidy';
 import type { Explorer } from './explorer.svelte';
-import { CallHierarchy } from './call-hierarchy.svelte';
-import { Debugger } from './debug.svelte';
+import type { CallHierarchy } from './call-hierarchy.svelte';
+import type { Debugger } from './debug.svelte';
+import { Breakpoints } from './breakpoints.svelte';
 import type { SelectionRange } from '@yukibana/protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
 import { pathOf, writeProperty, type Disposable, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type LanguageSubject } from '@yukibana/core';
@@ -50,6 +50,17 @@ export function uriOf(path: string): monaco.Uri {
  * output, which only the terminal shows.
  */
 export type LogSource = 'server' | 'run' | 'app';
+
+/**
+ * What Download makes of one project as it was when it was prepared
+ * (`Workspace.downloadable`): the Download dialog's preview, and the zip.
+ */
+export interface Downloadable {
+	/** The build systems that can build the project, the language's usual one first. */
+	readonly builds: readonly OfferedBuild[];
+	/** Returns the project as Download zips it with `options`. */
+	exported(options: ExportOptions): ExportedProject;
+}
 
 /** One line of the Log panel. */
 export interface LogLine {
@@ -226,8 +237,18 @@ export class Workspace implements CoreProject {
 	 * next one).
 	 */
 	callHierarchy = $state.raw<CallHierarchy | null>(null);
-	/** The debugger (Debug), its breakpoints and the session the Debug panel shows. */
-	readonly debugger = new Debugger();
+	/** The project's breakpoints, set in the editors' margins before and during a session. */
+	readonly breakpoints = new Breakpoints();
+	/**
+	 * The debugger (Debug) and the session the Debug panel shows: null until
+	 * Debug is first clicked, when its code loads (`loadDebugger`), then the
+	 * same one for the rest of the page's life.
+	 */
+	debugger = $state.raw<Debugger | null>(null);
+	/** True while the first Debug waits for the debugger's code: Debug is not offered twice. */
+	private debuggerLoading = $state(false);
+	/** The debugger's code, loading or loaded; null before the first Debug and after a load that failed. */
+	private debuggerLoad: Promise<Debugger> | null = null;
 
 	/** The selected language's server, while one runs: its session, which the editor's binding (`MonacoBinding`) is the client of. */
 	private session: LanguageSession | null = null;
@@ -555,8 +576,33 @@ export class Workspace implements CoreProject {
 	 * as for a run; ending the run ends the session, and the other way round.
 	 * What is run, and whether it may be, is decided at the click: the run
 	 * starts later, once the debugger is ready, on the project as it was.
+	 * The first Debug of the page loads the debugger's code first.
 	 */
-	debug(mode: DebugMode = 'run'): void {
+	/**
+	 * `true` iff a debugging session is starting or running, or Debug is
+	 * waiting for the debugger's code: what disables Debug.
+	 */
+	get debugging(): boolean {
+		return this.debuggerLoading || (this.debugger?.active ?? false);
+	}
+
+	/**
+	 * Returns the debugger, loading its code (debug.svelte.ts) the first
+	 * time; rejects when that code does not load, and the next call tries
+	 * again.
+	 */
+	loadDebugger(): Promise<Debugger> {
+		this.debuggerLoad ??= import('./debug.svelte').then(
+			({ Debugger }) => (this.debugger ??= new Debugger(this.breakpoints)),
+			(e: unknown) => {
+				this.debuggerLoad = null;
+				throw e;
+			},
+		);
+		return this.debuggerLoad;
+	}
+
+	async debug(mode: DebugMode = 'run'): Promise<void> {
 		const language = languageOf(this.language);
 		const subject = subjectOf(this.language);
 		const token = debugTokenOf(mode);
@@ -577,10 +623,23 @@ export class Workspace implements CoreProject {
 		// the run options, Swift none, as they always were).
 		const options = runnerOptionsOf(this.settings, snapshot);
 		const frozen = this.frozen(files);
+		const generation = this.generation;
+		this.debuggerLoading = true;
+		let dbg: Debugger;
+		try {
+			dbg = await this.loadDebugger();
+		} catch (e) {
+			this.write('error', `The debugger could not be loaded: ${e instanceof Error ? e.message : String(e)}`);
+			return;
+		} finally {
+			this.debuggerLoading = false;
+		}
+		// The language changed while the debugger's code downloaded: the click was for the old project.
+		if (generation !== this.generation) return;
 		this.host?.showTerminal();
 		this.host?.showDebug();
 		this.runner.ended = () => {
-			if (this.debugger.active) this.debugger.end(false);
+			if (dbg.active) dbg.end(false);
 		};
 		const start = (channel: DebugChannel): void => {
 			const listener = this.runner.begin();
@@ -591,24 +650,24 @@ export class Workspace implements CoreProject {
 					(outcome) => {
 						if (outcome.kind !== 'done') {
 							this.write('warning', outcome.reason);
-							this.debugger.end(false);
+							dbg.end(false);
 							return;
 						}
 						const { run, program } = outcome.value;
 						this.runner.start(run);
 						// Only to the session of the run the terminal still shows.
 						void program.then((linked) => {
-							if (linked !== null && this.runner.shows(run)) void this.debugger.attach(linked);
+							if (linked !== null && this.runner.shows(run)) void dbg.attach(linked);
 						});
 					},
 					(e: unknown) => {
 						// The provider's body did not load (it is lazy) or threw: no run started, so the session ends.
 						this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`);
-						this.debugger.end(false);
+						dbg.end(false);
 					},
 				);
 		};
-		this.debugger.start({
+		dbg.start({
 			run: start,
 			stopRun: () => this.runner.stop(false),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
@@ -884,35 +943,51 @@ export class Workspace implements CoreProject {
 	}
 
 	/**
-	 * What Download would add to the project with `options` (export.ts): the
-	 * build systems that fit it, and the paths it would generate.
+	 * Returns what Download makes of the project as it is now (export.ts):
+	 * the build systems that can build it and the project as each option
+	 * zips it, loaded through the instance (the language's providers of
+	 * std's `exportBuild` and `exportTooling`) with the Download code itself
+	 * on the first call. Null, said in the Log panel, when the language has
+	 * no download or its code did not load.
 	 */
-	exportPreview(options: ExportOptions): { buildSystems: BuildSystem[]; generated: string[] } {
-		const language = languageOf(this.language);
+	async downloadable(): Promise<Downloadable | null> {
+		const label = languageOf(this.language).label;
 		const files = this.currentFiles();
-		return { buildSystems: buildSystems(language, files), generated: this.exported(options).generated };
-	}
-
-	/** The project as Download zips it, with `options` (export.ts). */
-	private exported(options: ExportOptions) {
+		const snapshot = this.frozen(files);
 		// A level compile_flags.txt holds is carried by the file itself.
-		return exportProject(languageOf(this.language), this.currentFiles(), this.settings.level?.storage.kind === 'meta' ? this.chosenLevel : null, options);
+		const level = this.settings.level?.storage.kind === 'meta' ? this.chosenLevel : null;
+		try {
+			const { downloadOf, exportProject } = await import('./export');
+			const download = await downloadOf(yukibana(), subjectOf(this.language), snapshot, new AbortController().signal);
+			if (download === null) {
+				this.write('warning', `${label} projects cannot be downloaded: nothing provides their build files.`);
+				return null;
+			}
+			return { builds: download.builds, exported: (options) => exportProject(download, files, level, options) };
+		} catch (e) {
+			this.write('error', `Could not load what downloads a ${label} project: ${e instanceof Error ? e.message : String(e)}`);
+			return null;
+		}
 	}
 
 	/**
 	 * Downloads the project as `<language>-project.zip`, for an IDE: its files
 	 * as last edited and its empty folders, in a folder of the same name, plus
 	 * the build files, README and .gitignore it lacks, and the CI, dev
-	 * container and .gitattributes `options` ask for (export.ts). Says in the
-	 * Log panel what was generated.
+	 * container and .gitattributes `options` ask for (export.ts), as
+	 * `prepared` makes them, or as the project is now when no dialog
+	 * prepared it (`downloadable`). Says in the Log panel what was generated.
 	 */
-	async download(options: ExportOptions = {}): Promise<void> {
+	async download(options: ExportOptions = {}, prepared: Downloadable | null = null): Promise<void> {
 		const language = languageOf(this.language);
-		const exported = this.exported(options);
+		const downloadable = prepared ?? (await this.downloadable());
+		if (downloadable === null) return;
+		const exported = downloadable.exported(options);
 		const paths = Object.keys(exported.files).sort();
 		const empty = this.allFolders().filter((f) => !paths.some((p) => p.startsWith(f + '/')) && !this.folders.some((g) => g.startsWith(f + '/')));
 		const name = `${language.id}-project`;
 		try {
+			const { zip } = await import('./zip');
 			const archive = await zip([
 				...empty.map((f) => ({ path: `${name}/${f}/` })),
 				...paths.map((p) => ({ path: `${name}/${p}`, text: exported.files[p] ?? '' })),
@@ -1268,10 +1343,16 @@ export class Workspace implements CoreProject {
 					if (path && this.models.has(path)) this.host?.open(path, selection ?? undefined);
 				},
 				callHierarchy: (item) => {
-					if (this.session !== session) return;
-					// In the direction chosen last, as VS Code's view keeps it.
-					this.callHierarchy = new CallHierarchy(item, (direction, it) => session.calls(direction, it, new AbortController().signal), this.callHierarchy?.direction);
-					this.host?.showCallHierarchy();
+					// The tree's code loads on the first Show Call Hierarchy, with its panel's.
+					void import('./call-hierarchy.svelte').then(
+						({ CallHierarchy }) => {
+							if (this.session !== session) return;
+							// In the direction chosen last, as VS Code's view keeps it.
+							this.callHierarchy = new CallHierarchy(item, (direction, it) => session.calls(direction, it, new AbortController().signal), this.callHierarchy?.direction);
+							this.host?.showCallHierarchy();
+						},
+						(e: unknown) => this.write('error', `The call hierarchy could not be loaded: ${e instanceof Error ? e.message : String(e)}`),
+					);
 				},
 			},
 		});
