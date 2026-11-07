@@ -12,7 +12,7 @@
 // (../../kit/emit-filter.js).
 
 import { commonFrontendArgs } from './frontend-args.js';
-import { importsTesting, importsXCTest, isTestFile, projectModuleName } from './xctest.js';
+import { importsTesting, importsXCTest, isTestFile, needsFoundationEssentials, projectModuleName } from './xctest.js';
 import { inProject, projectPath } from '../../kit/emit-filter.js';
 
 /** Where the frontend writes a view's output. */
@@ -47,10 +47,10 @@ export function sourcesFor(files, path) {
     return swift.filter((p) => p === path || (testing ? !isMain(p) : !isTestFile(p, files[p])));
 }
 
-/** What a view of these sources needs on top of the sysroot: XCTest, swift-testing. */
+/** What a view of these sources needs on top of the sysroot: XCTest, swift-testing, FoundationEssentials. */
 export function extrasFor(files, sources) {
     const texts = sources.map((p) => files[p] ?? '');
-    return { xctest: texts.some(importsXCTest), testing: texts.some(importsTesting) };
+    return { xctest: texts.some(importsXCTest), testing: texts.some(importsTesting), foundation: needsFoundationEssentials(texts) };
 }
 
 /** The module the sources of a view of `path` are compiled as (xctest.js projectModuleName). */

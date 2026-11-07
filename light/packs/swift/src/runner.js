@@ -43,11 +43,11 @@
 
 import {
     CROSS_FRONTEND_WASM, Directory, Fd, FRONTEND_WASM, LINKER_WASM, OPTIMIZATION_LEVELS, autolinkEntries, compileArgs, linkArgs, linkLibraries, linuxCompileArgs,
-    linuxLinkArgs, loadLinuxSysroot, loadMacroPlugins, loadSwiftTesting, loadTool, loadWasmSysroot, loadXCTest, mkdirp, readFile, remove, runFrontend,
+    linuxLinkArgs, loadFoundationEssentials, loadLinuxSysroot, loadMacroPlugins, loadSwiftTesting, loadTool, loadWasmSysroot, loadXCTest, mkdirp, readFile, remove, runFrontend,
     runFrontendCommand, runWasi, textSink, usesMacroPlugins, wasiDefs, writeFile, writeProject,
 } from './toolchain.js';
 import { ENV_FILE, TARGETS, linuxTarget, settingsOf } from './target.js';
-import { dropOwnModuleImportWarnings, importsTesting, importsXCTest, isTestFile, planTestRun, projectModuleName } from './xctest.js';
+import { dropOwnModuleImportWarnings, importsFoundationEssentials, importsTesting, importsXCTest, isTestFile, needsFoundationEssentials, planTestRun, projectModuleName } from './xctest.js';
 
 const post = (msg) => self.postMessage(msg);
 const phase = (text) => post({ type: 'phase', text });
@@ -151,10 +151,16 @@ async function run({ files, entry, stdin, options, debug }, testing) {
     const compiled = testing ? plan.sources : swift.filter(([p, text]) => keepTests || !isTestFile(p, text)).map(([p]) => p);
     const moduleName = testing ? plan.moduleName : projectModuleName(Object.fromEntries(swift.filter(([p]) => compiled.includes(p))));
     // The texts compiled, with a generated test main, decide the optional
-    // downloads: XCTest, swift-testing, and the macro plugins.
+    // downloads: XCTest, swift-testing, FoundationEssentials, and the macro plugins.
     const texts = [...swift.filter(([p]) => compiled.includes(p)).map(([, text]) => text), plan?.main ?? ''];
     const needsXCTest = texts.some(importsXCTest);
     const needsTesting = texts.some(importsTesting);
+    const needsFoundation = needsFoundationEssentials(texts);
+    if (linux && texts.some(importsFoundationEssentials)) {
+        // Stage 41 of the toolchain trims Foundation out of the Static Linux SDK.
+        post({ type: 'stderr', text: `error: FoundationEssentials is available on WebAssembly only; ${TARGETS[settings.target]} has no FoundationEssentials here yet (comment out TARGET in ${ENV_FILE} to use it)\n` });
+        return 1;
+    }
     const needsPlugins = texts.some(usesMacroPlugins);
 
     phase('Loading the Swift compiler');
@@ -165,6 +171,7 @@ async function run({ files, entry, stdin, options, debug }, testing) {
             linux ? tools.extra(`linux-${linux.arch}`, (r) => loadLinuxSysroot(r, linux.arch, onLoading)) : tools.extra('wasm', (r) => loadWasmSysroot(r, onLoading)),
             needsXCTest && tools.extra('xctest', loadXCTest),
             needsTesting && tools.extra('testing', loadSwiftTesting),
+            needsFoundation && tools.extra('foundation', loadFoundationEssentials),
             needsPlugins && tools.extra('plugins', loadMacroPlugins),
         ]).then(() => tools.root),
     ]);

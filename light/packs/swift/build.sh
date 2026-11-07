@@ -26,8 +26,12 @@
 #   swift-testing.tar
 #                  swift-testing from the swift.org Swift 6.3.3 Wasm SDK (the
 #                  one that release is built with): Testing's module and
-#                  archives and the FoundationEssentials it links; fetched by
-#                  projects that import Testing
+#                  own archives; fetched by projects that import Testing
+#   swift-foundation-essentials.tar
+#                  FoundationEssentials from the same SDK: its module, the
+#                  modules and C shims it needs, and the archives a program
+#                  links; fetched by projects that import FoundationEssentials
+#                  or Testing (which links it)
 #   swift-xctest.tar
 #                  the browser's XCTest (xctest/XCTest/*.swift): its
 #                  .swiftmodule and libXCTest.a, built by
@@ -195,28 +199,53 @@ if [ ! -f "$CACHE/stage/swift-sysroot.tar" ] || [ "$HERE/tools/trim-sysroot.mjs"
 fi
 cp -p "$CACHE/stage/swift-sysroot.tar" "$OUT/swift-sysroot.tar"
 
-step "swift-testing from the Swift 6.3.3 Wasm SDK"
-# Testing's module (its .swiftinterface: the SDK has no binary module) and
-# the archives a test program links: libTesting.a's autolink entries, and
-# theirs, that the core sysroot lacks (src/toolchain.js linkLibraries).
-# Foundation, FoundationInternationalization, CoreFoundation and ICU are
-# autolinked too but never reached, so they are left out (README "Macros").
+step "swift-testing and FoundationEssentials from the Swift 6.3.3 Wasm SDK"
+# Two lazy downloads cut from the SDK the toolchain release is built with:
+#
+#   swift-foundation-essentials.tar: FoundationEssentials and
+#     _FoundationCollections (binary modules: the SDK has no interfaces for
+#     them, and they load because our compiler is the same 6.3.3 release),
+#     the _FoundationCShims C module and the three archives a program
+#     importing FoundationEssentials links. Not Foundation,
+#     FoundationInternationalization, CoreFoundation or ICU (README
+#     "FoundationEssentials").
+#   swift-testing.tar: Testing's module (its .swiftinterface: the SDK has no
+#     binary module) and its own archives. libTesting.a also links
+#     FoundationEssentials, so a project importing Testing gets the tar above
+#     too; Foundation, FoundationInternationalization, CoreFoundation and ICU
+#     are autolinked but never reached, so they are left out (README
+#     "swift-testing").
+#
+# STAMP names the layout, so that a change to what goes in rebuilds both.
+STAMP="$CACHE/stage/sdk-extras.v2"
 TESTING="$CACHE/stage/swift-testing.tar"
-if [ ! -f "$TESTING" ]; then
+FOUNDATION="$CACHE/stage/swift-foundation-essentials.tar"
+if [ ! -f "$STAMP" ] || [ ! -f "$TESTING" ] || [ ! -f "$FOUNDATION" ]; then
   SDK_DL="$CACHE/dl/swift-6.3.3-RELEASE_wasm.artifactbundle.tar.gz"
   fetch "$TESTING_SDK_URL" $TESTING_SDK_SHA256 "$SDK_DL"
-  W=swift-6.3.3-RELEASE_wasm.artifactbundle/swift-6.3.3-RELEASE_wasm/wasm32-unknown-wasip1/swift.xctoolchain/usr/lib/swift_static/wasi
+  R=swift-6.3.3-RELEASE_wasm.artifactbundle/swift-6.3.3-RELEASE_wasm/wasm32-unknown-wasip1/swift.xctoolchain/usr/lib/swift_static
+  W=$R/wasi
+  pack() { # out.tar dir: a reproducible ustar of dir/swift
+    tar --format=ustar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -cf "$1.part" -C "$2" swift
+    mv "$1.part" "$1"
+  }
   T="$CACHE/stage/testing" && rm -rf "$T" && mkdir -p "$T"
   tar xzf "$SDK_DL" -C "$T" \
     "$W/Testing.swiftmodule/wasm32-unknown-wasip1.swiftinterface" "$W/Testing.swiftmodule/wasm32-unknown-wasip1.swiftdoc" \
-    "$W/libTesting.a" "$W/lib_TestDiscovery.a" "$W/lib_TestingInternals.a" "$W/lib_TestingInterop.a" \
+    "$W/libTesting.a" "$W/lib_TestDiscovery.a" "$W/lib_TestingInternals.a" "$W/lib_TestingInterop.a"
+  mkdir -p "$T/swift/lib" && mv "$T/$R" "$T/swift/lib/swift_static"
+  pack "$TESTING" "$T"
+  F="$CACHE/stage/foundation" && rm -rf "$F" && mkdir -p "$F"
+  tar xzf "$SDK_DL" -C "$F" "$R/_FoundationCShims" \
+    "$W/FoundationEssentials.swiftmodule" "$W/_FoundationCollections.swiftmodule" \
     "$W/libFoundationEssentials.a" "$W/lib_FoundationCShims.a" "$W/lib_FoundationCollections.a"
-  mkdir -p "$T/swift/lib/swift_static" && mv "$T/$W" "$T/swift/lib/swift_static/wasi"
-  tar --format=ustar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -cf "$TESTING.part" -C "$T" swift
-  mv "$TESTING.part" "$TESTING"
-  rm -rf "$T" "$SDK_DL"
+  mkdir -p "$F/swift/lib" && mv "$F/$R" "$F/swift/lib/swift_static"
+  pack "$FOUNDATION" "$F"
+  rm -rf "$T" "$F" "$SDK_DL" "$CACHE"/stage/sdk-extras.*
+  touch "$STAMP"
 fi
 cp -p "$TESTING" "$OUT/swift-testing.tar"
+cp -p "$FOUNDATION" "$OUT/swift-foundation-essentials.tar"
 
 step "XCTest for the browser (swift-frontend-lsp.wasm under node)"
 XCT="$CACHE/stage/swift-xctest.tar"
@@ -257,7 +286,7 @@ done
 
 step "server.js, runner.js, explorer.js, linux-worker.js"
 size() { stat -c %s "$OUT/$1"; }
-SIZES="{\"swift-frontend-lsp.wasm\":$(size swift-frontend-lsp.wasm),\"wasm-ld.wasm\":$(size wasm-ld.wasm),\"swift-sysroot.tar\":$(size swift-sysroot.tar),\"swift-xctest.tar\":$(size swift-xctest.tar),\"SwiftMacroPlugins.wasm\":$(size SwiftMacroPlugins.wasm),\"swift-testing.tar\":$(size swift-testing.tar)${CROSS_SIZES}}"
+SIZES="{\"swift-frontend-lsp.wasm\":$(size swift-frontend-lsp.wasm),\"wasm-ld.wasm\":$(size wasm-ld.wasm),\"swift-sysroot.tar\":$(size swift-sysroot.tar),\"swift-xctest.tar\":$(size swift-xctest.tar),\"SwiftMacroPlugins.wasm\":$(size SwiftMacroPlugins.wasm),\"swift-testing.tar\":$(size swift-testing.tar),\"swift-foundation-essentials.tar\":$(size swift-foundation-essentials.tar)${CROSS_SIZES}}"
 # NODE_PATH: code bundled from ../kit (README.md there) imports its packages
 # by name, and resolves them from this pack's node_modules, which declares them.
 for entry in server runner explorer linux-worker; do
