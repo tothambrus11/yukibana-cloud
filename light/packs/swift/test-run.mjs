@@ -12,7 +12,9 @@
 // service worker that does for /packs/ what the app's does), a prompt without newline and
 // two lines read with readLine(), end of input, a type error (on stderr,
 // non-zero exit, nothing run), a runtime trap, and a program that never
-// ends, which the page stops by terminating the worker.
+// ends, which the page stops by terminating the worker. Then XCTest,
+// macros, swift-testing, a test run under the debugger (with the LLDB pack
+// built), optimisation levels and Linux targets.
 //
 // Adapted from ../cpp/test-run.mjs.
 
@@ -60,6 +62,13 @@ self.addEventListener('fetch', (e) => {
         return response;
     })());
 });`);
+        return;
+    }
+    // The debugger channel's layout, for a page that plays LLDB (the Debug
+    // tests case): the LLDB pack's source, which no pack ships unbundled.
+    if (path === '/__lldb/channel.js') {
+        const body = await readFile(resolve(HERE, '../lldb/src/channel.js'));
+        res.writeHead(200, { 'content-type': 'text/javascript', 'content-length': body.length, ...ISOLATION }).end(body);
         return;
     }
     // SWIFT_FRONTEND: another swift-frontend-lsp.wasm to compile with (a
@@ -200,10 +209,44 @@ try {
     // line each, then end of file), optionally terminate it after the program
     // printed `stopAfter`. Resolves with what came back and when.
     await page.evaluate(() => {
-        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.swift', type = 'run', optimization = null, keep = false } = {}) =>
+        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.swift', type = 'run', optimization = null, keep = false, debug = false } = {}) =>
             new Promise((done) => {
                 const t0 = performance.now();
-                const result = { stdout: '', stderr: '', code: null, phases: [], loading: {}, stdinRequests: 0, stdoutBeforeInput: [], terminated: false };
+                const result = { stdout: '', stderr: '', code: null, phases: [], loading: {}, stdinRequests: 0, stdoutBeforeInput: [], terminated: false, debugged: null, lldb: [] };
+                // `debug`: the run gets a debugger channel, and the page plays
+                // LLDB on it as packs/lldb/test-stub.mjs does: the stop at the
+                // first line, then continue to the end. result.lldb holds the
+                // stub's answers; result.debugged the name the runner posted.
+                const channel = debug ? window.testChannel() : null;
+                if (channel) {
+                    const lldb = channel.lldb;
+                    let pending = '';
+                    const send = (body) => {
+                        let sum = 0;
+                        for (const c of body) sum += c.charCodeAt(0);
+                        lldb.write(new TextEncoder().encode(`$${body}#${(sum & 255).toString(16).padStart(2, '0')}`));
+                    };
+                    // Polled: the page's thread may not Atomics.wait, so it reads only what is there.
+                    const receive = async () => {
+                        const deadline = performance.now() + 300000;
+                        for (;;) {
+                            const m = /\$([^#]*)#../.exec(pending);
+                            if (m) {
+                                pending = pending.slice(m.index + m[0].length);
+                                return m[1];
+                            }
+                            if (performance.now() > deadline) return null;
+                            if (lldb.pending()) pending += new TextDecoder('latin1').decode(lldb.read(0));
+                            else await new Promise((r) => setTimeout(r, 5));
+                        }
+                    };
+                    const ask = async (packet) => (send(packet), receive());
+                    (async () => {
+                        result.lldb.push(await ask('QStartNoAckMode'), await ask('qSupported:xmlRegisters=i386'), await ask('?'));
+                        send('c');
+                        result.lldb.push(await receive());
+                    })();
+                }
                 const sab = new SharedArrayBuffer(8 + 65536);
                 const state = new Int32Array(sab, 0, 2);
                 const data = new Uint8Array(sab, 8);
@@ -219,6 +262,7 @@ try {
                 };
                 worker.onmessage = ({ data: m }) => {
                     const at = Math.round(performance.now() - t0);
+                    if (m.type === 'debug') result.debugged = m.name;
                     if (m.type === 'stdout') result.stdout += m.text;
                     else if (m.type === 'stderr') result.stderr += m.text;
                     else if (m.type === 'phase') result.phases.push([m.text, at]);
@@ -253,7 +297,7 @@ try {
                         }, 1000);
                     }
                 };
-                worker.postMessage({ type, files, entry, stdin: sab, ...(optimization ? { options: { optimization } } : {}) });
+                worker.postMessage({ type, files, entry, stdin: sab, ...(optimization ? { options: { optimization } } : {}), ...(channel ? { debug: { buffer: channel.buffer, address: channel.address } } : {}) });
             });
     });
 
@@ -554,6 +598,29 @@ final class ListedTests: XCTestCase {
         both.code === 1 && bothReport.indexOf("Test Case 'ListedTests.testListed' passed") >= 0 &&
             bothReport.indexOf("Test Case 'ListedTests.testListed' passed") < bothReport.indexOf('Test run with 3 tests'),
         `code=${both.code}\n${bothReport.split('\n').filter((l) => /Executed|Test run with/.test(l)).map((l) => `      ${l}`).join('\n')}`);
+    // Debug tests: a test run with a debugger channel runs under the stub,
+    // one testing library only (README, "Debugging"). Needs the LLDB pack's
+    // runtime.js next to this pack, which the runner imports.
+    if (await stat(join(STATIC, 'packs/lldb/runtime.js')).catch(() => null)) {
+        await page.evaluate(async () => {
+            window.testChannel = (await import('/__lldb/channel.js')).testChannel;
+        });
+        const debugBoth = await run({ ...SWIFT_TESTING, 'Tests/ListedTests.swift': LISTED }, { type: 'test', debug: true });
+        const debugBothReport = debugBoth.stdout + debugBoth.stderr;
+        check("Debug tests with XCTest and swift-testing: XCTest's tests run under the debugger, from a stop at the first line to the end; swift-testing's do not, and stderr says so",
+            debugBoth.code === 0 && debugBoth.debugged === '/debug/program.wasm' && /^T05/.test(debugBoth.lldb[2] ?? '') && debugBoth.lldb[3] === 'W00' &&
+                debugBothReport.includes("Test Case 'ListedTests.testListed' passed") && !debugBothReport.includes('Test run with') &&
+                debugBoth.stderr.includes("note: debugging XCTest's tests only; swift-testing's run when Test is not debugged\n"),
+            `code=${debugBoth.code} debugged=${debugBoth.debugged} lldb=${JSON.stringify(debugBoth.lldb)}\n${debugBoth.stderr.slice(0, 2000)}`);
+        const debugTesting = await run(SWIFT_TESTING, { type: 'test', debug: true });
+        const debugTestingReport = debugTesting.stdout + debugTesting.stderr;
+        check('Debug tests with swift-testing only: its tests run under the debugger to the end, the failing one fails the run, and nothing is said about XCTest',
+            debugTesting.code === 1 && debugTesting.debugged === '/debug/program.wasm' && /^T05/.test(debugTesting.lldb[2] ?? '') && debugTesting.lldb[3] === 'W01' &&
+                /Test run with 3 tests in 0 suites failed .* with 1 issue/.test(debugTestingReport) && !debugTesting.stderr.includes('note: debugging'),
+            `code=${debugTesting.code} debugged=${debugTesting.debugged} lldb=${JSON.stringify(debugTesting.lldb)}\n${debugTesting.stderr.slice(0, 2000)}`);
+    } else {
+        console.log('skip  Debug tests (needs the LLDB pack built next to this one: app/static/packs/lldb/runtime.js)');
+    }
     const runOfTested = await run(SWIFT_TESTING);
     check("swift-testing: 'run' leaves the test files out, as SwiftPM leaves out the test target",
         runOfTested.code === 0 && runOfTested.stdout === 'counter at 0\n' && !('swift-testing.tar' in runOfTested.loading),
