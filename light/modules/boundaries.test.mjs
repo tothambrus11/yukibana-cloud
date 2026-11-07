@@ -159,9 +159,12 @@ const CASTS = {
 /** Files whose casts are not checked: where the core makes its brands (rule 7). */
 const CAST_EXEMPT = new Set(['core/brand.ts']);
 
+/** How TypeScript parses the source file at `path`: as TSX when it is a .tsx or .jsx file (an example's React components), else as TypeScript. */
+const scriptKindOf = (path) => (/\.[jt]sx$/.test(path) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+
 /** The type each `as` cast of a source file casts to, as the source spells it (whitespace folded), `as const` aside. */
 function castsOf(path, source) {
-	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, scriptKindOf(path));
 	const found = [];
 	const visit = (node) => {
 		if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
@@ -176,7 +179,7 @@ function castsOf(path, source) {
 
 /** Every import of a source file: its specifier and whether it is type-only. */
 function importsOf(path, source) {
-	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, scriptKindOf(path));
 	const found = [];
 	const visit = (node) => {
 		if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
@@ -206,7 +209,7 @@ function importsOf(path, source) {
 
 /** Every string literal in the code of a source file (templates' plain parts included), once each. */
 function stringsOf(path, source) {
-	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, scriptKindOf(path));
 	const found = new Set();
 	const visit = (node) => {
 		if (ts.isStringLiteralLike(node) || ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) found.add(node.text);
@@ -218,7 +221,7 @@ function stringsOf(path, source) {
 
 /** Every identifier in the code of a source file, comments and strings aside, once each. */
 function identifiersOf(path, source) {
-	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, scriptKindOf(path));
 	const found = new Set();
 	const visit = (node) => {
 		if (ts.isIdentifier(node)) found.add(node.text);
@@ -300,7 +303,7 @@ function problemsOf(root, module, path, source) {
  */
 function sourcesUnder(dir) {
 	return readdirSync(dir, { recursive: true, withFileTypes: true })
-		.filter((entry) => entry.isFile() && /\.(m?ts|m?js)$/.test(entry.name))
+		.filter((entry) => entry.isFile() && /\.(m?ts|m?js|tsx|jsx)$/.test(entry.name))
 		.filter((entry) => !relative(dir, entry.parentPath).split(sep).includes('dist'))
 		.map((entry) => join(entry.parentPath, entry.name));
 }
@@ -357,7 +360,7 @@ function lazyProblemsOf(module, files, entries) {
 
 /** Every import of a source file with whether it is an `import()`, type-only imports aside (they load nothing). */
 function lazyAndStatic(path, source) {
-	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, scriptKindOf(path));
 	const found = [];
 	const visit = (node) => {
 		if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
@@ -671,4 +674,6 @@ test("an example imports only the shared modules by name, the packages it declar
 	assert.equal(probe("import { run } from '@yukibana/std';").length, 1, 'a module the example does not declare');
 	assert.equal(probe("import { page } from '$app/state';").length, 1);
 	assert.equal(probe("import { readFile } from 'node:fs';").length, 1);
+	const component = (source) => exampleProblems(root, declared, join(root, 'src', 'Probe.tsx'), source);
+	assert.equal(component("import { yukibana } from '../../../app/src/lib/yukibana.ts';\nexport const P = <T,>(p: T) => <div>{String(p)}</div>;").length, 1, "a component's imports are read as TSX");
 });
