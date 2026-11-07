@@ -23,6 +23,10 @@
 # - hylo-example: light/examples/hylo, a docs page of Hylo snippets on
 #   Hylo's own compiler through one runner pool: type-check, its unit tests,
 #   a Vite build and the page driven in Chromium with the real compiler.
+# - two-up-example: light/examples/two-up, two instances of the core on
+#   one page (C++ in Monaco, Python in a textarea): type-check, a Vite
+#   build and its bundle fixtures. Its end-to-end test needs the C++ and
+#   Python packs built and is run where they are (node test.mjs).
 # - exports: a smoke test of every build system Download offers. The sample
 #   project of a language it builds is downloaded with it, and the CI job
 #   that builds and tests it (tests/export-ci.mjs) runs in the image the
@@ -83,6 +87,8 @@ jobs:
       pack-units-key: ${{ steps.pack-units.outputs.key }}
       hylo-example-done: ${{ steps.hylo-example.outputs.done }}
       hylo-example-key: ${{ steps.hylo-example.outputs.key }}
+      two-up-example-done: ${{ steps.two-up-example.outputs.done }}
+      two-up-example-key: ${{ steps.two-up-example.outputs.key }}
       exports-done: ${{ steps.exports.outputs.done }}
       exports-key: ${{ steps.exports.outputs.key }}
     steps:
@@ -173,6 +179,14 @@ jobs:
           name: light-hylo-example
           paths: |
             light/examples/hylo
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: two-up-example
+        uses: ./.github/actions/once
+        with:
+          name: light-two-up-example
+          paths: |
+            light/examples/two-up
             light/modules
             .github/workflows/light-ci.yml
       # What a download is made of: the generators, the samples, and what
@@ -405,6 +419,44 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.hylo-example-key }}
+
+  two-up-example:
+    name: Two-up example
+    needs: plan
+    if: needs.plan.outputs.two-up-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/two-up
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/examples/two-up/package-lock.json
+
+      - name: Install the example
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Bundle fixtures (the initial scripts' budget, one copy of every module)
+        run: npm test
+        env:
+          BUNDLE_REQUIRED: '1'
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.two-up-example-key }}
 
   # One job per build system, each with a language whose sample it builds
   # (tests/unit/export-options.test.mjs checks that every build system is

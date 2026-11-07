@@ -50,7 +50,7 @@ const FORBIDDEN_NAMES = {
  * to say (DESIGN.md, rule 3), so a language id in one of their string
  * literals is a decision about that language made in the wrong place.
  */
-const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco']);
+const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco', 'editors']);
 
 /** `true` iff `module` is a language package (`lang-<pack>`, DESIGN.md section 3). */
 const isLanguagePackage = (module) => module.startsWith('lang-');
@@ -600,4 +600,75 @@ declare const text: Property<string>;
 	assert.notDeepEqual(typeErrors('core', `${head}export const e = model.properties[0]?.open((p) => writeProperty(snapshot, p, Symbol()));`), []);
 	assert.notDeepEqual(typeErrors('core', `${head}export const p: Property<unknown> = text;`), []);
 	assert.deepEqual(typeErrors('core', `${head}export const e = model.properties[0]?.open((p) => writeProperty(snapshot, p, p.default));`), []);
+});
+
+test("an editor port's native is its own kind's editor: a textarea's is the element, never a Monaco editor", () => {
+	const head = `import type { EditorPort } from '../core/index.ts';
+import './textarea.ts';
+declare const port: EditorPort<'textarea'>;
+`;
+	assert.deepEqual(typeErrors('editors', `${head}export const value: string = port.native.value;`), []);
+	assert.notDeepEqual(typeErrors('editors', `${head}export const model = port.native.getModel();`), []);
+	assert.notDeepEqual(typeErrors('editors', `${head}export const other: EditorPort<'codemirror'> | null = null;`), []);
+	const monaco = `import type { EditorPort } from '../core/index.ts';
+import './port.ts';
+declare const port: EditorPort<'monaco'>;
+`;
+	assert.deepEqual(typeErrors('monaco', `${monaco}export const model = port.native.getModel();`), []);
+	assert.notDeepEqual(typeErrors('monaco', `${monaco}export const value: string = port.native.value;`), []);
+});
+
+/** The examples (light/examples/<name>), each a host outside the app with its own package.json. */
+const EXAMPLES = join(here, '../examples');
+
+/**
+ * What is wrong with the imports of one source file of the example in
+ * `root` (its directory) whose package.json declares `declared`, as
+ * sentences naming the file: an example imports the shared modules by
+ * their package names, the npm packages it declares, and its own files,
+ * and never Light's app, so that it is built as a site outside this
+ * repository would build it (DESIGN.md step 8).
+ */
+function exampleProblems(root, declared, path, source) {
+	const name = relative(EXAMPLES, path);
+	const problems = [];
+	for (const { specifier } of importsOf(path, source)) {
+		if (specifier === null) {
+			problems.push(`${name} imports a computed specifier, which no reader can check`);
+		} else if (specifier.startsWith('.')) {
+			if (relative(root, resolve(dirname(path), specifier)).startsWith('..')) problems.push(`${name} imports '${specifier}', outside its example: a shared module is imported by its package name`);
+		} else if (specifier.startsWith('node:') || specifier.startsWith('$')) {
+			problems.push(`${name} imports '${specifier}', which a page has not`);
+		} else {
+			const parts = specifier.split('/');
+			const pkg = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : (parts[0] ?? specifier);
+			if (!declared.has(pkg)) problems.push(`${name} imports '${specifier}', which its package.json does not declare`);
+			else if (pkg.startsWith('@yukibana/') && !(pkg.slice('@yukibana/'.length) in ALLOWED)) problems.push(`${name} imports '${specifier}', which is not a shared module`);
+		}
+	}
+	return problems;
+}
+
+test("an example imports only the shared modules by name, the packages it declares and its own files, never Light's app", () => {
+	const problems = [];
+	let files = 0;
+	for (const example of readdirSync(EXAMPLES, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+		const root = join(EXAMPLES, example.name);
+		const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+		const declared = new Set(Object.keys({ ...manifest.dependencies }));
+		for (const path of sourcesUnder(join(root, 'src'))) {
+			files += 1;
+			problems.push(...exampleProblems(root, declared, path, readFileSync(path, 'utf8')));
+		}
+	}
+	assert.ok(files > 0, 'no example sources were found');
+	assert.deepEqual(problems, []);
+	const root = join(EXAMPLES, 'two-up');
+	const declared = new Set(['@yukibana/core', 'monaco-editor']);
+	const probe = (source) => exampleProblems(root, declared, join(root, 'src', 'probe.ts'), source);
+	assert.deepEqual(probe("import { createInstance } from '@yukibana/core';\nimport * as m from 'monaco-editor/editor/editor.api';\nimport { part } from './snippet.ts';"), []);
+	assert.equal(probe("import { yukibana } from '../../../app/src/lib/yukibana.ts';").length, 1);
+	assert.equal(probe("import { run } from '@yukibana/std';").length, 1, 'a module the example does not declare');
+	assert.equal(probe("import { page } from '$app/state';").length, 1);
+	assert.equal(probe("import { readFile } from 'node:fs';").length, 1);
 });

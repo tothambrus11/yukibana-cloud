@@ -9,7 +9,7 @@
  * the pool reads the page's origin and the locator its base, which a
  * prerendered page has not.
  */
-import { createInstance, type AnyProvider, type Instance, type Subject } from '@yukibana/core';
+import { createInstance, type AnyProvider, type Instance, type LanguageSubject, type Subject } from '@yukibana/core';
 import { RunnerPool, workerTransport, type PackLocator } from '@yukibana/runtime';
 import { isExplorerProvider, packLanguage, pageExplorers, viewIn, type ExploreHolder, type ExplorerProvider, type ExplorerWorkers, type ExploreView, type LanguageViews, type PackHost, type PackLanguage, type ViewKind } from '@yukibana/std';
 import { LANGUAGES, type Language } from './languages.ts';
@@ -129,7 +129,7 @@ export function pageHost(): PageHost {
  * Returns the subject of the language `id`, as the instance knows it: any
  * language of the instance, whether or not the app's own table has it.
  */
-export function subjectOf(id: string): Subject {
+export function subjectOf(id: string): LanguageSubject {
 	const language = yukibana().languageOf(id);
 	if (language === null) throw new RangeError(`The app's instance has no language ${id}.`);
 	return { kind: 'language', id: language.key };

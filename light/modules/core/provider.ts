@@ -13,20 +13,28 @@ import type { EditorKind } from './editor-port.ts';
 import type { ProjectSnapshot } from './project.ts';
 import type { AnyToken, Cardinality, Token } from './token.ts';
 
+/** A language as a provider's subject. */
+export interface LanguageSubject {
+	/** A language an instance knows. */
+	readonly kind: 'language';
+	/** Its key. */
+	readonly id: LanguageKey;
+}
+
+/**
+ * A kind of editor as a provider's subject (a grammar, a view of it): one
+ * an editor package added to `EditorKinds`, so none until a host imports
+ * one.
+ */
+export interface EditorSubject {
+	/** A kind of editor. */
+	readonly kind: 'editor';
+	/** The kind. */
+	readonly id: EditorKind;
+}
+
 /** What a provider serves: a language, or a kind of editor. */
-export type Subject =
-	| {
-			/** A language an instance knows. */
-			readonly kind: 'language';
-			/** Its key. */
-			readonly id: LanguageKey;
-	  }
-	| {
-			/** A kind of editor (a grammar, a view of it). */
-			readonly kind: 'editor';
-			/** The kind. */
-			readonly id: EditorKind;
-	  };
+export type Subject = LanguageSubject | EditorSubject;
 
 /**
  * Whether something can be done for a project now, and if not, why not, as a

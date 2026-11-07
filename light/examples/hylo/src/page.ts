@@ -4,10 +4,12 @@
  * one runner (and one compiler) per source: what the Hylo site needs from
  * Yukibana's runtime today (section 2 of the architecture plan).
  *
- * The page holds no rule about runs. It sends what the reader asked for to
- * the pool and shows what the pool tells each snippet's handle: output is
- * routed by the handle, so one snippet's panel only ever shows its own
- * run, and the status line is `statusOf` of the run's state.
+ * The page holds no rule about runs. It asks its instance of
+ * @yukibana/core to run what the reader asked for, whose one provider
+ * (@yukibana/std's `runProviderFrom`, over the page's pool) sends it to
+ * Hylo's runner, and shows what the pool tells each snippet's handle:
+ * output is routed by the handle, so one snippet's panel only ever shows
+ * its own run, and the status line is `statusOf` of the run's state.
  *
  * Markup it reads, as a docs site would render it:
  *
@@ -20,11 +22,30 @@
  * </section>
  * ```
  */
+import { AVAILABLE, createInstance, languageKey, pathOf, snapshotOf, type Instance, type LanguageMeta, type Subject } from '@yukibana/core';
 import { RunnerPool, workerTransport, type RunEvent, type RunHandle, type SessionSource } from '@yukibana/runtime';
+import { NO_PROPERTIES, run as runToken, runProviderFrom, type PoolHost } from '@yukibana/std';
 import { statusOf } from './status.ts';
 
 /** The entry file of every snippet: what the reader edits. */
-const ENTRY = 'main.hylo';
+const ENTRY = pathOf('main.hylo');
+
+/**
+ * Hylo, as the page's instance knows it: a language with no pack (its
+ * runner is the page's own, `source`) and nothing to choose about a
+ * build. Its body is never asked for: a snippet's files are the page's.
+ */
+const HYLO: LanguageMeta = {
+	key: languageKey('hylo'),
+	label: 'Hylo',
+	short: null,
+	entry: ENTRY,
+	extension: 'hylo',
+	body: async () => ({ sample: { [ENTRY]: 'public fun main() {}\n' }, properties: NO_PROPERTIES }),
+};
+
+/** What the page's instance borrows: its one pool. */
+type Page = Instance<PoolHost>;
 
 /** An element `selector` finds in `root`, which the markup must have. */
 function part<T extends Element>(root: Element, selector: string): T {
@@ -43,19 +64,26 @@ function element(tag: string, className: string, text = ''): HTMLElement {
 
 /**
  * Turns every `.snippet` of the page into a runnable one, running on
- * `source` through one pool, and returns the pool. Creates no worker:
- * the first Run does (H8).
+ * `source` through one pool, by one instance whose run provider sends
+ * every snippet's run there, and returns the pool. Creates no worker: the
+ * first Run does (H8).
  */
 export function mountPage(source: SessionSource): RunnerPool {
 	const pool = new RunnerPool({ transport: workerTransport() });
+	const instance: Page = createInstance<PoolHost>({
+		languages: [HYLO],
+		providers: [runProviderFrom<PoolHost>('run', HYLO.key, () => source, { requires: [], available: () => AVAILABLE })],
+		host: { pool },
+	});
 	const sections = [...document.querySelectorAll<HTMLElement>('.snippet')];
 	const titles = new Map(sections.map((section) => [section.dataset['snippet'] ?? '', section.dataset['title'] ?? section.dataset['snippet'] ?? '']));
 	const titleOf = (snippet: string): string => titles.get(snippet) ?? snippet;
-	for (const section of sections) mountSnippet(section, source, pool, titleOf);
+	for (const section of sections) mountSnippet(section, instance, titleOf);
 	return pool;
 }
 
-function mountSnippet(section: HTMLElement, source: SessionSource, pool: RunnerPool, titleOf: (snippet: string) => string): void {
+function mountSnippet(section: HTMLElement, instance: Page, titleOf: (snippet: string) => string): void {
+	const subject: Subject = { kind: 'language', id: HYLO.key };
 	const snippet = section.dataset['snippet'];
 	if (snippet === undefined || snippet === '') throw new Error('a snippet has no data-snippet name');
 	const code = part<HTMLTextAreaElement>(section, '.code');
@@ -105,14 +133,25 @@ function mountSnippet(section: HTMLElement, source: SessionSource, pool: RunnerP
 		for (const template of hidden) files[template.dataset['file'] ?? ''] = template.content.textContent ?? '';
 		const mine = {};
 		current = mine;
-		handle = pool.run({
-			snippet,
-			source,
-			request: { type: 'run', files, entry: ENTRY },
-			onEvent: (event) => {
-				if (current === mine) show(event);
+		handle = null;
+		const onEvent = (event: RunEvent): void => {
+			if (current === mine) show(event);
+		};
+		// The instance's one provider is eager and always available: the
+		// pool has the run a microtask after the click, in the order the
+		// clicks came, and its first states arrive before the handle does,
+		// as they did when the page called the pool itself (the buttons read
+		// `handle` only when clicked).
+		instance.perform(subject, runToken, { files, entry: ENTRY, options: null, snippet, onEvent }, snapshotOf(files), new AbortController().signal).then(
+			(outcome) => {
+				if (current !== mine) return;
+				if (outcome.kind === 'done') handle = outcome.value;
+				else show({ type: 'problem', text: outcome.reason });
 			},
-		});
+			(error: unknown) => {
+				if (current === mine) show({ type: 'problem', text: error instanceof Error ? error.message : String(error) });
+			},
+		);
 	});
 	stop.addEventListener('click', () => handle?.stop());
 	input?.addEventListener('keydown', (event) => {

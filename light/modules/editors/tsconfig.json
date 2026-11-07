@@ -1,0 +1,11 @@
+{
+	// An editor runs in the host's page beside its element: the DOM, and
+	// nothing of Node.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable"]
+	},
+	"include": ["."],
+	// What build.mjs would write: the module's sources are the project, not its output.
+	"exclude": ["dist"]
+}

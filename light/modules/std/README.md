@@ -20,7 +20,9 @@ options, the views' kinds). Export follows in a later step.
   sees the same events, early ones included.
 * **The host lends the pool.** A provider makes no pool and no worker: its
   host (`RunHost`) has the page's pool, the pack locator and what the
-  host's runners need, so every instance on a page shares runners.
+  host's runners need, so every instance on a page shares runners. A host
+  whose runner it built itself lends only the pool (`PoolHost`), and its
+  provider (`runProviderFrom`) names that runner's source.
 * **The runner kept warm is the runner runs use.** `warm`'s provider
   (`warmProvider`) gives the source the language's run providers start
   from, and requires `run`; when to warm it is the host's choice.
@@ -58,7 +60,7 @@ options, the views' kinds). Export follows in a later step.
 | `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`), `isExplorerProvider` |
 | `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
-| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
+| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `PoolHost`, `RunHost`, `sourceOf`, `runMessage`, `runProviderFrom`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 
 It may import core, runtime and protocol. Its tests are in
 `../tests/std-run.test.mjs`, `../tests/std-debug.test.mjs` and

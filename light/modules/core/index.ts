@@ -6,10 +6,11 @@
  * - brand.ts: branded strings (`LanguageKey`, `Path`, `MetaKey`) and the
  *   functions that make them; `Disposable`, `JsonValue`.
  * - token.ts: `defineToken`, `Token` and its cardinality.
- * - provider.ts: `Subject`, `Availability`, `Provider` and its `Body`, `provide`, `Context`.
+ * - provider.ts: `Subject` (`LanguageSubject`, `EditorSubject`), `Availability`, `Provider` and its `Body`, `provide`, `Context`.
  * - language.ts: `LanguageMeta`, the eager part of a language, and its `LanguageBody`.
  * - instance.ts: `createInstance`, its `Incoherent` refusals, `Instance`, `Outcome`.
- * - project.ts: the `Project` port, its `ProjectSnapshot` and `ProjectChange`.
+ * - project.ts: the `Project` port, its `ProjectSnapshot` and `ProjectChange`;
+ *   `snapshotOf`, a snapshot of a few files and no saved settings.
  * - property.ts: `Property` lenses, `SomeProperty`, `readProperty`, `writeProperty`, `ProjectEdit`.
  * - slot.ts: `slot`, newest-wins supersession with at most one job in flight.
  * - editor-port.ts: `EditorPort`, a view of one document (types only).

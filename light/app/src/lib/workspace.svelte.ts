@@ -28,7 +28,7 @@ import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
 import type { SelectionRange } from '@yukibana/protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
-import { pathOf, writeProperty, type Disposable, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
+import { pathOf, writeProperty, type Disposable, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type LanguageSubject } from '@yukibana/core';
 import { DEFAULT_RUN_OPTIONS, debugTokenOf, explore, preview, runOptionsOf, test, tokenOf, warm, type DebugMode, type PreviewSession, type RunOptions, type ViewKind } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, releaseExplorer, subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
@@ -523,7 +523,7 @@ export class Workspace implements CoreProject {
 	 * the language's provider of `preview`: the session already showing it,
 	 * if there is one, so the runner (and TypeScript) is loaded once.
 	 */
-	private startPreview(subject: Subject, snapshot: ProjectSnapshot): void {
+	private startPreview(subject: LanguageSubject, snapshot: ProjectSnapshot): void {
 		const show = (session: PreviewSession): void => {
 			this.host?.showPreview();
 			this.host?.showTerminal();

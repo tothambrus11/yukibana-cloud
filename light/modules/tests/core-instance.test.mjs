@@ -6,7 +6,7 @@
 //   node --test light/modules/tests/core-instance.test.mjs
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createInstance, defineToken, Incoherent, languageKey, metaKey, pathOf, provide } from '../core/index.ts';
+import { createInstance, defineToken, Incoherent, languageKey, metaKey, pathOf, provide, snapshotOf as filesSnapshot } from '../core/index.ts';
 import { pathProblem } from '../runtime/paths.ts';
 import { snapshotOf } from './core-fakes.mjs';
 
@@ -213,4 +213,18 @@ test("a core path is exactly what the runtime's pathProblem accepts, until paths
 		}
 		assert.equal(accepted, pathProblem(text) === null, JSON.stringify(text));
 	}
+});
+
+test("a snapshot of a few files answers as they were when it was made, and has no saved settings", () => {
+	const files = { 'main.hylo': 'one', 'lib/prelude.hylo': 'two' };
+	const snapshot = filesSnapshot(files, 7);
+	files['main.hylo'] = 'changed';
+	assert.equal(snapshot.revision, 7);
+	assert.deepEqual(snapshot.paths(), ['main.hylo', 'lib/prelude.hylo']);
+	assert.equal(snapshot.file(pathOf('main.hylo')), 'one');
+	assert.equal(snapshot.file(pathOf('other.hylo')), null);
+	assert.deepEqual(snapshot.files(), { 'main.hylo': 'one', 'lib/prelude.hylo': 'two' });
+	assert.equal(snapshot.meta({ key: metaKey('level'), parse: (v) => v, write: (v) => v }), null);
+	assert.equal(filesSnapshot({}).revision, 0);
+	assert.throws(() => filesSnapshot({ '../escape': 'x' }), RangeError);
 });

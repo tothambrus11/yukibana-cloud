@@ -10,9 +10,9 @@ import { test } from 'node:test';
 import { AVAILABLE, createInstance, languageKey, pathOf } from '../core/index.ts';
 import { packIdOf } from '../runtime/packs.ts';
 import { RunnerPool } from '../runtime/run-pool.ts';
-import { mutate, run, runMessage, runProvider, sourceOf, test as testToken, tokenOf, warm, warmProvider } from '../std/index.ts';
+import { mutate, run, runMessage, runProvider, runProviderFrom, sourceOf, test as testToken, tokenOf, warm, warmProvider } from '../std/index.ts';
 import { snapshotOf } from './core-fakes.mjs';
-import { fakeClock, fakeTransport, OPTIONAL_STDIN, recorder, served, settle } from './run-fakes.mjs';
+import { fakeClock, fakeTransport, hostBuilt, OPTIONAL_STDIN, recorder, served, settle } from './run-fakes.mjs';
 
 /** A language of these tests, on pack `pack`. */
 const languageOf = (key, pack = key) => ({
@@ -116,4 +116,24 @@ test('the runner a language keeps warm is the one its runs start from, and is of
 	await settle();
 	assert.equal(pool.sessions(outcome.value).length, 1, 'the run went to the runner of the source warm gave');
 	assert.deepEqual(instance.availability({ kind: 'language', id: y.key }, warm, snapshotOf()), { kind: 'unavailable', reason: 'Y has no runner yet.' });
+});
+
+test('a runner the host built itself is run through the pool alone, one runner for every run of every snippet', async () => {
+	const clock = fakeClock();
+	const { transport, runners } = fakeTransport();
+	const pool = new RunnerPool({ transport, timers: clock.timers, now: clock.now });
+	const hylo = hostBuilt();
+	const key = languageKey('hylo');
+	const language = { key, label: 'Hylo', short: null, entry: pathOf('main.hylo'), extension: 'hylo', body: async () => ({ sample: {}, properties: { properties: [], summary: () => '' } }) };
+	const instance = createInstance({ languages: [language], providers: [runProviderFrom('run', key, () => hylo, always)], host: { pool } });
+	const subject = { kind: 'language', id: key };
+	assert.equal(instance.has(subject, testToken), false, 'only the mode it was made for');
+	const told = recorder();
+	const one = await instance.perform(subject, run, { files: { 'main.hylo': 'one' }, entry: pathOf('main.hylo'), options: null, snippet: 'one', onEvent: told.listener }, snapshotOf(), new AbortController().signal);
+	await instance.perform(subject, run, { files: { 'main.hylo': 'two' }, entry: pathOf('main.hylo'), options: null, snippet: 'two', onEvent: recorder().listener }, snapshotOf(), new AbortController().signal);
+	assert.equal(one.kind, 'done');
+	await settle();
+	assert.equal(runners.length, 1);
+	assert.equal(pool.sessions(hylo).length, 1);
+	assert.deepEqual(runners[0].runs[0], { type: 'run', files: { 'main.hylo': 'one' }, entry: 'main.hylo' });
 });

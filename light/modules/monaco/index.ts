@@ -20,6 +20,8 @@
  *   (`MonacoBinding`): its models kept in sync with the server, and
  *   Monaco's language features, the call hierarchy's action and Go to
  *   Symbol in Workspace answered by it.
+ * - port.ts: a Monaco editor as the core's `EditorPort` of kind `monaco`
+ *   (`monacoPort`).
  * - call-hierarchy.ts and workspace-symbols.ts: the rows of a call
  *   hierarchy panel and of the Go to Symbol picker, as plain data.
  *
@@ -34,5 +36,6 @@ export * from './bind.ts';
 export * from './call-hierarchy.ts';
 export * from './convert.ts';
 export * from './internals.ts';
+export * from './port.ts';
 export * from './services.ts';
 export * from './workspace-symbols.ts';

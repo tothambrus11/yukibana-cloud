@@ -10,6 +10,7 @@ app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol
 app, embeds  ->  @yukibana/std     ->  @yukibana/runtime
 std  ->  @yukibana/core  --(types only)-->  @yukibana/protocol
 app, embeds  ->  @yukibana/lang-<pack>  ->  @yukibana/std, @yukibana/core
+embeds       ->  @yukibana/editors  ->  @yukibana/core
 ```
 
 `DESIGN.md` is the settled design these modules are being rewritten
@@ -22,7 +23,8 @@ into which package, and the order.
 | `core/` | the embeddable core, with no platform: tokens, providers, the instance that answers for them, a project's shape, properties, slots, the editor port (types) | itself, and `import type` from protocol |
 | `runtime/` | workers, packs and sessions in a browser: workspace paths, pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, protocol |
 | `std/` | the tokens any language may provide (run, test, mutate, warm, debug, preview, explore) and the helpers that make a language's providers of them from its pack, and what languages share (levels, a Linux target's run options); it names no language | itself, runtime, core, protocol |
-| `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme | itself, protocol, and `import type` from `monaco-editor` |
+| `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme; a Monaco editor as the core's `EditorPort` (`monacoPort`) | itself, protocol, and `import type` from `monaco-editor` |
+| `editors/` | editors other than Monaco, each an entry point (`editors/textarea`: a `<textarea>` as the core's `EditorPort` over a one-document project); it names no language | itself, core |
 | `lang-<pack>/` | one pack's languages (`lang-cpp`: C and C++; `lang-javascript`: JavaScript, TypeScript, web, p5 and p5-global; one each for the others): `index.ts`, each language's spec and providers (cheap: no body, no message sent on import); `body.ts`, the samples, the server's settings and the build settings; `monaco.ts`, the Monaco languages (and Haskell's and Zig's grammars, whose tokenizers load with their language); and what the app's own pickers import by subpath (`lang-cpp/targets`, …) | itself, std, core; never another `lang-*`; `lang-javascript` protocol too; `lang-haskell` and `lang-zig` `import type` from `monaco-editor` |
 
 Rules every module keeps, so that a host can import one without taking on

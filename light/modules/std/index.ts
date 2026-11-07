@@ -5,9 +5,11 @@
  * language has and when they are available.
  *
  * - run.ts: `run`, `test` and `mutate` (`Token<RunInput, RunHandle>`), the
- *   host a run provider needs (`RunHost`), and `runProvider`, which makes a
- *   language's provider of one of them that sends its pack's runner today's
- *   run message; `warm` and `warmProvider`, the runner a host keeps
+ *   host a run provider needs (`PoolHost`, the page's pool; `RunHost`, with
+ *   its packs), and `runProvider`, which makes a language's provider of one
+ *   of them that sends its pack's runner today's run message, over
+ *   `runProviderFrom`, which sends it to a runner the host names (one it
+ *   built itself); `warm` and `warmProvider`, the runner a host keeps
  *   started ahead of a run.
  * - debug.ts: `debug` and `debugTest` (`Token<DebugInput, DebugSession>`),
  *   a run or a test run under the debugger, and `debugProvider`, which

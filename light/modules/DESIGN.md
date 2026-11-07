@@ -4,7 +4,7 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 16 record how steps 1 to 7 were built, and
+`light/modules`. Sections 8 to 17 record how steps 1 to 8 were built, and
 what the reviews of them changed, and where they depart from the sketches
 here; the code and its `/** */`
 contracts are the authority where the two differ.
@@ -1092,3 +1092,107 @@ sections 2 to 5, and from D9:
   where today it does not, a behaviour change N9 rules out for a review
   fix. It belongs with step 9's other on-use loads, and bundle.test.mjs's
   "bodies load with the page" is to be turned around in that commit.
+
+## 17. Step 8 as built: a second host
+
+Step 8 (decisions D10 and D11) built a host that is not Light's app,
+`light/examples/two-up`, and moved `light/examples/hylo` onto core and std.
+Where it departs from sections 2 to 5, D10 and D11:
+
+* **`examples/two-up`**: two `createInstance` calls on one page, C++ alone
+  and Python alone, each with the providers its package makes
+  (`LANGUAGES.cpp.providers`, `LANGUAGES.python.providers`) and the
+  language its spec describes (std's `packLanguage`, the body an
+  `import()` of the package's `/body` that nothing on the page asks for).
+  Both borrow one host (`src/host.ts`, a `PackHost`: one pool, one set of
+  explorer workers, the packs' locator), so the page has one pool. C++ is
+  edited in Monaco, Python in a textarea; one snippet module
+  (`src/snippet.ts`) serves both, seeing an editor only as a core
+  `Project` and `EditorPort` (the run's entry is the port's `path`), and
+  enabling Run exactly where the instance says `run` is available. It
+  imports no file of Light's app (a new boundaries rule holds every
+  example to the shared modules by name, the npm packages it declares and
+  its own files). D10's host was a `RunHost`: the packages' providers need
+  a `PackHost` (section 16), and a host that takes them as they are is the
+  better proof, so the explorer workers are there too, made only if a view
+  asked (none does).
+* **`@yukibana/editors`, entry `./textarea`** (`editors/textarea.ts`; the
+  package has no root entry): `textareaEditor(element, path, hidden)`
+  gives an `EditorPort<'textarea'>`, whose `native` is the element and
+  whose one capability is the caret, and the one-document `Project` it
+  edits, the hidden files beside it, a new revision and an `edited` change
+  at every input. No language session, decorations or breakpoints (D10).
+  It adds `EditorKinds['textarea']`, and names no language (rule 3).
+* **`monaco/port.ts`: `monacoPort(editor, path)`**, `EditorKinds['monaco']`,
+  the caret its one capability. With a kind in `EditorKinds` a `Subject` can
+  be an editor's at last, so `subject.id` is no longer a `LanguageKey`
+  alone: core names the two members, `LanguageSubject` and
+  `EditorSubject`, and the app's `subjectOf` returns a `LanguageSubject`,
+  which is what it always made. Two negatives in boundaries.test.mjs: a
+  textarea port's `native` has no `getModel`, a Monaco port's no `value`.
+* **core's `snapshotOf(files, revision = 0)`** (project.ts, the helper
+  D11 asked for, a Project helper rather than a noun): a snapshot of a few
+  files, copied when made, with no saved settings (every `meta` read is
+  null). The textarea's project, two-up's Monaco project and Hylo's
+  clicks perform on one. `tests/core-fakes.mjs` keeps its own, which takes
+  metadata.
+* **std's run host is split** (D11): `PoolHost = { pool }`, and
+  `RunHost extends PoolHost` with `packs` and `requires`.
+  `runProviderFrom<H extends PoolHost>(mode, key, source, when)` makes the
+  run provider for a runner `source(host)` names, and `runProvider` is it
+  with the pack's source (`sourceOf` over the host's locator), so the
+  message, the pool and the handle are unchanged. D11 had it take a
+  `LanguageMeta` and a source: the key is all the provider reads of the
+  language, and a pack's source depends on the host, so `source` is a
+  function of it.
+* **Hylo's page performs through an instance** (`src/page.ts`): one
+  `LanguageMeta` (`hylo`, no pack, `NO_PROPERTIES`), one provider
+  (`runProviderFrom` over `{ pool }`, the page's host-built source, the
+  same object for every run, so one runner as before), and each Run is
+  `perform(run, { files, entry, options: null, snippet, onEvent },
+  snapshotOf(files))`. What the page shows is unchanged; one timing is
+  not: `perform` reaches the pool a microtask after the click (the
+  instance awaits the body, even an eager one), in the order the clicks
+  came, and the handle a microtask after the first states, as before. Its
+  `package.json` (and lock) adds `file:` links to core and std. hylo-wasm
+  could not be installed where this step was built, so Hylo's own build
+  and e2e were not run here: its type-check passed but for hylo-wasm's
+  own declarations, its unit tests passed, and its docs page, built with
+  a stand-in runner worker over the real `HyloRunner`, ran two snippets
+  together and one again in Chromium with one runner. CI runs the real
+  one.
+* **Monaco is lazy in two-up**, as section 6 has it for embeds: the page
+  imports `src/cpp-editor.ts` by `import()`, so the Python snippet runs
+  before Monaco arrives. A first load runs 19,369 B gzip of script,
+  recorded in two-up's `bundle-budget.json` (+1%, as Light's gate). That
+  is over section 5's 15 KB for `embed-min`: lang-cpp's `index.ts` brings
+  its availability rules (refusals.ts, and through it the targets, the
+  test frameworks' detector and the tidy rules), which a page of C++ needs
+  for Run and Test to say what the runner would; no separate `embed-min`
+  fixture was made, since two-up's initial set is the embed's, with no
+  Monaco, no body and no Monaco integration in it.
+* **The bundle fixtures read the build's own chunk list.** Two-up's
+  `vite.config.ts` writes `dist/.vite/chunks.json` (every chunk's modules,
+  static and dynamic imports), and `tests/bundle.test.mjs` checks the
+  budget, that the initial set holds no Monaco and no body, that no module
+  is in two chunks (so the second instance shares the first's core, std
+  and runtime), and that Monaco is in one chunk, the C++ editor's, imported
+  lazily. Monaco's chunk also carries all of @yukibana/monaco
+  (bind, convert, internals), since its `package.json` does not say
+  `sideEffects: false`; it is lazy, and changing it would move Light's
+  chunks, so it stays for now.
+* **No language server in two-up, so no "one clangd per page" check.**
+  Binding clangd to Monaco needs `MonacoBinding` with the host's Monaco
+  internals and services (section 15), which an embed would have to
+  assemble as Light's `startEditor` does: a step of its own, with
+  `ServerLeases` (deferred, D10). The check of "one runner per pack" is
+  "never two runners of a pack at once": the C++ and Python runners end
+  after every run (they never say `reusable`), so each run starts one, as
+  in Light.
+* **two-up's e2e is not in CI.** It needs the C++ and Python packs, which
+  CI does not build; `test.mjs` runs where they are installed
+  (`light/app/static/packs`, or `$PACKS`). CI's `two-up-example` job runs
+  the type-check, the build and the bundle fixtures.
+* **Light is unchanged**: its initial set is 1,250,360 B gzip (24 files),
+  44 B more than after section 16 (monaco's port), under the 1,255,138 B
+  budget.

@@ -9,9 +9,11 @@
  * `RunMode`). A provider made by `runProvider` sends exactly that message,
  * the one the app sent before these tokens existed, to the page's runner
  * pool: no pack changes, and the terminal sees the same events.
+ * `runProviderFrom` makes the same provider for a runner the host built
+ * itself, which needs only the pool (`PoolHost`).
  */
 
-import { AVAILABLE, defineToken, type AnyToken, type Availability, type Files, type Path, type ProjectSnapshot, type Provider, type Token } from '../core/index.ts';
+import { AVAILABLE, defineToken, type AnyToken, type Availability, type Files, type LanguageKey, type Path, type ProjectSnapshot, type Provider, type Token } from '../core/index.ts';
 import { PROTOCOL_MAJOR, type Requires, type RunMode, type RunnerOptions } from '../protocol/index.ts';
 import type { PackLocator, RunEvent, RunHandle, RunnerPool, SessionRequest, SessionSource } from '../runtime/index.ts';
 import type { PackLanguage } from './language.ts';
@@ -73,16 +75,26 @@ export function tokenOf(mode: RunMode): Token<RunInput, RunHandle, 'one'> {
 }
 
 /**
- * What a run provider borrows from its host: the page's one runner pool and
- * where its packs are, and what the host says its runners need.
+ * What every run provider borrows from its host: the page's one runner
+ * pool. A host whose runners are its own (Hylo's, a worker it bundled,
+ * with no pack or locator) gives this and nothing else, and makes its
+ * providers with `runProviderFrom`.
  *
  * Invariant: the same pool on every read, for the life of the page, so that
  * runs of every instance on it share runners and replace each other's by
  * snippet as the pool promises.
  */
-export interface RunHost {
+export interface PoolHost {
 	/** The page's runners. A host may make it on first read; it must not make a second. */
 	readonly pool: RunnerPool;
+}
+
+/**
+ * What a run provider of a pack's language borrows from its host: the
+ * page's runner pool, where its packs are, and what the host says its
+ * runners need.
+ */
+export interface RunHost extends PoolHost {
 	/** Where the host's packs are served. */
 	readonly packs: PackLocator;
 	/** What the host's runners need of the page (protocol/requirements.ts), until each pack says it in its pack.json. */
@@ -118,23 +130,39 @@ export interface RunAvailability {
 }
 
 /**
- * Returns `language`'s provider of the token of `mode` (`tokenOf`): an
- * eager one that hands the pool of its host today's run message
- * (`runMessage`) for its pack (`sourceOf`), and returns the pool's handle.
+ * Returns the provider of the token of `mode` (`tokenOf`) for the language
+ * `key`, an eager one that hands the pool of its host today's run message
+ * (`runMessage`) for the runner `source` names, and returns the pool's
+ * handle. `source` is asked at each perform, with the host the instance
+ * was made with, so that it may read the host (`runProvider`'s pack
+ * locator) or ignore it (a host-built runner).
+ *
+ * - Requires: `source` returns the same source object for the same host on
+ *   every call, when that source is host-built: the pool keys a host-built
+ *   runner by its `worker` function (runtime/run-pool.ts), so a new one
+ *   per run would start a runner per run.
  */
-export function runProvider(mode: RunMode, language: PackLanguage, when: RunAvailability): Provider<RunInput, RunHandle, RunHost, 'one'> {
+export function runProviderFrom<H extends PoolHost>(mode: RunMode, key: LanguageKey, source: (host: H) => SessionSource, when: RunAvailability): Provider<RunInput, RunHandle, H, 'one'> {
 	return {
 		token: tokenOf(mode),
-		subject: { kind: 'language', id: language.key },
+		subject: { kind: 'language', id: key },
 		entry: { kind: 'one' },
 		requires: when.requires,
 		available: when.available,
 		body: {
 			kind: 'eager',
-			perform: (input, { host }) =>
-				host.pool.run({ snippet: input.snippet, source: sourceOf(language, host.packs, host.requires), request: runMessage(mode, input), onEvent: input.onEvent }),
+			perform: (input, { host }) => host.pool.run({ snippet: input.snippet, source: source(host), request: runMessage(mode, input), onEvent: input.onEvent }),
 		},
 	};
+}
+
+/**
+ * Returns `language`'s provider of the token of `mode` (`tokenOf`): the
+ * provider `runProviderFrom` makes for its key, whose runner is its pack's
+ * (`sourceOf`, through the host's locator and needs).
+ */
+export function runProvider(mode: RunMode, language: PackLanguage, when: RunAvailability): Provider<RunInput, RunHandle, RunHost, 'one'> {
+	return runProviderFrom<RunHost>(mode, language.key, (host) => sourceOf(language, host.packs, host.requires), when);
 }
 
 /**

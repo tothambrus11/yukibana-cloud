@@ -8,7 +8,7 @@
  * or a model: the host answers.
  */
 
-import type { Disposable, JsonValue, MetaKey, Path } from './brand.ts';
+import { pathOf, type Disposable, type JsonValue, type MetaKey, type Path } from './brand.ts';
 
 /**
  * The files of a project, each path mapped to its text.
@@ -107,4 +107,27 @@ export interface Project {
 	snapshot(): ProjectSnapshot;
 	/** Calls `listener` after each change, until the result is disposed. */
 	onChange(listener: (change: ProjectChange) => void): Disposable;
+}
+
+/**
+ * Returns a snapshot at `revision` of a project that is `files` and no
+ * saved settings: what a host whose project is a few files and no
+ * metadata (a docs snippet and its hidden files, a textarea) performs on.
+ * The files are copied, so the snapshot never goes stale and is the same
+ * whatever the caller does with `files` afterwards; every `meta` read is
+ * null (unset).
+ *
+ * - Requires: every key of `files` is a project path (`pathOf`); one that
+ *   is not throws its `RangeError` here, not at a later read.
+ */
+export function snapshotOf(files: Files, revision = 0): ProjectSnapshot {
+	const copy: Files = { ...files };
+	const paths = Object.keys(copy).map(pathOf);
+	return {
+		revision,
+		paths: () => paths,
+		file: (path) => (Object.hasOwn(copy, path) ? (copy[path] ?? null) : null),
+		files: () => copy,
+		meta: () => null,
+	};
 }
