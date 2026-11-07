@@ -9,6 +9,7 @@ tried before it is called stable (section 5 of the architecture plan).
 | Example | What it shows |
 |---|---|
 | `hylo/` | a docs page of Hylo snippets running Hylo's own compiler, bundled by the page, through one runner pool (step HY1), run through an instance of `@yukibana/core` (DESIGN.md step 8) |
+| `react-explorer/` | a systems-programming article in React 19 whose C++, Rust, Swift, Python and JavaScript samples compile, run, show their assembly (source and output lines linked), step under LLDB and report AddressSanitizer errors in the page; reusable hooks `useInstance`, `useRun`, `useExplore`, `useDebug` |
 | `two-up/` | two instances of `@yukibana/core` on one page, C++ in Monaco and Python in a textarea, sharing one runner pool (DESIGN.md step 8) |
 | `svelte-course/` | a Svelte 5 lesson page of graded exercises in Python, JavaScript, Rust, C++ and Swift (Swift untested: never compiled, its pack was never installed where it ran): Run with stdin, Check through std's `test` token into a checklist, progress in `localStorage`, the solution as a diff; one instance and one runner pool for the page, Monaco loaded lazily with a textarea on phones |
 

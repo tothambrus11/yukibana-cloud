@@ -33,6 +33,12 @@
 #   Chromium with the JavaScript pack built here. The other exercises'
 #   packs take too long to build for this workflow, so test.mjs skips them
 #   and says so; it is run with them where they are installed.
+# - react-explorer-example: light/examples/react-explorer, a
+#   systems-programming article in React 19 over the core: type-check, its
+#   unit tables, a Vite build and its bundle fixtures (the first load's
+#   budget, Monaco and every compiler lazy). Its end-to-end test needs the
+#   cpp, rust, python, javascript and lldb packs built (swift optional), which
+#   this workflow never builds, and is run where they are (node test.mjs).
 # - exports: a smoke test of every build system Download offers. The sample
 #   project of a language it builds is downloaded with it, and the CI job
 #   that builds and tests it (tests/export-ci.mjs) runs in the image the
@@ -97,6 +103,8 @@ jobs:
       two-up-example-key: ${{ steps.two-up-example.outputs.key }}
       svelte-course-example-done: ${{ steps.svelte-course-example.outputs.done }}
       svelte-course-example-key: ${{ steps.svelte-course-example.outputs.key }}
+      react-explorer-example-done: ${{ steps.react-explorer-example.outputs.done }}
+      react-explorer-example-key: ${{ steps.react-explorer-example.outputs.key }}
       exports-done: ${{ steps.exports.outputs.done }}
       exports-key: ${{ steps.exports.outputs.key }}
     steps:
@@ -209,6 +217,14 @@ jobs:
             light/examples/svelte-course
             light/modules
             light/packs/javascript
+            .github/workflows/light-ci.yml
+      - id: react-explorer-example
+        uses: ./.github/actions/once
+        with:
+          name: light-react-explorer-example
+          paths: |
+            light/examples/react-explorer
+            light/modules
             .github/workflows/light-ci.yml
       # What a download is made of: the generators (the languages'
       # packages' export.ts under light/modules, composed by the app's
@@ -483,6 +499,46 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.two-up-example-key }}
+
+  react-explorer-example:
+    name: React explorer example
+    needs: plan
+    if: needs.plan.outputs.react-explorer-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/react-explorer
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/examples/react-explorer/package-lock.json
+
+      - name: Install the example
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      # The unit tables (ANSI colours, source-line mapping) and the bundle
+      # fixtures; BUNDLE_REQUIRED fails a missing build instead of skipping.
+      - name: Unit tables and bundle fixtures
+        run: npm test
+        env:
+          BUNDLE_REQUIRED: '1'
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.react-explorer-example-key }}
 
   # One job per build system, each with a language whose sample it builds
   # (tests/unit/export-options.test.mjs checks that every build system is

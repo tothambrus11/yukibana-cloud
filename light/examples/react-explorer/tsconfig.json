@@ -1,0 +1,22 @@
+{
+	// The page: the browser's globals, Vite's (for `?worker` imports) and
+	// React's JSX, nothing of Node. The modules' own settings (strict,
+	// noUncheckedIndexedAccess, exactOptionalPropertyTypes), so the example
+	// is held to what the @yukibana modules are.
+	"extends": "../../modules/tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		"types": ["vite/client"],
+		"jsx": "react-jsx",
+		// The modules' sources through their `file:` links, as Vite reads
+		// them (vite.config.ts).
+		"customConditions": ["@yukibana/source"],
+		// monaco's sources `import type` from the bare name, whose package
+		// root ships no declarations in 0.57.0: the editor API's
+		// (as examples/two-up and modules/monaco/tsconfig.json).
+		"paths": {
+			"monaco-editor": ["./node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+		}
+	},
+	"include": ["src"]
+}
