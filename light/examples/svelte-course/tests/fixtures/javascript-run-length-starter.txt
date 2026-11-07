@@ -1,0 +1,45 @@
+✖ encodes runs as count and letter (0.435ms)
+✔ encodes the empty string as empty (0.05ms)
+✖ decodes counts of more than one digit (0.045ms)
+✖ decode undoes encode (2.665ms)
+✔ an encoding is at most twice as long (2.19ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 2
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 24.465
+
+✖ failing tests:
+
+test at rle.test.js:8:1
+✖ encodes runs as count and letter (0.435ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  '' !== '3a1b2c'
+  
+      at rle.test.js:9:10
+
+test at rle.test.js:16:1
+✖ decodes counts of more than one digit (0.045ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  '' !== 'xxxxxxxxxxxxy'
+  
+      at rle.test.js:17:10
+
+test at rle.test.js:20:1
+✖ decode undoes encode (2.665ms)
+  Error: Property failed after 1 tests
+  { seed: 120897500, path: "0:1:0:0", endOnFailure: true }
+  Counterexample: ["a"]
+  Shrunk 3 time(s)
+  
+  Hint: Enable verbose mode in order to have the list of all failing values encountered during the run
+      at rle.test.js:21:6 {
+    [cause]: Error: Property failed by returning false
+        at rle.test.js:21:6
+  }
+

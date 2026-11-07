@@ -1,0 +1,38 @@
+{
+	"name": "yukibana-example-svelte-course",
+	"private": true,
+	"version": "0.0.0",
+	"description": "A lesson page of graded exercises in Python, JavaScript, Rust, C++ and Swift, built with Svelte 5 over one instance of @yukibana/core: Run with stdin, Check through std's test token, a checklist and progress kept in the browser, and the solution as a diff.",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && tsc -p tsconfig.node.json",
+		"test": "node --conditions=@yukibana/source --test \"tests/*.test.mjs\"",
+		"test:e2e": "node test.mjs"
+	},
+	"dependencies": {
+		"@yukibana/core": "file:../../modules/core",
+		"@yukibana/editors": "file:../../modules/editors",
+		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
+		"@yukibana/lang-javascript": "file:../../modules/lang-javascript",
+		"@yukibana/lang-python": "file:../../modules/lang-python",
+		"@yukibana/lang-rust": "file:../../modules/lang-rust",
+		"@yukibana/lang-swift": "file:../../modules/lang-swift",
+		"@yukibana/monaco": "file:../../modules/monaco",
+		"@yukibana/protocol": "file:../../modules/protocol",
+		"@yukibana/runtime": "file:../../modules/runtime",
+		"@yukibana/std": "file:../../modules/std",
+		"monaco-editor": "0.57.0",
+		"svelte": "5.57.2"
+	},
+	"devDependencies": {
+		"@sveltejs/vite-plugin-svelte": "7.3.1",
+		"@types/node": "24.19.2",
+		"playwright-core": "1.56.1",
+		"svelte-check": "4.7.7",
+		"typescript": "6.0.3",
+		"vite": "8.3.5"
+	}
+}

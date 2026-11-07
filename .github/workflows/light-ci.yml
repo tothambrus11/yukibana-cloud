@@ -27,6 +27,12 @@
 #   one page (C++ in Monaco, Python in a textarea): type-check, a Vite
 #   build and its bundle fixtures. Its end-to-end test needs the C++ and
 #   Python packs built and is run where they are (node test.mjs).
+# - svelte-course-example: light/examples/svelte-course, a Svelte 5 lesson
+#   page of graded exercises over one instance and one pool: type-check,
+#   its unit tests, a Vite build with its bundle fixtures, and the page in
+#   Chromium with the JavaScript pack built here. The other exercises'
+#   packs take too long to build for this workflow, so test.mjs skips them
+#   and says so; it is run with them where they are installed.
 # - exports: a smoke test of every build system Download offers. The sample
 #   project of a language it builds is downloaded with it, and the CI job
 #   that builds and tests it (tests/export-ci.mjs) runs in the image the
@@ -89,6 +95,8 @@ jobs:
       hylo-example-key: ${{ steps.hylo-example.outputs.key }}
       two-up-example-done: ${{ steps.two-up-example.outputs.done }}
       two-up-example-key: ${{ steps.two-up-example.outputs.key }}
+      svelte-course-example-done: ${{ steps.svelte-course-example.outputs.done }}
+      svelte-course-example-key: ${{ steps.svelte-course-example.outputs.key }}
       exports-done: ${{ steps.exports.outputs.done }}
       exports-key: ${{ steps.exports.outputs.key }}
     steps:
@@ -190,6 +198,17 @@ jobs:
           paths: |
             light/examples/two-up
             light/modules
+            .github/workflows/light-ci.yml
+      # Its end-to-end test runs on the JavaScript pack, the one pack built
+      # here, so the pack's sources are inputs too.
+      - id: svelte-course-example
+        uses: ./.github/actions/once
+        with:
+          name: light-svelte-course-example
+          paths: |
+            light/examples/svelte-course
+            light/modules
+            light/packs/javascript
             .github/workflows/light-ci.yml
       # What a download is made of: the generators (the languages'
       # packages' export.ts under light/modules, composed by the app's
@@ -470,6 +489,63 @@ jobs:
   # here). Every job the download's CI has: build and test, and the format
   # and lint checks, whose tools the build files now pin (Spotless in pom.xml
   # and build.gradle.kts, Prettier in package.json, and so on).
+  svelte-course-example:
+    name: Svelte course example
+    needs: plan
+    if: needs.plan.outputs.svelte-course-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: light/examples/svelte-course
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 22, as the JavaScript pack's build.sh is run with in the
+      # javascript job.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: light/examples/svelte-course/package-lock.json
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests and bundle fixtures (the initial scripts' budget, Monaco and the languages lazy)
+        run: npm test
+
+      # The pack's npm cache, shared with the javascript job's.
+      - uses: actions/cache@v6
+        with:
+          path: ${{ env.PACK_CACHE }}/javascript
+          key: ci-javascript-${{ hashFiles('light/packs/javascript/package-lock.json') }}
+          restore-keys: ci-javascript-
+
+      - name: Build the JavaScript pack
+        working-directory: light/packs/javascript
+        run: ./build.sh
+
+      # Only the JavaScript exercise runs; test.mjs names each one it skips.
+      - name: End-to-end (Chromium, the JavaScript exercise)
+        run: npm run test:e2e
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.svelte-course-example-key }}
+
   exports:
     name: Download builds with ${{ matrix.target }}
     needs: plan

@@ -1,0 +1,83 @@
+============================= test session starts ==============================
+platform emscripten -- Python 3.14.2, pytest-9.0.2, pluggy-1.6.0 -- /home/pyodide/this.program
+rootdir: /workspace
+configfile: pyproject.toml
+collecting ... collected 5 items
+
+tests/test_words.py::test_counts_words FAILED                            [ 20%]
+tests/test_words.py::test_ignores_case_and_punctuation FAILED            [ 40%]
+tests/test_words.py::test_ties_are_alphabetical FAILED                   [ 60%]
+tests/test_words.py::test_n_larger_than_vocabulary FAILED                [ 80%]
+tests/test_words.py::test_empty_text PASSED                              [100%]
+
+=================================== FAILURES ===================================
+______________________________ test_counts_words _______________________________
+
+    def test_counts_words():
+>       assert top_words("a b a", 1) == [("a", 2)]
+E       AssertionError: assert [] == [('a', 2)]
+E         
+E         Right contains one more item: ('a', 2)
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     (...
+E         
+E         ...Full output truncated (4 lines hidden), use '-vv' to show
+
+tests/test_words.py:5: AssertionError
+______________________ test_ignores_case_and_punctuation _______________________
+
+    def test_ignores_case_and_punctuation():
+>       assert top_words("The cat. the CAT, the!", 2) == [("the", 3), ("cat", 2)]
+E       AssertionError: assert [] == [('the', 3), ('cat', 2)]
+E         
+E         Right contains 2 more items, first extra item: ('the', 3)
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     (...
+E         
+E         ...Full output truncated (8 lines hidden), use '-vv' to show
+
+tests/test_words.py:9: AssertionError
+__________________________ test_ties_are_alphabetical __________________________
+
+    def test_ties_are_alphabetical():
+>       assert top_words("b a c b a c", 3) == [("a", 2), ("b", 2), ("c", 2)]
+E       AssertionError: assert [] == [('a', 2), ('b', 2), ('c', 2)]
+E         
+E         Right contains 3 more items, first extra item: ('a', 2)
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     (...
+E         
+E         ...Full output truncated (12 lines hidden), use '-vv' to show
+
+tests/test_words.py:13: AssertionError
+________________________ test_n_larger_than_vocabulary _________________________
+
+    def test_n_larger_than_vocabulary():
+>       assert top_words("one", 5) == [("one", 1)]
+E       AssertionError: assert [] == [('one', 1)]
+E         
+E         Right contains one more item: ('one', 1)
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     (...
+E         
+E         ...Full output truncated (4 lines hidden), use '-vv' to show
+
+tests/test_words.py:17: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_words.py::test_counts_words - AssertionError: assert [] == [('a', 2)]
+FAILED tests/test_words.py::test_ignores_case_and_punctuation - AssertionError: assert [] == [('the', 3), ('cat', 2)]
+FAILED tests/test_words.py::test_ties_are_alphabetical - AssertionError: assert [] == [('a', 2), ('b', 2), ('c', 2)]
+FAILED tests/test_words.py::test_n_larger_than_vocabulary - AssertionError: assert [] == [('one', 1)]
+========================= 4 failed, 1 passed in 0.09s ==========================
