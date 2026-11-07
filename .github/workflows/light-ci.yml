@@ -143,6 +143,7 @@ jobs:
             light/packs/swift/tests
             light/packs/swift/test-emit.mjs
             light/packs/swift/test-target.mjs
+            light/packs/swift/test-xctest.mjs
             light/packs/rust/src
             light/packs/rust/tests
             light/packs/rust/test-mir.mjs
@@ -336,9 +337,9 @@ jobs:
         working-directory: light/packs/haskell
         run: node --test test-symbols.mjs test-dumps.mjs
 
-      - name: Swift pack (compiler output views, swift.env and the Linux argument vectors)
+      - name: Swift pack (compiler output views, swift.env, the Linux argument vectors and a test run's runs)
         working-directory: light/packs/swift
-        run: node --test test-emit.mjs test-target.mjs
+        run: node --test test-emit.mjs test-target.mjs test-xctest.mjs
 
       - name: Rust pack (the compiler output views and the demangler)
         working-directory: light/packs/rust

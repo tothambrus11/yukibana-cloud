@@ -116,8 +116,16 @@ DWARF, which LLDB's C type system reads, since upstream LLDB has no Swift
 type system (it is swiftlang's, and would need the Swift compiler inside
 LLDB). So a `Point` shows its `x` and `y`, a `Double` its `_value`, and a
 `String` or an `Array` their storage rather than their text or elements;
-functions are shown by their source names (`distance(_:_:)`). A test run is
-never debugged.
+functions are shown by their source names (`distance(_:_:)`).
+
+A test run with `debug` (the app's Debug tests) is debugged the same way:
+the test program, with the project's tests and its generated `main.swift`,
+is compiled with those flags and run under the stub, so a breakpoint in a
+test or in the code under test stops there. It runs one testing library,
+not both: XCTest's tests if the project has any, else swift-testing's. A
+test run runs the program once per library, each a fresh instance, and one
+LLDB session follows one process, so a project with both says on stderr
+that only XCTest's tests are debugged; Test without Debug still runs both.
 
 ## Optimization
 

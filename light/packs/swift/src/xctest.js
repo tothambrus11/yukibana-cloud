@@ -383,6 +383,20 @@ export function planTestRun(files) {
 }
 
 /**
+ * The runs of a test run (`plan` from planTestRun): every entry of
+ * `plan.runs`, or, when `debugged`, only the first, since one LLDB session
+ * and one stub follow one process, and each run is a fresh instance whose
+ * stops LLDB would take for the first one's. The first is XCTest's when the
+ * project has XCTestCase tests (or its own XCTMain), else swift-testing's.
+ * Returns { runs, note }: `note` is the line for stderr that says what a
+ * debugged run left out, or null when it left out nothing.
+ */
+export function testRuns(plan, debugged) {
+    if (!debugged || plan.runs.length <= 1) return { runs: plan.runs, note: null };
+    return { runs: plan.runs.slice(0, 1), note: "note: debugging XCTest's tests only; swift-testing's run when Test is not debugged\n" };
+}
+
+/**
  * True for the message of the compiler's "file 'X.swift' is part of module
  * 'App'; ignoring import" warning (as sourcekitd reports it, without the
  * location): projectModuleName causes it on purpose, see below.
