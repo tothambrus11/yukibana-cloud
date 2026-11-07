@@ -28,6 +28,14 @@ options, the views' kinds). Export follows in a later step.
   the run message of its mode with the debugger's channel as `debug`, and
   nothing else changes; its session's `program` resolves with the
   runner's `debug` event, or null when the run ends without one.
+* **One test only where the runner selects.** `testCase` and
+  `debugTestCase` send a test run's message with `tests` (and, for the
+  second, `breakOnFailure`), fields a runner that does not know them
+  ignores by running every test. So they are tokens of their own, which a
+  language provides only when its runner honours them, and which a host
+  offers ("Run test", "Debug test", "Stop on failed assertion") only where
+  they are available. With neither field set, their messages are Test's
+  and Debug tests' exactly.
 * **A preview provider owns its worker.** `preview`'s session builds the
   page in a runner worker of its own, kept for as long as the session; the
   host shows the page and decides when to rebuild it.
@@ -42,7 +50,7 @@ options, the views' kinds). Export follows in a later step.
   the provider's body are loaded at the first request
   (`explore-workers.ts`); an answer that is not what the contract says is
   `broken`, naming the field.
-* **No side effects.** Importing it defines eight tokens and some plain
+* **No side effects.** Importing it defines ten tokens and some plain
   data (the shared toggles) and does nothing else
   (`../tests/imports.test.mjs`); the explorer workers' code is not even
   loaded until a request needs it.
@@ -54,11 +62,11 @@ options, the views' kinds). Export follows in a later step.
 | `levels.ts` | `OptimizationLevel`, `defaultLevel`, `LevelChoice`, `savedLevel`, `levelProperty` (a level saved with the project) |
 | `linux.ts` | `TargetId`, `TARGET_SHORT`, `RunOptions`, `DEFAULT_RUN_OPTIONS`, `runOptionsOf`, `runOptionsProperty`, `describeRunOptions` |
 | `read.ts` | `valueOf` (a property's value as a build uses it), `always`, `NO_PROPERTIES` |
-| `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider` |
+| `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider`; `debugTestCase` (`Token<DebugTestCaseInput, DebugSession>`), `debugTestCaseMessage`, `debugTestCaseProvider` |
 | `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`), `isExplorerProvider` |
 | `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
-| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
+| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `testCase` (`Token<TestCaseInput, RunHandle>`), `testCaseMessage`, `testCaseProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 
 It may import core, runtime and protocol. Its tests are in
 `../tests/std-run.test.mjs`, `../tests/std-debug.test.mjs` and

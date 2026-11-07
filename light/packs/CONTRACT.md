@@ -292,6 +292,44 @@ the runner reports as exit 137. Everything else is a run's: output as it is
 printed, `exit` last. A run without `debug` is a run, and a runner that
 cannot debug a project (a Linux target) says so on stderr and exits 1.
 
+## Tests (optional)
+
+A `type: 'test'` message may carry two more fields:
+
+```ts
+tests?: { file: string, suite: string | null, name: string },
+breakOnFailure?: boolean,
+```
+
+`tests` names one test case as its framework names it (`TestSelector` in
+`@yukibana/protocol`: GoogleTest's `TEST(Suite, Name)` is `{ suite:
+'Suite', name: 'Name' }`, a doctest or Catch2 `TEST_CASE("x")` is `{ suite:
+null, name: 'x' }`, with doctest's `TEST_SUITE` as its suite; `file` is
+the project path it is defined in). The runner builds the tests as for any
+test run and runs only that one, with the same messages back; exit 0 only
+when it passed. A test that names nothing the framework can select is
+refused on stderr, exit 1, before anything is built; one that names no test
+there runs none, which the framework reports as it does (GoogleTest and
+Catch2 fail the run, doctest passes it with no test case).
+
+`breakOnFailure`, with `debug`: at each failed assertion the program calls
+a function named `TEST_FAILED_FUNCTION` (`'yukibana_test_failed'`, C
+linkage, `(const char *file, int line)`), compiled with debug information,
+so that the host's function breakpoint on it (DAP `setFunctionBreakpoints`)
+stops there with the failed test a few frames down (the framework's own
+frames, built without debug information, are not in the call stack);
+Continue goes on with the tests. Without `debug` it does nothing.
+
+Both are optional for a runner, and a runner that does not know them runs
+every test without stopping: a host cannot tell that apart from an answer.
+So a host never offers "Run test", "Debug test" or "Stop on failed
+assertion" because a pack is new enough; it offers them where the
+language's package provides `@yukibana/std`'s `testCase` (one test, run)
+or `debugTestCase` (Debug tests with `tests` and `breakOnFailure`), as it
+offers Debug tests where it provides `debugTest`. The C++ pack takes both,
+for GoogleTest, doctest and Catch2 (packs/cpp/README.md, "One test, and
+stopping at a failed assertion").
+
 ## Output
 
 A runner posts each piece of output as the program produces it, one

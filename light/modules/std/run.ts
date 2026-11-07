@@ -12,7 +12,7 @@
  */
 
 import { AVAILABLE, defineToken, type AnyToken, type Availability, type Files, type Path, type ProjectSnapshot, type Provider, type Token } from '../core/index.ts';
-import { PROTOCOL_MAJOR, type Requires, type RunMode, type RunnerOptions } from '../protocol/index.ts';
+import { PROTOCOL_MAJOR, type Requires, type RunMode, type RunnerOptions, type TestSelector } from '../protocol/index.ts';
 import type { PackLocator, RunEvent, RunHandle, RunnerPool, SessionRequest, SessionSource } from '../runtime/index.ts';
 import type { PackLanguage } from './language.ts';
 
@@ -59,6 +59,22 @@ export const test: Token<RunInput, RunHandle, 'one'> = /* @__PURE__ */ defineTok
  * judged by the tests.
  */
 export const mutate: Token<RunInput, RunHandle, 'one'> = /* @__PURE__ */ defineToken<RunInput, RunHandle>()('@yukibana/std#mutate');
+
+/** What one test is run with: a test run's input and the test. */
+export interface TestCaseInput extends RunInput {
+	/** The test to run alone, as its framework names it (protocol `TestSelector`). */
+	readonly tests: TestSelector;
+}
+
+/**
+ * Builds the project's tests and runs one of them: a runner's `type:
+ * 'test'` with `tests` (packs/CONTRACT.md, "Tests (optional)"). A provider
+ * of it requires `test` for the same language. A runner that does not know
+ * `tests` runs every test, so a language provides this token only when its
+ * runner selects: a host offers "Run test" where it is available, and
+ * nowhere else.
+ */
+export const testCase: Token<TestCaseInput, RunHandle, 'one'> = /* @__PURE__ */ defineToken<TestCaseInput, RunHandle>()('@yukibana/std#test-case');
 
 /** Returns the token that runs a project in `mode`. */
 export function tokenOf(mode: RunMode): Token<RunInput, RunHandle, 'one'> {
@@ -107,6 +123,11 @@ export function sourceOf(language: Pick<PackLanguage, 'pack' | 'label'>, packs: 
  */
 export function runMessage(mode: RunMode, input: RunInput): SessionRequest {
 	return { type: mode, files: { ...input.files }, entry: input.entry, ...(input.options !== null ? { options: { ...input.options } } : {}) };
+}
+
+/** Returns the message a runner is sent to run the one test of `input`: the test run's message (`runMessage`) and `tests`, copied. */
+export function testCaseMessage(input: TestCaseInput): SessionRequest {
+	return { ...runMessage('test', input), tests: { ...input.tests } };
 }
 
 /** When a run provider can be performed: what it requires, and its own answer. */
@@ -160,5 +181,24 @@ export function warmProvider(language: PackLanguage): Provider<null, SessionSour
 		requires: [run],
 		available: () => AVAILABLE,
 		body: { kind: 'eager', perform: (_, { host }) => sourceOf(language, host.packs, host.requires) },
+	};
+}
+
+/**
+ * Returns `language`'s provider of `testCase`: as `runProvider`'s for a
+ * test run, sending `testCaseMessage` instead.
+ */
+export function testCaseProvider(language: PackLanguage, when: RunAvailability): Provider<TestCaseInput, RunHandle, RunHost, 'one'> {
+	return {
+		token: testCase,
+		subject: { kind: 'language', id: language.key },
+		entry: { kind: 'one' },
+		requires: when.requires,
+		available: when.available,
+		body: {
+			kind: 'eager',
+			perform: (input, { host }) =>
+				host.pool.run({ snippet: input.snippet, source: sourceOf(language, host.packs, host.requires), request: testCaseMessage(input), onEvent: input.onEvent }),
+		},
 	};
 }

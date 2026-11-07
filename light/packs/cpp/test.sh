@@ -20,6 +20,12 @@
 #                        oracle (the host, qemu-user-static), and the
 #                        explorer worker
 #
+# Not here, because it needs the LLDB pack assembled beside this one, which
+# `uses` does not name (its lldb-dap.wasm is the largest file of any pack),
+# and a skip here is a failure: test-debug.mjs (a test run under lldb-dap,
+# one test selected and a stop at each failed assertion; README, "One test,
+# and stopping at a failed assertion"), run by hand.
+#
 # Not here, because it tests a unit's build rather than the pack and needs
 # that unit's build trees, which an assembly over stored units never has:
 # test-demangle.mjs (LLVM's demangler compiled natively from the source

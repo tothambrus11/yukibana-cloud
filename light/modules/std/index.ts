@@ -7,12 +7,13 @@
  * - run.ts: `run`, `test` and `mutate` (`Token<RunInput, RunHandle>`), the
  *   host a run provider needs (`RunHost`), and `runProvider`, which makes a
  *   language's provider of one of them that sends its pack's runner today's
- *   run message; `warm` and `warmProvider`, the runner a host keeps
+ *   run message; `testCase` and `testCaseProvider`, one test run alone; `warm` and `warmProvider`, the runner a host keeps
  *   started ahead of a run.
  * - debug.ts: `debug` and `debugTest` (`Token<DebugInput, DebugSession>`),
  *   a run or a test run under the debugger, and `debugProvider`, which
  *   makes a language's provider of one that sends today's run message with
- *   the debugger's channel.
+ *   the debugger's channel; `debugTestCase` and `debugTestCaseProvider`,
+ *   Debug tests narrowed to one test and stopping at failed assertions.
  * - preview.ts: `preview` (`Token<PreviewInput, PreviewSession>`), a web
  *   project's page built by its pack's runner, again at every edit.
  * - explore.ts: `explore` (`Token<EmitInput, Promise<EmitResult>>`), one

@@ -75,7 +75,57 @@ export interface RunMessage {
 	 * this channel. A runner that cannot debug ignores it and runs.
 	 */
 	debug?: DebugChannel;
+	/**
+	 * `type: 'test'` only. Present: build the tests as for every test run, and
+	 * run only this one (packs/CONTRACT.md, "Tests (optional)"). Absent: run
+	 * them all. Optional for a runner, and one that does not know it runs
+	 * them all, which looks like an answer: so a host offers one test only
+	 * for a language whose package provides std's `testCase` or
+	 * `debugTestCase`, never because the pack is new enough.
+	 */
+	tests?: TestSelector;
+	/**
+	 * `type: 'test'` with `debug` only. True: at each failed assertion, the
+	 * test program calls {@link TEST_FAILED_FUNCTION}, compiled with debug
+	 * information, so a function breakpoint the host sets on it stops there
+	 * and Continue goes on with the tests. Absent or false: it does not. A
+	 * runner that does not know it ignores it; a host offers it only where
+	 * the language provides std's `debugTestCase`.
+	 */
+	breakOnFailure?: boolean;
 }
+
+/**
+ * One test case as its framework names it, so that a runner can tell the
+ * framework to run it alone: GoogleTest's TEST(Suite, Name) is `{ suite:
+ * 'Suite', name: 'Name' }`, a doctest TEST_CASE("x") inside TEST_SUITE("s")
+ * is `{ suite: 's', name: 'x' }`, a Catch2 TEST_CASE("x", "[tag]") is
+ * `{ suite: null, name: 'x' }` (tags are not a suite), and a Catch2
+ * SCENARIO("x") is named as Catch2 names it, "Scenario: x".
+ *
+ * Invariant: `file` is a key of the run's `files`, the file the test is
+ * defined in; a framework whose names are unique in a program may ignore
+ * it, and one whose names are not (doctest) reads it. Sections and subcases
+ * are not selectable: a Catch2 SECTION or doctest SUBCASE runs with its
+ * whole test case.
+ */
+export interface TestSelector {
+	file: string;
+	/** The suite, as the framework names it, or null for none or any. */
+	suite: string | null;
+	/** The test's own name, without its suite. Never empty. */
+	name: string;
+}
+
+/**
+ * The function a runner's test program calls at each failed assertion of a
+ * run with `breakOnFailure`, with C linkage, so that the host's debugger
+ * stops there through a function breakpoint on this name (DAP
+ * `setFunctionBreakpoints`). The failed test is the nearest frame of the
+ * project's code below it. The C++ pack defines it (packs/cpp/src/test-selection.js,
+ * which checks it against this constant in its tests).
+ */
+export const TEST_FAILED_FUNCTION = 'yukibana_test_failed';
 
 /**
  * Where LLDB listens for a debugged program's stub: its WebAssembly

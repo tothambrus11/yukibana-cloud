@@ -1053,6 +1053,75 @@ have once LLDB continues; the debugger's Stop ends it with 137.
 the program printed up to the line it stopped at. Debug is refused for a
 Linux target, which runs under QEMU: its gdbstub is the plan for those.
 
+### One test, and stopping at a failed assertion
+
+A test run's `tests` and a debugged test run's `breakOnFailure`
+(CONTRACT.md, "Tests (optional)") become, in `src/test-selection.js` (pure,
+glue, tested as tables by `node --test test-selection.mjs`):
+
+| Framework | One test (`{ file, suite, name }`) | Stop on failed assertion |
+| --- | --- | --- |
+| GoogleTest | `GTEST_FILTER=S.N:*/S.N/*:S/*.N:*/S/*.N` (TEST and TEST_F, TEST_P, TYPED_TEST, TYPED_TEST_P), `GTEST_FAIL_IF_NO_TEST_SELECTED=1`; suite and name must be identifiers, a null suite is any | a `TestEventListener`'s `OnTestPartResult` |
+| doctest | `-tc=<name>`, `-ts=<suite>` when there is one, `-sf=<file>,*/<file>`, `-cs`; `,` and `\` escaped | a `DOCTEST_REGISTER_LISTENER` reporter's `log_assert` |
+| Catch2 | one test spec, `"<name>"`, with `\`, `"`, `,`, `[`, `]` and `*` escaped; the suite is ignored | a `CATCH_REGISTER_LISTENER` listener's `assertionEnded` |
+
+GoogleTest gets the filter in its environment rather than as
+`--gtest_filter`, because the environment also reaches a project's own
+main that does not hand its arguments to `InitGoogleTest`. doctest is told
+the file because its test names need not be unique in a program, and to be
+case-sensitive so "Norm" does not also run "norm". What no escape can
+spell: a GoogleTest name is a pattern only of identifiers (anything else is
+refused), doctest's `*` and `?` are wildcards with no escape (a name holding
+one also selects what it matches), and Catch2 reads a leading or trailing
+`*`, and a leading `exclude:`, after it has removed the escapes (such a name
+is matched as the wildcard or the suffix it then is). A Catch2 `SECTION` or
+doctest `SUBCASE` runs with its whole test case. A test asked of tests that
+have their own main and no framework, or a selector without a name, is
+refused, exit 1, before anything is compiled: running the whole suite
+would look like an answer. A test that is not there runs nothing: GoogleTest
+and Catch2 fail the run, doctest passes it with "test cases: 0".
+
+With `breakOnFailure` and `debug`, the runner compiles one more source
+beside the tests, `.yukibana/test-failed.cpp` (the failed assertion hook;
+no project file has that path): the framework's listener above, registered
+by a static initialiser so a project's own main gets it too, calling
+`extern "C" void yukibana_test_failed(const char *file, int line)` at each
+failed assertion. The host sets a function breakpoint on that name (the
+protocol's `TEST_FAILED_FUNCTION`); the stop is a real breakpoint, so
+Continue goes on with the tests. The call stack at the stop is
+`yukibana_test_failed`, the listener (both in `.yukibana/test-failed.cpp`),
+then the failed test's body at the assertion's line, with its locals: the
+framework's frames between are not shown, because its libraries are built
+without debug information and have no probe sites (packs/lldb/README.md,
+"Instrumenting"). A host shows the first frame whose file is the
+project's. Without `debug` the flag compiles nothing, and without a
+framework it is skipped with a line on stderr.
+
+The frameworks' own break-on-failure options were tried on paper first and
+do not do this on wasm32-wasip1: GoogleTest's `--gtest_break_on_failure`
+ends in `__builtin_trap()`, which is `unreachable` on WebAssembly, so the
+program crashes inside GoogleTest's library (no sites; LLDB shows the last
+site reached) and Continue ends it with 134 and the misleading "abort(), or
+a failed check" hint; doctest's `-b` and Catch2's `-b` break only when
+their `isDebuggerActive()` says so, which is `false` on WASI (and their
+break is `__builtin_debugtrap()`, `unreachable` again). A function
+breakpoint on the frameworks' own failure functions cannot work either:
+their libraries have no probe sites, and the stub stops a breakpoint
+between sites at the next site, which could be anywhere.
+
+**Tested.** `test-run.mjs`: a project of two tests in each framework runs
+both, and with `tests` only the chosen one, whose name in doctest and
+Catch2 holds a comma (and, in Catch2, brackets, quotes, a backslash, a `*`
+and a `~`) that unescaped would select the other; a test that is not there;
+`breakOnFailure` without the debugger compiles no hook; a GoogleTest name
+that is no identifier and tests with their own main are refused.
+`test-debug.mjs` (by hand, with the LLDB pack assembled beside this one;
+test.sh does not run it, see there) debugs the same kind of project under
+lldb-dap in Chromium, in each framework, with and without `tests`: one stop
+at `yukibana_test_failed`, the test's body as the third frame at the
+assertion's line with `answer = 41`, nothing printed after the assertion
+yet, and Continue running the rest (42 s for the six runs, warm).
+
 ## Targets
 
 A project runs on **WebAssembly (WASI)** unless its `compile_flags.txt`
