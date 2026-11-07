@@ -15,6 +15,11 @@
  *   the debugger's channel.
  * - preview.ts: `preview` (`Token<PreviewInput, PreviewSession>`), a web
  *   project's page built by its pack's runner, again at every edit.
+ * - explore.ts: `explore` (`Token<EmitInput, Promise<EmitResult>>`), one
+ *   compiler output view of one source, asked of the pack's explorer
+ *   worker; the views a language has (`LanguageViews`, `ViewKind`); the
+ *   page's workers a host lends (`ExplorerWorkers`); and
+ *   `explorerProvider`.
  * - language.ts: `PackLanguage`, a language whose runner and server come
  *   from a pack, as the run providers need it.
  *
@@ -25,3 +30,4 @@ export type * from './language.ts';
 export * from './run.ts';
 export * from './debug.ts';
 export * from './preview.ts';
+export * from './explore.ts';

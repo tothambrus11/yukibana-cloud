@@ -4,7 +4,7 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 10 record how steps 1 to 3 were built and
+`light/modules`. Sections 8 to 12 record how steps 1 to 5 were built and
 where they depart from the sketches here; the code and its `/** */`
 contracts are the authority where the two differ.
 
@@ -656,3 +656,83 @@ providers of std's tokens, still app-side (`light/app/src/lib/providers/`
   workspace's `testFramework` (the header's framework choice) still has
   its own detector, `refreshTestFramework`: it is view state, not
   availability, and moves with the generic settings panel.
+
+## 12. Step 5 as built: Explore
+
+Step 5 made the compiler output views providers of std's `explore`, still
+app-side (`light/app/src/lib/providers/explore.ts`), and deleted
+`explore-views.ts`: its table moved, unchanged but for the fields below,
+into that file, and its unit test (`tests/unit/explore-views.test.mjs`)
+reads it there. Where it departs from the sketches above:
+
+* **One worker per pack, lent by the host** (`ExplorerWorkers`,
+  std/explore.ts): `ExploreHost = { packs, explorers }`, which the app's
+  `PageHost` implements beside `RunHost` (`AppHost`). C's views and C++'s
+  share the `cpp` worker, as they did, and so would two instances' views
+  of one pack. Request ids are the page's and only increase. A worker is
+  started from `host.packs.file(pack, 'explorer.js')` at the first request
+  and let go by `release(pack)`, which the explorer calls where it
+  terminated its worker (the last view closed, the language changed, the
+  project was reset). How a worker is started and its URL probed after a
+  failure is an `ExplorerPlatform` (`pagePlatform()`: a module `Worker`
+  and a HEAD `fetch`), so the tests drive fake workers.
+* **A request settles as soon as its signal is aborted** (decision 7).
+  Every pack's explorer.js drops the answer to a request that a newer one
+  of the same view replaced while it compiled, so a job that waited for
+  its own id would hang. `ExplorerWorkers.emit` resolves `dropped` on
+  abort; the explorer keeps one core `Slot` per view, whose newer submit
+  aborts the job in flight, so the newer request is posted at once and
+  the worker's own queue coalesces them, today's timing. Slot's "the next
+  job waits for the one in flight" is thus kept only in name: the job in
+  flight gives way at once. A late answer to a superseded request is
+  ignored twice over, by its id and by the slot
+  (`modules/tests/std-explore.test.mjs`).
+* **`EmitResult` is `output | failed | broken | dropped`**: the compiler's
+  output, the compiler's messages, the worker's failure (`broken`: it
+  failed, said with the HEAD probe's "not installed" when its URL is not
+  served, as `failAll` said), and no answer waited for. A worker's failure
+  now reaches only the requests that worker had; a request made while the
+  probe was out goes to a new worker and is not failed with them, as it
+  was.
+* **The token's result is `Promise<EmitResult>`**:
+  `Token<EmitInput, Promise<EmitResult>>`. An instance's `perform` gives
+  back what the body returned, at once, so an answer that comes later is
+  a promise inside the outcome, as Debug's `program` is inside its
+  session.
+* **No `views` token; the views are the language's data.** A language's
+  views (`LanguageViews`: compiler, sources, build settings, and each
+  view's kind, title, short form, noun, Monaco language and toggles) are
+  read synchronously by the top bar, the dock's panels and tabs, the
+  editors' actions and the views themselves, as `has` is; an instance's
+  answers are promises, so a `Token<null, LanguageViews>` would have made
+  each of them wait a turn, or the dock wait before its first panel. They
+  are data exported beside the provider, made from the same table
+  (`viewsOf(id)`; step 6 puts them in `lang-<pack>/index.ts`, the eager
+  tier section 3 gives provider metadata), and `has(subject, explore)` is
+  the instance's answer to whether a language has views at all: the unit
+  test holds the two to each other for every language.
+* **`KINDS` is gone**; each view carries its kind's title, short form and
+  noun (the table's `view(kind, …)` fills them from one list, so a kind is
+  called the same in every language, which the test checks). The kind
+  strings are unchanged.
+* **Toggles: unions, not optional flags.** `x86Only?: true` is
+  `offered: 'always' | 'x86'` and `shared?: true` is
+  `sets: 'view' | 'language'`. `x86` stays the view's rule, not an
+  availability: it follows the answer's target, not the project.
+* **The dock has no table of views.** A view's panel is still
+  `view:<kind>`, with component `assembly` for `asm`, and the id is
+  parsed back (`viewOfPanel`); its title and short form come from the
+  current language's views when the panel or its tab is made. The views'
+  panels are ordered as the language lists its views where the old table
+  ordered them (moving between layouts), which is the same order for
+  every language. The dock never restores a saved layout (no `fromJSON`),
+  so risk 2 of the decisions, a saved layout naming a component the dock
+  no longer knows, does not arise; a component name that is none of the
+  current language's views makes an editor, as an unknown name did.
+* **The explorer's state is keyed by kind** (`ViewKind`, a brand made by
+  `viewKind`): `view(kind)` and `optionsOf(kind)` read it, idle and empty
+  for a kind that has asked nothing. It keeps the 500 ms edit delay, the
+  open, visible and stale sets, each language's options, and the
+  `latest` id that guards against an answer after `closed` or `reset`,
+  which now also dispose the view's slot, so nothing waits for its
+  answer.

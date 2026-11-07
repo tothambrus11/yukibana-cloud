@@ -39,7 +39,7 @@ import { NavigationHistory, type Place } from './history';
 import { baseName } from '@yukibana/runtime';
 import { WORKSPACE } from './project';
 import type { EditorHost, Workspace } from './workspace.svelte';
-import { ALL_KINDS, KINDS, viewsOf, type ExploreKind } from './explore-views';
+import { viewOf, viewsOf } from './providers/explore';
 import type { CompilerView, ViewHost } from './compiler-view';
 import type { Caret } from './linking';
 import { VIEW_TEXT } from './theme.svelte';
@@ -51,24 +51,38 @@ import Terminal from './components/Terminal.svelte';
 import CallHierarchy from './components/CallHierarchy.svelte';
 import Debug from './components/Debug.svelte';
 import { decorate } from './debug.svelte';
-import { debug, debugTest } from '@yukibana/std';
+import { debug, debugTest, viewKind, type ViewKind } from '@yukibana/std';
 import { subjectOf, yukibana } from './yukibana';
 
 const EDITOR_PREFIX = 'file:';
 const editorId = (path: string) => EDITOR_PREFIX + path;
 const isEditor = (panel: IDockviewPanel) => panel.id.startsWith(EDITOR_PREFIX);
 
+/** The prefix of a compiler output view's panel id: `view:<kind>`, as a saved layout names it. */
+const VIEW_PREFIX = 'view:';
+/** The kind whose assembly's component is `assembly`, as it was when C++ was the only language with views (a saved layout names it). */
+const ASM = viewKind('asm');
+
 /**
- * The compiler output views' panels: id, dockview component, tab title and
- * its short form, by kind (explore-views.ts). The assembly's component is
- * `assembly`, as it was when C++ was the only language with views (a saved
- * layout names it).
+ * Returns the panel of the compiler output view `kind` of `language`: its
+ * id, dockview component, tab title and the title's short form, from the
+ * language's views (providers/explore.ts); null when the language has no
+ * such view.
  */
-const VIEWS = Object.fromEntries(
-	Object.entries(KINDS).map(([kind, k]) => [kind, { id: `view:${kind}`, component: kind === 'asm' ? 'assembly' : kind, title: k.title, short: k.short }]),
-) as Record<ExploreKind, { id: string; component: string; title: string; short: string }>;
-const VIEW_KINDS = ALL_KINDS;
-const viewOfPanel = (id: string): ExploreKind | undefined => VIEW_KINDS.find((k) => VIEWS[k].id === id);
+function viewPanelOf(language: string, kind: ViewKind): { id: string; component: string; title: string; short: string } | null {
+	const view = viewOf(language, kind);
+	return view && { id: `${VIEW_PREFIX}${kind}`, component: kind === ASM ? 'assembly' : kind, title: view.title, short: view.short };
+}
+
+/** Returns the view kind of panel `id`, or null when it is not a view's. */
+function viewOfPanel(id: string): ViewKind | null {
+	return id.startsWith(VIEW_PREFIX) ? viewKind(id.slice(VIEW_PREFIX.length)) : null;
+}
+
+/** Returns the view kind dockview component `name` is of in `language`, or null when it is none of the language's views. */
+function viewOfComponent(language: string, name: string): ViewKind | null {
+	return viewsOf(language)?.views.find((v) => (v.kind === ASM ? 'assembly' : v.kind) === name)?.kind ?? null;
+}
 
 /** The panels that are always there, in the order the bottom group lists them on a phone. */
 const FIXED = ['explorer', 'terminal', 'log', 'problems'] as const;
@@ -111,7 +125,7 @@ class CompilerViewRenderer implements IContentRenderer {
 	private visibility: { dispose(): void } | null = null;
 
 	constructor(
-		private readonly kind: ExploreKind,
+		private readonly kind: ViewKind,
 		private readonly workspace: Workspace,
 		private readonly host: () => Omit<ViewHost, 'explorer'>,
 	) {
@@ -129,7 +143,7 @@ class CompilerViewRenderer implements IContentRenderer {
 				if (!this.disposed) this.view = createCompilerView(this.element, this.kind, { ...this.host(), explorer });
 			},
 			(e: unknown) => {
-				this.element.textContent = `The ${VIEWS[this.kind].title} view could not be loaded: ${e instanceof Error ? e.message : String(e)}`;
+				this.element.textContent = `The ${viewOf(this.workspace.language, this.kind)?.title ?? 'compiler output'} view could not be loaded: ${e instanceof Error ? e.message : String(e)}`;
 			},
 		);
 	}
@@ -282,9 +296,9 @@ class EditorRenderer implements IContentRenderer {
 		});
 		// Editors are made anew for each project, so only a language with the views offers them.
 		// The C++ views' action ids (yukibana.showIr, yukibana.showAsm) are the ones they always had.
-		const ACTION_IDS: Partial<Record<ExploreKind, string>> = { 'llvm-ir': 'yukibana.showIr', asm: 'yukibana.showAsm' };
-		for (const { kind } of viewsOf(this.workspace.language)?.views ?? [])
-			editor.addAction({ id: ACTION_IDS[kind] ?? `yukibana.show-${kind}`, label: `Show ${KINDS[kind].title}`, run: () => void this.workspace.showView(kind) });
+		const ACTION_IDS: Readonly<Record<string, string>> = { 'llvm-ir': 'yukibana.showIr', asm: 'yukibana.showAsm' };
+		for (const { kind, title } of viewsOf(this.workspace.language)?.views ?? [])
+			editor.addAction({ id: ACTION_IDS[kind] ?? `yukibana.show-${kind}`, label: `Show ${title}`, run: () => void this.workspace.showView(kind) });
 	}
 
 	focus(): void {
@@ -326,18 +340,19 @@ class TabRenderer implements ITabRenderer {
 		private readonly closable: boolean,
 		/** A tap or click on this tab; `front` is whether its panel was already in front before it. */
 		private readonly tapped: (id: string, front: boolean) => void,
+		/** The short form of a view's title, for a folded tab; null for any other panel. */
+		short: string | null,
 	) {
 		this.element.className = 'dock-tab';
 		const icon = ICONS[id];
-		const view = viewOfPanel(id);
 		if (icon) {
 			const i = document.createElement('span');
 			i.className = 'dock-tab-icon';
 			i.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true">${icon}</svg>`;
 			this.element.append(i);
 			this.element.classList.add('has-icon');
-		} else if (view) {
-			this.element.dataset['short'] = VIEWS[view].short;
+		} else if (short !== null) {
+			this.element.dataset['short'] = short;
 			this.element.classList.add('has-icon');
 		}
 		this.label.className = 'dock-tab-label';
@@ -473,7 +488,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 				case 'debug':
 					return new SvelteRenderer(Debug, workspace);
 				default: {
-					const view = VIEW_KINDS.find((k) => VIEWS[k].component === name);
+					const view = viewOfComponent(workspace.language, name);
 					if (view) return new CompilerViewRenderer(view, workspace, () => viewHost);
 					const r = new EditorRenderer(workspace, navigation);
 					editors.set(id, r);
@@ -482,7 +497,9 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			}
 		},
 		createTabComponent: ({ id, name }) => {
-			const tab = new TabRenderer(id, name === 'editor' || name === 'view', (panel, front) => tapped(panel, front));
+			const view = viewOfPanel(id);
+			const short = view === null ? null : (viewPanelOf(workspace.language, view)?.short ?? null);
+			const tab = new TabRenderer(id, name === 'editor' || name === 'view', (panel, front) => tapped(panel, front), short);
 			tabs.set(id, tab);
 			return tab;
 		},
@@ -493,7 +510,13 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	element.dataset['layoutMode'] = mode;
 
 	const panel = (id: string) => dock.getPanel(id);
-	const viewPanels = () => VIEW_KINDS.map((k) => panel(VIEWS[k].id)).filter((p): p is IDockviewPanel => p !== undefined);
+	/** Where view `kind` comes in the language's list of views (providers/explore.ts); after them all when it is none of them. */
+	const viewOrder = (kind: ViewKind | null): number => {
+		const at = viewsOf(workspace.language)?.views.findIndex((v) => v.kind === kind) ?? -1;
+		return at === -1 ? Number.MAX_SAFE_INTEGER : at;
+	};
+	/** The views' panels, in the order the language lists its views. */
+	const viewPanels = () => dock.panels.filter((p) => viewOfPanel(p.id) !== null).sort((a, b) => viewOrder(viewOfPanel(a.id)) - viewOrder(viewOfPanel(b.id)));
 	const live = (group: DockviewGroupPanel | undefined) => (group && dock.groups.includes(group) ? group : undefined);
 	/** The group a placement's reference names, if it is there. */
 	const groupOf = (reference: Reference): DockviewGroupPanel | undefined => {
@@ -725,7 +748,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	};
 
 	const report = () => {
-		workspace.viewsChanged(VIEW_KINDS.filter((k) => panel(VIEWS[k].id) !== undefined));
+		workspace.viewsChanged(dock.panels.flatMap((p) => viewOfPanel(p.id) ?? []));
 		markGroups();
 		updateCollapseNames();
 		if (replacing || arranging) return;
@@ -897,8 +920,9 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 		hidePreview(): void {
 			panel('preview')?.api.close();
 		},
-		showView(kind: ExploreKind): void {
-			const view = VIEWS[kind];
+		showView(kind: ViewKind): void {
+			const view = viewPanelOf(workspace.language, kind);
+			if (view === null) return;
 			const existing = panel(view.id);
 			if (existing) {
 				reveal(existing);
@@ -913,10 +937,10 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			if (mode !== 'narrow' && 'reference' in placed && placed.reference === 'editor-area') applySizes(before);
 		},
 		hideViews(): void {
-			for (const kind of VIEW_KINDS) panel(VIEWS[kind].id)?.api.close();
+			for (const p of viewPanels()) p.api.close();
 		},
-		hideView(kind: ExploreKind): void {
-			panel(VIEWS[kind].id)?.api.close();
+		hideView(kind: ViewKind): void {
+			panel(`${VIEW_PREFIX}${kind}`)?.api.close();
 		},
 		showCallHierarchy(): void {
 			const existing = panel('call-hierarchy');

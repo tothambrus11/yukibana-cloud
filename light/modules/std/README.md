@@ -3,7 +3,7 @@
 The tokens any language of Yukibana Light may provide, and the helpers that
 make a language's providers of them from its pack. Step 2 of
 `../DESIGN.md`: run, test and mutate; step 4: debug, debug tests and
-preview. Explore and export follow in later steps.
+preview; step 5: explore. Export follows in a later step.
 
 ## Contract
 
@@ -29,15 +29,25 @@ preview. Explore and export follow in later steps.
 * **A preview provider owns its worker.** `preview`'s session builds the
   page in a runner worker of its own, kept for as long as the session; the
   host shows the page and decides when to rebuild it.
-* **No side effects.** Importing it defines seven tokens and does nothing
-  else (`../tests/imports.test.mjs`).
+* **One explorer worker per pack, and no wait past an abort.**
+  `explore`'s provider (`explorerProvider`) sends its pack's
+  `explorer.js` today's `emit` message through the host's
+  `ExplorerWorkers`, which starts one worker per pack on the page; its
+  answer settles as soon as the perform's signal is aborted (`dropped`),
+  since explorer.js drops the answer to a request replaced while it
+  compiled. A host keeps one `Slot` per view, so the newest request wins.
+* **No side effects.** Importing it defines eight tokens and does nothing
+  else (`../tests/imports.test.mjs`); `ExplorerWorkers` starts nothing
+  until a request needs a worker.
 
 | File | What |
 |---|---|
 | `language.ts` | `PackLanguage`: a `LanguageMeta` with the pack it runs on and the packs that one uses (checked pack ids), and its server's settings in its body |
 | `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider` |
+| `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExplorerWorkers` (with `pagePlatform`), `ExploreHost`, `explorerProvider` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
 | `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 
 It may import core, runtime and protocol. Its tests are in
-`../tests/std-run.test.mjs` and `../tests/std-debug.test.mjs`.
+`../tests/std-run.test.mjs`, `../tests/std-debug.test.mjs` and
+`../tests/std-explore.test.mjs`.

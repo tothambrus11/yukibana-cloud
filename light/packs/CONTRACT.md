@@ -453,11 +453,13 @@ kinds are `llvm-ir` and `asm` (C and C++; Swift; Haskell's is `asm` only),
 and `lowered` (Scala's trees after typer and before the back end) and
 `bytecode` (Python's, and the JVM's for Java). Which views a language has, which files they show,
 what the compiler is called and the toggles each view's header offers are
-`app/src/lib/explore-views.ts`, a table and nothing else: a language gains
+`app/src/lib/providers/explore.ts`, a table and the language's provider
+of `@yukibana/std`'s `explore` (`modules/std/explore.ts`): a language gains
 a view by an entry there and an `explorer.js` that answers for it. The app
 starts the pack's third worker, `app/static/packs/<id>/explorer.js` (a
-module worker), the first time a panel opens; it is stopped when the
-language changes or the project is reset. Nothing of it is downloaded
+module worker, one per pack on the page), the first time a panel asks; it
+is stopped when the last panel closes, the language changes or the project
+is reset. Nothing of it is downloaded
 before.
 
 App to explorer, any number of times:
@@ -470,7 +472,7 @@ App to explorer, any number of times:
   options: Record<string, boolean | string> }   // the view's toggles, and the project's level
 ```
 
-`options` holds one boolean per toggle of the view (explore-views.ts),
+`options` holds one boolean per toggle of the view (providers/explore.ts),
 by the name the pack reads, and, for a language whose optimisation level
 is the project's rather than the view's (Swift), that level as Run gets
 it (`optimization: '-O'`). The names the packs share mean the same in
@@ -488,10 +490,10 @@ source (one the views cannot show, such as a header, keeps the source
 shown before), when an option or the project's level changes, and 500 ms
 after the last edit of any project file, and only for a panel that is in
 front: a panel behind another tab asks when it comes back. Each toggle
-starts as explore-views.ts says (C++: `{demangle: true, intel: false,
+starts as providers/explore.ts says (C++: `{demangle: true, intel: false,
 directives: false, library: false}` for assembly, `demangle: false` for
-IR), and keeps its state for the session, per language. A toggle marked
-`shared` there is set in every view of the language at once: Haskell's
+IR), and keeps its state for the session, per language. A toggle that
+`sets: 'language'` there is set in every view of the language at once: Haskell's
 `optimize` and `details`, which change the one compile all four of its
 views come from.
 

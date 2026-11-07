@@ -19,7 +19,7 @@
 	import { createDock } from '../lib/dock';
 	import { isCFamily, languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf, packsOf } from '../lib/packs';
-	import { KINDS, viewsOf } from '../lib/explore-views';
+	import { viewsOf } from '../lib/providers/explore';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
@@ -121,8 +121,8 @@
 			...(offline.arePacksCached(packsOf(l)) ? { detail: 'offline' } : {}),
 		})),
 	);
-	/** The language's compiler output views (explore-views.ts), none for most. */
-	const views = $derived(viewsOf(workspace.language)?.views.map((v) => v.kind) ?? []);
+	/** The language's compiler output views (providers/explore.ts), none for most. */
+	const views = $derived(viewsOf(workspace.language)?.views ?? []);
 	/** "the active C or C++ file" and the like, for the views' buttons. */
 	const activeSource = $derived(`the active ${shortLabel(language)} ${workspace.language === 'haskell' ? 'module' : 'file'}`);
 	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */
@@ -243,10 +243,10 @@
 
 		{#if views.length}
 			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
-				{#each views as kind (kind)}
+				{#each views as { kind, title, short, noun } (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
-					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
-						<span class="long">{KINDS[kind].title}</span><span class="short">{KINDS[kind].short}</span>
+					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${title} view` : `Show the ${noun} of ${activeSource}`}>
+						<span class="long">{title}</span><span class="short">{short}</span>
 					</button>
 				{/each}
 			</div>
@@ -293,10 +293,10 @@
 				<div class="menu-divider" role="separator" data-fold="30"></div>
 			{/if}
 			{#if views.length}
-				{#each views as kind (kind)}
+				{#each views as { kind, title } (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
 					<button class="menu-item" role="menuitemcheckbox" aria-checked={on} data-fold="44" data-view={kind} onclick={() => workspace.toggleView(kind)}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{KINDS[kind].title}
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{title}
 					</button>
 				{/each}
 				<div class="menu-divider" role="separator" data-fold="44"></div>

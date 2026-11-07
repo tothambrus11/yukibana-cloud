@@ -89,7 +89,7 @@ export async function buildSetting(page, which) {
  * Shows or hides a compiler output view (`ir` for LLVM IR, else its kind: `asm`, `sil`, `core`, …), by its button in the bar or,
  * where that is folded, by its entry in ⋯.
  * @param {import('playwright-core').Page} page
- * @param {string} kind  `ir` (LLVM IR) or a view's kind (explore-views.ts)
+ * @param {string} kind  `ir` (LLVM IR) or a view's kind (src/lib/providers/explore.ts)
  */
 export async function toggleView(page, kind) {
 	const view = kind === 'ir' ? 'llvm-ir' : kind;
@@ -107,7 +107,7 @@ export async function toggleView(page, kind) {
  * the target triple, the flags (the `clang …` command, from the title) and
  * the flags the user chose. Leaves the menu open.
  * @param {import('playwright-core').Page} page
- * @param {string} kind  `ir` (LLVM IR) or a view's kind (explore-views.ts)
+ * @param {string} kind  `ir` (LLVM IR) or a view's kind (src/lib/providers/explore.ts)
  * @returns {Promise<{ triple: string, flags: string, command: string, userFlags: string }>}
  */
 export async function viewDetails(page, kind) {

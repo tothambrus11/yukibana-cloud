@@ -43,7 +43,7 @@ import type { monaco as Monaco } from './monaco';
 import { hueGroups, lineKey, linesWithoutCode, partAt, partFromChain, runIndex, runsOf, runToReveal, samePart, stepRun, type LineCode, type LineMap, type MappedLine, type Part, type ServerRange, type SourceLine } from './explorer-map';
 import { HUES, linkStyleSheet, rulerColour } from './link-colours';
 import type { Hex, Theme } from './palette';
-import type { ExploreKind } from './explore-views';
+import type { ViewKind } from '@yukibana/std';
 
 type Editor = Monaco.editor.ICodeEditor;
 
@@ -93,7 +93,7 @@ interface Focus {
 	file: string;
 	line: number;
 	column: number;
-	from: 'source' | ExploreKind;
+	from: 'source' | ViewKind;
 	row: number;
 }
 
@@ -104,7 +104,7 @@ const partKey = (p: Part | null) => (p ? `${p.start}-${p.end}` : '');
 
 /** Where the mouse is: a pane, and the line and column under it. */
 interface Pointer {
-	pane: 'source' | ExploreKind;
+	pane: 'source' | ViewKind;
 	editor: Editor;
 	file: string | null;
 	line: number;
@@ -140,7 +140,7 @@ export function linkerFor(owner: object, host: LinkHost): Linker {
 
 export class Linker {
 	private readonly monaco: typeof Monaco;
-	private readonly views = new Map<ExploreKind, { editor: Editor; lines: LineMap; unoptimized: readonly LineCode[]; decorations: Monaco.editor.IEditorDecorationsCollection; listeners: Monaco.IDisposable[] }>();
+	private readonly views = new Map<ViewKind, { editor: Editor; lines: LineMap; unoptimized: readonly LineCode[]; decorations: Monaco.editor.IEditorDecorationsCollection; listeners: Monaco.IDisposable[] }>();
 	/** The source editors decorated, by project path. */
 	private readonly sources = new Map<string, { editor: Editor; decorations: Monaco.editor.IEditorDecorationsCollection; listeners: Monaco.IDisposable[] }>();
 	private hues = new Map<string, number>();
@@ -156,7 +156,7 @@ export class Linker {
 	/** The parts of a line, by `file:line@version`: per recorded column, the part (null: none found); absent while asked for. */
 	private readonly parts = new Map<string, Map<number, Part | null>>();
 	/** Per view, what its toolbar shows of the places of the focused line's code. */
-	private readonly placeListeners = new Map<ExploreKind, (places: Places | null) => void>();
+	private readonly placeListeners = new Map<ViewKind, (places: Places | null) => void>();
 	private readonly disposables: Monaco.IDisposable[] = [];
 
 	constructor(
@@ -193,7 +193,7 @@ export class Linker {
 	 * have code without optimisation (`unoptimized`, empty when the output
 	 * is not optimised), and redraws.
 	 */
-	setView(kind: ExploreKind, editor: Editor, lines: LineMap | null, unoptimized: readonly LineCode[] = []): void {
+	setView(kind: ViewKind, editor: Editor, lines: LineMap | null, unoptimized: readonly LineCode[] = []): void {
 		let view = this.views.get(kind);
 		if (!view || view.editor !== editor) {
 			if (view) for (const d of view.listeners) d.dispose();
@@ -217,14 +217,14 @@ export class Linker {
 	}
 
 	/** Brings the focus's rows into view `kind` when none is in view (its text or its size changed, not the focus). */
-	private revealIn(kind: ExploreKind): void {
+	private revealIn(kind: ViewKind): void {
 		const focus = this.current();
 		const editor = this.views.get(kind)?.editor;
 		if (focus && editor) this.reveal(focus, null, !!this.peek, editor);
 	}
 
 	/** Takes view `kind` out; the last view out clears the source's decorations and ends the linker. */
-	removeView(kind: ExploreKind): void {
+	removeView(kind: ViewKind): void {
 		const view = this.views.get(kind);
 		if (!view) return;
 		for (const d of view.listeners) d.dispose();
@@ -246,14 +246,14 @@ export class Linker {
 	}
 
 	/** Calls `listener` with view `kind`'s places whenever the focus or the view's scroll position changes them. */
-	onPlaces(kind: ExploreKind, listener: (places: Places | null) => void): Monaco.IDisposable {
+	onPlaces(kind: ViewKind, listener: (places: Places | null) => void): Monaco.IDisposable {
 		this.placeListeners.set(kind, listener);
 		listener(this.places(kind));
 		return { dispose: () => this.placeListeners.get(kind) === listener && this.placeListeners.delete(kind) };
 	}
 
 	/** View `kind`'s runs of rows of the focused line, or none. */
-	private runsIn(kind: ExploreKind, focus: Focus | null): { start: number; end: number }[] {
+	private runsIn(kind: ViewKind, focus: Focus | null): { start: number; end: number }[] {
 		const view = this.views.get(kind);
 		if (!view || !focus) return [];
 		const rows: number[] = [];
@@ -264,7 +264,7 @@ export class Linker {
 	}
 
 	/** The run of `runs` view `kind` stands at: the one the focus came from, else the one in the middle of the view. */
-	private runAt(kind: ExploreKind, focus: Focus, runs: { start: number; end: number }[]): number {
+	private runAt(kind: ViewKind, focus: Focus, runs: { start: number; end: number }[]): number {
 		if (focus.from === kind) return runIndex(runs, focus.row);
 		const ranges = this.views.get(kind)?.editor.getVisibleRanges() ?? [];
 		const top = ranges[0]?.startLineNumber ?? 1;
@@ -273,7 +273,7 @@ export class Linker {
 	}
 
 	/** Where view `kind` stands among the places of the focused line's code, or null when it has fewer than two. */
-	places(kind: ExploreKind): Places | null {
+	places(kind: ViewKind): Places | null {
 		const focus = this.current();
 		const runs = this.runsIn(kind, focus);
 		if (!focus || runs.length < 2) return null;
@@ -281,7 +281,7 @@ export class Linker {
 	}
 
 	/** Moves view `kind`'s caret to the focused line's previous (-1) or next (1) place, which anchors there. */
-	step(kind: ExploreKind, dir: -1 | 1): void {
+	step(kind: ViewKind, dir: -1 | 1): void {
 		const focus = this.current();
 		const editor = this.views.get(kind)?.editor;
 		if (!focus || !editor) return;
@@ -294,12 +294,12 @@ export class Linker {
 	}
 
 	/** Tells view `kind`'s toolbar, if it listens, where the view stands now. */
-	private tellPlaces(kind: ExploreKind): void {
+	private tellPlaces(kind: ViewKind): void {
 		this.placeListeners.get(kind)?.(this.places(kind));
 	}
 
 	/** The source line a view's row came from, or null. */
-	private entry(kind: ExploreKind, line: number): MappedLine | null {
+	private entry(kind: ViewKind, line: number): MappedLine | null {
 		return this.views.get(kind)?.lines[line - 1] ?? null;
 	}
 
@@ -313,7 +313,7 @@ export class Linker {
 	}
 
 	/** The caret moved to row `line` of view `kind` (by the user): that row's source line is the anchor. */
-	private outputCaret(kind: ExploreKind, line: number): void {
+	private outputCaret(kind: ViewKind, line: number): void {
 		const at = this.entry(kind, line);
 		const focus: Focus | null = at && { file: at.file, line: at.line, column: at.column ?? 0, from: kind, row: line };
 		if (sameFocus(focus, this.anchor)) return;
@@ -333,7 +333,7 @@ export class Linker {
 	 * ends the peek, and so does leaving the panes; a pane scrolled by hand
 	 * during a peek stays where it was put.
 	 */
-	private listen(editor: Editor, pane: 'source' | ExploreKind, file: string | null = null): Monaco.IDisposable[] {
+	private listen(editor: Editor, pane: 'source' | ViewKind, file: string | null = null): Monaco.IDisposable[] {
 		const wheel = () => {
 			if (this.peek) this.byHand.add(editor);
 		};

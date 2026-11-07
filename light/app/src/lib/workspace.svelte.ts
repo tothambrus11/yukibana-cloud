@@ -9,7 +9,7 @@ import { forgetUndo } from './workspace-edits';
 import type { DebugChannel, LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
 import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
 import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
-import { viewOf, viewsOf, type ExploreKind } from './explore-views';
+import { viewOf } from './providers/explore';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
@@ -28,7 +28,7 @@ import { Debugger } from './debug.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
 import { pathOf, writeProperty, type Files, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
-import { debugTokenOf, preview, test, tokenOf, warm, type DebugMode, type PreviewSession } from '@yukibana/std';
+import { debugTokenOf, explore, preview, test, tokenOf, warm, type DebugMode, type PreviewSession, type ViewKind } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, subjectOf, yukibana } from './yukibana';
 import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
@@ -96,11 +96,11 @@ export interface EditorHost {
 	 * Opens a compiler output view (LLVM IR, assembly) right of the editors,
 	 * or brings it to the front; its panel tells `explorer` it opened.
 	 */
-	showView(kind: ExploreKind): void;
+	showView(kind: ViewKind): void;
 	/** Closes the compiler output views, if open: the language or project changed. */
 	hideViews(): void;
 	/** Closes one compiler output view, if open: its toggle in the top bar was pressed again. */
-	hideView(kind: ExploreKind): void;
+	hideView(kind: ViewKind): void;
 	/** Opens the Call Hierarchy panel beside Problems, or brings it to the front. */
 	showCallHierarchy(): void;
 	/** Opens the Debug panel beside Problems, or brings it to the front. */
@@ -199,7 +199,7 @@ export class Workspace {
 		problem: (text) => this.write('warning', text, 'run'),
 	});
 	/**
-	 * The compiler output views' client (languages with views, explore-views.ts), loaded
+	 * The compiler output views' client (languages with views, providers/explore.ts), loaded
 	 * with the views the first time one opens: null until then, so the app
 	 * shell carries none of it.
 	 */
@@ -210,7 +210,7 @@ export class Workspace {
 	 * (`viewsChanged`): the top bar's LLVM IR and Assembly toggles show it as
 	 * pressed. Open, not visible: a view behind another tab is still open.
 	 */
-	viewsOpen = $state<readonly ExploreKind[]>([]);
+	viewsOpen = $state<readonly ViewKind[]>([]);
 	/** A web project's page, shown in the Preview panel; its console goes to the terminal. */
 	readonly preview = new Preview(this.runner, (signal) => this.projectErrors(signal));
 	/**
@@ -587,9 +587,9 @@ export class Workspace {
 
 	/**
 	 * Opens a compiler output view of the active C or C++ source (languages
-	 * with that view, explore-views.ts); does nothing for another language.
+	 * with that view, providers/explore.ts); does nothing for another language.
 	 */
-	async showView(kind: ExploreKind): Promise<void> {
+	async showView(kind: ViewKind): Promise<void> {
 		if (!viewOf(this.language, kind)) return;
 		const generation = this.generation;
 		try {
@@ -606,7 +606,7 @@ export class Workspace {
 	 * Opens view `kind` when it is closed and closes it when it is open: what
 	 * the top bar's toggles do.
 	 */
-	toggleView(kind: ExploreKind): void {
+	toggleView(kind: ViewKind): void {
 		if (this.viewsOpen.includes(kind)) this.host?.hideView(kind);
 		else void this.showView(kind);
 	}
@@ -617,7 +617,7 @@ export class Workspace {
 	}
 
 	/** The dock opened or closed a view's panel; `open` is every view open now. */
-	viewsChanged(open: readonly ExploreKind[]): void {
+	viewsChanged(open: readonly ViewKind[]): void {
 		if (open.length !== this.viewsOpen.length || open.some((k) => !this.viewsOpen.includes(k))) this.viewsOpen = open;
 	}
 
@@ -626,8 +626,12 @@ export class Workspace {
 		this.explorerLoad ??= import('./explorer.svelte').then(({ Explorer }) => {
 			const explorer = new Explorer({
 				language: () => this.language,
-				pack: () => (viewsOf(this.language) ? packOf(languageOf(this.language)) : null),
 				files: () => this.currentFiles(),
+				snapshot: (files) => this.frozen(files),
+				explore: (language, input, snapshot, signal) => yukibana().perform(subjectOf(language), explore, input, snapshot, signal),
+				release: (language) => {
+					if (isLanguageId(language)) pageHost().explorers.release(packOf(languageOf(language)));
+				},
 				// C and C++ views read the level from compile_flags.txt, as their runner does; Swift's is sent, as with Run.
 				options: () => {
 					const o = this.optimization;

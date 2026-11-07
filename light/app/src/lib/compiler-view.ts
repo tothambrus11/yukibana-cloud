@@ -1,6 +1,6 @@
 /**
  * A compiler output view (LLVM IR, assembly, SIL, MIR, Core, …: the
- * language's, explore-views.ts) inside a dockview panel: a header saying
+ * language's, providers/explore.ts) inside a dockview panel: a header saying
  * what the output is of and how it went, the view's toggles, a progress
  * line while the compiler downloads or compiles, and a read-only Monaco
  * editor showing the output, or the compiler's messages when the source
@@ -52,7 +52,8 @@ import { placePopover } from './anchor';
 import { openBuildSettings } from './build-settings';
 import { formatDuration } from './format';
 import type { Explorer, ViewState } from './explorer.svelte';
-import { KINDS, viewOf, viewsOf, type ExploreKind, type ExploreToggle, type ExploreView } from './explore-views';
+import type { ExploreToggle, ExploreView, ViewKind } from '@yukibana/std';
+import { viewOf, viewsOf } from './providers/explore';
 
 /** What a view needs of the editor area, which owns the source editors (LinkHost: what the linking of the panes needs). */
 export interface ViewHost extends LinkHost {
@@ -173,17 +174,17 @@ let nextMenu = 0;
  * state until disposed. `element` is the panel's content element, which the
  * view fills; the caller keeps the panel's visibility in the explorer.
  */
-export function createCompilerView(element: HTMLElement, kind: ExploreKind, host: ViewHost): CompilerView {
+export function createCompilerView(element: HTMLElement, kind: ViewKind, host: ViewHost): CompilerView {
 	addStyles();
 	const { explorer, monaco } = host;
 	registerOutputLanguages(monaco);
 	element.classList.add('yk-view');
 	element.dataset['view'] = kind;
-	const what = KINDS[kind].title;
 	// A view is made for the language of the project open; a new language closes it (Explorer `reset`).
 	const language = explorer.language;
 	const views = viewsOf(language);
-	const spec: ExploreView = viewOf(language, kind) ?? { kind, monaco: 'plaintext', toggles: [] };
+	const spec: ExploreView = viewOf(language, kind) ?? { kind, title: kind, short: kind, noun: 'output', monaco: 'plaintext', toggles: [] };
+	const what = spec.title;
 	const compiler = views?.compiler ?? 'The compiler';
 	/** The flags the person chose, as the details list them: clang's without what every view adds (explorer-map.ts), the others' as the pack sent them. */
 	const chosenFlags = (flags: readonly string[]) => (language === 'cpp' || language === 'c' ? userFlags(flags) : [...flags]);
@@ -232,7 +233,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		b.type = 'button';
 		b.title = t.label === t.name ? t.does : `${t.name}: ${t.does}`;
 		b.dataset['option'] = t.key;
-		b.addEventListener('click', () => explorer.setOption(kind, t.key, !explorer.options[kind][t.key]));
+		b.addEventListener('click', () => explorer.setOption(kind, t.key, !explorer.optionsOf(kind)[t.key]));
 		return b;
 	};
 	const stripButtons = kinds.map((t) => {
@@ -415,10 +416,10 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		set(state, 'title', title);
 		set(state, 'className', `yk-view-state${view.status === 'error' ? ' error' : busy && !p ? ' busy' : ''}`);
 
-		const options = explorer.options[kind];
+		const options = explorer.optionsOf(kind);
 		kinds.forEach((t, i) => {
 			const on = String(options[t.key]);
-			const hidden = t.x86Only === true && view.target !== 'x86_64-linux';
+			const hidden = t.offered === 'x86' && view.target !== 'x86_64-linux';
 			attr(stripButtons[i]!, 'aria-pressed', on);
 			attr(menuButtons[i]!, 'aria-pressed', on);
 			set(stripButtons[i]!, 'hidden', hidden);
@@ -454,7 +455,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	};
 
 	const render = () => {
-		const view = explorer.views[kind];
+		const view = explorer.view(kind);
 		renderHead(view);
 		renderProgress(view);
 		if (view.status === 'error') {
@@ -463,7 +464,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 			show(view.error, 'plaintext');
 		} else if (view.path === null) {
 			set(note, 'hidden', false);
-			set(note, 'textContent', `Open ${views?.sources ?? 'a source file'} to see its ${KINDS[kind].noun}.`);
+			set(note, 'textContent', `Open ${views?.sources ?? 'a source file'} to see its ${spec.noun}.`);
 			shown = null;
 			show('', 'plaintext');
 		} else if (!view.text) {
