@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { olderOnRef, prefixOf, pullOf, stalePullCaches } from './cache-prune.mjs';
+import { branchOf, olderOnRef, prefixOf, pullOf, staleBranchCaches, stalePullCaches } from './cache-prune.mjs';
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'cache-prune.mjs');
 const MAIN = 'refs/heads/main';
@@ -38,6 +38,9 @@ test("a unit's caches and a pack's caches each have a prefix no other unit's or 
     assert.equal(pullOf('refs/pull/12/merge'), 12);
     assert.equal(pullOf(MAIN), null);
     assert.equal(pullOf('refs/pull/12/head'), null);
+    assert.equal(branchOf('refs/heads/ci/ccache'), 'ci/ccache');
+    assert.equal(branchOf('refs/heads/'), null);
+    assert.equal(branchOf('refs/pull/12/merge'), null);
 });
 
 test('main keeps the newest cache of each unit and pack, and loses no cache of another ref', () => {
@@ -73,17 +76,39 @@ test("a closed pull request's caches all go, an open one's keep their newest, an
     );
 });
 
+test("a deleted branch's caches all go, an existing one's keep their newest, and main's and the pull requests' are never touched", () => {
+    const caches = [
+        cache('light/rust/compilers/a/1-1', 'refs/heads/feature', '2026-10-01T00:00:00Z'),
+        cache('light/rust/compilers/b/2-1', 'refs/heads/feature', '2026-10-02T00:00:00Z'),
+        cache('light/rust/compilers/c/3-1', 'refs/heads/gone', '2026-10-01T00:00:00Z'),
+        cache('light-cpp-a-1-1', 'refs/heads/gone', '2026-10-01T00:00:00Z'),
+        cache('other-cache', 'refs/heads/gone', '2026-10-01T00:00:00Z'),
+        cache('light/rust/compilers/d/4-1', MAIN, '2026-09-01T00:00:00Z'),
+        cache('light/rust/compilers/e/5-1', MAIN, '2026-09-02T00:00:00Z'),
+        cache('light/rust/compilers/f/6-1', 'refs/pull/5/merge', '2026-09-01T00:00:00Z'),
+        cache('light/rust/compilers/g/7-1', 'refs/tags/light-v1', '2026-09-01T00:00:00Z'),
+    ];
+    assert.deepEqual(
+        staleBranchCaches(caches, new Set(['main', 'feature'])).map((c) => `${c.key} ${c.ref}`),
+        ['light/rust/compilers/a/1-1 refs/heads/feature', 'light/rust/compilers/c/3-1 refs/heads/gone', 'light-cpp-a-1-1 refs/heads/gone'],
+    );
+    // Main is spared even when a listing lacks it.
+    assert.deepEqual(staleBranchCaches(caches, new Set(['feature'])).filter((c) => c.ref === MAIN), []);
+});
+
 /**
  * Runs cache-prune.mjs with `args` against a stand-in gh that answers
- * `cache list` with `caches`, `pr list` with `open`, and fails deleting
- * `failing`; returns the run and every gh call, as its arguments.
+ * `cache list` with `caches`, `pr list` with `open`, `api .../branches`
+ * with `branches`, and fails deleting `failing`; returns the run and every
+ * gh call, as its arguments.
  * @param {string[]} args
  * @param {object} world
  * @param {Array<{ key: string, ref: string, createdAt: string }>} world.caches
  * @param {number[]} [world.open]
+ * @param {string[]} [world.branches]
  * @param {string} [world.failing]
  */
-function run(args, { caches, open = [], failing = '' }) {
+function run(args, { caches, open = [], branches = ['main'], failing = '' }) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cache-prune-test-'));
     try {
         const log = path.join(dir, 'calls');
@@ -101,6 +126,8 @@ if (args[0] === 'cache' && args[1] === 'list') {
     process.stdout.write(JSON.stringify(at < 0 ? all : all.filter((c) => c.ref === args[at + 1])));
 } else if (args[0] === 'pr' && args[1] === 'list') {
     process.stdout.write(fs.readFileSync(${JSON.stringify(path.join(dir, 'pulls.json'))}, 'utf8'));
+} else if (args[0] === 'api' && args.includes('repos/test/repo/branches?per_page=100') && args.includes('--paginate')) {
+    process.stdout.write(${JSON.stringify(branches.map((b) => `${b}\n`).join(''))});
 } else if (args[0] === 'cache' && args[1] === 'delete') {
     process.exit(args[2] === ${JSON.stringify(failing)} ? 1 : 0);
 } else process.exit(2);
@@ -148,4 +175,34 @@ test('every cache deleted is deleted on its own ref, and a failed delete fails t
     const usage = run(['--ref'], { caches });
     assert.equal(usage.status, 2);
     assert.deepEqual(usage.calls, []);
+});
+
+test("branches' caches are pruned with the pull requests' in one run, each on its own ref, and a branch listing without main deletes nothing", () => {
+    const caches = [
+        cache('light/rust/compilers/a/1-1', 'refs/heads/feature', '2026-10-01T00:00:00Z'),
+        cache('light/rust/compilers/b/1-1', 'refs/heads/feature', '2026-10-02T00:00:00Z'),
+        cache('light/rust/compilers/c/1-1', 'refs/heads/gone', '2026-10-01T00:00:00Z'),
+        cache('light/stub/vm/a/1-1', 'refs/pull/5/merge', '2026-10-01T00:00:00Z'),
+        cache('light/stub/vm/c/1-1', MAIN, '2026-10-01T00:00:00Z'),
+        cache('light/stub/vm/d/1-1', MAIN, '2026-10-02T00:00:00Z'),
+    ];
+    const both = run(['--stale-pulls', '--stale-branches'], { caches, open: [], branches: ['main', 'feature'] });
+    assert.equal(both.status, 0, both.stderr);
+    assert.deepEqual(
+        both.calls.filter(([a, b]) => a === 'cache' && b === 'delete'),
+        [
+            ['cache', 'delete', 'light/stub/vm/a/1-1', '--ref', 'refs/pull/5/merge', '--repo', 'test/repo'],
+            ['cache', 'delete', 'light/rust/compilers/a/1-1', '--ref', 'refs/heads/feature', '--repo', 'test/repo'],
+            ['cache', 'delete', 'light/rust/compilers/c/1-1', '--ref', 'refs/heads/gone', '--repo', 'test/repo'],
+        ],
+    );
+    const lost = run(['--stale-branches'], { caches, branches: [] });
+    assert.equal(lost.status, 1);
+    assert.match(lost.stderr, /main is not among the branches listed/);
+    assert.deepEqual(lost.calls.filter(([a, b]) => a === 'cache' && b === 'delete'), []);
+    for (const bad of [['--stale-branches', '--stale-branches'], ['--stale-branches', '--ref', MAIN]]) {
+        const usage = run(bad, { caches });
+        assert.equal(usage.status, 2, bad.join(' '));
+        assert.deepEqual(usage.calls, []);
+    }
 });
