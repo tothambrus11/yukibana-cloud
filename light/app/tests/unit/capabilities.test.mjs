@@ -38,7 +38,7 @@ const TODAY = {
 	'p5-global': { runs: true, preview: 'index.html' },
 	c: { runs: true, debugs: true },
 	cpp: { runs: true, tests: true, debugs: true, debugsTests: true },
-	swift: { runs: true, tests: true, debugs: true },
+	swift: { runs: true, tests: true, debugs: true, debugsTests: true },
 	scala: { runs: true },
 	rust: { runs: true, tests: true },
 	php: { runs: true, tests: true },
@@ -208,6 +208,7 @@ test("Swift: Debug is disabled when swift.env names a Linux target, with the run
 	for (const [target, label] of [['x86_64-linux', 'x86-64 Linux'], ['aarch64-linux', 'AArch64 Linux']]) {
 		const snapshot = snapshotOf({ ...sample, 'swift.env': `${sample['swift.env']}TARGET=${target}\n` });
 		assert.equal(offered(instance, swift, std.debug, snapshot), `disabled: error: the debugger runs WebAssembly programs only; ${label} cannot be debugged yet (comment out TARGET in swift.env to debug)`);
+		assert.equal(offered(instance, swift, std.debugTest, snapshot), offered(instance, swift, std.debug, snapshot), 'Debug tests is refused for the same reason');
 		assert.equal(offered(instance, swift, std.run, snapshot), 'enabled');
 	}
 	assert.equal(offered(instance, swift, std.debug, snapshotOf({ ...sample, 'swift.env': 'TARGET=x86_64-linux\nTARGET=wasm32-wasi\n' })), 'enabled', 'the last TARGET wins');

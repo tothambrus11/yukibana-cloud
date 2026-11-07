@@ -8,7 +8,7 @@
  * are `./body`; the Monaco languages `./monaco`.
  */
 import { AVAILABLE } from '../core/index.ts';
-import { debugProvider, demangleToggle, DIRECTIVES_TOGGLE, explorerProvider, exploreToggle, exploreView, libraryToggle, run, runProvider, type ExploreToggle, type LanguageViews, type PackageLanguage, type PackHost } from '../std/index.ts';
+import { debug, debugProvider, demangleToggle, DIRECTIVES_TOGGLE, explorerProvider, exploreToggle, exploreView, libraryToggle, run, runProvider, test, type ExploreToggle, type LanguageViews, type PackageLanguage, type PackHost } from '../std/index.ts';
 import { swiftDebugAvailable } from './refusals.ts';
 
 const SWIFT_LIBRARY: ExploreToggle = libraryToggle('Keep functions the file does not define: the standard library’s and other files’, which the compiler copies in to inline or specialise');
@@ -31,16 +31,18 @@ const VIEWS: LanguageViews = {
 	],
 };
 
-/** Swift: Run, Test and Debug, and the SIL, LLVM IR and assembly views. */
+/** Swift: Run, Test, Debug and Debug tests, and the SIL, LLVM IR and assembly views. */
 const SWIFT: PackageLanguage<PackHost> = {
 	spec: { key: 'swift', label: 'Swift', short: null, pack: 'swift', uses: ['linux'], entry: 'main.swift', extension: '.swift' },
 	providers: (language) => [
 		runProvider('run', language, { requires: [], available: () => AVAILABLE }),
 		runProvider('test', language, { requires: [], available: () => AVAILABLE }),
 		// Its runner compiles a debugged program at -Onone, so the run is sent
-		// no runner options; and runs its tests uninstrumented, once per testing
-		// library, so it has no Debug tests.
+		// no runner options. A debugged test run runs one testing library
+		// (XCTest's when there are XCTestCase classes, else swift-testing's),
+		// and the runner says so on stderr.
 		debugProvider('run', language, { requires: [run], available: swiftDebugAvailable, options: 'none' }),
+		debugProvider('test', language, { requires: [test, debug], available: swiftDebugAvailable, options: 'none' }),
 		explorerProvider(language, VIEWS),
 	],
 };
