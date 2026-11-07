@@ -4,9 +4,9 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Section 8 records how step 1 was built and where it
-departs from the sketches here; the code and its `/** */` contracts are the
-authority where the two differ.
+`light/modules`. Sections 8 to 10 record how steps 1 to 3 were built and
+where they depart from the sketches here; the code and its `/** */`
+contracts are the authority where the two differ.
 
 This design is grounded in today's code: `languages.ts` (the `Language` booleans), `workspace.svelte.ts:382-425` (start/debug branches), `run.svelte.ts` (RunnerPool + RunHandle), `explorer.svelte.ts:294` (its own `explorer.js` worker), `preview.ts` (busy/again coalescing), `packs.ts` (`packOf`/`packsOf`/`runnerSourceOf`), `build-settings.ts`, `cpp-targets.ts` (the target is a line of `compile_flags.txt`), `modules/runtime/run-session.ts` (`RunEvent`, `RunState`), `modules/protocol/runner.ts` (`RunMode`, `RunMessage`), and `modules/boundaries.test.mjs` (the hand-written `ALLOWED` table).
 
@@ -474,3 +474,94 @@ the sketches above, including the changes a review of steps 1 and 2 made:
   instance from std's `runProvider` and `warmProvider`. `subjectOf` now
   takes any string that `languageOf` knows, not only the app's
   `LanguageId`.
+
+## 10. Step 3 as built
+
+Step 3 made the build settings of C, C++, Rust, Swift and Scala properties,
+still app-side, in `light/app/src/lib/properties/` (`cpp.ts`, `rust.ts`,
+`levels.ts`, `linux.ts`, with `index.ts` for the table and `read.ts` for
+what they share). Each file lens's `read` and `write` are the functions the
+Build settings already used (`targetOf`/`withTarget`, `standardOf`/
+`withStandard`, `cppLevelOf`/`withCppLevel`, `sanitizersOf`/
+`withSanitizers`, `checksOf`/`withChecks`, `rustTargetOf`/
+`withRustTarget`), so what a project holds and how a picker rewrites it
+are unchanged. Each language's `LanguageBody.properties` is its model.
+Where it departs from the sketches above:
+
+* **`LanguageSettings`: the properties by role, as well as the model.**
+  A model's list is existential (`SomeProperty`, section 9), so a host
+  cannot take a `Property<CppTargetId>` back out of it without a cast. The
+  app's table holds each property under its role (`target`, `standard`,
+  `level`, `sanitizers`, `tidyChecks`, `clangTidy`, `runOptions`,
+  `rustTarget`, `miri`), null where a language has none, and the workspace
+  asks that null where it asked the language's name. The roles are the
+  host's: when the models move into packages (step 6) a package exports
+  its properties, and the host's table names them.
+* **A meta binding may write null, which unsets the field.** The value a
+  project that never chose has (the default level, Miri off, clang-tidy
+  on) is saved as no field, as it always was, so that choosing it again
+  saves what never choosing does. `MetaBinding.write` and `ProjectEdit`
+  say so. Run options are the exception, as they were: once chosen they
+  are saved whole, defaults included.
+* **The value types are what the pickers write.** A standard is its
+  `-std=` value of the list (`c++20`, `gnu++20`; an alias reads as the
+  standard it names) or `'default'` for no line, since a project with no
+  `-std=` is not the project that says `-std=gnu++17`. Miri is a Miri
+  target or `'off'`. The clang-tidy rules are the globs of `Checks` or null
+  for no key (clangd's own checks); `withChecks(text, null)` now takes the
+  key out, so that the lens is total, though nothing in the app writes null
+  yet.
+* **Two lenses never read `default`.** `rustTargetOf` does not tell a file
+  without `[build] target` from one naming the default, so both read as
+  the default's id, a value; `sanitizersOf` always answers, so the
+  sanitizers read as a value, none on when there is no line.
+* **The sanitizers lens is not byte for byte on a CRLF file.** Its write is
+  the menu's `withSanitizers`, which has always rewritten the file with
+  `\n` line ends. Every other line is kept, in its place; the round-trip
+  test (`tests/unit/properties.test.mjs`) holds the other lenses to CRLF
+  and this one to `\n`, and says so. Changing it would change what the
+  menu writes.
+* **Run options are one property made per language**
+  (`runOptionsProperty(relevant)`, id `@yukibana/std#linux-run-options`):
+  C and C++ on a Linux target, Rust on one and not under Miri. `relevant`
+  is what the summary reads to decide whether to show them. A stored value
+  is read field by field (`runOptionsOf`), so a hand-made link whose run
+  options carry a field the runner does not know no longer sends it.
+* **The workspace's choice fields stay.** `target`, `standard`,
+  `optimization`, `sanitizers`, `rustTarget` and `tidyChecks` are still
+  Svelte state, refreshed from the same parse functions, but only where
+  the language has the property. The Build settings panel reads them: it
+  needs what a `Read<V>` does not carry (whether a standard is GNU, a
+  level's label, clang's default named). Rendering the panel generically
+  from the model is left for when the models move into packages.
+* **`choose(property, value)`** is the one write path of the workspace's
+  `choose*` and `set*` methods: `writeProperty` over a snapshot, then
+  `apply`, which gives a file edit to `replaceFile` (one Undo step, as
+  before) and sets the workspace's field for a meta edit (no Undo, as
+  before). A value outside the property's choices, or a language without
+  the property, is ignored, as the methods ignored them. `setRunOptions`
+  is now ignored for a language without run options; it used to save them
+  for any language, though only the C, C++ and Rust panels offer them.
+* **`buildSummary` is the model's `summary`** over the workspace's
+  snapshot. The snapshot reads the workspace's revision, so the chip and
+  the status bar follow every edit as they did. **The runner's options**
+  come from the properties (`runnerOptionsOf`): a level saved with the
+  project, the run options, Miri when on; the same keys in the same order
+  as before. The compiler output views and Download send the level only
+  where it is a meta property, as before. They are read from the snapshot
+  before the terminal is shown: showing it can move the tabs, which is a
+  change of the project, and a first version that read them after it threw
+  the stale-snapshot error of section 9 on Run (e2e-layout's `cpp-run`).
+* **Branches left in `workspace.svelte.ts`**, each with a comment or for
+  the reason here. `debug()` still asks `isCFamily`: a Rust debug run has
+  never been sent the run options its Run is sent, so no property says it;
+  step 4's debug providers decide. `refreshTestFramework` asks for C++ by
+  name: the test framework is a detector, not a setting, and feeds Test's
+  availability later. The language picker. Outside the workspace,
+  `+page.svelte`'s `hasBuild`, `BuildSettings.svelte` and `levelsOf` still
+  name languages; they go with the generic panel.
+* **Test's availability on a Linux target is unchanged.** C++ Test is still
+  offered and enabled on a Linux target with Catch2 or doctest, which the
+  runner refuses (section 9); the property is now there to read, but the
+  rule changes what the top bar offers.
+

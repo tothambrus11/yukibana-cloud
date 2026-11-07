@@ -120,7 +120,7 @@ export type ProjectEdit =
 			readonly kind: 'meta';
 			/** The field. */
 			readonly key: MetaKey;
-			/** Its new value, as stored. */
+			/** Its new value, as stored; null unsets it (`MetaBinding.write`). */
 			readonly value: JsonValue;
 	  };
 

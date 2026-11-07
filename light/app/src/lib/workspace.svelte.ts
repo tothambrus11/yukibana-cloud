@@ -16,21 +16,23 @@ import { severityOf, worstFirst, type Severity } from './severity';
 import { buildSystems, exportProject, type BuildSystem, type ExportOptions } from './export';
 import { zip } from './zip';
 import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
-import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
-import { describeSanitizers, sanitizersOf, withSanitizers, type SanitizerChoice } from './cpp-sanitizers';
-import { CARGO_CONFIG, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, withRustTarget, type MiriTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
-import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } from './optimization';
-import { describeStandard, standardOf, withStandard, type Standard, type StandardChoice } from './cpp-standards';
-import { checksOf, TIDY_FILE, withChecks, type CheckGlob } from './tidy-config';
+import { DEFAULT_RUN_OPTIONS, runOptionsOf, targetById, targetOf, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
+import { describeSanitizers, sanitizersOf, type SanitizerChoice } from './cpp-sanitizers';
+import { CARGO_CONFIG, isMiriTarget, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, type MiriTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
+import { cppLevelOf, defaultLevel, levelsOf, type LevelChoice } from './optimization';
+import { describeStandard, standardOf, type Standard, type StandardChoice } from './cpp-standards';
+import { checksOf, TIDY_FILE, type CheckGlob } from './tidy-config';
 import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
-import { pathOf, type ProjectSnapshot } from '@yukibana/core';
+import { pathOf, writeProperty, type ProjectEdit, type ProjectSnapshot, type Property } from '@yukibana/core';
 import { test, tokenOf, warm } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, subjectOf, yukibana } from './yukibana';
+import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
+import { COMPILE_FLAGS, standardSettingOf } from './properties/cpp.ts';
 import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
 import { holdsProject } from './project-link';
 
@@ -104,9 +106,6 @@ export interface EditorHost {
 	/** Opens the Debug panel beside Problems, or brings it to the front. */
 	showDebug(): void;
 }
-
-/** The file that holds a C or C++ project's flags: its target, standard, level and sanitizers among them. */
-const COMPILE_FLAGS = 'compile_flags.txt';
 
 const SAVE_DELAY_MS = 400;
 /**
@@ -449,15 +448,15 @@ export class Workspace {
 		// On a Linux target the runner runs GoogleTest tests (and RapidCheck)
 		// under QEMU, and refuses Catch2 and doctest by name (packs/cpp README).
 		const files = snapshot.files();
+		// A C or C++ runner reads its level from compile_flags.txt; Swift's is
+		// sent. A Rust program on a Linux target runs under QEMU with the C++
+		// pack's Run options. The language's properties say which (properties/).
+		// Read before the terminal is shown: showing it moves the tabs, which
+		// is a change of the project, and the snapshot is then stale.
+		const options = runnerOptionsOf(this.settings, snapshot);
 		this.host?.showTerminal();
-		// A C or C++ runner reads its level from compile_flags.txt; Swift's is sent.
-		const cFamily = isCFamily(this.language);
-		const level = !cFamily && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
-		const rust = this.language === 'rust';
-		// A Rust program on a Linux target runs under QEMU with the C++ pack's Run options.
-		const options = cFamily ? { ...this.runOptions } : { ...(level ? { optimization: level } : {}), ...(rust ? { ...this.runOptions, ...(this.miri ? { miri: this.miri } : {}) } : {}) };
 		const listener = this.runner.begin();
-		const input = { files, entry: pathOf(entry), options: Object.keys(options).length ? options : null, ...listener };
+		const input = { files, entry: pathOf(entry), options, ...listener };
 		// The provider is eager: the run is handed to the pool within this
 		// task, before the next event, as when the app asked the pool itself.
 		yukibana()
@@ -488,6 +487,9 @@ export class Workspace {
 		}
 		const files = this.currentFiles();
 		const source = runnerSourceOf(language);
+		// Left as a language branch: no property says it. A Rust debug run is
+		// sent no options, as it always was, though its Run is sent the run
+		// options and Miri; the debug providers of step 4 (DESIGN.md) decide.
 		const options = isCFamily(this.language) ? { ...this.runOptions } : undefined;
 		this.host?.showTerminal();
 		this.host?.showDebug();
@@ -549,7 +551,7 @@ export class Workspace {
 				// C and C++ views read the level from compile_flags.txt, as their runner does; Swift's is sent, as with Run.
 				options: () => {
 					const o = this.optimization;
-					return !isCFamily(this.language) && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
+					return this.settings.level?.storage.kind === 'meta' && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
 				},
 			});
 			explorer.activeChanged(this.active);
@@ -568,9 +570,8 @@ export class Workspace {
 	 * says what changed.
 	 */
 	chooseTarget(id: CppTargetId): void {
-		if (!isCFamily(this.language)) return;
+		if (!this.choose(this.settings.target, id)) return;
 		const target = targetById(id);
-		this.replaceFile(COMPILE_FLAGS, withTarget(this.models.get(COMPILE_FLAGS)?.getValue(), id));
 		this.refreshTarget();
 		const how = target.default ? `no --target line in ${COMPILE_FLAGS}` : `--target=${target.triple} in ${COMPILE_FLAGS}`;
 		this.write('info', `Target: ${target.label} (${how}).${target.runtime === 'linux' ? ' Run compiles for Linux and runs the program under QEMU, and Test its GoogleTest tests (Catch2 and doctest run on WebAssembly only).' : ''}`);
@@ -585,8 +586,7 @@ export class Workspace {
 	 * The Log panel says what changed.
 	 */
 	chooseSanitizers(choice: SanitizerChoice): void {
-		if (!isCFamily(this.language)) return;
-		this.replaceFile(COMPILE_FLAGS, withSanitizers(this.models.get(COMPILE_FLAGS)?.getValue(), choice));
+		if (!this.choose(this.settings.sanitizers, choice)) return;
 		this.refreshTarget();
 		this.write('info', describeSanitizers(choice));
 		this.scheduleSave();
@@ -600,15 +600,13 @@ export class Workspace {
 	 * project and goes with Run (and Test). The Log panel says what changed.
 	 */
 	chooseOptimization(flag: string): void {
-		const levels = levelsOf(this.language);
-		const level = levels?.find((l) => l.flag === flag);
-		if (!levels || !level) return;
-		if (isCFamily(this.language)) {
-			this.replaceFile(COMPILE_FLAGS, withCppLevel(this.models.get(COMPILE_FLAGS)?.getValue(), flag));
+		const property = this.settings.level;
+		const level = levelsOf(this.language)?.find((l) => l.flag === flag);
+		if (!property || !level || !this.choose(property, flag)) return;
+		if (property.storage.kind === 'file') {
 			const how = level.default ? `no -O line in ${COMPILE_FLAGS}: Run and the views add ${flag}` : `${flag} in ${COMPILE_FLAGS}`;
 			this.write('info', `Optimization: ${flag} (${how}).`);
 		} else {
-			this.chosenLevel = level.default ? null : flag;
 			const what = yukibana().has(subjectOf(this.language), test) ? 'Run and Test' : 'Run';
 			this.write('info', `Optimization: ${level.label}, for ${what}${level.default ? ' (the default)' : ''}.`);
 		}
@@ -625,11 +623,10 @@ export class Workspace {
 	 * follow the file. The Log panel says what changed.
 	 */
 	chooseStandard(choice: { standard: Standard; gnu: boolean } | 'default'): void {
-		const language = this.language;
-		if (language !== 'c' && language !== 'cpp') return;
-		this.replaceFile(COMPILE_FLAGS, withStandard(this.models.get(COMPILE_FLAGS)?.getValue(), language, choice));
+		const standard = this.settings.standard;
+		if (!standard || !this.choose(standard.property, standardSettingOf(choice))) return;
 		this.refreshTarget();
-		const now = standardOf(this.models.get(COMPILE_FLAGS)?.getValue(), language);
+		const now = standardOf(this.models.get(COMPILE_FLAGS)?.getValue(), standard.language);
 		this.write('info', `Standard: ${describeStandard(now)}${choice === 'default' ? ` (no -std= line in ${COMPILE_FLAGS})` : ` (-std=${choice.gnu ? choice.standard.gnu : choice.standard.iso} in ${COMPILE_FLAGS})`}.`);
 		this.explorer?.settingsChanged();
 		this.scheduleSave();
@@ -642,8 +639,7 @@ export class Workspace {
 	 * stay as they are, for when it is turned on again.
 	 */
 	setClangTidy(on: boolean): void {
-		if (!isCFamily(this.language) || on === this.clangTidy) return;
-		this.clangTidy = on;
+		if (on === this.clangTidy || !this.choose(this.settings.clangTidy, on)) return;
 		this.client?.configure(this.serverOptions());
 		this.write('info', on ? `clang-tidy is on: its rules are in ${TIDY_FILE}.` : `clang-tidy is off; ${TIDY_FILE} is kept for when it is turned on.`);
 		this.scheduleSave();
@@ -656,8 +652,7 @@ export class Workspace {
 	 * clangd reads the file again and diagnoses with the new rules.
 	 */
 	setTidyChecks(globs: readonly CheckGlob[]): void {
-		if (!isCFamily(this.language)) return;
-		this.replaceFile(TIDY_FILE, withChecks(this.models.get(TIDY_FILE)?.getValue(), globs));
+		if (!this.choose(this.settings.tidyChecks, globs)) return;
 		this.refreshTidy();
 		this.scheduleSave();
 	}
@@ -669,10 +664,8 @@ export class Workspace {
 	 * and Download follow the file. The Log panel says what changed.
 	 */
 	chooseRustTarget(id: RustTarget['id']): void {
-		if (this.language !== 'rust') return;
 		const target = RUST_TARGETS.find((t) => t.id === id);
-		if (!target) return;
-		this.replaceFile(CARGO_CONFIG, withRustTarget(this.models.get(CARGO_CONFIG)?.getValue(), id));
+		if (!target || !this.choose(this.settings.rustTarget, id)) return;
 		this.refreshTarget();
 		const how = target.default ? `no [build] target in ${CARGO_CONFIG}` : `target = "${target.triple}" in ${CARGO_CONFIG}`;
 		this.write('info', `Target: ${target.label} (${how}).${target.runtime === 'linux' ? ' Run and Test compile for Linux and run the program under QEMU; the first build downloads the cross compiler.' : ''}`);
@@ -686,8 +679,7 @@ export class Workspace {
 	 * it.
 	 */
 	setMiri(id: MiriTarget['id'] | null): void {
-		if (this.language !== 'rust' || id === this.miri) return;
-		this.miri = id;
+		if (id === this.miri || !this.choose(this.settings.miri, id ?? 'off')) return;
 		const target = MIRI_TARGETS.find((t) => t.id === id);
 		this.write(
 			'info',
@@ -703,11 +695,67 @@ export class Workspace {
 		return { yukibana: { language: this.language, clangTidy: this.clangTidy } };
 	}
 
-	/** Changes how Run runs a program built for a Linux target; saved with the project. */
+	/**
+	 * Changes how Run runs a program built for a Linux target; saved with
+	 * the project. Not for a language without run options: it is ignored.
+	 */
 	setRunOptions(options: Partial<RunOptions>): void {
-		this.runOptions = { ...this.runOptions, ...options };
-		this.runOptionsChosen = true;
+		if (!this.choose(this.settings.runOptions, { ...this.runOptions, ...options })) return;
 		this.scheduleSave();
+	}
+
+	/** The build settings of the project's language (properties/), each null where it has none. */
+	private get settings(): LanguageSettings {
+		return settingsOf(this.language);
+	}
+
+	/**
+	 * Makes `property` hold `value` (@yukibana/core's `writeProperty`), and
+	 * returns `true` iff it did: false, and nothing is changed, when the
+	 * language has no such property (null) or `value` is not one of its
+	 * choices, which the pickers never offer. Saving and saying so are the
+	 * caller's.
+	 */
+	private choose<V>(property: Property<V> | null, value: V): boolean {
+		if (property === null) return false;
+		const snapshot = this.snapshot();
+		const choices = property.choices(snapshot);
+		if (choices !== null && !choices.includes(value)) return false;
+		this.apply(writeProperty(snapshot, property, value));
+		return true;
+	}
+
+	/**
+	 * Applies `edit`: a file's text as one edit, which Undo takes back
+	 * (`replaceFile`), or a field of the saved project, which is saved with
+	 * it and has no Undo (it never had). The fields are those of `Project`
+	 * the properties bind (properties/), each read back here at the one
+	 * boundary where a stored value becomes the workspace's.
+	 *
+	 * - Requires: a meta edit's key is one of `runOptions`, `optimization`, `clangTidy` and `miri`.
+	 */
+	private apply(edit: ProjectEdit): void {
+		if (edit.kind === 'file') {
+			this.replaceFile(edit.path, edit.text);
+			return;
+		}
+		const value = edit.value;
+		switch (edit.key) {
+			case 'runOptions':
+				this.runOptions = runOptionsOf(value);
+				this.runOptionsChosen = true;
+				return;
+			case 'optimization':
+				this.chosenLevel = typeof value === 'string' ? value : null;
+				return;
+			case 'clangTidy':
+				this.clangTidy = value !== false;
+				return;
+			case 'miri':
+				this.miri = isMiriTarget(value) ? value : null;
+				return;
+		}
+		throw new RangeError(`The workspace saves no project field "${edit.key}".`);
 	}
 
 	/** Opens the Download dialog; the page sets it. Without one, Download asks for nothing beyond the build files. */
@@ -731,7 +779,8 @@ export class Workspace {
 
 	/** The project as Download zips it, with `options` (export.ts). */
 	private exported(options: ExportOptions) {
-		return exportProject(languageOf(this.language), this.currentFiles(), isCFamily(this.language) ? null : this.chosenLevel, options);
+		// A level compile_flags.txt holds is carried by the file itself.
+		return exportProject(languageOf(this.language), this.currentFiles(), this.settings.level?.storage.kind === 'meta' ? this.chosenLevel : null, options);
 	}
 
 	/**
@@ -1038,13 +1087,14 @@ export class Workspace {
 			languages: language.monacoLanguages,
 			rootUri: WORKSPACE.uri,
 			settings: language.settings,
-			...(isCFamily(language.id) ? { initializationOptions: this.serverOptions() } : {}),
+			// The C and C++ pack's server is told whether clang-tidy runs.
+			...(settingsOf(language.id).clangTidy ? { initializationOptions: this.serverOptions() } : {}),
 			events: {
 				state: (s) => {
 					if (this.client !== client) return;
 					this.clientState = s;
 					// A C++ pack with clang-tidy reports it before it answers `initialize`; an older one never does.
-					if (s.kind === 'running' && isCFamily(language.id) && this.tidyStatus === null)
+					if (s.kind === 'running' && settingsOf(language.id).clangTidy && this.tidyStatus === null)
 						this.tidyStatus = { id: 'clang-tidy', label: 'clang-tidy', state: 'failed', detail: 'this build of the C and C++ language server has no clang-tidy yet' };
 				},
 				loading: (p) => {
@@ -1162,23 +1212,23 @@ export class Workspace {
 	/** The target, the sanitizers and the standard, which compile_flags.txt says. */
 	private refreshTarget(): void {
 		const flags = this.models.get(COMPILE_FLAGS)?.getValue();
-		const language = this.language;
-		const cFamily = language === 'c' || language === 'cpp';
-		this.target = cFamily ? targetOf(flags) : null;
-		this.sanitizers = cFamily ? sanitizersOf(flags) : null;
-		this.standard = cFamily ? standardOf(flags, language) : null;
-		this.rustTarget = language === 'rust' ? rustTargetOf(this.models.get(CARGO_CONFIG)?.getValue()) : null;
+		const settings = this.settings;
+		this.target = settings.target ? targetOf(flags) : null;
+		this.sanitizers = settings.sanitizers ? sanitizersOf(flags) : null;
+		this.standard = settings.standard ? standardOf(flags, settings.standard.language) : null;
+		this.rustTarget = settings.rustTarget ? rustTargetOf(this.models.get(CARGO_CONFIG)?.getValue()) : null;
 	}
 
 	/** The clang-tidy rules, which .clang-tidy says. */
 	private refreshTidy(): void {
-		this.tidyChecks = isCFamily(this.language) ? checksOf(this.models.get(TIDY_FILE)?.getValue()) : null;
+		this.tidyChecks = this.settings.tidyChecks ? checksOf(this.models.get(TIDY_FILE)?.getValue()) : null;
 	}
 
 	private refreshOptimization(): void {
 		const levels = levelsOf(this.language);
-		if (!levels) this.optimization = null;
-		else if (isCFamily(this.language)) this.optimization = cppLevelOf(this.models.get(COMPILE_FLAGS)?.getValue());
+		const property = this.settings.level;
+		if (!levels || !property) this.optimization = null;
+		else if (property.storage.kind === 'file') this.optimization = cppLevelOf(this.models.get(COMPILE_FLAGS)?.getValue());
 		else {
 			const level = levels.find((l) => l.flag === this.chosenLevel);
 			this.optimization = level ? { kind: 'level', level } : { kind: 'default', level: defaultLevel(levels) };
@@ -1220,7 +1270,8 @@ export class Workspace {
 
 	/** The settings saved with the project beside its files, as they are now: only those set. */
 	private savedSettings(): Pick<Project, 'runOptions' | 'optimization' | 'clangTidy' | 'miri'> {
-		return { ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: this.miri } : {}) };
+		const settings = this.settings;
+		return { ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(settings.clangTidy && !this.clangTidy ? { clangTidy: false as const } : {}), ...(settings.miri && this.miri ? { miri: this.miri } : {}) };
 	}
 
 	/**

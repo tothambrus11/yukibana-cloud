@@ -36,9 +36,13 @@ export interface MetaBinding<V> {
 	 */
 	readonly parse: (stored: unknown) => V | null;
 	/**
-	 * Returns `value` as it is stored; `parse` of the result is `value` again.
-	 * A function property, not a method, so that a binding of one type is
-	 * never taken for a binding of another.
+	 * Returns `value` as it is stored; `parse` of the result is `value` again,
+	 * except that null means the field is unset (a host leaves it out of the
+	 * saved project), which a property reads as its default: a binding
+	 * writes null for the value a project that never chose has, so that
+	 * choosing it again saves what was saved before. A function property,
+	 * not a method, so that a binding of one type is never taken for a
+	 * binding of another.
 	 */
 	readonly write: (value: V) => JsonValue;
 }

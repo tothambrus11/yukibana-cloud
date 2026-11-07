@@ -9,12 +9,13 @@
  * language's metadata until the languages are packages of their own
  * (light/modules/DESIGN.md, step 6).
  */
-import { createInstance, languageKey, pathOf, type Instance, type PropertyModel, type Subject } from '@yukibana/core';
+import { createInstance, languageKey, pathOf, type Instance, type Subject } from '@yukibana/core';
 import { RunnerPool, workerTransport, type PackLocator } from '@yukibana/runtime';
 import type { PackLanguage, RunHost } from '@yukibana/std';
 import { LANGUAGES, type Language } from './languages.ts';
 import { APP_RUNNER_NEEDS, appPacks, packsOf } from './packs.ts';
 import { runProvidersOf } from './providers/run.ts';
+import { settingsOf } from './properties/index.ts';
 
 /**
  * What the app's providers borrow: the page's runners, made on first read,
@@ -46,15 +47,9 @@ export class PageHost implements RunHost {
 }
 
 /**
- * A language's settings as properties: none yet. The C and C++ build
- * settings, Rust's target and the optimisation levels become properties in
- * step 3 of DESIGN.md; until then the workspace keeps them.
- */
-const NO_PROPERTIES: PropertyModel = { properties: [], summary: () => '' };
-
-/**
  * Returns `language` as the core knows it: its metadata, the packs it runs
- * on, and its sample and server settings as its body. Throws, as `packsOf`
+ * on, and its sample, server settings and build settings (properties/) as
+ * its body. Throws, as `packsOf`
  * does, for a pack that is not a pack id: when the instance is made, not
  * when Run is first pressed.
  */
@@ -69,7 +64,7 @@ export function metaOf(language: Language): PackLanguage {
 		uses,
 		entry: pathOf(language.entry),
 		extension: language.extension,
-		body: async () => ({ sample: language.sample, serverSettings: language.settings, properties: NO_PROPERTIES }),
+		body: async () => ({ sample: language.sample, serverSettings: language.settings, properties: settingsOf(language.id).model }),
 	};
 }
 

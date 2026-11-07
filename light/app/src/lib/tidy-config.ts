@@ -156,15 +156,24 @@ export function checksOf(text: string | null | undefined): CheckGlob[] | null {
  * line, the form the samples use; every other line kept byte for byte.
  * With no key, it is added at the top, after the comments that open the
  * file; with no file, the file is that key alone.
+ *
+ * `globs` null takes the key out instead (clangd then runs its own few
+ * checks, as `checksOf` reads null): its lines go, every other line is
+ * kept, and a file without the key is returned as it is (`''` for none).
  */
-export function withChecks(text: string | undefined, globs: readonly CheckGlob[]): string {
+export function withChecks(text: string | undefined, globs: readonly CheckGlob[] | null): string {
 	const source = text ?? '';
 	const eol = /\r\n/.test(source) ? '\r\n' : '\n';
-	const block = globs.length ? ['Checks: >-', ...globs.map((g, i) => `  ${globText(g)}${i < globs.length - 1 ? ',' : ''}`)] : ["Checks: ''"];
 	const lines = source === '' ? [] : source.split(/\r?\n/);
 	const trailing = lines.length > 0 && lines.at(-1) === '';
 	if (trailing) lines.pop();
 	const span = checksSpan(lines);
+	if (globs === null) {
+		if (!span) return source;
+		lines.splice(span.start, span.end - span.start);
+		return lines.length ? lines.join(eol) + eol : '';
+	}
+	const block = globs.length ? ['Checks: >-', ...globs.map((g, i) => `  ${globText(g)}${i < globs.length - 1 ? ',' : ''}`)] : ["Checks: ''"];
 	if (span) lines.splice(span.start, span.end - span.start, ...block);
 	else {
 		let at = 0;
