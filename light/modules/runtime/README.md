@@ -56,7 +56,9 @@ made from that first state reads the handle when clicked; and the pool keys
 a host-built source by its `worker` function, so a page makes one source per
 runner and reuses it.
 
-The language server and preview sessions are not covered: they come with M7.
+The language server session (`language-session.ts`, step 7 of DESIGN.md)
+and the preview session are not covered yet: they are 0.x and may still
+change.
 
 ## Files
 
@@ -72,6 +74,14 @@ The language server and preview sessions are not covered: they come with M7.
   `RunState`, `RunEvent`, `RunFailure`, and the silence and cancel
   timeouts.
 * `run-pool.ts`: `RunnerPool` and `RunHandle`.
+* `language-session.ts`: `LanguageSession` (one language server over its
+  `Connection`: `initialize` with the capabilities its `SessionClient`
+  announces, the open documents and their versions, edits sent as the
+  server wants them, the typed requests `workspaceErrors`,
+  `selectionRanges` and `calls`, the server's requests a client answers),
+  `SessionClient` (an editor's side: `@yukibana/monaco`'s `MonacoBinding`),
+  `ServerState` and `PulledErrors`. Tested over a fake server by
+  `../tests/language-session.test.mjs`.
 
 ## Allowed imports
 

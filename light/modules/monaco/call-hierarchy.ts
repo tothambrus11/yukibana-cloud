@@ -1,5 +1,5 @@
 /**
- * The call hierarchy panel's rows, from LSP's answers, as plain data: what
+ * A call hierarchy panel's rows, from LSP's answers, as plain data: what
  * a row names, where its calls are, and whether expanding it would only
  * repeat what is above it. Nothing here needs Monaco at run time, so the
  * unit tests load it in Node. A `CallSite`'s range is the server's, counted
@@ -12,10 +12,10 @@
  * (the parent row's item), not the callee's. `toRows` is where that is
  * settled, so the panel never has to know.
  */
-import type * as lsp from 'vscode-languageserver-protocol';
+import type * as lsp from '../protocol/lsp.ts';
+import type { CallDirection, Calls } from '../runtime/language-session.ts';
 
-/** Which calls a tree shows: who calls a function (`incoming`), or what it calls (`outgoing`). */
-export type CallDirection = 'incoming' | 'outgoing';
+export type { CallDirection } from '../runtime/language-session.ts';
 
 /** A call, or the root's own name: a range in a file. */
 export interface CallSite {
@@ -73,7 +73,7 @@ export function rootRow(item: lsp.CallHierarchyItem): CallRow {
 export function toRows(
 	direction: CallDirection,
 	parent: lsp.CallHierarchyItem,
-	calls: readonly (lsp.CallHierarchyIncomingCall | lsp.CallHierarchyOutgoingCall)[] | null,
+	calls: Calls | null,
 	ancestors: readonly lsp.CallHierarchyItem[] = [],
 ): CallRow[] {
 	const path = [...ancestors, parent];

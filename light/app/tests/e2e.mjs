@@ -879,7 +879,7 @@ async function typeLens(page, check) {
 }
 
 /**
- * Go to Symbol in Workspace (client.ts, lsp/workspace-symbols.ts), for a
+ * Go to Symbol in Workspace (monaco/bind.ts, monaco/workspace-symbols.ts), for a
  * server with workspace symbols: Ctrl+T opens the picker, the query lists
  * `name` in `file` first, and Enter opens that file with the caret on the
  * line that declares it, in an editor with focus.

@@ -1,10 +1,10 @@
-// Unit tests of the call hierarchy panel's rows (src/lib/lsp/call-hierarchy.ts):
+// Unit tests of the call hierarchy panel's rows (modules/monaco/call-hierarchy.ts):
 // where a call is for each direction, recursion, order, and the labels.
 //
-//   node --test tests/unit/call-hierarchy.test.mjs     (Node 22.18 or later: loads the TypeScript source)
+//   node --test light/modules/tests/call-hierarchy.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { callsLabel, iconOf, placeOf, rootRow, sameItem, siteLabel, toRows, whenLanguage } from '../../src/lib/lsp/call-hierarchy.ts';
+import { callsLabel, iconOf, placeOf, rootRow, sameItem, siteLabel, toRows, whenLanguage } from '../monaco/call-hierarchy.ts';
 
 const ROOT = 'file:///workspace/';
 const range = (sl, sc, el, ec) => ({ start: { line: sl, character: sc }, end: { line: el, character: ec } });

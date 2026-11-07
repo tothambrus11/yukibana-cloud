@@ -16,13 +16,23 @@
  *   references peek's keys, remeasuring for a web font, notifications shown
  *   in the editor), each by a call that returns its `dispose`.
  *
+ * - bind.ts: a runtime `LanguageSession` shown in the host's Monaco
+ *   (`MonacoBinding`): its models kept in sync with the server, and
+ *   Monaco's language features, the call hierarchy's action and Go to
+ *   Symbol in Workspace answered by it.
+ * - call-hierarchy.ts and workspace-symbols.ts: the rows of a call
+ *   hierarchy panel and of the Go to Symbol picker, as plain data.
+ *
  * Importing any of them changes nothing on the page: no listener, global,
  * style or service exists until the host calls for it
  * (../tests/imports.test.mjs).
  *
- * Still to come: the language features and the models (step M7). What it promises, and may import,
+ * What it promises, and may import,
  * is in ./README.md and is enforced by ../boundaries.test.mjs.
  */
+export * from './bind.ts';
+export * from './call-hierarchy.ts';
 export * from './convert.ts';
 export * from './internals.ts';
 export * from './services.ts';
+export * from './workspace-symbols.ts';

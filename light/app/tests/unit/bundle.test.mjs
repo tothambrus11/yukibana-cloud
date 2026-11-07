@@ -1,5 +1,5 @@
 // What the built app is made of (build/_app, written by `npm run build`): it
-// carries Yukibana's own language client and not Monaco's (src/lib/lsp/client.ts
+// carries Yukibana's own language client and not Monaco's (modules/runtime/language-session.ts
 // says why), which `editor.main` would bring in as `monaco.lsp`; what a
 // first page load downloads stays within 1% of bundle-baseline.json, so that
 // moving the app's decisions into light/modules (light/modules/DESIGN.md)

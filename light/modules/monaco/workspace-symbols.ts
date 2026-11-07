@@ -13,7 +13,7 @@
  * its side: a name matching the query exactly first, then a prefix, then
  * a part of the name, then the query's letters in order.
  */
-import type * as lsp from 'vscode-languageserver-protocol';
+import type * as lsp from '../protocol/lsp.ts';
 import { iconOf } from './call-hierarchy.ts';
 
 /** A range of a label, in UTF-16 units: `start` included, `end` not. */

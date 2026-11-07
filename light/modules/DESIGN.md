@@ -4,7 +4,7 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 13 record how steps 1 to 5 were built, and
+`light/modules`. Sections 8 to 15 record how steps 1 to 7 were built, and
 what the reviews of them changed, and where they depart from the sketches
 here; the code and its `/** */`
 contracts are the authority where the two differ.
@@ -924,3 +924,64 @@ decision D1. Where this section and those differ, this one holds.
   light-ci.yml's exports job list those directories.
 * **The initial set** went from 1,251,213 B (27 files) to 1,249,399 B (24
   files) gzip, recorded in `app/bundle-baseline.json` (budget +1%).
+
+## 15. Step 7 as built: the language session and its Monaco binding
+
+Step 7 split `lsp/client.ts` in two (decision D9), in two commits: first
+the halves, with `LanguageClient` left as a facade over them so that the
+workspace was unchanged; then the call sites. Where it departs from
+sections 2 to 5, and from D9:
+
+* **`runtime/language-session.ts`: `LanguageSession`**, over a
+  `ServerEndpoint` (the worker), which it wraps in its own `Connection`
+  so that it owns the connection's close. It holds `initialize` and
+  `initialized`, the settings `configure` was given before the server was
+  ready, the sync kind, the open documents by URI with their last version
+  (`open`, `change`, `close`, `rename`), `stop` (`shutdown` raced against
+  `SHUTDOWN_MS`, then `exit`), `ask`/`askOrThrow`, `executeCommand`,
+  `onShownError`, and the typed requests: `workspaceErrors`,
+  `selectionRanges(uri, positions, signal)` and `calls(direction, item,
+  signal)`. The server's notifications go to the host's `SessionEvents`
+  (`state`, `loading`, `log`, `status`) or to its client (`diagnostics`,
+  `showDocument`, `applyEdit`, `refreshed`, `closed`). `?trace` is the
+  host's option (`trace`), and so is the locale: the session reads no
+  `location` and no `navigator`.
+* **The editor's binding is the session's `SessionClient`**, and gives the
+  client capabilities `initialize` announces (`monacoClientCapabilities`:
+  Monaco folds whole lines, takes relative semantic tokens, snippets).
+  `start(client)` hands it the ready server (`started(capabilities)`),
+  where it opens its documents and registers its features. Edits reach
+  the session from the binding's model listeners, as ranges by version
+  (`DocumentChange`: the version after the edit, its ranges, and a thunk
+  for the whole text a full-sync server wants), never from the project's
+  change events (D9). `change` refuses a version that is not after the
+  last one sent (a `RangeError`, the `Requires` of its contract).
+* **Pulled diagnostics are keyed by the session's revision**, which every
+  `open`, `change` and `close` moves: `workspaceErrors` answers
+  `PulledErrors = { revision, errors }`, the revision at which the pull
+  was sent, so a caller can tell that an edit went to the server while it
+  answered. Preview's error check still gives up on an edit through its
+  signal, as before, and reads only `errors`.
+* **`monaco/bind.ts`: `MonacoBinding`**, with the host's Monaco and
+  internals injected (H1). Every feature the client registered is
+  registered here as it was, word for word, with LSP's types from
+  `protocol/lsp.ts` (which gained the server's capabilities, the call
+  hierarchy's and workspace symbols' types, pulled reports and the rest
+  of what the session reads) instead of `vscode-languageserver-protocol`.
+  The quick pick and the inline message come from the internals.
+* **`applyWorkspaceEdit` is the internals', not `workspace-edits.ts`'s.**
+  Section 4 had `workspace-edits.ts` go with the binding. Its bulk edit
+  service and dialog service are the app's replacements of Monaco's
+  services (one undo step across files; a dialog in the app's style),
+  installed by `startEditor` before any editor exists, so they stay the
+  app's; the binding applies a server's edit through Monaco's bulk edit
+  service (`internals.applyWorkspaceEdit`), which is that replacement,
+  under `WORKSPACE_EDIT_CODE`. The app's own `applyWorkspaceEdit` had no
+  other caller and is gone.
+* **`call-hierarchy.ts` and `workspace-symbols.ts` moved to `monaco/`**
+  (section 4's "pure parts"), with their unit tests (`modules/tests/`),
+  since the binding's Show Call Hierarchy and Go to Symbol use them;
+  `CallDirection` and a level's `Calls` are the session's. The panel's
+  state (`call-hierarchy.svelte.ts`) stays the app's.
+* **monaco depends on runtime**, as its README already allowed, for the
+  session's types.
