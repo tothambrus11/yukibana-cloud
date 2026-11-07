@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 /** The entry points a host imports. */
-const ENTRIES = ['../protocol/index.ts', '../runtime/index.ts', '../monaco/index.ts'];
+const ENTRIES = ['../protocol/index.ts', '../core/index.ts', '../runtime/index.ts', '../monaco/index.ts'];
 
 /** What a module could reach for on a page, each a tripwire while the modules load. */
 const PAGE = ['window', 'document', 'self', 'location', 'localStorage', 'sessionStorage', 'MonacoEnvironment', 'matchMedia', 'monaco'];

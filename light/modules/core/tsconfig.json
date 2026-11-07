@@ -1,0 +1,15 @@
+{
+	// core is the embeddable heart of Light: tokens, providers, the instance
+	// that answers for them, a project's shape and its properties. A host in
+	// a page, a worker or Node uses it alike, so it is checked as protocol
+	// is: with the language alone and the platform types every one of those
+	// hosts has (../protocol/platform.d.ts). A use of `document`, `window`,
+	// `Worker` or `fetch` fails `npm run check`.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024"]
+	},
+	"include": [".", "../protocol/platform.d.ts"],
+	// What build.mjs would write: the module's sources are the project, not its output.
+	"exclude": ["dist"]
+}

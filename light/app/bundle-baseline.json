@@ -1,0 +1,5 @@
+{
+	"about": "What Light's first page load downloads, gzipped at level 9: every script the prerendered build/index.html preloads (modulepreload) and every stylesheet it links. tests/unit/bundle.test.mjs fails when a build's initial set is more than 1% above initialGzipBytes. Record a new number here only for a change that means to move it, and say why in its commit.",
+	"initialGzipBytes": 1242711,
+	"recordedAt": "light/modules/core added, with no consumer yet: the same build as main at 236a5de"
+}

@@ -1,6 +1,7 @@
 // The shared modules keep to their arrows (README.md): protocol imports
-// only itself, runtime also protocol, monaco also runtime and Monaco's types,
-// and none of them reaches for the app, its framework or the page's globals.
+// only itself, core only itself and protocol's types, runtime also core and
+// protocol, monaco also runtime and Monaco's types, and none of them
+// reaches for the app, its framework or the page's globals.
 // A module that broke this would still type-check and build; it would only
 // fail later, in a host that does not have what it took for granted.
 //
@@ -22,8 +23,26 @@ const ts = createRequire(join(here, '../app/package.json'))('typescript');
 /** Each module and the modules it may import, itself included. */
 const ALLOWED = {
 	protocol: ['protocol'],
-	runtime: ['runtime', 'protocol'],
-	monaco: ['monaco', 'runtime', 'protocol'],
+	core: ['core', 'protocol'],
+	runtime: ['runtime', 'core', 'protocol'],
+	monaco: ['monaco', 'runtime', 'core', 'protocol'],
+};
+
+/**
+ * Per module, the modules of its ALLOWED list it may import types from and
+ * nothing else: core is the embeddable heart, and a value of protocol's
+ * (a codec, a constant) would make every host of the core carry it.
+ */
+const TYPES_ONLY = { core: new Set(['protocol']) };
+
+/**
+ * Per module, identifiers its code may not use, comments aside: core runs in
+ * a page, a worker and Node alike, so it names none of a page's or a
+ * worker's objects even where its tsconfig would not catch it (a name in a
+ * `typeof` guard, a parameter's type left implicit).
+ */
+const FORBIDDEN_NAMES = {
+	core: new Set(['document', 'window', 'self', 'HTMLElement', 'customElements', 'Worker', 'location', 'crossOriginIsolated', 'fetch', 'MessagePort', 'process', 'Buffer']),
 };
 
 /** Modules that may `import type` from monaco-editor, and nothing else from it. */
@@ -75,6 +94,18 @@ function importsOf(path, source) {
 	return found;
 }
 
+/** Every identifier in the code of a source file, comments and strings aside, once each. */
+function identifiersOf(path, source) {
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const found = new Set();
+	const visit = (node) => {
+		if (ts.isIdentifier(node)) found.add(node.text);
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+	return found;
+}
+
 /**
  * What is wrong with one source file of `module`, at `path` (absolute, under
  * `root`), as sentences naming the file; empty when nothing is.
@@ -111,7 +142,12 @@ function problemsOf(root, module, path, source) {
 			problems.push(`${name} imports '${specifier}', which is outside the shared modules`);
 		} else if (!ALLOWED[module].includes(target)) {
 			problems.push(`${name} imports '${specifier}', but ${module} may import only ${ALLOWED[module].join(', ')}`);
+		} else if (!typeOnly && TYPES_ONLY[module]?.has(target)) {
+			problems.push(`${name} imports '${specifier}' as a value, but ${module} may import only types from ${target}`);
 		}
+	}
+	for (const identifier of identifiersOf(path, source)) {
+		if (FORBIDDEN_NAMES[module]?.has(identifier)) problems.push(`${name} uses ${identifier}, which ${module} may not (not every host has it)`);
 	}
 	for (const { pattern, why } of FORBIDDEN) {
 		if (pattern.test(source)) problems.push(`${name} mentions ${pattern.source.replaceAll('\\', '')} (${why})`);
@@ -154,6 +190,34 @@ test('protocol may not import the runtime, by path or by name', () => {
 	assert.equal(check('protocol', "import { a } from '../runtime/index.ts';").length, 1);
 	assert.equal(check('protocol', "export * from '@yukibana/runtime';").length, 1);
 	assert.deepEqual(check('protocol', "import { a } from './stdin.ts';"), []);
+});
+
+test("the core may import only itself and protocol's types, and nothing that runs on top of it", () => {
+	assert.deepEqual(check('core', "import type { RunMessage } from '../protocol/runner.ts';"), []);
+	assert.deepEqual(check('core', "import { type RunMessage } from '@yukibana/protocol';"), []);
+	assert.deepEqual(check('core', "import { slot } from './slot.ts';"), []);
+	assert.equal(check('core', "import { PROTOCOL_MAJOR } from '../protocol/requirements.ts';").length, 1);
+	assert.equal(check('core', "export * from '@yukibana/protocol';").length, 1);
+	assert.equal(check('core', "import { workspaceRoot } from '../runtime/paths.ts';").length, 1);
+	assert.equal(check('core', "import type { Convert } from '@yukibana/monaco';").length, 1);
+	assert.equal(check('protocol', "import { slot } from '@yukibana/core';").length, 1);
+	assert.deepEqual(check('runtime', "import { slot } from '../core/slot.ts';"), []);
+	assert.deepEqual(check('monaco', "import { slot } from '@yukibana/core';"), []);
+});
+
+test("the core's code names none of a page's or a worker's objects, though its comments may", () => {
+	for (const source of [
+		"export const title = () => document.title;",
+		"export const start = (url: string) => new Worker(url);",
+		"export const get = () => fetch('/x');",
+		"export type Port = MessagePort;",
+		"export const isolated = () => crossOriginIsolated;",
+		"export const host = typeof window;",
+	]) {
+		assert.ok(check('core', source).some((problem) => problem.includes(' uses ')), source);
+	}
+	assert.deepEqual(check('core', "// a host may hand it a Worker or a document\nexport const ok = 1;"), []);
+	assert.deepEqual(check('runtime', "export const start = (url: string) => new Worker(url);"), []);
 });
 
 test('the runtime may import protocol but never the Monaco integration', () => {
@@ -218,18 +282,20 @@ function typeErrors(module, source) {
 	return ts.getPreEmitDiagnostics(program, program.getSourceFile(probe)).map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
 }
 
-test("protocol does not compile if it reaches for a page's, a worker's or Node's globals", () => {
-	for (const source of [
+test("protocol and the core do not compile if they reach for a page's, a worker's or Node's globals", () => {
+	const reaching = [
 		"export const title = document.title;",
 		"export const width = window.innerWidth;",
 		"export const scope = self;",
 		"export const get = () => fetch('/x');",
 		"export const env = process.env;",
 		"export const bytes = Buffer.from('x');",
-	]) {
-		assert.notDeepEqual(typeErrors('protocol', source), [], source);
+	];
+	for (const module of ['protocol', 'core']) {
+		for (const source of reaching) assert.notDeepEqual(typeErrors(module, source), [], `${module}: ${source}`);
 	}
 	assert.deepEqual(typeErrors('protocol', "export const bytes = new TextEncoder().encodeInto('x', new Uint8Array(4)).written;"), []);
+	assert.deepEqual(typeErrors('core', 'export const signal = new AbortController().signal;'), []);
 });
 
 test("the runtime and the Monaco integration do not compile if they reach for Node's globals", () => {

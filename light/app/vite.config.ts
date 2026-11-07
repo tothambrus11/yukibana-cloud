@@ -41,7 +41,7 @@ const monacoWorkers: Plugin = {
  */
 const modules = fileURLToPath(new URL('../modules', import.meta.url));
 const moduleAliases = Object.fromEntries(
-	['protocol', 'runtime', 'monaco'].map((name) => [`@yukibana/${name}`, `${modules}/${name}/index.ts`]),
+	['protocol', 'core', 'runtime', 'monaco'].map((name) => [`@yukibana/${name}`, `${modules}/${name}/index.ts`]),
 );
 
 /**
