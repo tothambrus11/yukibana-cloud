@@ -52,7 +52,7 @@ export interface Caret extends SourceLine {
 	column: number;
 }
 
-/** A selection range chain as a language server nests them (vscode-languageserver-protocol's SelectionRange). */
+/** A selection range chain as a language server nests them (@yukibana/protocol's SelectionRange). */
 export interface ServerSelectionRange {
 	range: ServerRange;
 	parent?: ServerSelectionRange;
@@ -68,7 +68,7 @@ export interface LinkHost {
 	/** As ViewHost.onSourceCursor, with the caret's column. */
 	onSourceCursor(listener: (caret: Caret | null) => void): Monaco.IDisposable;
 	/** The language server's selection ranges at `positions` of `path`, one chain per position, or null. */
-	selectionRanges(path: string, positions: Monaco.IPosition[]): Promise<ServerSelectionRange[] | null>;
+	selectionRanges(path: string, positions: Monaco.IPosition[]): Promise<readonly ServerSelectionRange[] | null>;
 	/** Every text colour a tinted row can show, per theme (theme.svelte.ts VIEW_TEXT). */
 	textColours: Record<Theme, Hex[]>;
 }

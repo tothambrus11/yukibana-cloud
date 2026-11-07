@@ -320,10 +320,13 @@ test("the core may import only itself and protocol's types, and nothing that run
 test("a module's arrows are its package.json's dependencies, and nothing it does not declare", () => {
 	assert.deepEqual(ALLOWED.protocol, ['protocol']);
 	assert.deepEqual([...ALLOWED.std].sort(), ['core', 'protocol', 'runtime', 'std']);
-	// Neither declares the core yet, so neither may import it: the runtime
-	// is published and the core is not (DESIGN.md, section 8).
+	// The runtime does not declare the core, so it may not import it: the
+	// runtime is published and the core is not (DESIGN.md, section 8). The
+	// monaco binding declares it, for the project it follows (section 15),
+	// and still not std, whose tokens are a host's business.
 	assert.equal(check('runtime', "import { slot } from '../core/slot.ts';").length, 1);
-	assert.equal(check('monaco', "import { slot } from '@yukibana/core';").length, 1);
+	assert.deepEqual(check('monaco', "import type { Project } from '@yukibana/core';"), []);
+	assert.equal(check('monaco', "import { run } from '@yukibana/std';").length, 1);
 });
 
 test("the core's code names none of a page's or a worker's objects, though its comments may", () => {

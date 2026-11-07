@@ -1,13 +1,15 @@
 /**
  * The state of the app: which language is selected, its project's files as
- * Monaco models, the language client serving them, and what the panels show
+ * Monaco models, the language server's session serving them, and what the panels show
  * (problems, output, download progress). Components read it; only its
  * methods change it.
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
 import type { DebugChannel, LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
-import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
+import { LanguageSession, type LogLevel, type ServerState } from '@yukibana/runtime';
+import { MonacoBinding, toLspPosition } from '@yukibana/monaco';
+import { internals } from './monaco-internals';
 import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
@@ -24,9 +26,9 @@ import { checksOf, TIDY_FILE, type CheckGlob } from '@yukibana/lang-cpp/tidy';
 import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
-import type * as lsp from 'vscode-languageserver-protocol';
+import type { SelectionRange } from '@yukibana/protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
-import { pathOf, writeProperty, type Files, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
+import { pathOf, writeProperty, type Disposable, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
 import { DEFAULT_RUN_OPTIONS, debugTokenOf, explore, preview, runOptionsOf, test, tokenOf, warm, type DebugMode, type PreviewSession, type RunOptions, type ViewKind } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, releaseExplorer, subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
@@ -115,14 +117,19 @@ const SAVE_DELAY_MS = 400;
 const MAX_LINK = 1_000_000;
 const MAX_LOG_LINES = 2000;
 
-export class Workspace {
+/**
+ * The app's state, and its project as the core sees it (`Project`): the
+ * snapshot the providers read, and every change of the project's files and
+ * saved settings, which the language server's binding follows.
+ */
+export class Workspace implements CoreProject {
 	language = $state<LanguageId>('python');
 	/** File paths, sorted. */
 	files = $state<string[]>([]);
 	/** Explicit folders (empty ones included), sorted. */
 	folders = $state<string[]>([]);
 	active = $state<string | null>(null);
-	clientState = $state<ClientState>({ kind: 'stopped' });
+	clientState = $state<ServerState>({ kind: 'stopped' });
 	progress = $state<LoadingProgress | null>(null);
 	log = $state<LogLine[]>([]);
 	problems = $state<Problem[]>([]);
@@ -222,7 +229,10 @@ export class Workspace {
 	/** The debugger (Debug), its breakpoints and the session the Debug panel shows. */
 	readonly debugger = new Debugger();
 
-	private client: LanguageClient | null = null;
+	/** The selected language's server, while one runs: its session, which the editor's binding (`MonacoBinding`) is the client of. */
+	private session: LanguageSession | null = null;
+	/** Who `onChange` calls, in the order they subscribed. */
+	private readonly changeListeners = new Set<(change: ProjectChange) => void>();
 	private readonly models = new Map<string, monaco.editor.ITextModel>();
 	private open: string[] = [];
 	private saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -744,7 +754,7 @@ export class Workspace {
 	 */
 	setClangTidy(on: boolean): void {
 		if (on === this.clangTidy || !this.choose(this.settings.clangTidy, on)) return;
-		this.client?.configure(this.serverOptions());
+		this.session?.configure(this.serverOptions());
 		this.write('info', on ? `clang-tidy is on: its rules are in ${TIDY_FILE}.` : `clang-tidy is off; ${TIDY_FILE} is kept for when it is turned on.`);
 		this.scheduleSave();
 	}
@@ -848,18 +858,20 @@ export class Workspace {
 			case 'runOptions':
 				this.runOptions = runOptionsOf(value);
 				this.runOptionsChosen = true;
-				return;
+				break;
 			case 'optimization':
 				this.chosenLevel = typeof value === 'string' ? value : null;
-				return;
+				break;
 			case 'clangTidy':
 				this.clangTidy = value !== false;
-				return;
+				break;
 			case 'miri':
 				this.miri = isMiriTarget(value) ? value : null;
-				return;
+				break;
+			default:
+				throw new RangeError(`The workspace saves no project field "${edit.key}".`);
 		}
-		throw new RangeError(`The workspace saves no project field "${edit.key}".`);
+		this.announce({ kind: 'meta', key: edit.key });
 	}
 
 	/** Opens the Download dialog; the page sets it. Without one, Download asks for nothing beyond the build files. */
@@ -966,13 +978,25 @@ export class Workspace {
 	}
 
 	/**
-	 * The language server's selection ranges at `positions` of project file
-	 * `path` (LanguageClient.selectionRanges), or null: no such file, no
-	 * server, or a server without them.
+	 * Returns the language server's selection ranges at `positions` of
+	 * project file `path` (`LanguageSession.selectionRanges`), or null: no
+	 * such file, no server, or a server without them.
 	 */
-	async selectionRanges(path: string, positions: monaco.IPosition[]): Promise<lsp.SelectionRange[] | null> {
+	async selectionRanges(path: string, positions: monaco.IPosition[]): Promise<readonly SelectionRange[] | null> {
 		const model = this.models.get(path);
-		return model && this.client ? this.client.selectionRanges(model, positions) : null;
+		return model && this.session ? this.session.selectionRanges(model.uri.toString(), positions.map(toLspPosition), new AbortController().signal) : null;
+	}
+
+	/** Calls `listener` after each change of the project's files or saved settings, until disposed (core's `Project`). */
+	onChange(listener: (change: ProjectChange) => void): Disposable {
+		const own = (change: ProjectChange) => listener(change);
+		this.changeListeners.add(own);
+		return { dispose: () => this.changeListeners.delete(own) };
+	}
+
+	/** Tells every `onChange` listener of `change`. */
+	private announce(change: ProjectChange): void {
+		for (const listener of this.changeListeners) listener(change);
 	}
 
 	/** Called by the editor area when tabs change, so they are restored next time. */
@@ -997,7 +1021,7 @@ export class Workspace {
 	createFile(path: string): void {
 		const problem = this.nameProblem(path);
 		if (problem) throw new Error(problem);
-		this.addModel(path, '', true);
+		this.addModel(path, '', 'created');
 		this.files = [...this.models.keys()].sort();
 		this.host?.open(path);
 		this.explorer?.edited();
@@ -1025,8 +1049,9 @@ export class Workspace {
 		for (const [oldPath, newPath] of moved) {
 			const text = this.models.get(oldPath)!.getValue();
 			if (this.open.includes(oldPath)) reopen.push(newPath);
-			this.removeModel(oldPath);
-			this.addModel(newPath, text, true);
+			this.removeModel(oldPath, 'moved');
+			this.addModel(newPath, text, 'moved');
+			this.announce({ kind: 'renamed', from: pathOf(oldPath), to: pathOf(newPath) });
 		}
 		this.folders = this.folders.map((f) => (f === from || f.startsWith(from + '/') ? to + f.slice(from.length) : f)).sort();
 		this.files = [...this.models.keys()].sort();
@@ -1038,7 +1063,7 @@ export class Workspace {
 	/** Deletes a file, or a folder with everything in it. */
 	delete(path: string): void {
 		const doomed = this.models.has(path) ? [path] : [...this.models.keys()].filter((p) => p.startsWith(path + '/'));
-		for (const p of doomed) this.removeModel(p);
+		for (const p of doomed) this.removeModel(p, 'deleted');
 		this.folders = this.folders.filter((f) => f !== path && !f.startsWith(path + '/'));
 		this.files = [...this.models.keys()].sort();
 		this.explorer?.edited();
@@ -1067,7 +1092,7 @@ export class Workspace {
 	}
 
 	private load(project: Project): void {
-		for (const [path, text] of Object.entries(project.files)) this.addModel(path, text, false);
+		for (const [path, text] of Object.entries(project.files)) this.addModel(path, text, 'loaded');
 		this.files = [...this.models.keys()].sort();
 		this.folders = [...project.folders].sort();
 		this.runOptions = { ...(project.runOptions ?? DEFAULT_RUN_OPTIONS) };
@@ -1110,33 +1135,46 @@ export class Workspace {
 			model.pushStackElement();
 		} else {
 			if (!text) return;
-			this.addModel(path, text, true);
+			this.addModel(path, text, 'created');
 		}
 		this.files = [...this.models.keys()].sort();
 		// A new model fires no content change, which is how an edit reaches the open views.
 		this.explorer?.edited();
 	}
 
-	private addModel(path: string, text: string, created: boolean): void {
+	/**
+	 * Makes the model of project file `path`, holding `text`: a file of a
+	 * project being loaded, one just made, or the new place of one a rename
+	 * moved (whose `renamed` the caller announces). The language server
+	 * hears of it through `onChange`, and of its edits from its binding.
+	 */
+	private addModel(path: string, text: string, origin: 'loaded' | 'created' | 'moved'): void {
 		const model = monaco.editor.createModel(text, undefined, uriOf(path));
 		model.onDidChangeContent(() => {
 			this.scheduleSave(path);
 			this.preview.changed(path);
 			this.explorer?.edited();
+			this.announce({ kind: 'edited', path: pathOf(path), version: model.getVersionId() });
 		});
 		this.models.set(path, model);
 		this.revision += 1;
-		if (created) this.preview.changed(path);
-		this.client?.addModel(model, created);
+		if (origin !== 'loaded') this.preview.changed(path);
+		if (origin !== 'moved') this.announce({ kind: 'created', path: pathOf(path) });
 	}
 
-	private removeModel(path: string): void {
+	/**
+	 * Disposes the model of project file `path`: one deleted, or the old
+	 * place of one a rename moved (whose `renamed` the caller announces).
+	 * A deletion is announced before the model is disposed, so that a
+	 * listener still finds it.
+	 */
+	private removeModel(path: string, why: 'deleted' | 'moved'): void {
 		const model = this.models.get(path);
 		if (!model) return;
 		this.host?.close(path);
-		this.client?.removeModel(model);
 		this.models.delete(path);
 		this.revision += 1;
+		if (why === 'deleted') this.announce({ kind: 'deleted', path: pathOf(path) });
 		this.preview.changed(path);
 		model.dispose();
 		// The file was deleted or renamed: an edit across files that
@@ -1146,9 +1184,11 @@ export class Workspace {
 
 	private disposeModels(): void {
 		this.host?.closeAll();
-		for (const model of this.models.values()) model.dispose();
+		const doomed = [...this.models];
 		this.models.clear();
 		this.revision += 1;
+		for (const [path] of doomed) this.announce({ kind: 'deleted', path: pathOf(path) });
+		for (const [, model] of doomed) model.dispose();
 		this.files = [];
 		this.problems = [];
 	}
@@ -1182,52 +1222,67 @@ export class Workspace {
 	/**
 	 * Starts the language's server on the current files. Does not wait for
 	 * it: a pack may take a while to download, and a switch away meanwhile
-	 * must not queue behind it. Stopping the client cancels the download.
+	 * must not queue behind it. Stopping the session cancels the download.
 	 */
 	private startClient(): void {
 		const language = languageOf(this.language);
-		const client = new LanguageClient({
-			serverUrl: appPacks().url(packOf(language), 'server.js'),
-			languages: language.monacoLanguages,
+		const serverUrl = appPacks().url(packOf(language), 'server.js');
+		const session: LanguageSession = new LanguageSession(new Worker(serverUrl, { type: 'module', name: serverUrl.pathname }), {
 			rootUri: WORKSPACE.uri,
 			settings: language.settings,
 			// The C and C++ pack's server is told whether clang-tidy runs.
-			...(settingsOf(language.id).clangTidy ? { initializationOptions: this.serverOptions() } : {}),
+			initializationOptions: settingsOf(language.id).clangTidy ? this.serverOptions() : null,
+			clientName: 'Yukibana Light',
+			locale: navigator.language,
+			// `?trace` in the page's URL logs every message to the console.
+			trace: new URLSearchParams(location.search).has('trace') ? (direction, message) => console.debug(`lsp ${direction}`, JSON.stringify(message).slice(0, 2000)) : null,
 			events: {
 				state: (s) => {
-					if (this.client !== client) return;
+					if (this.session !== session) return;
 					this.clientState = s;
 					// A C++ pack with clang-tidy reports it before it answers `initialize`; an older one never does.
 					if (s.kind === 'running' && settingsOf(language.id).clangTidy && this.tidyStatus === null)
 						this.tidyStatus = { id: 'clang-tidy', label: 'clang-tidy', state: 'failed', detail: 'this build of the C and C++ language server has no clang-tidy yet' };
 				},
 				loading: (p) => {
-					if (this.client === client) this.progress = p;
+					if (this.session === session) this.progress = p;
 				},
 				log: (level, text) => this.write(level, text, 'server'),
-				open: (uri, selection) => {
-					const path = WORKSPACE.pathOf(uri);
-					if (path && this.models.has(path)) this.host?.open(path, selection);
-				},
-				callHierarchy: (item) => {
-					if (this.client !== client) return;
-					// In the direction chosen last, as VS Code's view keeps it.
-					this.callHierarchy = new CallHierarchy(item, (direction, it) => client.calls(direction, it), this.callHierarchy?.direction);
-					this.host?.showCallHierarchy();
-				},
 				status: (part) => {
-					if (this.client === client && part.id === 'clang-tidy') this.tidyStatus = part;
+					if (this.session === session && part.id === 'clang-tidy') this.tidyStatus = part;
 				},
 			},
 		});
-		this.client = client;
+		const binding = new MonacoBinding({
+			monaco,
+			internals,
+			session,
+			project: this,
+			documentUri: (path) => uriOf(path).toString(),
+			languages: language.monacoLanguages,
+			rootUri: WORKSPACE.uri,
+			events: {
+				log: (level, text) => this.write(level, text, 'server'),
+				open: (uri, selection) => {
+					const path = WORKSPACE.pathOf(uri);
+					if (path && this.models.has(path)) this.host?.open(path, selection ?? undefined);
+				},
+				callHierarchy: (item) => {
+					if (this.session !== session) return;
+					// In the direction chosen last, as VS Code's view keeps it.
+					this.callHierarchy = new CallHierarchy(item, (direction, it) => session.calls(direction, it, new AbortController().signal), this.callHierarchy?.direction);
+					this.host?.showCallHierarchy();
+				},
+			},
+		});
+		this.session = session;
 		this.write('info', `Starting the ${language.label} language server`);
 		// A runner kept warm starts once the server has: both load the same
 		// compiler, and the editor's answers come first.
 		this.runner.keepWarm(null);
-		client.start(() => this.models.values()).then(
+		binding.start().then(
 			() => {
-				if (this.client !== client) return;
+				if (this.session !== session) return;
 				// The runner to keep warm is the one the language's runs use, as
 				// its provider of `warm` says, where it has one and Run is available.
 				const subject = subjectOf(language.id);
@@ -1237,43 +1292,43 @@ export class Workspace {
 					.perform(subject, warm, null, snapshot, new AbortController().signal)
 					.then(
 						(outcome) => {
-							if (this.client === client && outcome.kind === 'done') this.runner.keepWarm(outcome.value);
+							if (this.session === session && outcome.kind === 'done') this.runner.keepWarm(outcome.value);
 						},
 						(e: unknown) => this.write('error', `Could not keep a ${language.label} runner warm: ${e instanceof Error ? e.message : String(e)}`),
 					);
 			},
 			async (e: unknown) => {
-				if (this.client !== client) return;
+				if (this.session !== session) return;
 				this.write('error', `${language.label} language server: ${e instanceof Error ? e.message : String(e)}`);
 				// A worker that fails to load says nothing about why; a missing pack is the usual reason.
-				const status = await fetch(client.serverUrl, { method: 'HEAD' }).then((r) => r.status, () => 0);
-				if (status === 404) this.write('error', `The ${language.label} pack is not installed: ${client.serverUrl.pathname} was not found. Build it with packs/${packOf(language)}/build.sh.`);
+				const status = await fetch(serverUrl, { method: 'HEAD' }).then((r) => r.status, () => 0);
+				if (status === 404) this.write('error', `The ${language.label} pack is not installed: ${serverUrl.pathname} was not found. Build it with packs/${packOf(language)}/build.sh.`);
 			},
 		);
 	}
 
 	private async stopClient(): Promise<void> {
-		const client = this.client;
-		this.client = null;
+		const session = this.session;
+		this.session = null;
 		this.progress = null;
 		this.callHierarchy = null;
 		this.tidyStatus = null;
 		this.clientState = { kind: 'stopped' };
-		await client?.stop();
+		await session?.stop();
 	}
 
 	/**
 	 * The project's errors for the web preview, which reloads only without
 	 * them, as `path:line:column: message`. Asked of the language server
-	 * (`workspaceErrors`), which answers for the edits made so far. A server
+	 * (`LanguageSession.workspaceErrors`), which answers for the edits made so far. A server
 	 * that cannot be asked (one without workspace diagnostics, or none
 	 * running yet) leaves the editor's error markers, which may lag the
 	 * latest edit.
 	 */
 	private async projectErrors(signal: AbortSignal): Promise<string[]> {
-		const pulled = this.client ? await this.client.workspaceErrors(signal) : null;
+		const pulled = this.session ? await this.session.workspaceErrors(signal) : null;
 		const errors = pulled
-			? pulled.map(({ uri, diagnostic: d }) => ({ uri, line: d.range.start.line + 1, column: d.range.start.character + 1, message: d.message }))
+			? pulled.errors.map(({ uri, diagnostic: d }) => ({ uri: monaco.Uri.parse(uri), line: d.range.start.line + 1, column: d.range.start.character + 1, message: d.message }))
 			: monaco.editor
 					.getModelMarkers({})
 					.filter((m) => m.severity === monaco.MarkerSeverity.Error)

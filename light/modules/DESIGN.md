@@ -985,3 +985,28 @@ sections 2 to 5, and from D9:
   state (`call-hierarchy.svelte.ts`) stays the app's.
 * **monaco depends on runtime**, as its README already allowed, for the
   session's types.
+* **The workspace implements core's `Project`** (the second commit).
+  `onChange` announces `created` for a file made and for every file of a
+  project loaded, `deleted` for a file deleted (before its model is
+  disposed, so a listener still finds it) and for every file of a project
+  closed, `renamed` for each file a rename moved (once its new model
+  exists and its old one is gone), `edited` for each version of a model,
+  and `meta` for a saved setting written through a property. Folders are
+  not files, so making one announces nothing.
+* **The binding follows the project, as D9 has it**: its first documents
+  are the snapshot's paths once the server is ready (where the client
+  took the workspace's models), and from then on a `created` file is
+  opened, a `deleted` one closed and a `renamed` one moved
+  (`LanguageSession.rename`); `edited` and `meta` are not its business,
+  since its model listeners already send the edits as ranges. What the
+  server is sent is what the client sent: a rename is still a file closed
+  and deleted, then one opened and created. The binding's own `add` and
+  `remove` are gone, so there is one way in.
+* **The call sites ask the session.** `LanguageClient` and `lsp/` are
+  gone: the workspace makes the session and its binding where it made the
+  client. The preview's error check (`projectErrors`) reads
+  `workspaceErrors`, the call hierarchy's levels are `session.calls`, the
+  Linker's selection ranges are `session.selectionRanges`, and Go to
+  Symbol in Workspace was already the binding's. The app's
+  `vscode-languageserver-protocol` imports are gone with them: what the
+  app reads of a server is typed by `@yukibana/protocol`.

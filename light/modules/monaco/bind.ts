@@ -3,7 +3,8 @@
  * {@link MonacoBinding}. It is the session's {@link SessionClient}: it
  * announces the client capabilities Monaco's features have, feeds the
  * session every model's edits as Monaco reports them (ranges by version,
- * decision 8 of DESIGN.md), shows the server's diagnostics as markers, and
+ * decision 8 of DESIGN.md), opens, closes and moves documents as the
+ * host's `Project` says its files were created, deleted and renamed, shows the server's diagnostics as markers, and
  * answers Monaco's language features (completion, hover, rename, code
  * actions and the rest), the call hierarchy's action and Go to Symbol in
  * Workspace's quick pick by asking the session. An edit the server asks
@@ -15,6 +16,7 @@
  * imports Monaco as a value, and nothing exists until `start`.
  */
 import type * as monaco from 'monaco-editor';
+import type { Disposable, Path, Project, ProjectChange } from '../core/index.ts';
 import { ResponseError } from '../protocol/connection.ts';
 import type * as lsp from '../protocol/lsp.ts';
 import type { LanguageSession, OpenOrigin, RefreshKind, SessionClient } from '../runtime/language-session.ts';
@@ -47,6 +49,15 @@ export interface MonacoBindingOptions {
 	readonly internals: MonacoInternals;
 	/** The session the binding is the client of. */
 	readonly session: LanguageSession;
+	/**
+	 * The project whose files the models are: its paths are the documents
+	 * opened when the server is ready, and its created, deleted and renamed
+	 * files are opened, closed and moved. Its edits are not read: those come
+	 * from the models, as ranges.
+	 */
+	readonly project: Project;
+	/** Returns the URI of the model of project file `path`, as the host made it. */
+	readonly documentUri: (path: Path) => lsp.DocumentUri;
 	/** The Monaco language ids whose editor features the server answers. */
 	readonly languages: readonly string[];
 	/** The workspace folder the models live under, with its slash: Go to Symbol shows a file in it by its path. */
@@ -174,8 +185,8 @@ export class MonacoBinding implements SessionClient {
 	readonly #diagnostics = new Map<string, readonly lsp.Diagnostic[]>();
 	/** The code lens provider, once registered: `workspace/codeLens/refresh` names it to Monaco. */
 	#codeLenses: monaco.languages.CodeLensProvider | null = null;
-	/** The models to open when the server is ready, from `start`. */
-	#initial: () => Iterable<monaco.editor.ITextModel> = () => [];
+	/** The binding's subscription to the project's changes, while the server is ready. */
+	#changes: Disposable | null = null;
 	readonly #semanticTokensChanged: monaco.Emitter<void>;
 	readonly #codeLensesChanged: monaco.Emitter<monaco.languages.CodeLensProvider>;
 	readonly #inlayHintsChanged: monaco.Emitter<void>;
@@ -195,12 +206,11 @@ export class MonacoBinding implements SessionClient {
 
 	/**
 	 * Starts the session with this binding as its client, then opens the
-	 * models `models()` returns at that moment (the project may have
+	 * project's files as they are at that moment (the project may have
 	 * changed while the server downloaded). Resolves once the server is
 	 * running; rejects when it fails to start.
 	 */
-	start(models: () => Iterable<monaco.editor.ITextModel>): Promise<void> {
-		this.#initial = models;
+	start(): Promise<void> {
 		return this.#session.start(this);
 	}
 
@@ -209,16 +219,28 @@ export class MonacoBinding implements SessionClient {
 		return this.#models.has(model.uri.toString());
 	}
 
+	/** Returns the model of project file `path` and its key, or null when the host has no such model. */
+	#modelOf(path: Path): { readonly key: string; readonly model: monaco.editor.ITextModel } | null {
+		const model = this.#monaco.editor.getModel(this.#monaco.Uri.parse(this.#options.documentUri(path)));
+		return model ? { key: model.uri.toString(), model } : null;
+	}
+
 	/**
-	 * Starts synchronising `model`: a file just made (`created`) or one that
-	 * already existed. Nothing before the server is ready, or for a model
-	 * already synchronised.
+	 * Starts synchronising project file `path`: one just made (`created`),
+	 * one that already existed, or one a rename moved from the synchronised
+	 * document `how.from` (whose model the caller has forgotten). Nothing
+	 * before the server is ready, for a file with no model, or for one
+	 * already synchronised, where a document moved from is closed.
 	 */
-	add(model: monaco.editor.ITextModel, origin: OpenOrigin): void {
+	#add(path: Path, how: { readonly kind: 'open'; readonly origin: OpenOrigin } | { readonly kind: 'moved'; readonly from: string }): void {
 		const session = this.#session;
-		if (!session.ready) return;
-		const key = model.uri.toString();
-		if (this.#models.has(key)) return;
+		const found = this.#modelOf(path);
+		if (!session.ready || found === null || this.#models.has(found.key)) {
+			// What a rename moved from goes, whether or not it arrives anywhere.
+			if (how.kind === 'moved') session.close(how.from);
+			return;
+		}
+		const { key, model } = found;
 		const listener = model.onDidChangeContent((e) =>
 			session.change(key, {
 				version: model.getVersionId(),
@@ -227,24 +249,55 @@ export class MonacoBinding implements SessionClient {
 			}),
 		);
 		this.#models.set(key, { model, listener });
-		session.open({ uri: key, languageId: languageIdOf(model), version: model.getVersionId(), text: model.getValue() }, origin);
+		const document = { uri: key, languageId: languageIdOf(model), version: model.getVersionId(), text: model.getValue() };
+		if (how.kind === 'moved') session.rename(how.from, document);
+		else session.open(document, how.origin);
 	}
 
-	/** Stops synchronising a model whose file is being deleted, and takes its markers away; nothing for one not synchronised. */
-	remove(model: monaco.editor.ITextModel): void {
-		const key = model.uri.toString();
+	/**
+	 * Stops synchronising project file `path`, deleted or renamed, and takes
+	 * its markers away; returns its key, or null when it was not
+	 * synchronised. Its model may already be disposed: markers are kept by
+	 * URI. Closing the document is the caller's.
+	 */
+	#forget(path: Path): string | null {
+		const key = this.#monaco.Uri.parse(this.#options.documentUri(path)).toString();
 		const entry = this.#models.get(key);
-		if (!entry) return;
+		if (!entry) return null;
 		entry.listener.dispose();
 		this.#models.delete(key);
 		this.#diagnostics.delete(key);
-		this.#monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
-		this.#session.close(key);
+		this.#monaco.editor.setModelMarkers(entry.model, MARKER_OWNER, []);
+		return key;
 	}
 
-	/** Opens the models of `start`, then offers Monaco's features the server has. */
+	/** Follows a change of the project's files: a file created is opened, one deleted closed, one renamed moved; an edit or a setting is not the binding's. */
+	#changed(change: ProjectChange): void {
+		switch (change.kind) {
+			case 'created':
+				this.#add(change.path, { kind: 'open', origin: 'created' });
+				return;
+			case 'deleted': {
+				const key = this.#forget(change.path);
+				if (key !== null) this.#session.close(key);
+				return;
+			}
+			case 'renamed': {
+				const from = this.#forget(change.from);
+				this.#add(change.to, from === null ? { kind: 'open', origin: 'created' } : { kind: 'moved', from });
+				return;
+			}
+			case 'edited':
+			case 'meta':
+				return;
+		}
+	}
+
+	/** Opens the project's files, follows its changes from now on, then offers Monaco's features the server has. */
 	readonly started = (capabilities: lsp.ServerCapabilities): void => {
-		for (const model of this.#initial()) this.add(model, 'existing');
+		const project = this.#options.project;
+		for (const path of project.snapshot().paths()) this.#add(path, { kind: 'open', origin: 'existing' });
+		this.#changes = project.onChange((change) => this.#changed(change));
 		this.#registerFeatures(capabilities);
 	};
 
@@ -298,6 +351,8 @@ export class MonacoBinding implements SessionClient {
 
 	/** Takes back everything the binding offered: the models' listeners and markers, the features, the commands. */
 	readonly closed = (): void => {
+		this.#changes?.dispose();
+		this.#changes = null;
 		for (const { model, listener } of this.#models.values()) {
 			listener.dispose();
 			this.#monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
