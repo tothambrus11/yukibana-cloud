@@ -112,22 +112,24 @@
 # jobs gated on refs/heads/main ask for write (store-units, store-packs,
 # caches); the wave jobs ask only to sign their own archives (id-token,
 # attestations). That rule is hygiene, kept by test-workflows.mjs, not the
-# control. Pull request runs keep their units as artifacts and reuse them
-# on their own later pushes (light-toolchain-unit.yml), and never promote
+# control. Pull request runs, and runs dispatched on a branch, keep their
+# units as artifacts and reuse them on their own later runs
+# (light-toolchain-unit.yml), and never promote
 # one to main: main builds every unit itself (experiment E3 decides whether
 # promotion is worth adding). Third-party actions are pinned by commit, as
 # the PR's copy of a mutable tag is code nobody reviewed.
 #
 # Caches. A unit or pack job restores its cache from its own ref or main's
 # and saves on its own ref. Only main's `caches` job deletes, and only
-# main's older caches (`--ref refs/heads/main`); pull requests' caches are
-# pruned on a schedule from main (light-caches.yml). No `gh cache delete`
+# main's older caches (`--ref refs/heads/main`); pull requests' and other
+# branches' caches are pruned on a schedule from main (light-caches.yml). No `gh cache delete`
 # runs without `--ref` (test-workflows.mjs), so no run deletes another
 # ref's warm cache.
 #
 # Runs on pushes to main and on pull requests that touch a pack or the scripts
-# that make one. Only main's runs write the stores; a pull request's builds
-# serve that pull request. Without `upload`, a pack the store has is not even
+# that make one, and by hand on any branch (workflow_dispatch, below). Only
+# main's runs write the stores; a pull request's or a branch's builds serve
+# that pull request or branch, and `setup.sh --pull <n>` on a machine. Without `upload`, a pack the store has is not even
 # downloaded, and a split pack whose inputs already passed (once, below) is
 # not assembled again.
 name: Yukibana Light packs
@@ -191,7 +193,18 @@ on:
       # Light workflow (the release's, the modules', light-ci.yml).
       - .github/workflows/light-*.yml
       - .github/actions/once/**
+  # A run by hand, on a branch, builds and tests what the store lacks, as a
+  # pull request's run does, and reuses its own earlier builds on that
+  # branch (light-toolchain-unit.yml). `rebuild` builds units the store has
+  # too, to time a build or check that it reproduces; refused on main, whose
+  # builds are the store's. A release never sees it: light-release.yml calls
+  # this workflow, and a call has only upload and stored.
   workflow_dispatch:
+    inputs:
+      rebuild:
+        description: Off main only. Toolchain units (<pack>/<unit>, space-separated) to build even though the store has them, e.g. to time a build or check that it reproduces
+        type: string
+        default: ''
   workflow_call:
     inputs:
       upload:
@@ -272,16 +285,18 @@ jobs:
             .github/workflows
 
       # wave-<n>: the matrix of wave n's job, a JSON list of {unit, key,
-      # deps}, deps the download-artifact pattern of the artifacts of the
-      # units it needs (toolchain-<pack>-<unit>-<key>, several as {a,b}),
-      # empty when it needs none. Only the units the store lacks, and none in
-      # a release, which builds nothing. A unit deeper than the third wave
-      # fails here, by name. split: the split packs to assemble, as a JSON
+      # deps, reuse}, deps the download-artifact pattern of the artifacts of
+      # the units it needs (toolchain-<pack>-<unit>-<key>, several as {a,b}),
+      # empty when it needs none. Only the units the store lacks, plus those a
+      # dispatch names in `rebuild` (reuse false: not even this ref's earlier
+      # build is taken), and none in a release, which builds nothing. A unit
+      # deeper than the third wave fails here, by name. split: the split packs to assemble, as a JSON
       # list; in a release only those with a build.sh, the packs it ships.
       - name: Units to build, in waves
         id: units
         env:
           UPLOAD: ${{ inputs.upload }}
+          REBUILD: ${{ inputs.rebuild }}
         run: |
           all=""
           planned=""
@@ -289,11 +304,24 @@ jobs:
             all="$(light/scripts/pack-store.sh toolchain-plan --waves 3)"
             planned="$(light/scripts/pack-store.sh toolchain-plan --missing --waves 3)"
           fi
+          read -r -a rebuild <<<"$REBUILD"
+          if [ "${#rebuild[@]}" -gt 0 ]; then
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "::error title=rebuild::main builds only what the store lacks; dispatch a rebuild on a branch" >&2
+              exit 1
+            fi
+            for u in "${rebuild[@]}"; do
+              awk -v u="$u" '$2 == u { found = 1 } END { exit !found }' <<<"$all" ||
+                { echo "::error title=rebuild::$u is no toolchain unit (<pack>/<unit>)" >&2; exit 1; }
+            done
+            # Added in the waves their needs put them in, each unit once.
+            planned="$(printf '%s\n%s\n' "$planned" "$(awk -v w=" ${rebuild[*]} " 'index(w, " " $2 " ")' <<<"$all")" | awk 'NF && !seen[$2]++')"
+          fi
           for wave in 1 2 3; do
-            json="$(jq -R -n -c --arg wave "$wave" --arg all "$all" '
+            json="$(jq -R -n -c --arg wave "$wave" --arg all "$all" --arg rebuild " ${rebuild[*]} " '
               ($all | split("\n") | map(select(. != "") | split(" ") | {key: .[1], value: .[2]}) | from_entries) as $keys
               | [inputs | select(. != "") | split(" ") | select(.[0] == $wave)
-                 | {unit: .[1], key: .[2],
+                 | {unit: .[1], key: .[2], reuse: (.[1] as $u | ($rebuild | index(" " + $u + " ")) == null),
                     deps: (if .[3] == "-" then ""
                            else (.[3] | split(",") | map("toolchain-" + sub("/"; "-") + "-" + $keys[.])) as $d
                              | if ($d | length) == 1 then $d[0] else "{" + ($d | join(",")) + "}" end
@@ -436,6 +464,7 @@ jobs:
       unit: ${{ matrix.unit }}
       key: ${{ matrix.key }}
       deps: ${{ matrix.deps }}
+      reuse: ${{ matrix.reuse }}
 
   wave-2:
     name: Wave 2
@@ -460,6 +489,7 @@ jobs:
       unit: ${{ matrix.unit }}
       key: ${{ matrix.key }}
       deps: ${{ matrix.deps }}
+      reuse: ${{ matrix.reuse }}
 
   wave-3:
     name: Wave 3
@@ -484,6 +514,7 @@ jobs:
       unit: ${{ matrix.unit }}
       key: ${{ matrix.key }}
       deps: ${{ matrix.deps }}
+      reuse: ${{ matrix.reuse }}
 
   # Each split pack, over its units: those this run built (its artifacts),
   # otherwise the store's, never built here. Assembling is the glue, in
