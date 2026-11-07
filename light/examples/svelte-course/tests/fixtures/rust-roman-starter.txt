@@ -1,0 +1,56 @@
+   Compiling roman (src/lib.rs)
+   Compiling roman (src/lib.rs, test)
+   Compiling roman (src/main.rs, test)
+   Compiling roman (tests/roman.rs, test)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.33s
+     Running unittests src/lib.rs (target/wasm32-wasip1/debug/deps/roman-0.wasm)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/wasm32-wasip1/debug/deps/roman-1.wasm)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/roman.rs (target/wasm32-wasip1/debug/deps/roman-2.wasm)
+
+running 5 tests
+test reads_numerals_back ... FAILED
+test rejects_non_numerals ... ok
+test round_trips_every_number ... FAILED
+test small_numbers ... ok
+test subtractive_forms ... FAILED
+
+failures:
+
+---- reads_numerals_back stdout ----
+thread 'reads_numerals_back' panicked at tests/roman.rs:17:5:
+assertion `left == right` failed
+  left: None
+ right: Some(2026)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- round_trips_every_number stdout ----
+thread 'round_trips_every_number' panicked at tests/roman.rs:29:9:
+assertion `left == right` failed: 1
+  left: None
+ right: Some(1)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- subtractive_forms stdout ----
+thread 'subtractive_forms' panicked at tests/roman.rs:10:5:
+assertion `left == right` failed
+  left: "IIII"
+ right: "IV"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+failures:
+    reads_numerals_back
+    round_trips_every_number
+    subtractive_forms
+
+test result: FAILED. 2 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+

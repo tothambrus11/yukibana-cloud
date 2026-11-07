@@ -1,0 +1,22 @@
+{
+	// The page: the browser's globals, Vite's (for `?worker` imports) and
+	// Svelte's, nothing of Node. The modules' own settings, so the example
+	// is held to what the @yukibana modules are
+	// (light/modules/tsconfig.base.json). svelte-check reads it for the
+	// components and the .ts files alike.
+	"extends": "../../modules/tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		"types": ["vite/client", "svelte"],
+		// The modules' sources through their `file:` links, as Vite reads
+		// them (vite.config.ts).
+		"customConditions": ["@yukibana/source"],
+		// monaco's sources `import type` from the bare name, whose package
+		// root ships no declarations in 0.57.0: the editor API's, which
+		// src/lib/monaco-editor.ts imports too (modules/monaco/tsconfig.json).
+		"paths": {
+			"monaco-editor": ["./node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+		}
+	},
+	"include": ["src/**/*.ts", "src/**/*.svelte"]
+}
