@@ -192,12 +192,29 @@ class LazyRenderer implements IContentRenderer {
 		this.element.className = 'dock-panel';
 	}
 
+	/**
+	 * Loads the panel's code and mounts it; a load that fails says so in the
+	 * Log and leaves a Retry button in the panel, so a transient failure does
+	 * not leave it blank for the rest of the page.
+	 */
 	init(): void {
+		this.element.replaceChildren();
 		void this.load().then(
 			(mountIn) => {
 				if (!this.disposed) this.instance = mountIn(this.element);
 			},
-			(e: unknown) => this.report(`The panel could not be loaded: ${e instanceof Error ? e.message : String(e)}`),
+			(e: unknown) => {
+				this.report(`The panel could not be loaded: ${e instanceof Error ? e.message : String(e)}`);
+				if (this.disposed) return;
+				const retry = document.createElement('button');
+				retry.type = 'button';
+				retry.textContent = 'Retry';
+				retry.addEventListener('click', () => this.init());
+				const said = document.createElement('p');
+				said.textContent = 'This panel could not be loaded. ';
+				said.append(retry);
+				this.element.replaceChildren(said);
+			},
 		);
 	}
 
