@@ -1,0 +1,51 @@
+---
+layout: ../../layouts/Docs.astro
+title: Word frequency
+kicker: Cookbook · the same recipe in five languages
+description: Read text on standard input, count each word, print the five most frequent. Ties are broken alphabetically, so all five programs print the same lines.
+---
+import Playground from '../../components/Playground.astro';
+import Tabs from '../../components/Tabs.astro';
+import Tab from '../../components/Tab.astro';
+import input from '../../../snippets/word-frequency/input.txt?raw';
+import js from '../../../snippets/word-frequency/main.js?raw';
+import cpp from '../../../snippets/word-frequency/main.cpp?raw';
+import swift from '../../../snippets/word-frequency/main.swift?raw';
+import rust from '../../../snippets/word-frequency/main.rs?raw';
+import python from '../../../snippets/word-frequency/main.py?raw';
+
+A word is a run of the letters a to z, compared without case. Each
+program reads its input line by line until the end, keeps a count per
+word, and sorts by count, then by word. The input is the same for all of
+them, and you can change it under the code.
+
+Pick a language. Only the tab you open hydrates: a tab that is never
+shown loads nothing, not even its language's description.
+
+<Tabs name="word-frequency" labels={['JavaScript', 'C++', 'Swift', 'Rust', 'Python']}>
+<Tab label="JavaScript">
+<Playground id="wf-js" lang="javascript" code={js} stdin={input} title="node:readline, a Map and one sort" />
+</Tab>
+<Tab label="C++">
+<Playground id="wf-cpp" lang="cpp" code={cpp} stdin={input} title="std::map keeps words in order; a stable sort keeps it" />
+</Tab>
+<Tab label="Swift">
+<Playground id="wf-swift" lang="swift" code={swift} stdin={input} title="readLine() until nil, a Dictionary with a default" />
+</Tab>
+<Tab label="Rust">
+<Playground id="wf-rust" lang="rust" code={rust} stdin={input} title="BufRead::lines and the entry API" />
+</Tab>
+<Tab label="Python">
+<Playground id="wf-python" lang="python" code={python} stdin={input} title="collections.Counter and a sort key" />
+</Tab>
+</Tabs>
+
+## What to look for
+
+* **Splitting.** JavaScript and Python find the words with a regular
+  expression; C++ walks the characters; Rust and Swift split on every
+  character that is not a letter and drop the empty pieces.
+* **Ties.** C++'s `std::map` is already in alphabetical order, so a
+  *stable* sort by count is enough. The others sort by two keys.
+* **Input.** Every program reads until end of input. In the browser that
+  is the end of the text in the *Input* box, given line by line.

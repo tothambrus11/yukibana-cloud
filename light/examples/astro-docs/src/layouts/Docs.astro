@@ -1,0 +1,80 @@
+---
+/**
+ * The site's page: a masthead with the sections, the page's MDX as an
+ * article, and a footer. Used by every page as its MDX `layout`; the
+ * frontmatter's `title` and `description` become the document's.
+ *
+ * The only script is the theme switch's (a few lines, inline): the site
+ * follows the system's light or dark scheme until the reader picks one,
+ * which is kept in this browser.
+ */
+import '../styles/site.css';
+
+interface Props {
+	frontmatter: { title: string; description?: string; kicker?: string };
+}
+const { title, description, kicker } = Astro.props.frontmatter;
+const here = Astro.url.pathname.replace(/\/$/, '') || '/';
+const SECTIONS = [
+	{ href: '/', label: 'Overview' },
+	{ href: '/cookbook/word-frequency', label: 'Cookbook' },
+	{ href: '/web/live-canvas', label: 'Web' },
+	{ href: '/python/csv-table', label: 'Data' },
+	{ href: '/chaining', label: 'Step by step' },
+];
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{title} · Snowflower Cookbook</title>
+		{description && <meta name="description" content={description} />}
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<script is:inline>
+			try {
+				const chosen = localStorage.getItem('snowflower-theme');
+				if (chosen === 'light' || chosen === 'dark') document.documentElement.dataset.theme = chosen;
+			} catch {}
+		</script>
+	</head>
+	<body>
+		<a class="skip" href="#content">Skip to the content</a>
+		<header class="masthead">
+			<a class="brand" href="/">
+				<svg viewBox="0 0 32 32" aria-hidden="true" class="brand-mark"><use href="/favicon.svg#flower" /></svg>
+				<span>Snowflower <em>Cookbook</em></span>
+			</a>
+			<nav aria-label="Sections">
+				{SECTIONS.map((section) => <a href={section.href} aria-current={section.href === here ? 'page' : undefined}>{section.label}</a>)}
+			</nav>
+			<button type="button" class="theme" id="theme" aria-label="Switch between light and dark" title="Light or dark">
+				<span aria-hidden="true">◐</span>
+			</button>
+		</header>
+		<main id="content">
+			<article class="prose">
+				{kicker && <p class="kicker">{kicker}</p>}
+				<h1>{title}</h1>
+				{description && <p class="lede">{description}</p>}
+				<slot />
+			</article>
+		</main>
+		<footer class="footer">
+			<p>
+				Every sample here runs in your browser: the compilers are Yukibana Light's packs, fetched the first time you press Run. Nothing is sent to a server.
+			</p>
+		</footer>
+		<script is:inline>
+			document.getElementById('theme')?.addEventListener('click', () => {
+				const root = document.documentElement;
+				const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+				root.dataset.theme = dark ? 'light' : 'dark';
+				try {
+					localStorage.setItem('snowflower-theme', root.dataset.theme);
+				} catch {}
+			});
+		</script>
+	</body>
+</html>
