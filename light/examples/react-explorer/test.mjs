@@ -207,19 +207,26 @@ try {
 		});
 	}
 
-	await check('Rust’s level is sent with the views: opt-level 3 emits fewer instructions than 0', async () => {
-		await tab('rust').click();
-		const count = async () => Number(/(\d+) instructions/.exec(await panel('rust').locator('.explore-meta').innerText())?.[1] ?? NaN);
+	/** Picks `label` in `key`'s Optimisation picker and checks that its view then counts fewer instructions than at the default level. */
+	const levelLowers = async (key, label) => {
+		await tab(key).click();
+		const meta = `.tab-panel[data-language="${key}"] .explore-meta`;
+		const count = async () => Number(/(\d+) instructions/.exec(await page.locator(meta).innerText())?.[1] ?? NaN);
 		const before = await count();
-		await panel('rust').locator('fieldset', { hasText: 'Optimisation' }).getByText('3', { exact: true }).click();
-		await page.waitForFunction((n) => {
-			const meta = document.querySelector('.tab-panel[data-language="rust"] .explore-meta')?.textContent ?? '';
-			const found = /(\d+) instructions/.exec(meta);
-			return found !== null && Number(found[1]) !== n && !document.querySelector('.tab-panel[data-language="rust"] .explore[data-pending]');
-		}, before, { timeout: LONG });
+		await panel(key).locator('fieldset', { hasText: 'Optimisation' }).getByText(label, { exact: true }).click();
+		await page.waitForFunction(
+			([selector, pending, n]) => {
+				const found = /(\d+) instructions/.exec(document.querySelector(selector)?.textContent ?? '');
+				return found !== null && Number(found[1]) !== n && !document.querySelector(pending);
+			},
+			[meta, `.tab-panel[data-language="${key}"] .explore[data-pending]`, before],
+			{ timeout: LONG },
+		);
 		const after = await count();
-		expect(after < before, `opt-level 0: ${before} instructions, opt-level 3: ${after}`);
-	});
+		expect(after < before, `${key} at the default level: ${before} instructions, at ${label}: ${after}`);
+	};
+
+	await check('Rust’s level is sent with the views: opt-level 3 emits fewer instructions than 0', () => levelLowers('rust', '3'));
 
 	await check('JavaScript prints the same line, and its tab says it has no compiler output to show', async () => {
 		const output = await runIn('javascript');
@@ -236,9 +243,11 @@ try {
 			const shown = await viewIn('swift');
 			expect((await shown.locator('.explore').getAttribute('data-result')) === 'output', await shown.locator('.explore').innerText());
 		});
+		await check('Swift’s level is sent with the views: -O emits fewer instructions than -Onone', () => levelLowers('swift', '-O'));
 	} else {
 		skip('Swift prints the same line as the others', `the Swift pack is not installed (${join(packs, 'swift')} is absent)`);
 		skip("Swift's tab shows its compiler's output", 'the Swift pack is not installed');
+		skip('Swift’s level is sent with the views: -O emits fewer instructions than -Onone', 'the Swift pack is not installed');
 		await check('without the Swift pack, the Swift tab says so instead of failing silently', async () => {
 			await tab('swift').click();
 			await panel('swift').locator('button[data-action="run"]').click();
@@ -249,7 +258,7 @@ try {
 	}
 
 	await check('the scoreboard lists what each language printed', async () => {
-		for (const key of ['cpp', 'rust', 'python', 'javascript']) {
+		for (const key of ['cpp', 'rust', 'python', 'javascript', ...(swift ? ['swift'] : [])]) {
 			const row = await compare.locator(`.scoreboard tr[data-language="${key}"]`).innerText();
 			expect(row.includes(SUM), `${key}'s row: ${row}`);
 		}

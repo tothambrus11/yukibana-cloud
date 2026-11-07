@@ -21,10 +21,18 @@ one way to use them.
 | 3 | `DebugWidget` | a C++ insertion sort under LLDB: breakpoints in Monaco's gutter, Debug, Continue, Step over / in / out, Stop, the call stack and the selected frame's locals (opening a pointer to what it points at), all React state | std's `debug` token through lang-cpp's provider; the lldb pack's `debugger.js` (DAP); `@yukibana/monaco`'s `monacoPort` |
 | 4 | `SanitizerWidget` | a heap off-by-one that exits 0, then the same program with AddressSanitizer: the runtime's report with its colours, a banner with the error and the SUMMARY's `main.cpp:7:19` as a link that shows the line | lang-cpp's `SANITIZERS` property (`-fsanitize=` line of compile_flags.txt); the C++ runner's sanitizer runtime (works on WebAssembly) |
 
-Swift's widgets are written from lang-swift and the Swift pack's docs and
-type-checked with the rest; where `packs/swift` is not installed the tab
-says so in the runner's and the explorer's own words ("not installed"),
-and the end-to-end test skips its two Swift checks, saying why.
+Swift's tab has been run, not only type-checked: the end-to-end test passed
+its three Swift checks (it prints the line, its views show, `-O` emits fewer
+instructions than `-Onone`) against a Swift pack made of what `build.sh`
+puts there for running and exploring — `runner.js` and `explorer.js`
+bundled by its esbuild step, and swift-toolchain-wasm `swift-6.3.3-wasm-4`'s
+`swift-frontend-lsp.wasm`, `wasm-ld.wasm` and trimmed sysroot, checked
+against `build.sh`'s SHA-256 pins. The whole `build.sh` (which also builds
+`swift-ls.wasm`, XCTest and swift-testing from the 3.5 GB native toolchain)
+was not run for this example, and this page uses none of those. Where
+`packs/swift` is not installed the tab says so in the runner's and the
+explorer's own words ("not installed"), and the test skips its Swift
+checks, saying why, and checks that message instead.
 
 ## Run it
 
@@ -39,6 +47,13 @@ npm run build && PACKS=… npm run test:e2e           # every widget in Chromium
 `PACKS` defaults to `../../app/static/packs`, where Light's app installs
 them. The e2e test needs the cpp, rust, python, javascript and lldb packs;
 swift is optional.
+
+CI (`.github/workflows/light-ci.yml`, job `react-explorer-example`) runs
+`npm ci`, `npm run check`, `npm run build` and `npm test` with
+`BUNDLE_REQUIRED=1` whenever this example or `light/modules` changes. It
+does not run `test:e2e`: that workflow builds no C++, Rust, Python or LLDB
+pack (they take from twenty minutes to hours cold), so the end-to-end test
+is run where the packs are, as two-up's is.
 
 ## The hooks (`src/yukibana/`)
 
@@ -137,16 +152,16 @@ std and runtime.
 
 ## What it checks
 
-`test.mjs`, in Chromium with the installed packs (27 checks, 2 skipped
-without the Swift pack): the page is isolated and asks for nothing below
+`test.mjs`, in Chromium with the installed packs (29 checks with the
+Swift pack; without it 27, 3 Swift checks skipped): the page is isolated and asks for nothing below
 the fold at load; widget 1's assembly at `-O0` has the loop, the pointer
 links both sides, `-O2` removes the loop and reports the lines optimised
 away, LLVM IR shows `define`, its program prints the sum; C++, Rust and
 Python print the same line and show their views, Rust's `opt-level 3`
 emits fewer instructions than `0` (the level reaches the explorer),
 JavaScript prints it and says it has no views, the Swift tab says the pack
-is missing (or, installed, runs and shows its views), the scoreboard lists
-every result; the debugger stops at line 6 in `insertion_sort` with
+is missing (or, installed, runs, shows its views and `-O` emits fewer
+instructions than `-Onone`), the scoreboard lists every result; the debugger stops at line 6 in `insertion_sort` with
 `i = 1`, steps to line 7 with `key = 2`, continues to `i = 2`, opens a
 pointer, clears the breakpoint from the gutter and runs to `1 2 5 7 9`;
 the plain run of the overflow exits 0 and the AddressSanitizer run reports
