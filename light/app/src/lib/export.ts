@@ -14,9 +14,9 @@
  */
 import type { Files, Language, LanguageId } from './languages';
 // With its extension: tests/export.mjs runs this file under Node's type stripping.
-import { detectTestFramework, withoutComments, TEST_FRAMEWORKS, type TestFramework } from './cpp-tests.ts';
-import { targetOf, type CppTarget } from './cpp-targets.ts';
-import { sanitizersOf } from './cpp-sanitizers.ts';
+import { detectTestFramework, withoutComments, TEST_FRAMEWORKS, type TestFramework } from '@yukibana/lang-cpp/tests';
+import { targetOf, type CppTarget } from '@yukibana/lang-cpp/targets';
+import { sanitizersOf } from '@yukibana/lang-cpp/sanitizers';
 import { CPP_LEVELS, defaultLevel, SWIFT_LEVELS } from './optimization.ts';
 import {
 	ciService,
@@ -495,7 +495,7 @@ function implementsDoctest(text: string): boolean {
 
 /**
  * The test framework tests/ includes, as the runner and the app's picker
- * tell it (cpp-tests.ts detectTestFramework: C/C++ files only). When
+ * tell it (lang-cpp/tests.ts detectTestFramework: C/C++ files only). When
  * several are, the first in TEST_FRAMEWORKS' order (the browser refuses to
  * build those tests; the CMakeLists links one and the compiler names what
  * is missing). GoogleTest when none is, as before there was a choice.
@@ -588,7 +588,7 @@ function cmakeDir(dir: string): string {
 }
 
 /**
- * The Linux target compile_flags.txt puts the project on (cpp-targets.ts),
+ * The Linux target compile_flags.txt puts the project on (lang-cpp/targets.ts),
  * or null for the default target (WebAssembly) and for a triple the browser
  * does not know.
  */
@@ -710,7 +710,7 @@ export function cmakeLists(files: Files, entry: string, deps: 'fetch' | 'conan' 
 	// C++'s runtime brings libm with it; C's does not on Linux, where
 	// hypot() and the rest of <math.h> are in a library of their own.
 	if (c) lines.push("# libm, where <math.h>'s functions are on Linux (C++ links it anyway).", 'find_library(MATH_LIBRARY m)', 'if(MATH_LIBRARY)', '    target_link_libraries(project_flags INTERFACE ${MATH_LIBRARY})', 'endif()');
-	// A sanitizer (cpp-sanitizers.ts) is a link flag as well: the compiler
+	// A sanitizer (lang-cpp/sanitizers.ts) is a link flag as well: the compiler
 	// driver links its runtime. Its reports name lines with debug
 	// information (a Debug build), and AddressSanitizer's stacks need frame
 	// pointers, as Run compiles for a Linux target.

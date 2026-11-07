@@ -40,7 +40,7 @@ const V0 = type({
 	'optimization?': 'unknown',
 });
 
-/** How Run runs a C++ program built for a Linux target (cpp-targets.ts, `RunOptions`). */
+/** How Run runs a C++ program built for a Linux target (lang-cpp/targets.ts, `RunOptions`). */
 const RUN_OPTIONS = type({ emulation: "'system' | 'user'", cpus: '1 | 2 | 4', strace: 'boolean' });
 
 /**
@@ -91,7 +91,7 @@ const V2 = type({
 /**
  * Version 3: version 2 and whether a Rust project runs and tests under
  * Miri (packs/rust README, "Miri"), and as if on which target: one of
- * rust-targets.ts's MIRI_TARGETS, by id. Absent: compiled and run, as in
+ * lang-rust/targets.ts's MIRI_TARGETS, by id. Absent: compiled and run, as in
  * every project of version 2, which had no such field.
  */
 const V3 = type({

@@ -1,8 +1,9 @@
-# Prunes the pull requests' Light build caches, from main, once a day: every
-# cache of a closed pull request, and all but the newest of each unit and
-# pack of an open one (light/scripts/cache-prune.mjs). Each is deleted on its
-# own ref, so main's caches are never touched here; light-packs.yml prunes
-# main's in its own run.
+# Prunes the pull requests' and branches' Light build caches, from main,
+# once a day: every cache of a closed pull request or a deleted branch, and
+# all but the newest of each unit and pack of an open or existing one
+# (light/scripts/cache-prune.mjs). A branch has caches when light-packs.yml
+# was dispatched on it. Each is deleted on its own ref, so main's caches are
+# never touched here; light-packs.yml prunes main's in its own run.
 #
 # Why here and not in the pull request's run: deleting a cache needs
 # `actions: write`, and a pull request's run has `actions: read`, so its
@@ -22,7 +23,7 @@ permissions:
 
 jobs:
   prune:
-    name: Prune the pull requests' build caches
+    name: Prune the pull requests' and branches' build caches
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -41,5 +42,5 @@ jobs:
         with:
           node-version: 22
 
-      - name: Delete stale pull request caches
-        run: node light/scripts/cache-prune.mjs --stale-pulls
+      - name: Delete stale pull request and branch caches
+        run: node light/scripts/cache-prune.mjs --stale-pulls --stale-branches

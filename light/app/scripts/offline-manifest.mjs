@@ -23,6 +23,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
+import { MODULES_DIR, modules } from '../../modules/list.mjs';
 import { fileTable, inlineFileTable } from './file-table.mjs';
 
 const app = fileURLToPath(new URL('..', import.meta.url));
@@ -54,16 +55,40 @@ async function describe(path) {
 	return { path, size, transfer, hash };
 }
 
-// Lazy app files: what Monaco's code imports dynamically (a grammar, a
-// language service's `*Mode.js`), what the app's own code imports
-// dynamically from src/lib (the compiler output views and their grammars,
-// fetched when a view first opens), and whatever only those chunks import,
-// plus the language services' workers. Kit's own dynamic imports (the
-// client entry, the page) are part of starting up, so they stay in the shell.
+// Lazy app files: what is fetched only when the page asks for it, and so
+// only when a language or a view needs it. Every dynamic entry of the build
+// is a root, classified by the package that owns it, read from its source's
+// path in the Vite manifest:
+//
+// - Monaco's (a grammar, a language service's `*Mode.js`) and the app's own
+//   (the compiler output views and their grammars, the Build settings'
+//   dialogs, fetched when one first opens) are lazy roots.
+// - The shared modules' (light/modules, the directories list.mjs reads: a
+//   language package's preview session or grammar, std's explorer workers)
+//   are bodies a language loads on first use, which DESIGN.md (step 6) has
+//   precached with the shell: offline, a language works as it does online.
+// - Kit's own (the client entry, the page's nodes, its error page) are part
+//   of starting up.
+//
+// Then the graph decides: the shell is every file the startup roots and the
+// precached bodies reach by static imports, and the lazy files are what the
+// lazy roots reach, statically or by a further dynamic import, that the
+// shell does not have. A chunk a lazy root shares with the page is in the
+// shell. Plus the language services' workers, and the JSON schemas and
+// licenses/, which the Licences dialog opens.
+const modulesDir = relative(app, MODULES_DIR).replaceAll('\\', '/');
+const ownerOf = (src) =>
+	src.includes('node_modules/monaco-editor/')
+		? 'monaco'
+		: src.startsWith('src/')
+			? 'app'
+			: modules().some((module) => src.startsWith(`${modulesDir}/${module.name}/`))
+				? 'module'
+				: 'kit';
 const startup = new Set();
 const lazyRoots = [];
 for (const [src, chunk] of Object.entries(viteManifest)) {
-	if (chunk.isDynamicEntry && (src.includes('node_modules/monaco-editor/') || src.startsWith('src/lib/'))) lazyRoots.push(src);
+	if (chunk.isDynamicEntry && (ownerOf(src) === 'monaco' || ownerOf(src) === 'app')) lazyRoots.push(src);
 	else if (chunk.isEntry || chunk.isDynamicEntry) startup.add(src);
 }
 const closure = (roots, dynamic) => {
@@ -79,7 +104,13 @@ const closure = (roots, dynamic) => {
 	for (const src of seen) for (const f of [viteManifest[src].file, ...(viteManifest[src].css ?? []), ...(viteManifest[src].assets ?? [])]) files.add(f);
 	return files;
 };
-const startupFiles = closure([...startup], false);
+// What the prerendered page links (its modulepreloads and stylesheets) is
+// fetched by every first load, so it is in the shell whoever imports it:
+// Kit links the stylesheet of a lazy component the page also renders
+// (RunOptions.svelte's), which the graph alone left lazy until step 6 of
+// light/modules/DESIGN.md.
+const linked = [...(await readFile(join(build, 'index.html'), 'utf8')).matchAll(/<link\b[^>]*\bhref="\.\/(_app\/[^"]+)"/g)].map((m) => m[1]);
+const startupFiles = new Set([...closure([...startup], false), ...linked]);
 const lazyFiles = new Set([...closure(lazyRoots, true)].filter((f) => !startupFiles.has(f)));
 const isLazy = (path) =>
 	lazyFiles.has(path) ||

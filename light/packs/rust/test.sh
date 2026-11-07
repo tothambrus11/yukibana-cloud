@@ -38,8 +38,10 @@ npm_deps() {
 
 case "${1:-}" in
   --inputs)
-    # test.mjs and test-run.mjs read the app's sample.
-    printf '%s\n' light/app/src/lib/languages.ts
+    # test.mjs and test-run.mjs import the app's sample (lang-rust's
+    # body.ts), which Node loads as it is, with what it imports: the
+    # package's own files, and std's, core's, runtime's and protocol's.
+    (cd "$HERE/../../.." && git ls-files -- 'light/modules/lang-rust/*.ts' 'light/modules/std/*.ts' 'light/modules/core/*.ts' 'light/modules/runtime/*.ts' 'light/modules/protocol/*.ts')
     exit 0 ;;
   --setup)
     npm_deps

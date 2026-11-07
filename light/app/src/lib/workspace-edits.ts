@@ -4,8 +4,8 @@
  * starts the services):
  *
  * - The bulk edit service, through which Monaco applies every workspace
- *   edit: a rename, a quick fix or other code action, and (lsp/client.ts)
- *   an edit the language server asks for with `workspace/applyEdit`.
+ *   edit: a rename, a quick fix or other code action, and (@yukibana/monaco's
+ *   bind.ts) an edit the language server asks for with `workspace/applyEdit`.
  *   Standalone Monaco's applies each file's edits as that file's own undo
  *   step, so Ctrl+Z after a rename undid it in one file and left the
  *   others renamed: the project no longer compiled. This one does what VS
@@ -40,12 +40,12 @@
  * it sees any change: a `didChange` per file.
  */
 import * as monaco from 'monaco-editor/editor/editor.api';
-import type { BulkEditOptions, BulkEditResult, BulkEditService, Confirmation, DialogService, Prompt, PromptButton } from '@yukibana/monaco';
+import { WORKSPACE_EDIT_CODE, type BulkEditOptions, type BulkEditResult, type BulkEditService, type Confirmation, type DialogService, type Prompt, type PromptButton } from '@yukibana/monaco';
 import { internals } from './monaco-internals';
 import { buttonLabel } from './undo-text';
 
-/** The undo element's code when the caller gives none, as VS Code's. */
-const DEFAULT_CODE = 'undoredo.workspaceEdit';
+/** The undo element's code when the caller gives none, as VS Code's (the one the binding gives a server's edit). */
+const DEFAULT_CODE = WORKSPACE_EDIT_CODE;
 
 /**
  * Monaco's bulk edit service, as VS Code's applies text edits: every file's
@@ -100,15 +100,6 @@ export class WorkspaceBulkEditService implements BulkEditService {
 		}
 		return { ariaSummary: `Made ${count} text edits in ${byModel.size} files`, isApplied: true };
 	}
-}
-
-/**
- * Applies a workspace edit as Monaco's own features do, through the bulk
- * edit service: one undo step across its files, labelled `label`. Rejects
- * when a file has no model.
- */
-export async function applyWorkspaceEdit(edit: monaco.languages.WorkspaceEdit, label: string): Promise<boolean> {
-	return (await internals.applyWorkspaceEdit(edit, { label, quotableLabel: label, code: DEFAULT_CODE })).isApplied;
 }
 
 /**

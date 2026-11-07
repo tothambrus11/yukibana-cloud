@@ -1,0 +1,76 @@
+{
+	"name": "@yukibana/lang-cpp",
+	"version": "0.1.0",
+	"private": true,
+	"description": "C and C++ in Yukibana Light: the language's description and its providers (cheap to import), its body (the sample project, its server's settings and its build settings) and what Monaco needs of it, each its own entry point.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tothambrus11/yukibana-cloud.git",
+		"directory": "light/modules/lang-cpp"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@yukibana/source": "./index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./body": {
+			"@yukibana/source": "./body.ts",
+			"types": "./dist/body.d.ts",
+			"default": "./dist/body.js"
+		},
+		"./monaco": {
+			"@yukibana/source": "./monaco.ts",
+			"types": "./dist/monaco.d.ts",
+			"default": "./dist/monaco.js"
+		},
+		"./levels": {
+			"@yukibana/source": "./levels.ts",
+			"types": "./dist/levels.d.ts",
+			"default": "./dist/levels.js"
+		},
+		"./properties": {
+			"@yukibana/source": "./properties.ts",
+			"types": "./dist/properties.d.ts",
+			"default": "./dist/properties.js"
+		},
+		"./sanitizers": {
+			"@yukibana/source": "./sanitizers.ts",
+			"types": "./dist/sanitizers.d.ts",
+			"default": "./dist/sanitizers.js"
+		},
+		"./standards": {
+			"@yukibana/source": "./standards.ts",
+			"types": "./dist/standards.d.ts",
+			"default": "./dist/standards.js"
+		},
+		"./targets": {
+			"@yukibana/source": "./targets.ts",
+			"types": "./dist/targets.d.ts",
+			"default": "./dist/targets.js"
+		},
+		"./tests": {
+			"@yukibana/source": "./tests.ts",
+			"types": "./dist/tests.d.ts",
+			"default": "./dist/tests.js"
+		},
+		"./tidy": {
+			"@yukibana/source": "./tidy.ts",
+			"types": "./dist/tidy.d.ts",
+			"default": "./dist/tidy.js"
+		}
+	},
+	"files": [
+		"dist",
+		"*.ts",
+		"README.md"
+	],
+	"dependencies": {
+		"@yukibana/std": "^0.1.0"
+	},
+	"peerDependencies": {
+		"@yukibana/core": "^0.1.0"
+	}
+}

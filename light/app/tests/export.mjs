@@ -13,11 +13,13 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LANGUAGES } from '../src/lib/languages.ts';
-import { buildSbt, exportProject, parseCompileFlags } from '../src/lib/export.ts';
-import { zip } from '../src/lib/zip.ts';
-import { chooseTestFramework } from '../src/lib/cpp-tests.ts';
 import { PROPERTIES } from '../../packs/cpp/tests/fixtures/properties.mjs';
+import './modules-hook.mjs';
+
+const { LANGUAGES } = await import('../src/lib/languages.ts');
+const { buildSbt, exportProject, parseCompileFlags } = await import('../src/lib/export.ts');
+const { zip } = await import('../src/lib/zip.ts');
+const { chooseTestFramework } = await import('../../modules/lang-cpp/tests.ts');
 
 const only = process.argv.slice(2);
 const work = mkdtempSync(join(tmpdir(), 'yukibana-export-'));

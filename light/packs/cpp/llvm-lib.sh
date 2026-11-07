@@ -22,6 +22,26 @@ llvm_made_by() {
   printf 'llvm %s %s\n%s' "$LLVM_VERSION" "$LLVM_SHA256" "$emsdk"
 }
 
+# llvm_ccache: compiles every LLVM tree below through ccache, in
+# $CACHE/ccache, which the unit's Actions cache keeps. ninja already
+# rebuilds a kept tree incrementally; this is for a tree keep_tree resets
+# (a new emsdk record, say), which otherwise recompiles all of clangd from
+# empty though compiler and sources are the same. The wasm trees get it
+# through EM_COMPILER_WRAPPER (emcc.py's phase_compile_inputs, in emsdk
+# 6.0.13), so ccache hashes the real clang emcc runs rather than the em++
+# script, and their cmake arguments, part of cc's and cc-cross's STAMPs and
+# of the trees' records, stay as they were; the native tree gets it as its
+# compiler launcher (llvm_native_tools). compiler_check=content: a changed
+# emsdk or host clang under the same path never hits; no sloppiness, as a
+# stale object would ship under a key that says otherwise. Called after
+# emsdk_use; prints ccache's stats when the script exits.
+llvm_ccache() {
+  export EM_COMPILER_WRAPPER=ccache CCACHE_DIR="$CACHE/ccache" CCACHE_BASEDIR="$CACHE" \
+    CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE=3G
+  ccache --zero-stats >/dev/null
+  trap 'ccache --show-stats >&2 || true' EXIT
+}
+
 # llvm_lld_sources: makes $CACHE/llvm-project-$LLVM_VERSION.src/lld the
 # release's lld/ with patches/wasm-ld-only.patch applied, extracting it
 # again when its .patched record (the tarball's SHA-256 and the patch's)
@@ -125,6 +145,7 @@ llvm_native_tools() {
   local native_args=(-G Ninja -DCMAKE_BUILD_TYPE=Release
     -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra" -DLLVM_TARGETS_TO_BUILD=X86
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
     -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF)
   keep_tree "$CACHE/build-native" "$(printf 'llvm %s %s\nhost %s\n' "$LLVM_VERSION" "$LLVM_SHA256" "$(clang --version | head -1)"
     printf '%s\n' "${native_args[@]}")"

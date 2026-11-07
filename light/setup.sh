@@ -13,8 +13,20 @@
 #                                   yet (a local commit, a branch) takes the
 #                                   store's newest build of it, instead of
 #                                   being built here
+#   ./setup.sh --pull 121           a unit of a split pack that the store
+#                                   lacks is taken from pull request #121's
+#                                   CI builds (its 14-day artifacts), instead
+#                                   of being built here; needs gh signed in
 #   ./setup.sh --no-install         never runs apt-get (sudo); says what to
 #                                   install instead
+#
+# --pull trusts what that pull request's own CI built: anyone who can push a
+# branch here, not main. Only units the store lacks are taken from it, each
+# only when its attestation says light-toolchain-unit.yml built it on
+# refs/pull/<n>/merge, and they go to a toolchain cache of their own
+# ($TOOLCHAIN_CACHE/pull-<n>), so a later run without --pull never reuses
+# them. The checkout's unit keys must be the merge commit's: check out the
+# pull request's head, merged with main if main changed the unit since.
 #
 # A split pack (packs/<pack>/toolchains/: cpp) is never in the pack store:
 # its toolchain units are fetched from the toolchain store, or built, and
@@ -48,12 +60,14 @@ for d in "$HERE"/packs/*/; do [ -f "$d/build.sh" ] && ALL+=("$(basename "$d")");
 die() { echo "setup.sh: $*" >&2; exit 1; }
 say() { printf '\n== %s\n' "$*"; }
 
-packs=() build=() latest="" install=1
+packs=() build=() latest="" install=1 pull=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --build) shift; [ $# -gt 0 ] || die "--build needs a pack (or all)"
              if [ "$1" = all ]; then build=("${ALL[@]}"); else IFS=, read -r -a more <<<"$1"; build+=("${more[@]}"); fi ;;
     --latest) latest=--any ;;
+    --pull) shift; [[ "${1:-}" =~ ^[1-9][0-9]*$ ]] || die "--pull needs a pull request number"
+            pull="$1" ;;
     --no-install) install="" ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     -*) die "unknown option $1 (--help)" ;;
@@ -61,6 +75,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+[ -z "$pull" ] || [ -z "$latest" ] || die "--pull and --latest are two answers to one question: take one"
 [ ${#packs[@]} -gt 0 ] || packs=("${ALL[@]}")
 for p in "${packs[@]}" "${build[@]}"; do
   [ -f "$HERE/packs/$p/build.sh" ] || die "no pack $p (one of: ${ALL[*]})"
@@ -138,15 +153,64 @@ build_pack() {
   fi
 }
 
-to_build=() fetched=() kept=() skipped=()
+# --pull: the pull request's head branch, which narrows the artifacts looked
+# at (only the attestation decides), and the cache its units go to.
+from=()
+if [ -n "$pull" ]; then
+  if ! command -v gh >/dev/null || ! gh auth status >/dev/null 2>&1; then
+    die "--pull needs gh, signed in (gh auth login), to list and verify pull request #$pull's builds"
+  fi
+  pull_branch="$(gh api "repos/$("$STORE" repo)/pulls/$pull" --jq .head.ref)" || die "pull request #$pull cannot be read"
+  export TOOLCHAIN_CACHE="${TOOLCHAIN_CACHE:-$HOME/.cache/yukibana-toolchains}/pull-$pull"
+  from_dir="$TOOLCHAIN_CACHE/artifacts"
+  from=(--from "$from_dir")
+fi
+# Puts in $from_dir pull request #$pull's build of each unit of pack $1 that
+# the store lacks, setting took when there was one; fails naming the first
+# it has none of.
+took=""
+pull_units() {
+  local unit list status
+  local -a units
+  list="$("$STORE" toolchain-units "$1")"
+  mapfile -t units <<<"$list"
+  for unit in "${units[@]}"; do
+    status=0
+    "$STORE" toolchain-has "$unit" 2>/dev/null || status=$?
+    case "$status" in
+      0) continue ;;
+      3) ;;
+      *) return "$status" ;;
+    esac
+    echo "setup.sh: $unit is not in the store; taking pull request #$pull's build of it" >&2
+    status=0
+    GH_TOKEN="$(gh auth token)" "$STORE" toolchain-artifact "$unit" "$from_dir" --ref "refs/pull/$pull/merge" --branch "$pull_branch" >/dev/null || status=$?
+    [ "$status" != 3 ] ||
+      echo "setup.sh: pull request #$pull has no build of $unit as checked out (its artifacts last 14 days, and are keyed by its merge with main)" >&2
+    [ "$status" = 0 ] || return "$status"
+    took=1
+  done
+}
+
+to_build=() fetched=() kept=() skipped=() pulled=()
 for p in "${packs[@]}"; do
   if in_list "$p" "${build[@]}"; then to_build+=("$p"); continue; fi
   if is_split "$p"; then
     say "Fetching the $p pack's toolchain units"
     status=0
-    "$TOOLCHAIN" ensure "$p" --fetch-only $latest >/dev/null || status=$?
+    if [ -n "$pull" ]; then
+      took=""
+      pull_units "$p" || status=$?
+      case "$status" in
+        0) ;;
+        3) echo "setup.sh: skipping $p (--build $p builds it here)" >&2; skipped+=("$p"); continue ;;
+        *) exit "$status" ;;
+      esac
+    fi
+    "$TOOLCHAIN" ensure "$p" --fetch-only $latest "${from[@]}" >/dev/null || status=$?
     case "$status" in
-      0) (cd "$HERE/packs/$p" && ALLOW_OTHER_TOOLCHAIN="${latest:+1}" ./build.sh ${latest:+--any}) && fetched+=("$p") ;;
+      0) (cd "$HERE/packs/$p" && ALLOW_OTHER_TOOLCHAIN="${latest:+1}" ./build.sh ${latest:+--any} "${from[@]}") && fetched+=("$p")
+         [ -z "$took" ] || pulled+=("$p") ;;
       3|4)
         # A unit nobody has stored yet compiles for hours (LLVM, QEMU), so
         # it is never built unasked: --latest takes the newest stored build
@@ -190,6 +254,7 @@ say "Done"
 [ ${#fetched[@]} -eq 0 ] || echo "downloaded: ${fetched[*]}"
 [ ${#to_build[@]} -eq 0 ] || echo "built: ${to_build[*]}"
 [ ${#skipped[@]} -eq 0 ] || echo "skipped: ${skipped[*]} (see above: --latest or --build)"
+[ ${#pulled[@]} -eq 0 ] || echo "WARNING: ${pulled[*]}: units the store lacks are pull request #$pull's builds, made by its CI, not main's"
 cat <<'EOF'
 
 Run it:   cd app && npm run dev            (http://localhost:5173, reloads on edits)

@@ -1,12 +1,12 @@
 <!--
-  The C and C++ sanitizers (cpp-sanitizers.ts): AddressSanitizer and
+  The C and C++ sanitizers (lang-cpp/sanitizers.ts): AddressSanitizer and
   UndefinedBehaviorSanitizer, each a checkbox that rewrites the -fsanitize=
   line of compile_flags.txt, with what it finds. A row of the Build
   settings popover (BuildSettings.svelte); it used to be a top-bar button
   with a popover of its own, which was cut off at the window's edge.
 -->
 <script lang="ts">
-	import { SANITIZERS, type SanitizerId } from '../cpp-sanitizers';
+	import { SANITIZERS, type SanitizerId } from '@yukibana/lang-cpp/sanitizers';
 	import type { Workspace } from '../workspace.svelte';
 
 	let { workspace }: { workspace: Workspace } = $props();

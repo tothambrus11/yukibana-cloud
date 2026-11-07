@@ -45,7 +45,7 @@ export type RunMode = 'run' | 'test' | 'mutate';
  * README: plain JSON values by name. The protocol carries them and never
  * reads them, since it names no pack; the C++ pack's emulation settings
  * and the Swift and Scala packs' optimisation level are the app's types
- * (cpp-targets.ts, optimization.ts in light/app), not this module's
+ * (light/modules/lang-cpp's targets.ts and levels.ts), not this module's
  * (finding #26 of the architecture review). A runner ignores a name it
  * has no use for.
  */

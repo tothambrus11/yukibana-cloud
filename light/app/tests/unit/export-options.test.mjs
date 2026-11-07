@@ -8,9 +8,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { LANGUAGES } from '../../src/lib/languages.ts';
-import { buildSystems, cmakeLists, conanfile, exportProject, mesonBuild, mesonWraps } from '../../src/lib/export.ts';
-import { CI_SERVICES, jobsFor } from '../../src/lib/export-tooling.ts';
+import '../modules-hook.mjs';
+
+const { LANGUAGES } = await import('../../src/lib/languages.ts');
+const { buildSystems, cmakeLists, conanfile, exportProject, mesonBuild, mesonWraps } = await import('../../src/lib/export.ts');
+const { CI_SERVICES, jobsFor } = await import('../../src/lib/export-tooling.ts');
 
 const sample = (id) => LANGUAGES.find((l) => l.id === id);
 const ALL = { ci: 'github', devcontainer: true, gitattributes: true };

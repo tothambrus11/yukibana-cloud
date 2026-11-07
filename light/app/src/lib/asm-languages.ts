@@ -23,7 +23,7 @@
  * would grow by the compression the split loses.
  */
 import type { monaco as Monaco } from './monaco';
-import type { AsmLanguage } from './cpp-targets';
+import type { AsmLanguage } from '@yukibana/lang-cpp/targets';
 
 type MonacoApi = typeof Monaco;
 type Rule = Monaco.languages.IMonarchLanguageRule;

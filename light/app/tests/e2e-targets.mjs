@@ -10,7 +10,7 @@
 //
 //   npm run build && node tests/e2e-targets.mjs [target ...] [--json out.json]
 //
-// Targets are the ids of cpp-targets.ts (wasm32-wasi, x86_64-linux,
+// Targets are the ids of lang-cpp/targets.ts (wasm32-wasi, x86_64-linux,
 // aarch64-linux, riscv64-linux); all four by default. Serves app/build with
 // ../serve.py on a free port, with service workers blocked so every byte is
 // a network byte. Exits non-zero naming every check that failed.

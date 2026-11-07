@@ -455,7 +455,7 @@ check('p5.js declarations are downloaded only once per session', (await p5Loads(
 const globalLoads = async () => (await notifications()).filter((n) => n.method === 'yukibana/loading' && /^packages-p5-global-/.test(n.params.label));
 check('a sketch in instance mode does not download the global-mode declarations', (await globalLoads()).length === 0, await globalLoads());
 // A global-mode project names the declarations in its tsconfig.json, so its
-// sketch needs no `/// <reference>` line (languages.ts, 'p5-global').
+// sketch needs no `/// <reference>` line (the body.ts, 'p5-global').
 const globalFile = `function setup() {
   createCanvas(windowWidth, windowHeight);
 }

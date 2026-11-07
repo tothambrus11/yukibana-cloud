@@ -34,6 +34,7 @@ mkdir -p "$CACHE" "$OUT"
 cd "$CACHE"
 need_unit compilers   # LLVM_VERSION, LLVM_SHA256
 emsdk_use
+llvm_ccache
 
 step "sources (LLVM $LLVM_VERSION, the compilers unit's tarball)"
 tarball="$DEP_COMPILERS/build-only/llvm-project-$LLVM_VERSION.src.tar.xz"

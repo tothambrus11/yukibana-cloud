@@ -183,7 +183,7 @@ documentation, whether it has fixes, its alias, clangd's speed measurement
 `tidy-checks.mjs` makes it from the LLVM source tree the unit builds from,
 so it is never out of step with the wasm.
 
-The defaults, in the app's samples (`app/src/lib/languages.ts`,
+The defaults, in the app's samples (`modules/lang-cpp/body.ts`,
 `CPP_TIDY` and `C_TIDY`), follow the C++ Core Guidelines and what Jason
 Turner (cppbestpractices, his starter project) and Klaus Iglberger teach:
 `bugprone-*`, `cppcoreguidelines-*`, `misc-*`, `modernize-*`,
@@ -255,7 +255,7 @@ waiting 50 ms between its two last steps) passed against 6.0.13's own
 `node test.mjs` (headless Chromium 1194, page cross-origin isolated), on the shared 4-core build machine. Session 1 is a project of
 four files (`point.h`, `point.cpp`, `main.cpp`, `util.c`) served raw by a
 plain http server; session 2 is the app's own C++ sample (copied from
-`app/src/lib/languages.ts`, `compile_flags.txt` included and opened last,
+`modules/lang-cpp/body.ts`, `compile_flags.txt` included and opened last,
 as the app does), served as the `.br` siblings with `Content-Encoding`:
 
 ```text

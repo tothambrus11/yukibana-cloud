@@ -7,7 +7,7 @@
 //
 //   node test-run.mjs        (after ./build.sh; needs playwright-core)
 //
-// Cases: the app's sample project (languages.ts), a prompt without newline
+// Cases: the app's sample project (the body.ts), a prompt without newline
 // and two lines of stdin (C++ and C), a compile error, and a program that
 // never ends, which the page stops by terminating the worker. The sample runs
 // twice: cold (empty browser cache) and warm (cached downloads and compiled
@@ -30,7 +30,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright-core';
 // The app's sample tests per framework (imports only types, so Node loads it).
-import { chooseTestFramework } from '../../app/src/lib/cpp-tests.ts';
+import { chooseTestFramework } from '../../modules/lang-cpp/tests.ts';
 // RapidCheck properties of the sample, shared with the app's export test.
 import { PROPERTIES, OWN_MAIN_PROPERTIES } from './tests/fixtures/properties.mjs';
 
@@ -81,10 +81,10 @@ const server = createServer(async (req, res) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-// The sample project of app/src/lib/languages.ts, read from there so the test
+// The sample project of modules/lang-cpp/body.ts, read from there so the test
 // runs exactly what a new project contains.
-const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
-const SAMPLE = sampleOf(languages, 'cpp');
+const { BODIES } = await import('../../modules/lang-cpp/body.ts');
+const SAMPLE = BODIES['cpp'].sample;
 
 const STDIN_CPP = {
     'main.cpp': `#include <iostream>
@@ -379,7 +379,7 @@ try {
         `code=${warm.code} in ${warm.ms} ms, ${bytesSent} bytes transferred; ${timeline(warm)}`
     );
     // 2. The sample at every optimisation level the app offers (the -O line
-    //    of compile_flags.txt, app/src/lib/optimization.ts), and exceptions
+    //    of compile_flags.txt, modules/lang-cpp/levels.ts), and exceptions
     //    unoptimised: the same output at each.
     for (const level of ['-O0', '-O1', '-O3', '-Os', '-Oz']) {
         const r = await run({ ...SAMPLE, 'compile_flags.txt': `${SAMPLE['compile_flags.txt']}${level}\n` });
@@ -493,7 +493,7 @@ try {
     console.log(failing.stdout.trimEnd().replace(/^/gm, '    | '));
 
     // The same tests in doctest and in Catch2, as the app's framework choice
-    // writes them (app/src/lib/cpp-tests.ts), and a failing test in each.
+    // writes them (modules/lang-cpp/tests.ts), and a failing test in each.
     // Each run fetches its own framework's archive, and no other.
     for (const fw of ['doctest', 'catch2']) {
         const files = { ...SAMPLE, ...chooseTestFramework(SAMPLE, fw, SAMPLE).write };
@@ -695,27 +695,3 @@ TEST_CASE("throws something else") {
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
-
-/** The `sample` object literal of one language in languages.ts, evaluated:
- * template literals of plain text keyed by file name. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    // A file the sample shares with another (CPP_TIDY, CLANG_FORMAT) is
-    // named by its top-level `export const NAME = \`...\`;`, given here.
-    const shared = {};
-    for (const m of source.matchAll(/^export const ([A-Z_]+) = (`(?:\\[\s\S]|[^`\\])*`);$/gm)) shared[m[1]] = new Function(`return ${m[2]};`)();
-    return new Function(...Object.keys(shared), `return (${source.slice(start, i + 1)});`)(...Object.values(shared));
-}

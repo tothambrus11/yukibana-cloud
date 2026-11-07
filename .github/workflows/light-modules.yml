@@ -59,7 +59,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Type-check the modules
-        run: npx tsc -p ../modules/protocol && npx tsc -p ../modules/runtime
+        run: node ../modules/typecheck.mjs
 
       - name: The modules' tests, the installed packages' among them
         run: node --test "../modules/**/*.test.mjs"
@@ -72,7 +72,7 @@ jobs:
         run: |
           want="${GITHUB_REF_NAME#light-modules-v}"
           wrong=()
-          for m in protocol runtime; do
+          for m in $(node --input-type=module -e "import { PUBLISHED } from '../modules/build.mjs'; console.log(PUBLISHED.join(' '))"); do
             have="$(node -p "require('../modules/$m/package.json').version")"
             [ "$have" = "$want" ] || wrong+=("@yukibana/$m is $have, but the tag says $want")
           done

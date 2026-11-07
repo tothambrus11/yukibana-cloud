@@ -1,4 +1,4 @@
-// Unit tests of the C++ target choice (src/lib/cpp-targets.ts): which
+// Unit tests of the C++ target choice (modules/lang-cpp/targets.ts): which
 // target compile_flags.txt puts a project on, how the Target picker rewrites
 // that file, and that the app's copy of the target table and of the parse
 // rule agree with the pack's (packs/cpp/src/targets.json and
@@ -8,7 +8,8 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { asmLanguageOf, runOptionsOf, TARGET_SHORT, TARGETS, targetOf, withTarget } from '../../src/lib/cpp-targets.ts';
+import { asmLanguageOf, TARGET_SHORT, TARGETS, targetOf, withTarget } from '../../../modules/lang-cpp/targets.ts';
+import { runOptionsOf } from '../../../modules/std/linux.ts';
 
 const pack = new URL('../../../packs/cpp/', import.meta.url);
 const said = (choice) => (choice.kind === 'unsupported' ? { kind: choice.kind, triple: choice.triple } : { kind: choice.kind, id: choice.target.id });

@@ -125,9 +125,28 @@ never linked into the pack. Its header has the glossary and the pin rule.
   has read-only permissions, keeps its units as artifacts, and reuses them
   on its own later pushes when their attestation names its ref; it never
   writes a store or deletes a cache. Main's run prunes main's older build
-  caches, and `light-caches.yml` prunes pull requests' daily
-  (`scripts/cache-prune.mjs`, always with `--ref`). Third-party actions are
-  pinned by commit. `scripts/test-workflows.mjs` keeps these rules.
+  caches, and `light-caches.yml` prunes pull requests' and other branches'
+  daily (`scripts/cache-prune.mjs`, always with `--ref`). Third-party
+  actions are pinned by commit. `scripts/test-workflows.mjs` keeps these
+  rules.
+* On a branch, without merging. A pull request (a draft will do) builds
+  and tests every unit and pack it changed, as above. To build on a branch
+  by hand, or to build again a unit the store already has (to time it, or
+  to check that it reproduces), dispatch the workflow:
+  `gh workflow run light-packs.yml --ref <branch> -f rebuild='rust/compilers'`
+  (`rebuild` is optional, space-separated `<pack>/<unit>`s, and refused on
+  main). Such a run builds what the store lacks plus what `rebuild` names,
+  assembles and tests the packs over them, keeps the units as artifacts
+  for 14 days, and reuses them on that branch's later dispatches; it stores
+  nothing. To use a pull request's units on your machine, run
+  `./setup.sh --pull <n>` on a checkout whose units have the keys of its
+  merge with main: each unit the store lacks is taken from that pull
+  request's artifacts, once `gh attestation verify` says its own CI built
+  it, into a toolchain cache of its own. That is the pull request's trust,
+  not main's, which `setup.sh` says when it is done. The LLVM builds
+  (`rust/compilers`, `cpp/compilers`, `cpp/tidy`) compile through ccache
+  kept in the unit's Actions cache, so a branch, which starts from main's
+  cache, recompiles only the LLVM its change touched.
 * `.github/workflows/light-ci.yml` checks the app (types, unit tests, the
   JavaScript pack end to end) when the app, or a pack file its tests read,
   changed. Every job in the repository's CI runs only when the inputs its

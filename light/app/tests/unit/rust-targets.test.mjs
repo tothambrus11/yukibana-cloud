@@ -1,4 +1,4 @@
-// Unit tests of the Rust target choice (src/lib/rust-targets.ts): which
+// Unit tests of the Rust target choice (modules/lang-rust/targets.ts): which
 // target .cargo/config.toml puts a project on, how the Target picker
 // rewrites that file, and that the app's table and parse rule agree with
 // the Rust pack's (packs/rust/src/targets.json and targets.js).
@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { MIRI_TARGETS, RUST_TARGETS, rustTargetOf, withRustTarget } from '../../src/lib/rust-targets.ts';
+import { MIRI_TARGETS, RUST_TARGETS, rustTargetOf, withRustTarget } from '../../../modules/lang-rust/targets.ts';
 import { targetOf as packTargetOf } from '../../../packs/rust/src/targets.js';
 
 const json = JSON.parse(readFileSync(new URL('../../../packs/rust/src/targets.json', import.meta.url), 'utf8'));

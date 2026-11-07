@@ -1,33 +1,39 @@
 /**
  * The state of the app: which language is selected, its project's files as
- * Monaco models, the language client serving them, and what the panels show
+ * Monaco models, the language server's session serving them, and what the panels show
  * (problems, output, download progress). Components read it; only its
  * methods change it.
  */
 import { monaco } from './monaco';
 import { forgetUndo } from './workspace-edits';
-import type { LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
-import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
-import { isCFamily, isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
-import { viewOf, viewsOf, type ExploreKind } from './explore-views';
+import type { DebugChannel, LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
+import { LanguageSession, type LogLevel, type ServerState } from '@yukibana/runtime';
+import { MonacoBinding, toLspPosition } from '@yukibana/monaco';
+import { internals } from './monaco-internals';
+import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
 import { buildSystems, exportProject, type BuildSystem, type ExportOptions } from './export';
 import { zip } from './zip';
-import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
-import { DEFAULT_RUN_OPTIONS, targetById, targetOf, withTarget, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
-import { describeSanitizers, sanitizersOf, withSanitizers, type SanitizerChoice } from './cpp-sanitizers';
-import { CARGO_CONFIG, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, withRustTarget, type MiriTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
-import { cppLevelOf, defaultLevel, levelsOf, withCppLevel, type LevelChoice } from './optimization';
-import { describeStandard, standardOf, withStandard, type Standard, type StandardChoice } from './cpp-standards';
-import { checksOf, TIDY_FILE, withChecks, type CheckGlob } from './tidy-config';
+import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from '@yukibana/lang-cpp/tests';
+import { targetById, targetOf, type CppTargetId, type TargetChoice } from '@yukibana/lang-cpp/targets';
+import { describeSanitizers, sanitizersOf, type SanitizerChoice } from '@yukibana/lang-cpp/sanitizers';
+import { CARGO_CONFIG, isMiriTarget, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, type MiriTarget, type RustTarget, type RustTargetChoice } from '@yukibana/lang-rust/targets';
+import { cppLevelOf, defaultLevel, levelsOf, type LevelChoice } from './optimization';
+import { describeStandard, standardOf, type Standard, type StandardChoice } from '@yukibana/lang-cpp/standards';
+import { checksOf, TIDY_FILE, type CheckGlob } from '@yukibana/lang-cpp/tidy';
 import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
-import type * as lsp from 'vscode-languageserver-protocol';
+import type { SelectionRange } from '@yukibana/protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
+import { pathOf, writeProperty, type Disposable, type Files, type Project as CoreProject, type ProjectChange, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
+import { DEFAULT_RUN_OPTIONS, debugTokenOf, explore, preview, runOptionsOf, test, tokenOf, warm, type DebugMode, type PreviewSession, type RunOptions, type ViewKind } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
+import { pageHost, releaseExplorer, subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
+import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
+import { COMPILE_FLAGS, standardSettingOf } from '@yukibana/lang-cpp/properties';
 import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
 import { holdsProject } from './project-link';
 
@@ -91,19 +97,16 @@ export interface EditorHost {
 	 * Opens a compiler output view (LLVM IR, assembly) right of the editors,
 	 * or brings it to the front; its panel tells `explorer` it opened.
 	 */
-	showView(kind: ExploreKind): void;
+	showView(kind: ViewKind): void;
 	/** Closes the compiler output views, if open: the language or project changed. */
 	hideViews(): void;
 	/** Closes one compiler output view, if open: its toggle in the top bar was pressed again. */
-	hideView(kind: ExploreKind): void;
+	hideView(kind: ViewKind): void;
 	/** Opens the Call Hierarchy panel beside Problems, or brings it to the front. */
 	showCallHierarchy(): void;
 	/** Opens the Debug panel beside Problems, or brings it to the front. */
 	showDebug(): void;
 }
-
-/** The file that holds a C or C++ project's flags: its target, standard, level and sanitizers among them. */
-const COMPILE_FLAGS = 'compile_flags.txt';
 
 const SAVE_DELAY_MS = 400;
 /**
@@ -114,36 +117,41 @@ const SAVE_DELAY_MS = 400;
 const MAX_LINK = 1_000_000;
 const MAX_LOG_LINES = 2000;
 
-export class Workspace {
+/**
+ * The app's state, and its project as the core sees it (`Project`): the
+ * snapshot the providers read, and every change of the project's files and
+ * saved settings, which the language server's binding follows.
+ */
+export class Workspace implements CoreProject {
 	language = $state<LanguageId>('python');
 	/** File paths, sorted. */
 	files = $state<string[]>([]);
 	/** Explicit folders (empty ones included), sorted. */
 	folders = $state<string[]>([]);
 	active = $state<string | null>(null);
-	clientState = $state<ClientState>({ kind: 'stopped' });
+	clientState = $state<ServerState>({ kind: 'stopped' });
 	progress = $state<LoadingProgress | null>(null);
 	log = $state<LogLine[]>([]);
 	problems = $state<Problem[]>([]);
 	/**
 	 * A C++ project's test framework, as its tests/ files include it
-	 * (cpp-tests.ts): `mixed` when they include more than one, null when
+	 * (lang-cpp/tests.ts): `mixed` when they include more than one, null when
 	 * none (or the project is not C++).
 	 */
 	testFramework = $state<TestFramework | 'mixed' | null>(null);
 	/**
 	 * A C or C++ project's target, as its compile_flags.txt says
-	 * (cpp-targets.ts); null when the project is neither.
+	 * (lang-cpp/targets.ts); null when the project is neither.
 	 */
 	target = $state<TargetChoice | null>(null);
 	/**
 	 * A Rust project's target, as its .cargo/config.toml says
-	 * (rust-targets.ts); null when the project is not Rust.
+	 * (lang-rust/targets.ts); null when the project is not Rust.
 	 */
 	rustTarget = $state<RustTargetChoice | null>(null);
 	/**
 	 * The sanitizers a C or C++ project has on, as its compile_flags.txt
-	 * says (cpp-sanitizers.ts); null when the project is not C or C++.
+	 * says (lang-cpp/sanitizers.ts); null when the project is not C or C++.
 	 */
 	sanitizers = $state<SanitizerChoice | null>(null);
 	/**
@@ -159,7 +167,7 @@ export class Workspace {
 	optimization = $state<LevelChoice | null>(null);
 	/**
 	 * A C or C++ project's language standard, as its compile_flags.txt says
-	 * (cpp-standards.ts); null when the project is neither.
+	 * (lang-cpp/standards.ts); null when the project is neither.
 	 */
 	standard = $state<StandardChoice | null>(null);
 	/**
@@ -176,7 +184,7 @@ export class Workspace {
 	miri = $state<MiriTarget['id'] | null>(null);
 	/**
 	 * A C or C++ project's clang-tidy rules: the `Checks` of its .clang-tidy
-	 * (tidy-config.ts), null when the file has no such key or there is no
+	 * (lang-cpp/tidy.ts), null when the file has no such key or there is no
 	 * file (clangd's own few checks then), and for any other project.
 	 */
 	tidyChecks = $state<CheckGlob[] | null>(null);
@@ -191,13 +199,13 @@ export class Workspace {
 	 * contents. The guest kernel's log and the run's timings go to the
 	 * Log panel.
 	 */
-	readonly runner = new Runner({
+	readonly runner = new Runner(pageHost(), {
 		kernel: (line) => this.write('log', `[kernel] ${line}`, 'run'),
 		mark: (name, ms) => this.write('log', `timing: ${name} ${(ms / 1000).toFixed(2)} s`, 'run'),
 		problem: (text) => this.write('warning', text, 'run'),
 	});
 	/**
-	 * The compiler output views' client (languages with views, explore-views.ts), loaded
+	 * The compiler output views' client (languages with views, modules/lang-<pack>), loaded
 	 * with the views the first time one opens: null until then, so the app
 	 * shell carries none of it.
 	 */
@@ -208,7 +216,7 @@ export class Workspace {
 	 * (`viewsChanged`): the top bar's LLVM IR and Assembly toggles show it as
 	 * pressed. Open, not visible: a view behind another tab is still open.
 	 */
-	viewsOpen = $state<readonly ExploreKind[]>([]);
+	viewsOpen = $state<readonly ViewKind[]>([]);
 	/** A web project's page, shown in the Preview panel; its console goes to the terminal. */
 	readonly preview = new Preview(this.runner, (signal) => this.projectErrors(signal));
 	/**
@@ -221,12 +229,22 @@ export class Workspace {
 	/** The debugger (Debug), its breakpoints and the session the Debug panel shows. */
 	readonly debugger = new Debugger();
 
-	private client: LanguageClient | null = null;
+	/** The selected language's server, while one runs: its session, which the editor's binding (`MonacoBinding`) is the client of. */
+	private session: LanguageSession | null = null;
+	/** Who `onChange` calls, in the order they subscribed. */
+	private readonly changeListeners = new Set<(change: ProjectChange) => void>();
 	private readonly models = new Map<string, monaco.editor.ITextModel>();
 	private open: string[] = [];
 	private saveTimer: ReturnType<typeof setTimeout> | undefined;
 	private logId = 0;
 	private host: EditorHost | null = null;
+	/**
+	 * Changes on every change to the project's files or saved settings, so
+	 * a snapshot (`snapshot`) says which project it answers for. State, so
+	 * that what derives from a snapshot follows the project; cheap to follow,
+	 * since an availability that does not change re-renders nothing.
+	 */
+	private revision = $state(0);
 	/** Whether the user chose run options for this project: only then are they saved with it. */
 	private runOptionsChosen = false;
 	/** The level chosen for a language whose level no project file holds (Swift, Scala), saved with the project; null: the default. */
@@ -372,19 +390,101 @@ export class Workspace {
 	}
 
 	/**
+	 * The project as the core sees it (@yukibana/core's `ProjectSnapshot`),
+	 * over the editor's models: nothing is read until a provider asks, and
+	 * every file only when one dispatches (`files`), never per keystroke.
+	 * It reads through to the models, so it answers for the project only
+	 * while `revision` is the one it was made at: a read after the project
+	 * has changed throws, rather than answer for a newer project under an
+	 * older revision. Reading `revision` here makes whatever derives from a
+	 * snapshot (the top bar's availability) derive again after each change.
+	 * The same snapshot is returned while the revision is the same, so that
+	 * what a rule reads of it is read once per revision however many buttons
+	 * ask (lang-cpp/refusals.ts keeps what it found per snapshot).
+	 */
+	snapshot(): ProjectSnapshot {
+		const models = this.models;
+		const revision = this.revision;
+		if (this.live?.revision === revision) return this.live;
+		this.live = this.liveSnapshot(models, revision);
+		return this.live;
+	}
+
+	/** The last snapshot `snapshot` made; not reactive, so that making one changes nothing a `$derived` reads. */
+	private live: ProjectSnapshot | null = null;
+
+	/** Returns a snapshot that reads through to `models` while the project is at `revision` (see `snapshot`). */
+	private liveSnapshot(models: ReadonlyMap<string, monaco.editor.ITextModel>, revision: number): ProjectSnapshot {
+		const current = (): void => {
+			if (this.revision !== revision) throw new Error(`A snapshot of revision ${revision} of the project was read at revision ${this.revision}: it no longer says what the project holds.`);
+		};
+		return {
+			revision,
+			paths: () => {
+				current();
+				return [...models.keys()].map(pathOf);
+			},
+			file: (path) => {
+				current();
+				return models.get(path)?.getValue() ?? null;
+			},
+			files: () => {
+				current();
+				const files: Record<string, string> = {};
+				for (const [path, model] of models) files[pathOf(path)] = model.getValue();
+				return files;
+			},
+			meta: (binding) => {
+				current();
+				const stored: unknown = new Map<string, unknown>(Object.entries(this.savedSettings())).get(binding.key);
+				return stored === undefined ? null : binding.parse(stored);
+			},
+		};
+	}
+
+	/**
+	 * The project as `files` and the saved settings are now, as a snapshot
+	 * that never goes stale: for a provider performed after something that
+	 * changes the project (showing the terminal moves the tabs), or later
+	 * still (a debugged run starts once the debugger's worker is ready).
+	 * `files` are read once, by the caller, from the live snapshot.
+	 */
+	private frozen(files: Files): ProjectSnapshot {
+		const revision = this.revision;
+		const meta = new Map<string, unknown>(Object.entries(this.savedSettings()));
+		return {
+			revision,
+			paths: () => Object.keys(files).map(pathOf),
+			file: (path) => (Object.hasOwn(files, path) ? (files[path] ?? null) : null),
+			files: () => files,
+			meta: (binding) => {
+				const stored = meta.get(binding.key);
+				return stored === undefined ? null : binding.parse(stored);
+			},
+		};
+	}
+
+	/**
 	 * Runs the project: the language's entry file when the project has one,
-	 * else the file shown; `mode` 'test' runs its tests instead (languages with
-	 * `tests`), 'mutate' mutation-tests the project against them (languages
-	 * with `mutates`). Every file goes along, as last edited.
+	 * else the file shown; `mode` 'test' runs its tests instead, 'mutate'
+	 * mutation-tests the project against them, where the language's
+	 * providers offer that (modules/lang-<pack>/index.ts). Every file goes along, as last
+	 * edited. A web project's Run previews its page instead, where the
+	 * language has a provider of `preview` (lang-javascript/index.ts).
 	 */
 	run(mode: RunMode = 'run'): void {
 		const language = languageOf(this.language);
-		if (mode === 'run' ? !language.runs : mode === 'test' ? !language.tests : !language.mutates) return;
-		if (mode === 'run' && language.preview) {
-			this.host?.showPreview();
-			this.host?.showTerminal();
-			this.runner.attach(`Previewing ${language.preview}. Its console appears here; edits reload the page, and a stylesheet edit is applied without a reload.`);
-			this.preview.start(packOf(language), language.preview, () => this.currentFiles());
+		const subject = subjectOf(this.language);
+		const token = tokenOf(mode);
+		const snapshot = this.snapshot();
+		const availability = yukibana().availability(subject, token, snapshot);
+		if (availability.kind === 'unavailable') {
+			// Ctrl+Shift+Enter and the editors' actions reach here with the button disabled: say why, where the language has the mode at all.
+			if (yukibana().has(subject, token)) this.write('warning', availability.reason);
+			return;
+		}
+		if (mode === 'run' && yukibana().has(subject, preview)) {
+			this.startPreview(subject, snapshot);
 			return;
 		}
 		const entry = this.models.has(language.entry) ? language.entry : this.active;
@@ -394,43 +494,122 @@ export class Workspace {
 		}
 		// On a Linux target the runner runs GoogleTest tests (and RapidCheck)
 		// under QEMU, and refuses Catch2 and doctest by name (packs/cpp README).
-		const files = this.currentFiles();
+		const files = snapshot.files();
+		// A C or C++ runner reads its level from compile_flags.txt; Swift's is
+		// sent. A Rust program on a Linux target runs under QEMU with the C++
+		// pack's Run options. The language's properties say which (properties/).
+		// Read before the terminal is shown: showing it moves the tabs, which
+		// is a change of the project, and the snapshot is then stale.
+		const options = runnerOptionsOf(this.settings, snapshot);
+		const frozen = this.frozen(files);
 		this.host?.showTerminal();
-		// A C or C++ runner reads its level from compile_flags.txt; Swift's is sent.
-		const cFamily = isCFamily(this.language);
-		const level = !cFamily && this.optimization ? (this.optimization.kind === 'other' ? null : this.optimization.level.flag) : null;
-		const rust = this.language === 'rust';
-		// A Rust program on a Linux target runs under QEMU with the C++ pack's Run options.
-		const options = cFamily ? { ...this.runOptions } : { ...(level ? { optimization: level } : {}), ...(rust ? { ...this.runOptions, ...(this.miri ? { miri: this.miri } : {}) } : {}) };
-		this.runner.start(runnerSourceOf(language), files, entry, mode, Object.keys(options).length ? options : undefined);
+		const listener = this.runner.begin();
+		const input = { files, entry: pathOf(entry), options, ...listener };
+		// The provider is eager: the run is handed to the pool within this
+		// task, before the next event, as when the app asked the pool itself.
+		yukibana()
+			.perform(subject, token, input, frozen, new AbortController().signal)
+			.then(
+				(outcome) => {
+					if (outcome.kind === 'done') this.runner.start(outcome.value);
+					else this.write('warning', outcome.reason);
+				},
+				(e: unknown) => this.write('error', `Could not ${mode} the project: ${e instanceof Error ? e.message : String(e)}`),
+			);
 	}
 
 	/**
-	 * Runs the project under the debugger (languages with `debugs`): the
-	 * debugger's worker starts, then the run, with the channel it listens
-	 * on; the program stops at the breakpoints set in the editors' margins.
-	 * The terminal shows the program's output and takes its input, as for
-	 * a run; ending the run ends the session, and the other way round.
+	 * Shows the project's page in the Preview panel, built by the session of
+	 * the language's provider of `preview`: the session already showing it,
+	 * if there is one, so the runner (and TypeScript) is loaded once.
 	 */
-	debug(): void {
+	private startPreview(subject: Subject, snapshot: ProjectSnapshot): void {
+		const show = (session: PreviewSession): void => {
+			this.host?.showPreview();
+			this.host?.showTerminal();
+			this.runner.attach(`Previewing ${session.entry}. Its console appears here; edits reload the page, and a stylesheet edit is applied without a reload.`);
+			this.preview.start(subject.id, session, () => this.currentFiles());
+		};
+		const shown = this.preview.sessionOf(subject.id);
+		if (shown !== null) {
+			show(shown);
+			return;
+		}
+		yukibana()
+			.perform(subject, preview, { report: (text) => this.runner.print('stderr', text) }, snapshot, new AbortController().signal)
+			.then(
+				(outcome) => {
+					if (outcome.kind === 'done') show(outcome.value);
+					else this.write('warning', outcome.reason);
+				},
+				(e: unknown) => this.write('error', `Could not preview the project: ${e instanceof Error ? e.message : String(e)}`),
+			);
+	}
+
+	/**
+	 * Runs the project under the debugger, where the language's providers
+	 * offer that (modules/lang-<pack>/index.ts): its program, or with `mode` 'test' its
+	 * tests. The debugger's worker starts, then the run, with the channel it
+	 * listens on; the program stops at the breakpoints set in the editors'
+	 * margins. The terminal shows the program's output and takes its input,
+	 * as for a run; ending the run ends the session, and the other way round.
+	 * What is run, and whether it may be, is decided at the click: the run
+	 * starts later, once the debugger is ready, on the project as it was.
+	 */
+	debug(mode: DebugMode = 'run'): void {
 		const language = languageOf(this.language);
-		if (!language.debugs) return;
+		const subject = subjectOf(this.language);
+		const token = debugTokenOf(mode);
+		const snapshot = this.snapshot();
+		const availability = yukibana().availability(subject, token, snapshot);
+		if (availability.kind === 'unavailable') {
+			// F5 reaches here with the Debug button disabled: say why, where the language debugs at all.
+			if (yukibana().has(subject, token)) this.write('warning', availability.reason);
+			return;
+		}
 		const entry = this.models.has(language.entry) ? language.entry : this.active;
 		if (!entry) {
 			this.write('warning', `There is no ${language.entry} to debug.`);
 			return;
 		}
-		const files = this.currentFiles();
-		const source = runnerSourceOf(language);
-		const options = isCFamily(this.language) ? { ...this.runOptions } : undefined;
+		const files = snapshot.files();
+		// What a debugged run is sent of these, the provider says (C and C++
+		// the run options, Swift none, as they always were).
+		const options = runnerOptionsOf(this.settings, snapshot);
+		const frozen = this.frozen(files);
 		this.host?.showTerminal();
 		this.host?.showDebug();
-		this.runner.debugProgram = (program) => void this.debugger.attach(program);
 		this.runner.ended = () => {
 			if (this.debugger.active) this.debugger.end(false);
 		};
+		const start = (channel: DebugChannel): void => {
+			const listener = this.runner.begin();
+			const input = { files, entry: pathOf(entry), options, ...listener, channel };
+			yukibana()
+				.perform(subject, token, input, frozen, new AbortController().signal)
+				.then(
+					(outcome) => {
+						if (outcome.kind !== 'done') {
+							this.write('warning', outcome.reason);
+							this.debugger.end(false);
+							return;
+						}
+						const { run, program } = outcome.value;
+						this.runner.start(run);
+						// Only to the session of the run the terminal still shows.
+						void program.then((linked) => {
+							if (linked !== null && this.runner.shows(run)) void this.debugger.attach(linked);
+						});
+					},
+					(e: unknown) => {
+						// The provider's body did not load (it is lazy) or threw: no run started, so the session ends.
+						this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`);
+						this.debugger.end(false);
+					},
+				);
+		};
 		this.debugger.start({
-			run: (channel) => this.runner.start(source, files, entry, 'run', options, channel),
+			run: start,
 			stopRun: () => this.runner.stop(false),
 			reveal: (path, line) => this.show(path, { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 }),
 			log: (text) => this.write('info', text, 'run'),
@@ -439,10 +618,10 @@ export class Workspace {
 
 	/**
 	 * Opens a compiler output view of the active C or C++ source (languages
-	 * with that view, explore-views.ts); does nothing for another language.
+	 * with that view, modules/lang-<pack>); does nothing for another language.
 	 */
-	async showView(kind: ExploreKind): Promise<void> {
-		if (!viewOf(this.language, kind)) return;
+	async showView(kind: ViewKind): Promise<void> {
+		if (!viewOf(subjectOf(this.language), kind)) return;
 		const generation = this.generation;
 		try {
 			await this.loadExplorer();
@@ -458,7 +637,7 @@ export class Workspace {
 	 * Opens view `kind` when it is closed and closes it when it is open: what
 	 * the top bar's toggles do.
 	 */
-	toggleView(kind: ExploreKind): void {
+	toggleView(kind: ViewKind): void {
 		if (this.viewsOpen.includes(kind)) this.host?.hideView(kind);
 		else void this.showView(kind);
 	}
@@ -469,7 +648,7 @@ export class Workspace {
 	}
 
 	/** The dock opened or closed a view's panel; `open` is every view open now. */
-	viewsChanged(open: readonly ExploreKind[]): void {
+	viewsChanged(open: readonly ViewKind[]): void {
 		if (open.length !== this.viewsOpen.length || open.some((k) => !this.viewsOpen.includes(k))) this.viewsOpen = open;
 	}
 
@@ -477,13 +656,16 @@ export class Workspace {
 	private loadExplorer(): Promise<Explorer> {
 		this.explorerLoad ??= import('./explorer.svelte').then(({ Explorer }) => {
 			const explorer = new Explorer({
-				language: () => this.language,
-				pack: () => (viewsOf(this.language) ? packOf(languageOf(this.language)) : null),
+				language: () => subjectOf(this.language).id,
+				views: (language) => viewsOf({ kind: 'language', id: language }),
 				files: () => this.currentFiles(),
+				snapshot: (files) => this.frozen(files),
+				explore: (language, input, snapshot, signal) => yukibana().perform({ kind: 'language', id: language }, explore, input, snapshot, signal),
+				release: (language, holder) => releaseExplorer({ kind: 'language', id: language }, holder),
 				// C and C++ views read the level from compile_flags.txt, as their runner does; Swift's is sent, as with Run.
 				options: () => {
 					const o = this.optimization;
-					return !isCFamily(this.language) && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
+					return this.settings.level?.storage.kind === 'meta' && o && o.kind !== 'other' ? { optimization: o.level.flag } : {};
 				},
 			});
 			explorer.activeChanged(this.active);
@@ -496,15 +678,14 @@ export class Workspace {
 	}
 
 	/**
-	 * Puts a C or C++ project on target `id` (cpp-targets.ts): compile_flags.txt
+	 * Puts a C or C++ project on target `id` (lang-cpp/targets.ts): compile_flags.txt
 	 * is rewritten (or created) as one edit, which Undo takes back, then
 	 * saved; clangd, Run and the views follow the file. The Log panel
 	 * says what changed.
 	 */
 	chooseTarget(id: CppTargetId): void {
-		if (!isCFamily(this.language)) return;
+		if (!this.choose(this.settings.target, id)) return;
 		const target = targetById(id);
-		this.replaceFile(COMPILE_FLAGS, withTarget(this.models.get(COMPILE_FLAGS)?.getValue(), id));
 		this.refreshTarget();
 		const how = target.default ? `no --target line in ${COMPILE_FLAGS}` : `--target=${target.triple} in ${COMPILE_FLAGS}`;
 		this.write('info', `Target: ${target.label} (${how}).${target.runtime === 'linux' ? ' Run compiles for Linux and runs the program under QEMU, and Test its GoogleTest tests (Catch2 and doctest run on WebAssembly only).' : ''}`);
@@ -513,14 +694,13 @@ export class Workspace {
 
 	/**
 	 * Turns the C or C++ project's sanitizers on or off as `choice` says
-	 * (cpp-sanitizers.ts): compile_flags.txt's -fsanitize= line is
+	 * (lang-cpp/sanitizers.ts): compile_flags.txt's -fsanitize= line is
 	 * rewritten (or the file created) as one edit, which Undo takes back,
 	 * then saved; clangd, Run, Test, the views and Download follow the file.
 	 * The Log panel says what changed.
 	 */
 	chooseSanitizers(choice: SanitizerChoice): void {
-		if (!isCFamily(this.language)) return;
-		this.replaceFile(COMPILE_FLAGS, withSanitizers(this.models.get(COMPILE_FLAGS)?.getValue(), choice));
+		if (!this.choose(this.settings.sanitizers, choice)) return;
 		this.refreshTarget();
 		this.write('info', describeSanitizers(choice));
 		this.scheduleSave();
@@ -534,16 +714,14 @@ export class Workspace {
 	 * project and goes with Run (and Test). The Log panel says what changed.
 	 */
 	chooseOptimization(flag: string): void {
-		const levels = levelsOf(this.language);
-		const level = levels?.find((l) => l.flag === flag);
-		if (!levels || !level) return;
-		if (isCFamily(this.language)) {
-			this.replaceFile(COMPILE_FLAGS, withCppLevel(this.models.get(COMPILE_FLAGS)?.getValue(), flag));
+		const property = this.settings.level;
+		const level = levelsOf(this.language)?.find((l) => l.flag === flag);
+		if (!property || !level || !this.choose(property, flag)) return;
+		if (property.storage.kind === 'file') {
 			const how = level.default ? `no -O line in ${COMPILE_FLAGS}: Run and the views add ${flag}` : `${flag} in ${COMPILE_FLAGS}`;
 			this.write('info', `Optimization: ${flag} (${how}).`);
 		} else {
-			this.chosenLevel = level.default ? null : flag;
-			const what = languageOf(this.language).tests ? 'Run and Test' : 'Run';
+			const what = yukibana().has(subjectOf(this.language), test) ? 'Run and Test' : 'Run';
 			this.write('info', `Optimization: ${level.label}, for ${what}${level.default ? ' (the default)' : ''}.`);
 		}
 		this.refreshOptimization();
@@ -552,18 +730,17 @@ export class Workspace {
 	}
 
 	/**
-	 * Puts a C or C++ project on a language standard (cpp-standards.ts):
+	 * Puts a C or C++ project on a language standard (lang-cpp/standards.ts):
 	 * compile_flags.txt's `-std=` line for the project's language is
 	 * rewritten (removed for `'default'`, or the file created) as one edit,
 	 * which Undo takes back, then saved; clangd, Run, the views and Download
 	 * follow the file. The Log panel says what changed.
 	 */
 	chooseStandard(choice: { standard: Standard; gnu: boolean } | 'default'): void {
-		const language = this.language;
-		if (language !== 'c' && language !== 'cpp') return;
-		this.replaceFile(COMPILE_FLAGS, withStandard(this.models.get(COMPILE_FLAGS)?.getValue(), language, choice));
+		const standard = this.settings.standard;
+		if (!standard || !this.choose(standard.property, standardSettingOf(choice))) return;
 		this.refreshTarget();
-		const now = standardOf(this.models.get(COMPILE_FLAGS)?.getValue(), language);
+		const now = standardOf(this.models.get(COMPILE_FLAGS)?.getValue(), standard.language);
 		this.write('info', `Standard: ${describeStandard(now)}${choice === 'default' ? ` (no -std= line in ${COMPILE_FLAGS})` : ` (-std=${choice.gnu ? choice.standard.gnu : choice.standard.iso} in ${COMPILE_FLAGS})`}.`);
 		this.explorer?.settingsChanged();
 		this.scheduleSave();
@@ -576,37 +753,33 @@ export class Workspace {
 	 * stay as they are, for when it is turned on again.
 	 */
 	setClangTidy(on: boolean): void {
-		if (!isCFamily(this.language) || on === this.clangTidy) return;
-		this.clangTidy = on;
-		this.client?.configure(this.serverOptions());
+		if (on === this.clangTidy || !this.choose(this.settings.clangTidy, on)) return;
+		this.session?.configure(this.serverOptions());
 		this.write('info', on ? `clang-tidy is on: its rules are in ${TIDY_FILE}.` : `clang-tidy is off; ${TIDY_FILE} is kept for when it is turned on.`);
 		this.scheduleSave();
 	}
 
 	/**
 	 * Sets a C or C++ project's clang-tidy rules: .clang-tidy's `Checks`
-	 * rewritten (tidy-config.ts `withChecks`; every other line kept, the file
+	 * rewritten (lang-cpp/tidy.ts `withChecks`; every other line kept, the file
 	 * created if missing) as one edit, which Undo takes back, then saved.
 	 * clangd reads the file again and diagnoses with the new rules.
 	 */
 	setTidyChecks(globs: readonly CheckGlob[]): void {
-		if (!isCFamily(this.language)) return;
-		this.replaceFile(TIDY_FILE, withChecks(this.models.get(TIDY_FILE)?.getValue(), globs));
+		if (!this.choose(this.settings.tidyChecks, globs)) return;
 		this.refreshTidy();
 		this.scheduleSave();
 	}
 
 	/**
-	 * Puts a Rust project on target `id` (rust-targets.ts): the `[build]`
+	 * Puts a Rust project on target `id` (lang-rust/targets.ts): the `[build]`
 	 * table's `target` of .cargo/config.toml is rewritten (or the file
 	 * created) as one edit, which Undo takes back, then saved; Run, Test
 	 * and Download follow the file. The Log panel says what changed.
 	 */
 	chooseRustTarget(id: RustTarget['id']): void {
-		if (this.language !== 'rust') return;
 		const target = RUST_TARGETS.find((t) => t.id === id);
-		if (!target) return;
-		this.replaceFile(CARGO_CONFIG, withRustTarget(this.models.get(CARGO_CONFIG)?.getValue(), id));
+		if (!target || !this.choose(this.settings.rustTarget, id)) return;
 		this.refreshTarget();
 		const how = target.default ? `no [build] target in ${CARGO_CONFIG}` : `target = "${target.triple}" in ${CARGO_CONFIG}`;
 		this.write('info', `Target: ${target.label} (${how}).${target.runtime === 'linux' ? ' Run and Test compile for Linux and run the program under QEMU; the first build downloads the cross compiler.' : ''}`);
@@ -620,8 +793,7 @@ export class Workspace {
 	 * it.
 	 */
 	setMiri(id: MiriTarget['id'] | null): void {
-		if (this.language !== 'rust' || id === this.miri) return;
-		this.miri = id;
+		if (id === this.miri || !this.choose(this.settings.miri, id ?? 'off')) return;
 		const target = MIRI_TARGETS.find((t) => t.id === id);
 		this.write(
 			'info',
@@ -637,11 +809,69 @@ export class Workspace {
 		return { yukibana: { language: this.language, clangTidy: this.clangTidy } };
 	}
 
-	/** Changes how Run runs a program built for a Linux target; saved with the project. */
+	/**
+	 * Changes how Run runs a program built for a Linux target; saved with
+	 * the project. Not for a language without run options: it is ignored.
+	 */
 	setRunOptions(options: Partial<RunOptions>): void {
-		this.runOptions = { ...this.runOptions, ...options };
-		this.runOptionsChosen = true;
+		if (!this.choose(this.settings.runOptions, { ...this.runOptions, ...options })) return;
 		this.scheduleSave();
+	}
+
+	/** The build settings of the project's language (properties/), each null where it has none. */
+	private get settings(): LanguageSettings {
+		return settingsOf(this.language);
+	}
+
+	/**
+	 * Makes `property` hold `value` (@yukibana/core's `writeProperty`), and
+	 * returns `true` iff it did: false, and nothing is changed, when the
+	 * language has no such property (null) or `value` is not one of its
+	 * choices, which the pickers never offer. Saving and saying so are the
+	 * caller's.
+	 */
+	private choose<V>(property: Property<V> | null, value: V): boolean {
+		if (property === null) return false;
+		const snapshot = this.snapshot();
+		const choices = property.choices(snapshot);
+		if (choices !== null && !choices.includes(value)) return false;
+		this.apply(writeProperty(snapshot, property, value));
+		return true;
+	}
+
+	/**
+	 * Applies `edit`: a file's text as one edit, which Undo takes back
+	 * (`replaceFile`), or a field of the saved project, which is saved with
+	 * it and has no Undo (it never had). The fields are those of `Project`
+	 * the properties bind (properties/), each read back here at the one
+	 * boundary where a stored value becomes the workspace's.
+	 *
+	 * - Requires: a meta edit's key is one of `runOptions`, `optimization`, `clangTidy` and `miri`.
+	 */
+	private apply(edit: ProjectEdit): void {
+		if (edit.kind === 'file') {
+			this.replaceFile(edit.path, edit.text);
+			return;
+		}
+		const value = edit.value;
+		switch (edit.key) {
+			case 'runOptions':
+				this.runOptions = runOptionsOf(value);
+				this.runOptionsChosen = true;
+				break;
+			case 'optimization':
+				this.chosenLevel = typeof value === 'string' ? value : null;
+				break;
+			case 'clangTidy':
+				this.clangTidy = value !== false;
+				break;
+			case 'miri':
+				this.miri = isMiriTarget(value) ? value : null;
+				break;
+			default:
+				throw new RangeError(`The workspace saves no project field "${edit.key}".`);
+		}
+		this.announce({ kind: 'meta', key: edit.key });
 	}
 
 	/** Opens the Download dialog; the page sets it. Without one, Download asks for nothing beyond the build files. */
@@ -665,7 +895,8 @@ export class Workspace {
 
 	/** The project as Download zips it, with `options` (export.ts). */
 	private exported(options: ExportOptions) {
-		return exportProject(languageOf(this.language), this.currentFiles(), isCFamily(this.language) ? null : this.chosenLevel, options);
+		// A level compile_flags.txt holds is carried by the file itself.
+		return exportProject(languageOf(this.language), this.currentFiles(), this.settings.level?.storage.kind === 'meta' ? this.chosenLevel : null, options);
 	}
 
 	/**
@@ -700,7 +931,7 @@ export class Workspace {
 	}
 
 	/**
-	 * Switches a C++ project's tests to `framework` (cpp-tests.ts): the
+	 * Switches a C++ project's tests to `framework` (lang-cpp/tests.ts): the
 	 * sample's tests are rewritten for it, or a sample test file is added,
 	 * and the Log panel says which. Each rewritten file changes as one
 	 * edit of its own, which Undo in that file takes back without touching
@@ -747,13 +978,25 @@ export class Workspace {
 	}
 
 	/**
-	 * The language server's selection ranges at `positions` of project file
-	 * `path` (LanguageClient.selectionRanges), or null: no such file, no
-	 * server, or a server without them.
+	 * Returns the language server's selection ranges at `positions` of
+	 * project file `path` (`LanguageSession.selectionRanges`), or null: no
+	 * such file, no server, or a server without them.
 	 */
-	async selectionRanges(path: string, positions: monaco.IPosition[]): Promise<lsp.SelectionRange[] | null> {
+	async selectionRanges(path: string, positions: monaco.IPosition[]): Promise<readonly SelectionRange[] | null> {
 		const model = this.models.get(path);
-		return model && this.client ? this.client.selectionRanges(model, positions) : null;
+		return model && this.session ? this.session.selectionRanges(model.uri.toString(), positions.map(toLspPosition), new AbortController().signal) : null;
+	}
+
+	/** Calls `listener` after each change of the project's files or saved settings, until disposed (core's `Project`). */
+	onChange(listener: (change: ProjectChange) => void): Disposable {
+		const own = (change: ProjectChange) => listener(change);
+		this.changeListeners.add(own);
+		return { dispose: () => this.changeListeners.delete(own) };
+	}
+
+	/** Tells every `onChange` listener of `change`. */
+	private announce(change: ProjectChange): void {
+		for (const listener of this.changeListeners) listener(change);
 	}
 
 	/** Called by the editor area when tabs change, so they are restored next time. */
@@ -778,7 +1021,7 @@ export class Workspace {
 	createFile(path: string): void {
 		const problem = this.nameProblem(path);
 		if (problem) throw new Error(problem);
-		this.addModel(path, '', true);
+		this.addModel(path, '', 'created');
 		this.files = [...this.models.keys()].sort();
 		this.host?.open(path);
 		this.explorer?.edited();
@@ -806,8 +1049,9 @@ export class Workspace {
 		for (const [oldPath, newPath] of moved) {
 			const text = this.models.get(oldPath)!.getValue();
 			if (this.open.includes(oldPath)) reopen.push(newPath);
-			this.removeModel(oldPath);
-			this.addModel(newPath, text, true);
+			this.removeModel(oldPath, 'moved');
+			this.addModel(newPath, text, 'moved');
+			this.announce({ kind: 'renamed', from: pathOf(oldPath), to: pathOf(newPath) });
 		}
 		this.folders = this.folders.map((f) => (f === from || f.startsWith(from + '/') ? to + f.slice(from.length) : f)).sort();
 		this.files = [...this.models.keys()].sort();
@@ -819,7 +1063,7 @@ export class Workspace {
 	/** Deletes a file, or a folder with everything in it. */
 	delete(path: string): void {
 		const doomed = this.models.has(path) ? [path] : [...this.models.keys()].filter((p) => p.startsWith(path + '/'));
-		for (const p of doomed) this.removeModel(p);
+		for (const p of doomed) this.removeModel(p, 'deleted');
 		this.folders = this.folders.filter((f) => f !== path && !f.startsWith(path + '/'));
 		this.files = [...this.models.keys()].sort();
 		this.explorer?.edited();
@@ -848,7 +1092,7 @@ export class Workspace {
 	}
 
 	private load(project: Project): void {
-		for (const [path, text] of Object.entries(project.files)) this.addModel(path, text, false);
+		for (const [path, text] of Object.entries(project.files)) this.addModel(path, text, 'loaded');
 		this.files = [...this.models.keys()].sort();
 		this.folders = [...project.folders].sort();
 		this.runOptions = { ...(project.runOptions ?? DEFAULT_RUN_OPTIONS) };
@@ -891,31 +1135,46 @@ export class Workspace {
 			model.pushStackElement();
 		} else {
 			if (!text) return;
-			this.addModel(path, text, true);
+			this.addModel(path, text, 'created');
 		}
 		this.files = [...this.models.keys()].sort();
 		// A new model fires no content change, which is how an edit reaches the open views.
 		this.explorer?.edited();
 	}
 
-	private addModel(path: string, text: string, created: boolean): void {
+	/**
+	 * Makes the model of project file `path`, holding `text`: a file of a
+	 * project being loaded, one just made, or the new place of one a rename
+	 * moved (whose `renamed` the caller announces). The language server
+	 * hears of it through `onChange`, and of its edits from its binding.
+	 */
+	private addModel(path: string, text: string, origin: 'loaded' | 'created' | 'moved'): void {
 		const model = monaco.editor.createModel(text, undefined, uriOf(path));
 		model.onDidChangeContent(() => {
 			this.scheduleSave(path);
 			this.preview.changed(path);
 			this.explorer?.edited();
+			this.announce({ kind: 'edited', path: pathOf(path), version: model.getVersionId() });
 		});
 		this.models.set(path, model);
-		if (created) this.preview.changed(path);
-		this.client?.addModel(model, created);
+		this.revision += 1;
+		if (origin !== 'loaded') this.preview.changed(path);
+		if (origin !== 'moved') this.announce({ kind: 'created', path: pathOf(path) });
 	}
 
-	private removeModel(path: string): void {
+	/**
+	 * Disposes the model of project file `path`: one deleted, or the old
+	 * place of one a rename moved (whose `renamed` the caller announces).
+	 * A deletion is announced before the model is disposed, so that a
+	 * listener still finds it.
+	 */
+	private removeModel(path: string, why: 'deleted' | 'moved'): void {
 		const model = this.models.get(path);
 		if (!model) return;
 		this.host?.close(path);
-		this.client?.removeModel(model);
 		this.models.delete(path);
+		this.revision += 1;
+		if (why === 'deleted') this.announce({ kind: 'deleted', path: pathOf(path) });
 		this.preview.changed(path);
 		model.dispose();
 		// The file was deleted or renamed: an edit across files that
@@ -925,8 +1184,11 @@ export class Workspace {
 
 	private disposeModels(): void {
 		this.host?.closeAll();
-		for (const model of this.models.values()) model.dispose();
+		const doomed = [...this.models];
 		this.models.clear();
+		this.revision += 1;
+		for (const [path] of doomed) this.announce({ kind: 'deleted', path: pathOf(path) });
+		for (const [, model] of doomed) model.dispose();
 		this.files = [];
 		this.problems = [];
 	}
@@ -960,84 +1222,113 @@ export class Workspace {
 	/**
 	 * Starts the language's server on the current files. Does not wait for
 	 * it: a pack may take a while to download, and a switch away meanwhile
-	 * must not queue behind it. Stopping the client cancels the download.
+	 * must not queue behind it. Stopping the session cancels the download.
 	 */
 	private startClient(): void {
 		const language = languageOf(this.language);
-		const client = new LanguageClient({
-			serverUrl: appPacks().url(packOf(language), 'server.js'),
-			languages: language.monacoLanguages,
+		const serverUrl = appPacks().url(packOf(language), 'server.js');
+		const session: LanguageSession = new LanguageSession(new Worker(serverUrl, { type: 'module', name: serverUrl.pathname }), {
 			rootUri: WORKSPACE.uri,
 			settings: language.settings,
-			...(isCFamily(language.id) ? { initializationOptions: this.serverOptions() } : {}),
+			// The C and C++ pack's server is told whether clang-tidy runs.
+			initializationOptions: settingsOf(language.id).clangTidy ? this.serverOptions() : null,
+			clientName: 'Yukibana Light',
+			locale: navigator.language,
+			// `?trace` in the page's URL logs every message to the console.
+			trace: new URLSearchParams(location.search).has('trace') ? (direction, message) => console.debug(`lsp ${direction}`, JSON.stringify(message).slice(0, 2000)) : null,
 			events: {
 				state: (s) => {
-					if (this.client !== client) return;
+					if (this.session !== session) return;
 					this.clientState = s;
 					// A C++ pack with clang-tidy reports it before it answers `initialize`; an older one never does.
-					if (s.kind === 'running' && isCFamily(language.id) && this.tidyStatus === null)
+					if (s.kind === 'running' && settingsOf(language.id).clangTidy && this.tidyStatus === null)
 						this.tidyStatus = { id: 'clang-tidy', label: 'clang-tidy', state: 'failed', detail: 'this build of the C and C++ language server has no clang-tidy yet' };
 				},
 				loading: (p) => {
-					if (this.client === client) this.progress = p;
+					if (this.session === session) this.progress = p;
 				},
 				log: (level, text) => this.write(level, text, 'server'),
-				open: (uri, selection) => {
-					const path = WORKSPACE.pathOf(uri);
-					if (path && this.models.has(path)) this.host?.open(path, selection);
-				},
-				callHierarchy: (item) => {
-					if (this.client !== client) return;
-					// In the direction chosen last, as VS Code's view keeps it.
-					this.callHierarchy = new CallHierarchy(item, (direction, it) => client.calls(direction, it), this.callHierarchy?.direction);
-					this.host?.showCallHierarchy();
-				},
 				status: (part) => {
-					if (this.client === client && part.id === 'clang-tidy') this.tidyStatus = part;
+					if (this.session === session && part.id === 'clang-tidy') this.tidyStatus = part;
 				},
 			},
 		});
-		this.client = client;
+		const binding = new MonacoBinding({
+			monaco,
+			internals,
+			session,
+			project: this,
+			documentUri: (path) => uriOf(path).toString(),
+			languages: language.monacoLanguages,
+			rootUri: WORKSPACE.uri,
+			events: {
+				log: (level, text) => this.write(level, text, 'server'),
+				open: (uri, selection) => {
+					const path = WORKSPACE.pathOf(uri);
+					if (path && this.models.has(path)) this.host?.open(path, selection ?? undefined);
+				},
+				callHierarchy: (item) => {
+					if (this.session !== session) return;
+					// In the direction chosen last, as VS Code's view keeps it.
+					this.callHierarchy = new CallHierarchy(item, (direction, it) => session.calls(direction, it, new AbortController().signal), this.callHierarchy?.direction);
+					this.host?.showCallHierarchy();
+				},
+			},
+		});
+		this.session = session;
 		this.write('info', `Starting the ${language.label} language server`);
 		// A runner kept warm starts once the server has: both load the same
 		// compiler, and the editor's answers come first.
 		this.runner.keepWarm(null);
-		client.start(() => this.models.values()).then(
+		binding.start().then(
 			() => {
-				if (this.client === client && language.warmRunner && language.runs) this.runner.keepWarm(runnerSourceOf(language));
+				if (this.session !== session) return;
+				// The runner to keep warm is the one the language's runs use, as
+				// its provider of `warm` says, where it has one and Run is available.
+				const subject = subjectOf(language.id);
+				const snapshot = this.snapshot();
+				if (yukibana().availability(subject, warm, snapshot).kind !== 'available') return;
+				yukibana()
+					.perform(subject, warm, null, snapshot, new AbortController().signal)
+					.then(
+						(outcome) => {
+							if (this.session === session && outcome.kind === 'done') this.runner.keepWarm(outcome.value);
+						},
+						(e: unknown) => this.write('error', `Could not keep a ${language.label} runner warm: ${e instanceof Error ? e.message : String(e)}`),
+					);
 			},
 			async (e: unknown) => {
-				if (this.client !== client) return;
+				if (this.session !== session) return;
 				this.write('error', `${language.label} language server: ${e instanceof Error ? e.message : String(e)}`);
 				// A worker that fails to load says nothing about why; a missing pack is the usual reason.
-				const status = await fetch(client.serverUrl, { method: 'HEAD' }).then((r) => r.status, () => 0);
-				if (status === 404) this.write('error', `The ${language.label} pack is not installed: ${client.serverUrl.pathname} was not found. Build it with packs/${packOf(language)}/build.sh.`);
+				const status = await fetch(serverUrl, { method: 'HEAD' }).then((r) => r.status, () => 0);
+				if (status === 404) this.write('error', `The ${language.label} pack is not installed: ${serverUrl.pathname} was not found. Build it with packs/${packOf(language)}/build.sh.`);
 			},
 		);
 	}
 
 	private async stopClient(): Promise<void> {
-		const client = this.client;
-		this.client = null;
+		const session = this.session;
+		this.session = null;
 		this.progress = null;
 		this.callHierarchy = null;
 		this.tidyStatus = null;
 		this.clientState = { kind: 'stopped' };
-		await client?.stop();
+		await session?.stop();
 	}
 
 	/**
 	 * The project's errors for the web preview, which reloads only without
 	 * them, as `path:line:column: message`. Asked of the language server
-	 * (`workspaceErrors`), which answers for the edits made so far. A server
+	 * (`LanguageSession.workspaceErrors`), which answers for the edits made so far. A server
 	 * that cannot be asked (one without workspace diagnostics, or none
 	 * running yet) leaves the editor's error markers, which may lag the
 	 * latest edit.
 	 */
 	private async projectErrors(signal: AbortSignal): Promise<string[]> {
-		const pulled = this.client ? await this.client.workspaceErrors(signal) : null;
+		const pulled = this.session ? await this.session.workspaceErrors(signal) : null;
 		const errors = pulled
-			? pulled.map(({ uri, diagnostic: d }) => ({ uri, line: d.range.start.line + 1, column: d.range.start.character + 1, message: d.message }))
+			? pulled.errors.map(({ uri, diagnostic: d }) => ({ uri: monaco.Uri.parse(uri), line: d.range.start.line + 1, column: d.range.start.character + 1, message: d.message }))
 			: monaco.editor
 					.getModelMarkers({})
 					.filter((m) => m.severity === monaco.MarkerSeverity.Error)
@@ -1080,23 +1371,23 @@ export class Workspace {
 	/** The target, the sanitizers and the standard, which compile_flags.txt says. */
 	private refreshTarget(): void {
 		const flags = this.models.get(COMPILE_FLAGS)?.getValue();
-		const language = this.language;
-		const cFamily = language === 'c' || language === 'cpp';
-		this.target = cFamily ? targetOf(flags) : null;
-		this.sanitizers = cFamily ? sanitizersOf(flags) : null;
-		this.standard = cFamily ? standardOf(flags, language) : null;
-		this.rustTarget = language === 'rust' ? rustTargetOf(this.models.get(CARGO_CONFIG)?.getValue()) : null;
+		const settings = this.settings;
+		this.target = settings.target ? targetOf(flags) : null;
+		this.sanitizers = settings.sanitizers ? sanitizersOf(flags) : null;
+		this.standard = settings.standard ? standardOf(flags, settings.standard.language) : null;
+		this.rustTarget = settings.rustTarget ? rustTargetOf(this.models.get(CARGO_CONFIG)?.getValue()) : null;
 	}
 
 	/** The clang-tidy rules, which .clang-tidy says. */
 	private refreshTidy(): void {
-		this.tidyChecks = isCFamily(this.language) ? checksOf(this.models.get(TIDY_FILE)?.getValue()) : null;
+		this.tidyChecks = this.settings.tidyChecks ? checksOf(this.models.get(TIDY_FILE)?.getValue()) : null;
 	}
 
 	private refreshOptimization(): void {
 		const levels = levelsOf(this.language);
-		if (!levels) this.optimization = null;
-		else if (isCFamily(this.language)) this.optimization = cppLevelOf(this.models.get(COMPILE_FLAGS)?.getValue());
+		const property = this.settings.level;
+		if (!levels || !property) this.optimization = null;
+		else if (property.storage.kind === 'file') this.optimization = cppLevelOf(this.models.get(COMPILE_FLAGS)?.getValue());
 		else {
 			const level = levels.find((l) => l.flag === this.chosenLevel);
 			this.optimization = level ? { kind: 'level', level } : { kind: 'default', level: defaultLevel(levels) };
@@ -1111,6 +1402,7 @@ export class Workspace {
 	 * every keystroke in any file.
 	 */
 	private scheduleSave(edited?: string, change = true): void {
+		this.revision += 1;
 		if (change) this.changed = true;
 		if (edited === undefined || edited.startsWith(TESTS_DIR)) this.refreshTestFramework();
 		if (edited === undefined || edited === COMPILE_FLAGS || edited === CARGO_CONFIG) {
@@ -1132,7 +1424,13 @@ export class Workspace {
 	/** The project as it is now, as it is saved. */
 	private currentProject(): Project {
 		const files = this.currentFiles();
-		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(isCFamily(this.language) && !this.clangTidy ? { clangTidy: false as const } : {}), ...(this.language === 'rust' && this.miri ? { miri: this.miri } : {}) };
+		return { files, folders: this.folders, open: this.open.filter((p) => p in files), active: this.active, ...this.savedSettings() };
+	}
+
+	/** The settings saved with the project beside its files, as they are now: only those set. */
+	private savedSettings(): Pick<Project, 'runOptions' | 'optimization' | 'clangTidy' | 'miri'> {
+		const settings = this.settings;
+		return { ...(this.runOptionsChosen ? { runOptions: { ...this.runOptions } } : {}), ...(this.chosenLevel ? { optimization: this.chosenLevel } : {}), ...(settings.clangTidy && !this.clangTidy ? { clangTidy: false as const } : {}), ...(settings.miri && this.miri ? { miri: this.miri } : {}) };
 	}
 
 	/**
