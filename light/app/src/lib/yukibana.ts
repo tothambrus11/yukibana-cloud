@@ -12,7 +12,7 @@
  */
 import { createInstance, languageKey, pathOf, type Instance, type Subject } from '@yukibana/core';
 import { RunnerPool, workerTransport, type PackLocator } from '@yukibana/runtime';
-import { ExplorerWorkers, pagePlatform, type ExploreHost, type PackLanguage, type RunHost } from '@yukibana/std';
+import { pageExplorers, viewIn, type ExploreHolder, type ExplorerProvider, type ExplorerWorkers, type ExploreHost, type ExploreView, type LanguageViews, type PackLanguage, type RunHost, type ViewKind } from '@yukibana/std';
 import { LANGUAGES, type Language } from './languages.ts';
 import { APP_RUNNER_NEEDS, appPacks, packsOf } from './packs.ts';
 import { debugProvidersOf } from './providers/debug.ts';
@@ -28,12 +28,13 @@ export type AppHost = RunHost & ExploreHost;
  * What the app's providers borrow: the page's runners and explorer
  * workers, each made on first read, and the app's packs.
  *
- * Invariant: `pool` is the same pool on every read, and `explorers` the
- * same workers.
+ * Invariant: `pool` is the same pool on every read, and `explorers` gives
+ * the same workers on every call.
  */
 export class PageHost implements AppHost {
 	#pool: RunnerPool | null = null;
-	#explorers: ExplorerWorkers | null = null;
+	#explorers: Promise<ExplorerWorkers> | null = null;
+	#madeExplorers: ExplorerWorkers | null = null;
 
 	/** The page's runners, made on the first read: making them reads the page's origin. */
 	get pool(): RunnerPool {
@@ -46,10 +47,26 @@ export class PageHost implements AppHost {
 		return this.#pool;
 	}
 
-	/** The page's explorer workers, one per pack, made on the first read; making them starts none. */
-	get explorers(): ExplorerWorkers {
-		this.#explorers ??= new ExplorerWorkers(pagePlatform());
+	/**
+	 * Returns the page's explorer workers, one per pack, made at the first
+	 * call, which loads their code and starts no worker; a failed load is
+	 * tried again at the next call.
+	 */
+	explorers(): Promise<ExplorerWorkers> {
+		if (this.#explorers === null) {
+			const made = pageExplorers();
+			this.#explorers = made;
+			made.then(
+				(workers) => (this.#madeExplorers = workers),
+				() => (this.#explorers = null),
+			);
+		}
 		return this.#explorers;
+	}
+
+	/** The page's explorer workers once made, else null. */
+	get madeExplorers(): ExplorerWorkers | null {
+		return this.#madeExplorers;
 	}
 
 	/** Where the app's packs are (packs.ts). */
@@ -83,20 +100,33 @@ export function metaOf(language: Language): PackLanguage {
 	};
 }
 
-/** The page's host and instance, once made. */
-let page: { readonly host: PageHost; readonly instance: Instance<AppHost> } | null = null;
+/**
+ * The page's host and instance, once made, and the instance's explore
+ * providers by subject (`keyOf`): what the views are read from.
+ */
+interface Page {
+	readonly host: PageHost;
+	readonly instance: Instance<AppHost>;
+	readonly explorers: ReadonlyMap<string, ExplorerProvider>;
+}
+
+let page: Page | null = null;
+
+/** A string that is the same for two equal subjects. */
+const keyOf = (subject: Subject): string => `${subject.kind}:${subject.id}`;
 
 /** Returns the page's host and instance, making them the first time. */
-function made(): { readonly host: PageHost; readonly instance: Instance<AppHost> } {
+function made(): Page {
 	if (page === null) {
 		const host = new PageHost();
 		const languages = LANGUAGES.map((language) => ({ id: language.id, meta: metaOf(language) }));
+		const explorers = languages.flatMap(({ id, meta }) => exploreProvidersOf(id, meta));
 		const instance = createInstance<AppHost>({
 			languages: languages.map(({ meta }) => meta),
-			providers: languages.flatMap(({ id, meta }) => [...runProvidersOf(id, meta), ...debugProvidersOf(id, meta), ...previewProvidersOf(id, meta), ...exploreProvidersOf(id, meta)]),
+			providers: [...languages.flatMap(({ id, meta }) => [...runProvidersOf(id, meta), ...debugProvidersOf(id, meta), ...previewProvidersOf(id, meta)]), ...explorers],
 			host,
 		});
-		page = { host, instance };
+		page = { host, instance, explorers: new Map(explorers.map((provider) => [keyOf(provider.subject), provider])) };
 	}
 	return page;
 }
@@ -122,4 +152,30 @@ export function subjectOf(id: string): Subject {
 	const language = yukibana().languageOf(id);
 	if (language === null) throw new RangeError(`The app's instance has no language ${id}.`);
 	return { kind: 'language', id: language.key };
+}
+
+/**
+ * Returns the compiler output views of `subject`, as its provider of
+ * `explore` carries them (providers/explore.ts), or null when it has none:
+ * read synchronously, by the top bar, the dock and the views.
+ */
+export function viewsOf(subject: Subject): LanguageViews | null {
+	return made().explorers.get(keyOf(subject))?.views ?? null;
+}
+
+/** Returns view `kind` of `subject`, or null when it has no such view. */
+export function viewOf(subject: Subject, kind: ViewKind): ExploreView | null {
+	return viewIn(viewsOf(subject), kind);
+}
+
+/**
+ * Lets the explorer worker of `subject`'s pack go for `holder`, through
+ * the subject's provider of `explore` (`ExplorerProvider.release`).
+ *
+ * - Requires: `subject` has a provider of `explore`.
+ */
+export function releaseExplorer(subject: Subject, holder: ExploreHolder): void {
+	const provider = made().explorers.get(keyOf(subject));
+	if (provider === undefined) throw new RangeError(`The ${subject.kind} ${subject.id} has no compiler output views to let go of.`);
+	provider.release(made().host, holder);
 }

@@ -1,7 +1,8 @@
 // Unit tests of which compiler output views each language has
 // (src/lib/providers/explore.ts): the views, the files they can show, the
 // toggles and how a new session starts them, and that the app's instance
-// has a provider of `explore` exactly where a language has views.
+// has a provider of `explore` exactly where a language has views, which
+// carries them (yukibana.ts `viewsOf`, what the app reads).
 //
 //   node --test tests/unit/explore-views.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
@@ -18,14 +19,15 @@ registerHooks({
 	},
 });
 
-const { LANGUAGE_VIEWS, viewOf: viewOfKind, viewsOf } = await import('../../src/lib/providers/explore.ts');
+const { LANGUAGE_VIEWS } = await import('../../src/lib/providers/explore.ts');
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
-const { subjectOf, yukibana } = await import('../../src/lib/yukibana.ts');
+const { subjectOf, viewOf: viewOfSubject, viewsOf: viewsOfSubject, yukibana } = await import('../../src/lib/yukibana.ts');
 const { defaultOptions: defaultsOfView, explore, viewKind } = await import('../../../modules/std/index.ts');
 
 /** The kinds the views had before they were providers' data: a saved layout names a panel `view:<kind>`. */
 const ALL_KINDS = ['typed', 'lowered', 'sil', 'mir', 'core', 'stg', 'cmm', 'llvm-ir', 'asm', 'bytecode'];
-const viewOf = (id, kind) => viewOfKind(id, viewKind(kind));
+const viewsOf = (id) => viewsOfSubject(subjectOf(id));
+const viewOf = (id, kind) => viewOfSubject(subjectOf(id), viewKind(kind));
 const defaultOptions = (id, kind) => defaultsOfView(viewOf(id, kind));
 
 test('C++ keeps its LLVM IR and Assembly views; Swift, Rust, Haskell, Scala, Python and Java have their own', () => {
@@ -66,7 +68,10 @@ test('a kind is called the same in every language that has it', () => {
 });
 
 test('the instance explores exactly the languages with views, C with C++’s', () => {
-	for (const { id } of LANGUAGES) assert.equal(yukibana().has(subjectOf(id), explore), viewsOf(id) !== null, id);
+	for (const { id } of LANGUAGES) {
+		assert.equal(yukibana().has(subjectOf(id), explore), viewsOf(id) !== null, id);
+		assert.equal(viewsOf(id), LANGUAGE_VIEWS[id] ?? null, `${id}'s provider carries the table's views`);
+	}
 	assert.equal(viewsOf('c'), viewsOf('cpp'));
 });
 
@@ -102,4 +107,11 @@ test('Swift’s level is the project’s (the top bar’s), so its views have no
 	for (const v of viewsOf('swift')?.views ?? []) assert.ok(!v.toggles.some((t) => t.key === 'optimize' || t.key === 'optimization'), v.kind);
 	assert.equal(viewsOf('swift')?.buildSettings, false);
 	assert.equal(viewsOf('cpp')?.buildSettings, true);
+});
+
+test('only clang’s views list the chosen flags without the toolchain’s own', () => {
+	for (const { id } of LANGUAGES) {
+		const views = viewsOf(id);
+		if (views) assert.equal(views.chosenFlags, id === 'c' || id === 'cpp' ? 'clang' : 'all', id);
+	}
 });

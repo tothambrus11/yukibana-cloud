@@ -6,7 +6,12 @@
  * packs/swift/src/runner.js `run()`; change them together.
  *
  * Each reads only the files it needs (`file`, never `files`), since the top
- * bar asks after every edit.
+ * bar asks after every edit, and what it finds in tests/ and
+ * compile_flags.txt is kept per snapshot (`once`): Debug tests requires
+ * Test and Debug, and the top bar and the Debug panel each ask for all
+ * three, so without it one keystroke would read every test file and parse
+ * the flags several times over. A host that hands out one snapshot per
+ * revision (the workspace's `snapshot`) has them read once per edit.
  *
  * Temporary and app-side: step 6 of light/modules/DESIGN.md moves them into
  * the languages' packages with their providers.
@@ -17,13 +22,23 @@ import { targetById } from '../cpp-targets.ts';
 import { CPP_TARGET } from '../properties/cpp.ts';
 import { valueOf } from '../properties/read.ts';
 
-/** Returns the C or C++ project's target as the runner reads it from compile_flags.txt: the default for none, and for one it does not support. */
-function cppTarget(snapshot: ProjectSnapshot): ReturnType<typeof targetById> {
-	return targetById(valueOf(snapshot, CPP_TARGET));
+/** Returns `read`, kept per snapshot: what it returns for a snapshot is computed the first time and given again after. */
+function once<T>(read: (snapshot: ProjectSnapshot) => T): (snapshot: ProjectSnapshot) => T {
+	const kept = new WeakMap<ProjectSnapshot, { readonly value: T }>();
+	return (snapshot) => {
+		const hit = kept.get(snapshot);
+		if (hit !== undefined) return hit.value;
+		const value = read(snapshot);
+		kept.set(snapshot, { value });
+		return value;
+	};
 }
 
+/** Returns the C or C++ project's target as the runner reads it from compile_flags.txt: the default for none, and for one it does not support. */
+const cppTarget = once((snapshot): ReturnType<typeof targetById> => targetById(valueOf(snapshot, CPP_TARGET)));
+
 /** Returns which test framework the files under tests/ include (cpp-tests.ts), reading those files alone. */
-function testFramework(snapshot: ProjectSnapshot): Detected {
+const testFramework = once((snapshot): Detected => {
 	const tests: Record<string, string> = {};
 	for (const path of snapshot.paths()) {
 		if (!path.startsWith(TESTS_DIR)) continue;
@@ -31,7 +46,7 @@ function testFramework(snapshot: ProjectSnapshot): Detected {
 		if (text !== null) tests[path] = text;
 	}
 	return detectTestFramework(tests);
-}
+});
 
 /** The runner's sentence for tests that include more than one framework, naming a file of each. */
 function mixedReason(files: Partial<Record<TestFramework, string>>): string {

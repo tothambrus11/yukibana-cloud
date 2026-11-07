@@ -18,8 +18,11 @@
  * - explore.ts: `explore` (`Token<EmitInput, Promise<EmitResult>>`), one
  *   compiler output view of one source, asked of the pack's explorer
  *   worker; the views a language has (`LanguageViews`, `ViewKind`); the
- *   page's workers a host lends (`ExplorerWorkers`); and
- *   `explorerProvider`.
+ *   page's workers a host lends (`pageExplorers`); and
+ *   `explorerProvider`, whose provider carries its language's views.
+ * - explore-workers.ts: the workers (`ExplorerWorkers`) and the explore
+ *   providers' body, loaded at the first request; only its types are
+ *   exported here, so that importing std loads none of it.
  * - language.ts: `PackLanguage`, a language whose runner and server come
  *   from a pack, as the run providers need it.
  *
@@ -31,3 +34,4 @@ export * from './run.ts';
 export * from './debug.ts';
 export * from './preview.ts';
 export * from './explore.ts';
+export type { ExplorerWorkers } from './explore-workers.ts';

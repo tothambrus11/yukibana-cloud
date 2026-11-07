@@ -14,8 +14,13 @@
  * that waited for its own answer would wait for ever. Aborting the signal
  * settles the job at once (`dropped`), the newer request is posted, and the
  * worker's own queue coalesces them, as it did when the app posted
- * directly. A host keeps one `Slot` per view, so a newer request supersedes
- * the older and an older answer never overwrites a newer one.
+ * directly. A host aborts a view's request when it makes a newer one, and
+ * keeps only the newest one's answer.
+ *
+ * This file is the eager part: the token, the views' data and the
+ * provider's metadata. The workers and the provider's body are in
+ * explore-workers.ts, loaded at the first request (`pageExplorers`, the
+ * provider's lazy body).
  *
  * When to ask (a view in front, 500 ms after an edit) and what a view shows
  * are the host's.
@@ -23,6 +28,7 @@
 
 import { AVAILABLE, defineToken, type Brand, type Files, type Path, type Provider, type Token } from '../core/index.ts';
 import type { PackId, PackLocator } from '../runtime/index.ts';
+import type { ExplorerWorkers } from './explore-workers.ts';
 import type { PackLanguage } from './language.ts';
 
 /**
@@ -105,6 +111,13 @@ export interface LanguageViews {
 	readonly sources: string;
 	/** `true` iff a view's Options offer "Change build settings…" (the language's target and flags are chosen there). */
 	readonly buildSettings: boolean;
+	/**
+	 * Which of the compiler's arguments a view's details list as the ones
+	 * the person chose: all of them, as the pack sent them (`all`), or
+	 * clang's less those its toolchain adds on its own (`clang`: Light's
+	 * explorer-map.ts `userFlags`).
+	 */
+	readonly chosenFlags: 'all' | 'clang';
 	/** Its views, in the order a top bar lists them; no two of one kind. */
 	readonly views: readonly ExploreView[];
 }
@@ -141,7 +154,16 @@ export interface EmitInput {
 	readonly options: Readonly<Record<string, boolean | string>>;
 	/** Takes every download the worker reports while this request waits. */
 	readonly onProgress: (progress: ExploreProgress) => void;
+	/** Who asks: the worker is held for them until they let it go (`ExplorerProvider.release`). */
+	readonly holder: ExploreHolder;
 }
+
+/**
+ * Whoever asks for views, told apart by identity alone: an explorer of a
+ * page, one per instance's workspace. A pack's worker runs while some
+ * holder that asked of it has not let it go.
+ */
+export type ExploreHolder = object;
 
 /** A source line: a project path (or a path outside the project, for a system header) and a 1-based line. */
 export interface SourceLine {
@@ -246,177 +268,24 @@ export interface ExplorerPlatform {
 	readonly served: (url: URL) => Promise<boolean>;
 }
 
-/** Returns the platform of a page: a module `Worker`, whose error events are handled, and a HEAD `fetch`. */
-export function pagePlatform(): ExplorerPlatform {
-	return {
-		start(url, events) {
-			const worker = new Worker(url, { type: 'module' });
-			worker.onmessage = (e: MessageEvent<unknown>) => events.message(e.data);
-			worker.onerror = (e) => {
-				e.preventDefault();
-				events.error(e.message);
-			};
-			return { post: (message) => worker.postMessage(message), terminate: () => worker.terminate() };
-		},
-		served: async (url) => (await fetch(url, { method: 'HEAD' })).ok,
-	};
-}
-
-/** A request waiting for its answer. */
-interface Waiting {
-	readonly settle: (result: EmitResult) => void;
-	readonly onProgress: (progress: ExploreProgress) => void;
-}
-
-/** A started worker of one pack, and the requests it has not answered. */
-interface Started {
-	readonly url: string;
-	readonly worker: ExplorerWorker;
-	readonly waiting: Map<number, Waiting>;
-}
-
-/** Returns `value` as a record when it is a non-null object, else null. */
-function recordOf(value: unknown): Readonly<Record<string, unknown>> | null {
-	return typeof value === 'object' && value !== null ? (value as Readonly<Record<string, unknown>>) : null;
-}
-
-const numberOr = (value: unknown, fallback: number): number => (typeof value === 'number' ? value : fallback);
-const stringOr = (value: unknown, fallback: string): string => (typeof value === 'string' ? value : fallback);
-const arrayOf = <T>(value: unknown): readonly T[] => (Array.isArray(value) ? (value as readonly T[]) : []);
-
-/**
- * Returns the answer explorer.js gave in `m`, a `result` message: its fields
- * as the contract states them, which a pack guarantees (the line maps are
- * not checked entry by entry; a missing field reads as empty).
- */
-function resultOf(m: Readonly<Record<string, unknown>>): EmitResult {
-	if (m['ok'] === true) {
-		return {
-			kind: 'output',
-			text: stringOr(m['text'], ''),
-			lines: arrayOf<MappedLine | null>(m['lines']),
-			unoptimized: arrayOf<LineCode>(m['unoptimized']),
-			target: stringOr(m['target'], ''),
-			triple: stringOr(m['triple'], ''),
-			flags: arrayOf<string>(m['flags']),
-			ms: numberOr(m['ms'], 0),
-		};
-	}
-	return { kind: 'failed', error: stringOr(m['error'], ''), target: typeof m['target'] === 'string' ? m['target'] : null, ms: numberOr(m['ms'], 0) };
-}
-
-/**
- * The page's explorer workers, one per pack, each started the first time a
- * request for its pack is made: what a host lends every explore provider,
- * so C's and C++'s views, and two instances' views of one pack, share one
- * worker, which holds a compiler or two and their unpacked headers.
- *
- * Invariant: at most one worker per pack is started; every request is
- * settled exactly once, by its answer, its signal, `release` or the
- * worker's failure.
- */
-export class ExplorerWorkers {
-	readonly #platform: ExplorerPlatform;
-	readonly #started = new Map<PackId, Started>();
-	/** The id of the last request posted, on any worker: ids only increase. */
-	#lastId = 0;
-
-	/** Makes the page's workers, started (when a request needs one) by `platform`; starts nothing. */
-	constructor(platform: ExplorerPlatform) {
-		this.#platform = platform;
-	}
-
-	/**
-	 * Returns what `pack`'s worker, started from `url` if it is not running,
-	 * answers to `input`, as soon as it answers; or `dropped` as soon as
-	 * `signal` is aborted (at once if it already is), when the answer is no
-	 * longer waited for and is ignored if it comes; or `broken` when the
-	 * worker fails first. Every download the worker reports meanwhile goes to
-	 * `input.onProgress`. Never rejects.
-	 */
-	emit(pack: PackId, url: URL, input: EmitInput, signal: AbortSignal): Promise<EmitResult> {
-		if (signal.aborted) return Promise.resolve({ kind: 'dropped' });
-		const started = this.#startedFor(pack, url);
-		const id = ++this.#lastId;
-		const { promise, resolve } = Promise.withResolvers<EmitResult>();
-		const onAbort = (): void => settle({ kind: 'dropped' });
-		const settle = (result: EmitResult): void => {
-			if (!started.waiting.delete(id)) return;
-			signal.removeEventListener('abort', onAbort);
-			resolve(result);
-		};
-		started.waiting.set(id, { settle, onProgress: input.onProgress });
-		signal.addEventListener('abort', onAbort, { once: true });
-		started.worker.post({ type: 'emit', id, emit: input.view, files: { ...input.files }, path: input.path, options: { ...input.options } });
-		return promise;
-	}
-
-	/**
-	 * Stops `pack`'s worker, if one is running, and settles every request it
-	 * had as `dropped`: no view of the pack is open, or the language or the
-	 * project changed. The next request starts a new worker, whose downloads
-	 * come from the HTTP cache. Does nothing when none is running.
-	 */
-	release(pack: PackId): void {
-		const started = this.#started.get(pack);
-		if (started === undefined) return;
-		this.#started.delete(pack);
-		started.worker.terminate();
-		for (const waiting of [...started.waiting.values()]) waiting.settle({ kind: 'dropped' });
-	}
-
-	/** Returns `pack`'s running worker, starting one from `url` if there is none, or if the running one was started from another URL. */
-	#startedFor(pack: PackId, url: URL): Started {
-		const running = this.#started.get(pack);
-		if (running !== undefined && running.url === url.href) return running;
-		if (running !== undefined) this.release(pack);
-		const waiting = new Map<number, Waiting>();
-		const events: ExplorerEvents = {
-			message: (data) => {
-				if (this.#started.get(pack) === started) this.#receive(started, data);
-			},
-			error: (message) => {
-				if (this.#started.get(pack) !== started) return;
-				this.#started.delete(pack);
-				started.worker.terminate();
-				const failed = `The compiler output worker failed: ${message || 'unknown error'}`;
-				// A worker that fails to load at all is most likely not built.
-				void this.#platform.served(url).then(
-					(served) => this.#fail(started, served ? failed : `The compiler output views are not installed (${url.pathname}).`),
-					() => this.#fail(started, failed),
-				);
-			},
-		};
-		const started: Started = { url: url.href, worker: this.#platform.start(url, events), waiting };
-		this.#started.set(pack, started);
-		return started;
-	}
-
-	/** Takes a message of `started`'s worker: a download goes to every request waiting, an answer to its own. */
-	#receive(started: Started, data: unknown): void {
-		const m = recordOf(data);
-		if (m === null) return;
-		if (m['type'] === 'loading') {
-			const progress: ExploreProgress = { label: stringOr(m['label'], ''), loaded: numberOr(m['loaded'], 0), total: numberOr(m['total'], 0) };
-			for (const waiting of started.waiting.values()) waiting.onProgress(progress);
-			return;
-		}
-		if (m['type'] !== 'result' || typeof m['id'] !== 'number') return;
-		started.waiting.get(m['id'])?.settle(resultOf(m));
-	}
-
-	/** Settles every request `started`'s failed worker had as `broken`, saying `error`. */
-	#fail(started: Started, error: string): void {
-		for (const waiting of [...started.waiting.values()]) waiting.settle({ kind: 'broken', error });
-	}
-}
-
 /** What an explore provider borrows from its host. */
 export interface ExploreHost {
 	/** Where the host's packs are: a pack's `explorer.js` is found through it at each request. */
 	readonly packs: PackLocator;
-	/** The page's explorer workers, shared by every language and instance. */
-	readonly explorers: ExplorerWorkers;
+	/**
+	 * Returns the page's explorer workers, shared by every language and
+	 * instance: the same on every call, made at the first (`pageExplorers`),
+	 * which loads their code and starts no worker.
+	 */
+	explorers(): Promise<ExplorerWorkers>;
+	/** The page's explorer workers once `explorers` has made them, else null: what a release reads, so that letting go loads nothing. */
+	readonly madeExplorers: ExplorerWorkers | null;
+}
+
+/** Returns new explorer workers for a page (a module `Worker` each, explore-workers.ts `pagePlatform`), loading their code; starts no worker. */
+export async function pageExplorers(): Promise<ExplorerWorkers> {
+	const { ExplorerWorkers, pagePlatform } = await import('./explore-workers.ts');
+	return new ExplorerWorkers(pagePlatform());
 }
 
 /**
@@ -427,15 +296,31 @@ export interface ExploreHost {
 export const explore: Token<EmitInput, Promise<EmitResult>, 'one'> = /* @__PURE__ */ defineToken<EmitInput, Promise<EmitResult>>()('@yukibana/std#explore');
 
 /**
- * Returns `language`'s provider of `explore`: an eager one, always
- * available, that sends the `emit` message of its input to the explorer
- * worker of the language's pack (`ExploreHost.explorers`), found through
- * the host's packs, and settles as `ExplorerWorkers.emit` does. A pack
- * whose `explorer.js` the locator cannot name gives `broken`.
+ * A language's provider of `explore`, with what a host reads of it
+ * synchronously: the language's views, and how to let its worker go.
+ */
+export interface ExplorerProvider extends Provider<EmitInput, Promise<EmitResult>, ExploreHost, 'one'> {
+	/** The views of its language, which its requests ask for: what a host shows for the language. */
+	readonly views: LanguageViews;
+	/**
+	 * Lets the worker of its language's pack go for `holder` in `host`
+	 * (`ExplorerWorkers.release`), settling what `holder` had waiting as
+	 * `dropped`; loads nothing, and does nothing when no worker was made.
+	 */
+	readonly release: (host: ExploreHost, holder: ExploreHolder) => void;
+}
+
+/**
+ * Returns `language`'s provider of `explore`, for `views`: always
+ * available, with a lazy body (explore-workers.ts `explorePerform`) that
+ * sends the `emit` message of its input to the explorer worker of the
+ * language's pack (`ExploreHost.explorers`), found through the host's
+ * packs, and settles as `ExplorerWorkers.emit` does. A pack whose
+ * `explorer.js` the locator cannot name gives `broken`.
  *
  * - Requires: `views` has at least one view, no two of one kind.
  */
-export function explorerProvider(language: PackLanguage, views: LanguageViews): Provider<EmitInput, Promise<EmitResult>, ExploreHost, 'one'> {
+export function explorerProvider(language: PackLanguage, views: LanguageViews): ExplorerProvider {
 	if (views.views.length === 0) throw new RangeError(`${language.label} has a provider of explore and no view.`);
 	const kinds = new Set(views.views.map((v) => v.kind));
 	if (kinds.size !== views.views.length) throw new RangeError(`${language.label} has two views of one kind.`);
@@ -445,17 +330,8 @@ export function explorerProvider(language: PackLanguage, views: LanguageViews): 
 		entry: { kind: 'one' },
 		requires: [],
 		available: () => AVAILABLE,
-		body: {
-			kind: 'eager',
-			perform: async (input, { host, signal }) => {
-				let url: URL;
-				try {
-					url = await host.packs.file(language.pack, 'explorer.js');
-				} catch (e) {
-					return { kind: 'broken', error: `The compiler output views could not be found: ${e instanceof Error ? e.message : String(e)}` };
-				}
-				return host.explorers.emit(language.pack, url, input, signal);
-			},
-		},
+		body: { kind: 'lazy', load: async () => (await import('./explore-workers.ts')).explorePerform(language) },
+		views,
+		release: (host, holder) => host.madeExplorers?.release(language.pack, holder),
 	};
 }

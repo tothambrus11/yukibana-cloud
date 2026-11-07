@@ -53,7 +53,6 @@ import { openBuildSettings } from './build-settings';
 import { formatDuration } from './format';
 import type { Explorer, ViewState } from './explorer.svelte';
 import type { ExploreToggle, ExploreView, ViewKind } from '@yukibana/std';
-import { viewOf, viewsOf } from './providers/explore';
 
 /** What a view needs of the editor area, which owns the source editors (LinkHost: what the linking of the panes needs). */
 export interface ViewHost extends LinkHost {
@@ -181,13 +180,12 @@ export function createCompilerView(element: HTMLElement, kind: ViewKind, host: V
 	element.classList.add('yk-view');
 	element.dataset['view'] = kind;
 	// A view is made for the language of the project open; a new language closes it (Explorer `reset`).
-	const language = explorer.language;
-	const views = viewsOf(language);
-	const spec: ExploreView = viewOf(language, kind) ?? { kind, title: kind, short: kind, noun: 'output', monaco: 'plaintext', toggles: [] };
+	const views = explorer.languageViews();
+	const spec: ExploreView = explorer.viewSpec(kind) ?? { kind, title: kind, short: kind, noun: 'output', monaco: 'plaintext', toggles: [] };
 	const what = spec.title;
 	const compiler = views?.compiler ?? 'The compiler';
-	/** The flags the person chose, as the details list them: clang's without what every view adds (explorer-map.ts), the others' as the pack sent them. */
-	const chosenFlags = (flags: readonly string[]) => (language === 'cpp' || language === 'c' ? userFlags(flags) : [...flags]);
+	/** The flags the person chose, as the details list them: clang's without what every view adds (explorer-map.ts), the others' as the pack sent them (`LanguageViews.chosenFlags`). */
+	const chosenFlags = (flags: readonly string[]) => (views?.chosenFlags === 'clang' ? userFlags(flags) : [...flags]);
 
 	// Row 1, built once.
 	const head = el('div', 'yk-view-head');

@@ -4,10 +4,10 @@
  * `explore`: what each view is called, which files it can show, what
  * compiles them, and the toggles its header offers. The views' client
  * (explorer.svelte.ts), their panels (dock.ts, compiler-view.ts) and the top
- * bar read a language's views from here (`viewsOf`), and ask the instance
- * for them (`explore`), so a language gains a view by an entry below and
- * its pack's explorer.js, and nothing else in the app knows which language
- * it is.
+ * bar read a language's views from its provider (yukibana.ts `viewsOf`),
+ * and ask the instance for them (`explore`), so a language gains a view by
+ * an entry below and its pack's explorer.js, and nothing else in the app
+ * knows which language it is.
  *
  * A kind is the same view in every language that has it (`asm` is the
  * assembly of C++, Swift and Haskell alike), so its title is the kind's;
@@ -18,8 +18,7 @@
  * Temporary and app-side: step 6 of light/modules/DESIGN.md moves each
  * language's views and provider into its own package, unchanged.
  */
-import type { AnyProvider } from '@yukibana/core';
-import { explorerProvider, viewIn, viewKind, type ExploreHost, type ExploreToggle, type ExploreView, type LanguageViews, type PackLanguage, type ViewKind } from '@yukibana/std';
+import { explorerProvider, viewKind, type ExplorerProvider, type ExploreToggle, type ExploreView, type LanguageViews, type PackLanguage } from '@yukibana/std';
 import type { LanguageId } from '../languages';
 
 /** What a kind is called, in every language: its title, short form and noun (see `ExploreView`). */
@@ -54,28 +53,34 @@ const RUST_LIBRARY = library('Keep functions none of whose code comes from the p
 const GHC_TICKS = toggle({ key: 'ticks', label: 'Source notes', name: 'Source notes', does: 'Keep GHC’s source notes (src<Main.hs:6:12>) in the text; the colours show the same', on: false });
 const GHC_DETAILS = toggle({ key: 'details', label: 'Details', name: 'Details', does: 'Keep the binders’ IdInfo, the coercions, the module prefixes and the size reports', on: false, sets: 'language' });
 
-/** The languages with views, by language id (languages.ts); C has C++'s (`viewsOf`). */
+/** C's and C++'s views: one pack, compiler and set of sources. */
+const CPP: LanguageViews = {
+	compiler: 'clang',
+	isSource: (path) => /\.(c|cc|cpp|cxx|c\+\+|C)$/.test(path),
+	sources: 'a .c or .cpp file',
+	buildSettings: true,
+	chosenFlags: 'clang',
+	views: [
+		view('llvm-ir', 'llvm-ir', [demangle(false, "LLVM's demangler"), directives, CPP_LIBRARY]),
+		view('asm', 'asm', [
+			demangle(true, "LLVM's demangler"),
+			toggle({ key: 'intel', label: 'Intel syntax', name: 'Intel syntax', does: 'x86-64 assembly in Intel syntax (-masm=intel) instead of AT&T', on: false, offered: 'x86' }),
+			directives,
+			CPP_LIBRARY,
+		]),
+	],
+};
+
+/** The languages with views, by language id (languages.ts); C has C++'s. */
 export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>> = {
-	cpp: {
-		compiler: 'clang',
-		isSource: (path) => /\.(c|cc|cpp|cxx|c\+\+|C)$/.test(path),
-		sources: 'a .c or .cpp file',
-		buildSettings: true,
-		views: [
-			view('llvm-ir', 'llvm-ir', [demangle(false, "LLVM's demangler"), directives, CPP_LIBRARY]),
-			view('asm', 'asm', [
-				demangle(true, "LLVM's demangler"),
-				toggle({ key: 'intel', label: 'Intel syntax', name: 'Intel syntax', does: 'x86-64 assembly in Intel syntax (-masm=intel) instead of AT&T', on: false, offered: 'x86' }),
-				directives,
-				CPP_LIBRARY,
-			]),
-		],
-	},
+	c: CPP,
+	cpp: CPP,
 	swift: {
 		compiler: 'swift-frontend',
 		isSource: (path) => path.endsWith('.swift'),
 		sources: 'a .swift file',
 		buildSettings: false,
+		chosenFlags: 'all',
 		views: [
 			view('sil', 'sil', [
 				toggle({ key: 'raw', label: 'Raw SIL', name: 'Raw SIL', does: 'SIL as SILGen made it (-emit-silgen), before the mandatory passes and the optimiser', on: false }),
@@ -91,6 +96,7 @@ export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>
 		isSource: (path) => path.endsWith('.rs'),
 		sources: 'a .rs file',
 		buildSettings: true,
+		chosenFlags: 'all',
 		// The project's target and optimisation level (Build settings), as Run compiles it.
 		views: [
 			view('mir', 'mir', [library('Keep the items none of whose code comes from the project')]),
@@ -103,6 +109,7 @@ export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>
 		isSource: (path) => path.endsWith('.java'),
 		sources: 'a .java file',
 		buildSettings: false,
+		chosenFlags: 'all',
 		views: [
 			view('bytecode', 'jvm-bytecode', [
 				toggle({ key: 'details', label: 'Details', name: 'Details', does: 'Constant pool indices as javap prints them, each method’s stack and locals, and the methods javac makes up (bridges, accessors)', on: false }),
@@ -114,6 +121,7 @@ export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>
 		isSource: (path) => path.endsWith('.py'),
 		sources: 'a .py file',
 		buildSettings: false,
+		chosenFlags: 'all',
 		views: [view('bytecode', 'py-bytecode', [toggle({ key: 'offsets', label: 'Offsets', name: 'Byte offsets', does: 'Show where each instruction starts in its code object, as dis does', on: false })])],
 	},
 	scala: {
@@ -121,6 +129,7 @@ export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>
 		isSource: (path) => path.endsWith('.scala'),
 		sources: 'a .scala file',
 		buildSettings: false,
+		chosenFlags: 'all',
 		views: [view('typed', 'scala', []), view('lowered', 'scala', [])],
 	},
 	haskell: {
@@ -128,6 +137,7 @@ export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>
 		isSource: (path) => path.endsWith('.hs'),
 		sources: 'a .hs module',
 		buildSettings: false,
+		chosenFlags: 'all',
 		views: [
 			view('core', 'ghc-core', [optimize('-O'), GHC_TICKS, GHC_DETAILS]),
 			view('stg', 'ghc-core', [optimize('-O'), GHC_TICKS, GHC_DETAILS]),
@@ -137,26 +147,14 @@ export const LANGUAGE_VIEWS: Readonly<Partial<Record<LanguageId, LanguageViews>>
 	},
 };
 
-/** Returns the views of language `id`, or null when it has none. */
-export function viewsOf(id: string): LanguageViews | null {
-	// A C project's are C++'s: the same pack, compiler and sources.
-	const key = id === 'c' ? 'cpp' : id;
-	return Object.entries(LANGUAGE_VIEWS).find(([language]) => language === key)?.[1] ?? null;
-}
-
-/** Returns view `kind` of language `id`, or null when the language has no such view. */
-export function viewOf(id: string, kind: ViewKind): ExploreView | null {
-	return viewIn(viewsOf(id), kind);
-}
-
 /**
  * Returns the explore providers of the language `id`, whose metadata is
- * `language`: one where `viewsOf` has views, else none.
+ * `language`: one where `LANGUAGE_VIEWS` has views, else none.
  *
  * - Requires: `language.key` is `id`.
  */
-export function exploreProvidersOf(id: LanguageId, language: PackLanguage): AnyProvider<ExploreHost>[] {
+export function exploreProvidersOf(id: LanguageId, language: PackLanguage): ExplorerProvider[] {
 	if (language.key !== id) throw new RangeError(`The metadata of ${language.key} was given for ${id}.`);
-	const views = viewsOf(id);
-	return views === null ? [] : [explorerProvider(language, views)];
+	const views = LANGUAGE_VIEWS[id];
+	return views === undefined ? [] : [explorerProvider(language, views)];
 }

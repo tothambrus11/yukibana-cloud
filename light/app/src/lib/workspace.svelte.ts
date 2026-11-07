@@ -9,7 +9,6 @@ import { forgetUndo } from './workspace-edits';
 import type { DebugChannel, LoadingProgress, PartStatus, RunMode } from '@yukibana/protocol';
 import { LanguageClient, type ClientState, type LogLevel } from './lsp/client';
 import { isLanguageId, languageOf, LANGUAGES, type LanguageId } from './languages';
-import { viewOf } from './providers/explore';
 import { Runner } from './run.svelte';
 import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
@@ -30,7 +29,7 @@ import { parentOf, pathProblem } from '@yukibana/runtime';
 import { pathOf, writeProperty, type Files, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
 import { debugTokenOf, explore, preview, test, tokenOf, warm, type DebugMode, type PreviewSession, type ViewKind } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
-import { pageHost, subjectOf, yukibana } from './yukibana';
+import { pageHost, releaseExplorer, subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
 import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
 import { COMPILE_FLAGS, standardSettingOf } from './properties/cpp.ts';
 import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
@@ -389,10 +388,23 @@ export class Workspace {
 	 * has changed throws, rather than answer for a newer project under an
 	 * older revision. Reading `revision` here makes whatever derives from a
 	 * snapshot (the top bar's availability) derive again after each change.
+	 * The same snapshot is returned while the revision is the same, so that
+	 * what a rule reads of it is read once per revision however many buttons
+	 * ask (providers/refusals.ts keeps what it found per snapshot).
 	 */
 	snapshot(): ProjectSnapshot {
 		const models = this.models;
 		const revision = this.revision;
+		if (this.live?.revision === revision) return this.live;
+		this.live = this.liveSnapshot(models, revision);
+		return this.live;
+	}
+
+	/** The last snapshot `snapshot` made; not reactive, so that making one changes nothing a `$derived` reads. */
+	private live: ProjectSnapshot | null = null;
+
+	/** Returns a snapshot that reads through to `models` while the project is at `revision` (see `snapshot`). */
+	private liveSnapshot(models: ReadonlyMap<string, monaco.editor.ITextModel>, revision: number): ProjectSnapshot {
 		const current = (): void => {
 			if (this.revision !== revision) throw new Error(`A snapshot of revision ${revision} of the project was read at revision ${this.revision}: it no longer says what the project holds.`);
 		};
@@ -455,7 +467,12 @@ export class Workspace {
 		const subject = subjectOf(this.language);
 		const token = tokenOf(mode);
 		const snapshot = this.snapshot();
-		if (yukibana().availability(subject, token, snapshot).kind === 'unavailable') return;
+		const availability = yukibana().availability(subject, token, snapshot);
+		if (availability.kind === 'unavailable') {
+			// Ctrl+Shift+Enter and the editors' actions reach here with the button disabled: say why, where the language has the mode at all.
+			if (yukibana().has(subject, token)) this.write('warning', availability.reason);
+			return;
+		}
 		if (mode === 'run' && yukibana().has(subject, preview)) {
 			this.startPreview(subject, snapshot);
 			return;
@@ -574,7 +591,11 @@ export class Workspace {
 							if (linked !== null && this.runner.shows(run)) void this.debugger.attach(linked);
 						});
 					},
-					(e: unknown) => this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`),
+					(e: unknown) => {
+						// The provider's body did not load (it is lazy) or threw: no run started, so the session ends.
+						this.write('error', `Could not debug the project: ${e instanceof Error ? e.message : String(e)}`);
+						this.debugger.end(false);
+					},
 				);
 		};
 		this.debugger.start({
@@ -590,7 +611,7 @@ export class Workspace {
 	 * with that view, providers/explore.ts); does nothing for another language.
 	 */
 	async showView(kind: ViewKind): Promise<void> {
-		if (!viewOf(this.language, kind)) return;
+		if (!viewOf(subjectOf(this.language), kind)) return;
 		const generation = this.generation;
 		try {
 			await this.loadExplorer();
@@ -625,13 +646,12 @@ export class Workspace {
 	private loadExplorer(): Promise<Explorer> {
 		this.explorerLoad ??= import('./explorer.svelte').then(({ Explorer }) => {
 			const explorer = new Explorer({
-				language: () => this.language,
+				language: () => subjectOf(this.language).id,
+				views: (language) => viewsOf({ kind: 'language', id: language }),
 				files: () => this.currentFiles(),
 				snapshot: (files) => this.frozen(files),
-				explore: (language, input, snapshot, signal) => yukibana().perform(subjectOf(language), explore, input, snapshot, signal),
-				release: (language) => {
-					if (isLanguageId(language)) pageHost().explorers.release(packOf(languageOf(language)));
-				},
+				explore: (language, input, snapshot, signal) => yukibana().perform({ kind: 'language', id: language }, explore, input, snapshot, signal),
+				release: (language, holder) => releaseExplorer({ kind: 'language', id: language }, holder),
 				// C and C++ views read the level from compile_flags.txt, as their runner does; Swift's is sent, as with Run.
 				options: () => {
 					const o = this.optimization;

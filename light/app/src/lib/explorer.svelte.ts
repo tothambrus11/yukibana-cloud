@@ -12,14 +12,13 @@
  * or the project is reset. A view asks only while it is visible: when it
  * opens, when the active source changes, when one of its options changes,
  * and 500 ms after the project was last edited. A view hidden behind
- * another tab is marked stale instead and asks when it is shown again. Each
- * view's requests go through a slot of its own (core's `slot`), so a newer
- * request supersedes the one out, whose answer is no longer waited for,
- * and a slow compile never overwrites a newer one.
+ * another tab is marked stale instead and asks when it is shown again. A
+ * view's newer request aborts the one out, whose answer is then no longer
+ * waited for, and only the answer to a view's newest request is shown
+ * (`latest`), so a slow compile never overwrites a newer one.
  */
-import { pathOf, slot, type Files, type Outcome, type ProjectSnapshot, type Slot, type SlotResult } from '@yukibana/core';
-import { defaultOptions, type EmitInput, type EmitResult, type ExploreProgress, type ViewKind } from '@yukibana/std';
-import { viewOf, viewsOf } from './providers/explore';
+import { pathOf, type Files, type LanguageKey, type Outcome, type ProjectSnapshot } from '@yukibana/core';
+import { defaultOptions, viewIn, type EmitInput, type EmitResult, type ExploreProgress, type ExploreView, type LanguageViews, type ViewKind } from '@yukibana/std';
 import { viewSourceFor, type LineCode, type LineMap } from './explorer-map';
 
 /** What a view shows. */
@@ -66,8 +65,10 @@ export type ViewOptions = Readonly<Record<string, boolean>>;
 
 /** What the explorer needs of the workspace. */
 export interface ExplorerHost {
-	/** The current language's id (languages.ts). */
-	language(): string;
+	/** The current language, as the app's instance knows it. */
+	language(): LanguageKey;
+	/** Returns the compiler output views of language `language`, or null when it has none (its provider of `explore`). */
+	views(language: LanguageKey): LanguageViews | null;
 	/**
 	 * Options every request carries besides the view's own, from the
 	 * project: Swift's optimisation level (`optimization: '-O'`), which the
@@ -82,38 +83,23 @@ export interface ExplorerHost {
 	 * Performs `explore` for language `language` with `input` on `snapshot`
 	 * (the app's instance); `signal` gives up the wait for the answer.
 	 */
-	explore(language: string, input: EmitInput, snapshot: ProjectSnapshot, signal: AbortSignal): Promise<Outcome<Promise<EmitResult>>>;
-	/** Lets the explorer worker of language `language`'s views go, settling what it had as dropped. */
-	release(language: string): void;
-}
-
-/** What a view's slot runs: one request, for the language it was made for. */
-interface Request {
-	readonly language: string;
-	readonly input: EmitInput;
-	readonly snapshot: ProjectSnapshot;
+	explore(language: LanguageKey, input: EmitInput, snapshot: ProjectSnapshot, signal: AbortSignal): Promise<Outcome<Promise<EmitResult>>>;
+	/**
+	 * Lets the explorer worker of language `language`'s views go for
+	 * `holder`, settling what `holder` had waiting as dropped.
+	 *
+	 * - Requires: `language` has views.
+	 */
+	release(language: LanguageKey, holder: Explorer): void;
 }
 
 /** How long after the last edit a visible view asks again. */
 const EDIT_DELAY_MS = 500;
 
-/** The options of every view of language `id`, by kind, as a new session starts them. */
-const defaultsOf = (id: string): Record<string, ViewOptions> => Object.fromEntries((viewsOf(id)?.views ?? []).map((v) => [v.kind, defaultOptions(v)]));
+/** The options of every view of `views`, by kind, as a new session starts them. */
+const defaultsOf = (views: LanguageViews | null): Record<string, ViewOptions> => Object.fromEntries((views?.views ?? []).map((v) => [v.kind, defaultOptions(v)]));
 
 const empty = (): ViewState => ({ status: 'idle', text: '', lines: [], unoptimized: [], target: null, triple: '', flags: [], ms: 0, error: '', progress: null, path: null });
-
-/** Returns what a request's slot came to as the provider's answer: a failure of the provider is the worker's (`broken`), the rest no answer. */
-function answerOf(result: SlotResult<EmitResult>): EmitResult {
-	switch (result.kind) {
-		case 'done':
-			return result.value;
-		case 'failed':
-			return { kind: 'broken', error: `The compiler output worker failed: ${result.error.message}` };
-		case 'superseded':
-		case 'aborted':
-			return { kind: 'dropped' };
-	}
-}
 
 export class Explorer {
 	/**
@@ -134,14 +120,14 @@ export class Explorer {
 	private nextId = 0;
 	/** The id of each view's newest request; an answer to any other is ignored. */
 	private readonly latest = new Map<ViewKind, number>();
-	/** Each view's slot, made at its first request. */
-	private readonly slots = new Map<ViewKind, Slot<Request, EmitResult>>();
+	/** What aborts each view's request out, if one is. */
+	private readonly out = new Map<ViewKind, AbortController>();
 	/** The language whose explorer worker a request was last made of, until it is let go. */
-	private asked: string | null = null;
+	private asked: LanguageKey | null = null;
 	/** Each language's options, as last set in this session. */
-	private readonly saved = new Map<string, Record<string, ViewOptions>>();
+	private readonly saved = new Map<LanguageKey, Record<string, ViewOptions>>();
 	/** The language `options` are of. */
-	private optionsLanguage: string | null = null;
+	private optionsLanguage: LanguageKey | null = null;
 	/** Views whose panel is open. */
 	private readonly open = new Set<ViewKind>();
 	/** Open views whose panel is in front (not behind another tab). */
@@ -155,9 +141,19 @@ export class Explorer {
 		this.loadOptions();
 	}
 
-	/** The current language's id: the one whose views are open, and whose options `options` holds. */
-	get language(): string {
+	/** The current language: the one whose views are open, and whose options `options` holds. */
+	get language(): LanguageKey {
 		return this.host.language();
+	}
+
+	/** Returns the current language's views, or null when it has none. */
+	languageViews(): LanguageViews | null {
+		return this.host.views(this.host.language());
+	}
+
+	/** Returns the current language's view `kind`, or null when it has no such view. */
+	viewSpec(kind: ViewKind): ExploreView | null {
+		return viewIn(this.languageViews(), kind);
 	}
 
 	/** Returns what view `kind` shows: idle when it has asked nothing. */
@@ -172,7 +168,7 @@ export class Explorer {
 
 	/** The kinds the current language has views of. */
 	private kinds(): ViewKind[] {
-		return viewsOf(this.host.language())?.views.map((v) => v.kind) ?? [];
+		return this.languageViews()?.views.map((v) => v.kind) ?? [];
 	}
 
 	/** Puts the current language's options in `options`, its saved ones or the defaults. */
@@ -180,7 +176,7 @@ export class Explorer {
 		const language = this.host.language();
 		if (language === this.optionsLanguage) return;
 		this.optionsLanguage = language;
-		this.options = this.saved.get(language) ?? defaultsOf(language);
+		this.options = this.saved.get(language) ?? defaultsOf(this.host.views(language));
 	}
 
 	/**
@@ -238,7 +234,7 @@ export class Explorer {
 	 */
 	setOption(kind: ViewKind, option: string, value: boolean): void {
 		if (this.optionsOf(kind)[option] === value) return;
-		const toggle = viewOf(this.host.language(), kind)?.toggles.find((t) => t.key === option);
+		const toggle = this.viewSpec(kind)?.toggles.find((t) => t.key === option);
 		const kinds = toggle?.sets === 'language' ? this.kinds() : [kind];
 		for (const k of kinds) this.options[k] = { ...this.optionsOf(k), [option]: value };
 		this.saved.set(this.host.language(), $state.snapshot(this.options));
@@ -260,7 +256,7 @@ export class Explorer {
 	 * the one before, as a header's code is in the source that includes it.
 	 */
 	activeChanged(path: string | null): void {
-		const views = viewsOf(this.host.language());
+		const views = this.languageViews();
 		const source = views ? viewSourceFor(path, this.source, views.isSource) : null;
 		if (source === this.source) return;
 		this.source = source;
@@ -302,28 +298,24 @@ export class Explorer {
 	/** Ignores whatever view `kind` asked for last, and stops waiting for it. */
 	private forget(kind: ViewKind): void {
 		this.latest.set(kind, ++this.nextId);
-		const pending = this.slots.get(kind);
-		this.slots.delete(kind);
-		pending?.dispose();
+		this.out.get(kind)?.abort();
+		this.out.delete(kind);
 	}
 
 	/** Lets the worker go that the views last asked, if any. */
 	private release(): void {
-		if (this.asked !== null) this.host.release(this.asked);
+		if (this.asked !== null) this.host.release(this.asked, this);
 		this.asked = null;
 	}
 
-	/** Returns view `kind`'s slot, made the first time: each job performs one request and gives its answer. */
-	private slotOf(kind: ViewKind): Slot<Request, EmitResult> {
-		let made = this.slots.get(kind);
-		if (made === undefined) {
-			made = slot(async ({ language, input, snapshot }: Request, signal): Promise<EmitResult> => {
-				const outcome = await this.host.explore(language, input, snapshot, signal);
-				return outcome.kind === 'done' ? outcome.value : { kind: 'broken', error: outcome.reason };
-			});
-			this.slots.set(kind, made);
+	/** Returns what asking `language`'s provider for `input` comes to: its answer, or why there is none as the worker's failure (`broken`). Never rejects. */
+	private async ask(language: LanguageKey, input: EmitInput, snapshot: ProjectSnapshot, signal: AbortSignal): Promise<EmitResult> {
+		try {
+			const outcome = await this.host.explore(language, input, snapshot, signal);
+			return outcome.kind === 'done' ? await outcome.value : { kind: 'broken', error: outcome.reason };
+		} catch (e) {
+			return { kind: 'broken', error: `The compiler output views could not be loaded: ${e instanceof Error ? e.message : String(e)}` };
 		}
-		return made;
 	}
 
 	/** Asks now when the view is open and visible; marks it stale when it is open but hidden. */
@@ -346,7 +338,7 @@ export class Explorer {
 			return;
 		}
 		const language = this.host.language();
-		if (!viewOf(language, kind)) {
+		if (this.viewSpec(kind) === null) {
 			this.set(kind, { ...view, status: 'error', error: 'The current language has no compiler output views.', path, progress: null });
 			this.changed(kind);
 			return;
@@ -364,13 +356,18 @@ export class Explorer {
 			onProgress: (progress) => {
 				if (this.latest.get(kind) === id) this.progress(kind, progress);
 			},
+			holder: this,
 		};
 		this.asked = language;
-		void this.slotOf(kind)
-			.submit({ language, input, snapshot: this.host.snapshot(files) })
-			.then((result) => {
-				if (this.latest.get(kind) === id) this.receive(kind, answerOf(result));
-			});
+		// The request out gives way: its answer is no longer waited for, and the newer is posted at once.
+		this.out.get(kind)?.abort();
+		const controller = new AbortController();
+		this.out.set(kind, controller);
+		void this.ask(language, input, this.host.snapshot(files), controller.signal).then((answer) => {
+			if (this.latest.get(kind) !== id) return;
+			this.out.delete(kind);
+			this.receive(kind, answer);
+		});
 	}
 
 	/** View `kind`, waiting for its newest request, shows the download the worker reported. */

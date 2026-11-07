@@ -4,8 +4,9 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 12 record how steps 1 to 5 were built and
-where they depart from the sketches here; the code and its `/** */`
+`light/modules`. Sections 8 to 13 record how steps 1 to 5 were built, and
+what the reviews of them changed, and where they depart from the sketches
+here; the code and its `/** */`
 contracts are the authority where the two differ.
 
 This design is grounded in today's code: `languages.ts` (the `Language` booleans), `workspace.svelte.ts:382-425` (start/debug branches), `run.svelte.ts` (RunnerPool + RunHandle), `explorer.svelte.ts:294` (its own `explorer.js` worker), `preview.ts` (busy/again coalescing), `packs.ts` (`packOf`/`packsOf`/`runnerSourceOf`), `build-settings.ts`, `cpp-targets.ts` (the target is a line of `compile_flags.txt`), `modules/runtime/run-session.ts` (`RunEvent`, `RunState`), `modules/protocol/runner.ts` (`RunMode`, `RunMessage`), and `modules/boundaries.test.mjs` (the hand-written `ALLOWED` table).
@@ -736,3 +737,82 @@ reads it there. Where it departs from the sketches above:
   `latest` id that guards against an answer after `closed` or `reset`,
   which now also dispose the view's slot, so nothing waits for its
   answer.
+  (Section 13 replaced the slots with one `AbortController` per view.)
+
+## 13. The review of steps 4 and 5
+
+What the review of steps 4 and 5 found, and what changed. Where this
+section and sections 11 and 12 differ, this one holds.
+
+* **Explore is typed by the core's language, not a string.** The
+  explorer's host (`ExplorerHost`) takes and gives a `LanguageKey`, the
+  key the instance knows (`subjectOf(id).id`), and so do `Explorer`'s
+  saved options and `Preview`'s owner. The `isLanguageId` guard that let
+  a release do nothing for a language the app's table did not name is
+  gone.
+* **The views are carried by the provider** (section 12's "no `views`
+  token" stays: they are still read synchronously). `explorerProvider`
+  returns an `ExplorerProvider`, a provider with two more fields: its
+  `views`, and `release(host, holder)`, which lets its own pack's worker
+  go. The app reads views through the providers it registered
+  (yukibana.ts `viewsOf(subject)`, `viewOf`, `releaseExplorer`), never
+  through its table, so a language's views reach the top bar, the dock,
+  the editors' actions and the views from its provider alone, and its
+  worker is released by its provider, whatever its id. The table
+  (`LANGUAGE_VIEWS`) is the app's languages' data only, with C listed as
+  C++'s object instead of an alias in a lookup; the unit test holds every
+  language's provider's views to it. Which flags a view's details call
+  chosen (clang's `userFlags`, or all as sent) is `LanguageViews.chosenFlags`
+  (`'clang' | 'all'`), not a test of the language id in compiler-view.ts.
+* **One guard against a stale answer, not three.** The explorer keeps no
+  `Slot` per view: a newer request aborts the view's `AbortController`,
+  whose request then settles `dropped` at once (decision 7 as before), and
+  only the answer to the view's newest id (`latest`) is shown.
+  `ExplorerWorkers` still matches answers to ids, which is what a shared
+  worker must do. The slot's queue had never queued anything here.
+* **A worker is held, not owned.** `EmitInput.holder` (an
+  `ExploreHolder`, compared by identity: the explorer passes itself) holds
+  the pack's worker from its first request; `release(pack, holder)` drops
+  only that holder's requests and stops the worker once no holder is
+  left, so one explorer letting go cannot hang another's views on
+  "Updating…" (step 8's two instances). Two consequences of sharing a
+  worker made explicit: explorer.js answers only the newest request of
+  each view kind it has, so a holder's request that another holder's of
+  the same kind replaced is posted again once that one is answered; and a
+  worker restarted from another URL takes over the requests the old one
+  had, instead of dropping them.
+* **Answers are read entry by entry.** explorer-workers.ts `resultOf`
+  checks every field and every entry of `lines`, `unoptimized` and
+  `flags`; one that is not what packs/CONTRACT.md says makes the answer
+  `broken`, naming it (`lines[0].file is not a string`). A field left out
+  still reads as empty, as before, so no pack's answer that worked is
+  refused.
+* **The explorer workers are lazy.** `ExplorerWorkers`, `pagePlatform`,
+  the readers and the provider's body moved to `std/explore-workers.ts`,
+  which `explorerProvider`'s lazy body and `pageExplorers()` import on a
+  first request; `std/index.ts` exports only its types. `ExploreHost`'s
+  `explorers` is therefore `explorers(): Promise<ExplorerWorkers>`, and
+  `madeExplorers` (null until made) is what a release reads, so letting
+  go loads nothing. The web languages' preview session moved the same way
+  to `providers/preview-session.ts`, under a lazy body. Debug's body did
+  **not**: measured, making it lazy grew the initial set by 688 B gzip
+  (the chunk split it causes costs more than its 15 lines), so it stays
+  eager until step 9 splits the debugger's session from its breakpoints
+  (D13). The initial set went from 1,252,149 B to 1,251,213 B (budget
+  1,255,138 B).
+* **Availability is read once per edit.** The workspace hands out one
+  live snapshot per revision (`snapshot()`), and refusals.ts keeps what it
+  found in tests/ and compile_flags.txt per snapshot (`once`, a
+  `WeakMap`), so the five availability questions the top bar and the
+  Debug panel ask after a keystroke read the test files and parse the
+  flags once between them, where they read them some five and seven
+  times. A keystroke still reads tests/ once: a snapshot has no per-file
+  version to skip it by.
+* **A refused Test says why.** `run(mode)` with the mode unavailable
+  writes the availability's reason as a warning, as `debug` already did,
+  where the language has the mode at all: Ctrl+Shift+Enter and the
+  editors' Test Project reach it with the button disabled (C++ tests that
+  mix frameworks, or Catch2 or doctest on a Linux target), where before
+  they did nothing. `e2e-debug.mjs` adds doctest to the GoogleTest tests
+  and checks the Log panel. A debugged run whose provider throws now also
+  ends the debugger's session, which it left started.

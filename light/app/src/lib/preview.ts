@@ -34,7 +34,7 @@
  * Auto reload off, edits wait for the Reload button. This is live reload,
  * not module hot replacement.
  */
-import { slot, type Slot } from '@yukibana/core';
+import { slot, type LanguageKey, type Slot } from '@yukibana/core';
 import { isFromPage, type ToPage } from '@yukibana/protocol';
 import type { PreviewSession } from '@yukibana/std';
 import type { Files } from './languages';
@@ -75,7 +75,7 @@ export class Preview {
 	/** The session building the page shown, while previewing (providers/preview.ts). */
 	private session: PreviewSession | null = null;
 	/** Whose session it is: the language it was opened for, while previewing. */
-	private owner: string | null = null;
+	private owner: LanguageKey | null = null;
 	private files: () => Files = () => ({});
 	/** Stylesheets of the page shown, which an edit can swap in place. */
 	private styles: string[] = [];
@@ -125,7 +125,7 @@ export class Preview {
 	}
 
 	/** Returns the session previewing a page for `owner`, which `start` keeps, or null when there is none. */
-	sessionOf(owner: string): PreviewSession | null {
+	sessionOf(owner: LanguageKey): PreviewSession | null {
 		return this.owner === owner ? this.session : null;
 	}
 
@@ -229,7 +229,7 @@ export class Preview {
 	 * the session it has, a caller passes that one (`sessionOf`): a new
 	 * session would start a new worker.
 	 */
-	start(owner: string, session: PreviewSession, files: () => Files): void {
+	start(owner: LanguageKey, session: PreviewSession, files: () => Files): void {
 		if (session !== this.session) this.stop();
 		this.generation++;
 		this.checking?.abort();

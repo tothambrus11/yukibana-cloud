@@ -32,19 +32,24 @@ preview; step 5: explore. Export follows in a later step.
 * **One explorer worker per pack, and no wait past an abort.**
   `explore`'s provider (`explorerProvider`) sends its pack's
   `explorer.js` today's `emit` message through the host's
-  `ExplorerWorkers`, which starts one worker per pack on the page; its
-  answer settles as soon as the perform's signal is aborted (`dropped`),
-  since explorer.js drops the answer to a request replaced while it
-  compiled. A host keeps one `Slot` per view, so the newest request wins.
+  `ExplorerWorkers`, which starts one worker per pack on the page and
+  stops it once every holder that asked has let it go; its answer settles
+  as soon as the perform's signal is aborted (`dropped`), since
+  explorer.js drops the answer to a request replaced while it compiled. A
+  host aborts a view's request when it makes a newer one. The workers and
+  the provider's body are loaded at the first request
+  (`explore-workers.ts`); an answer that is not what the contract says is
+  `broken`, naming the field.
 * **No side effects.** Importing it defines eight tokens and does nothing
-  else (`../tests/imports.test.mjs`); `ExplorerWorkers` starts nothing
-  until a request needs a worker.
+  else (`../tests/imports.test.mjs`); the explorer workers' code is not
+  even loaded until a request needs it.
 
 | File | What |
 |---|---|
 | `language.ts` | `PackLanguage`: a `LanguageMeta` with the pack it runs on and the packs that one uses (checked pack ids), and its server's settings in its body |
 | `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider` |
-| `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExplorerWorkers` (with `pagePlatform`), `ExploreHost`, `explorerProvider` |
+| `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`) |
+| `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
 | `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 

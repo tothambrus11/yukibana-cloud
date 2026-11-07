@@ -19,7 +19,6 @@
 	import { createDock } from '../lib/dock';
 	import { isCFamily, languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf, packsOf } from '../lib/packs';
-	import { viewsOf } from '../lib/providers/explore';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
@@ -32,7 +31,7 @@
 	import Licenses from '../lib/components/Licenses.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
-	import { subjectOf, yukibana } from '../lib/yukibana';
+	import { subjectOf, viewsOf, yukibana } from '../lib/yukibana';
 	import { debug, debugTest, mutate, run, test } from '@yukibana/std';
 	import { serverLabel } from '../lib/format';
 	import { followViewport } from '../lib/viewport';
@@ -121,8 +120,8 @@
 			...(offline.arePacksCached(packsOf(l)) ? { detail: 'offline' } : {}),
 		})),
 	);
-	/** The language's compiler output views (providers/explore.ts), none for most. */
-	const views = $derived(viewsOf(workspace.language)?.views ?? []);
+	/** The language's compiler output views (its provider of explore, providers/explore.ts), none for most. */
+	const views = $derived(viewsOf(subject)?.views ?? []);
 	/** "the active C or C++ file" and the like, for the views' buttons. */
 	const activeSource = $derived(`the active ${shortLabel(language)} ${workspace.language === 'haskell' ? 'module' : 'file'}`);
 	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */

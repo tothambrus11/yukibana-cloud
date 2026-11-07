@@ -3,7 +3,9 @@
 // variables in the Debug panel, a step or a second breakpoint into another
 // file, Continue (F5) to the end. Where the language debugs its tests (C++),
 // a breakpoint in a test, Debug tests from the ⋯ menu, and Continue until
-// the tests pass; then, on a Linux target, both disabled, saying why. Needs the lldb pack and each language's.
+// the tests pass; then, on a Linux target, both disabled, saying why; and
+// Test Project (Ctrl+Shift+Enter) on tests the runner refuses says why in
+// the Log panel. Needs the lldb pack and each language's.
 //
 //   npm run build && node tests/e2e-debug.mjs [language ...]
 //
@@ -47,6 +49,8 @@ const TEST_CASES = {
 		local: 'p',
 		output: /\[  PASSED  \] 3 tests\./,
 		linux: { target: 'x86_64-linux', reason: 'The debugger runs programs for WebAssembly only, for now: remove the --target line (x86-64 Linux) from compile_flags.txt to debug.' },
+		// A second framework in the tests: the runner refuses to build them, and Test is disabled.
+		refused: { include: '#include <doctest/doctest.h>\n', reason: 'The tests mix test frameworks: ' },
 	},
 };
 
@@ -212,6 +216,21 @@ async function runTests(language, c) {
 		const item = await menuItem(page, /^Debug tests$/);
 		check((await item.isDisabled()) && (await item.getAttribute('title')) === c.linux.reason, `on ${c.linux.target} Debug tests is disabled and says why (${await item.getAttribute('title')})`);
 		await closePopovers(page);
+	}
+	// Test Project from the editor, with the Test button disabled: the
+	// refusal is said in the Log panel, not swallowed.
+	if (c.refused) {
+		await cursorTo(page, 1, c.file);
+		await page.keyboard.press('Home');
+		await page.keyboard.type(c.refused.include);
+		const testButton = page.locator('header .btn.test');
+		const disabled = await page.waitForFunction(() => document.querySelector('header .btn.test')?.hasAttribute('disabled'), null, { timeout: 10_000 }).then(() => true, () => false);
+		check(disabled && ((await testButton.getAttribute('title')) ?? '').startsWith(c.refused.reason), `tests that mix frameworks disable Test, saying why (${await testButton.getAttribute('title')})`);
+		await page.locator('.dv-groupview .monaco-editor').first().click();
+		await page.keyboard.press('Control+Shift+Enter');
+		await page.locator('.dv-tab .dock-tab', { hasText: /^Log$/ }).first().click();
+		const said = await page.waitForFunction((t) => [...document.querySelectorAll('.log-panel')].some((o) => o.textContent?.includes(t)), c.refused.reason, { timeout: 5_000 }).then(() => true, () => false);
+		check(said, 'Ctrl+Shift+Enter in the editor says in the Log panel why the tests cannot run');
 	}
 	check(errors.length === 0, `no page errors (${errors.join('; ')})`);
 	await page.close();

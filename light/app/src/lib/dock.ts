@@ -39,7 +39,6 @@ import { NavigationHistory, type Place } from './history';
 import { baseName } from '@yukibana/runtime';
 import { WORKSPACE } from './project';
 import type { EditorHost, Workspace } from './workspace.svelte';
-import { viewOf, viewsOf } from './providers/explore';
 import type { CompilerView, ViewHost } from './compiler-view';
 import type { Caret } from './linking';
 import { VIEW_TEXT } from './theme.svelte';
@@ -51,8 +50,9 @@ import Terminal from './components/Terminal.svelte';
 import CallHierarchy from './components/CallHierarchy.svelte';
 import Debug from './components/Debug.svelte';
 import { decorate } from './debug.svelte';
+import type { Subject } from '@yukibana/core';
 import { debug, debugTest, viewKind, type ViewKind } from '@yukibana/std';
-import { subjectOf, yukibana } from './yukibana';
+import { subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
 
 const EDITOR_PREFIX = 'file:';
 const editorId = (path: string) => EDITOR_PREFIX + path;
@@ -66,10 +66,10 @@ const ASM = viewKind('asm');
 /**
  * Returns the panel of the compiler output view `kind` of `language`: its
  * id, dockview component, tab title and the title's short form, from the
- * language's views (providers/explore.ts); null when the language has no
+ * language's views (its provider of explore); null when the language has no
  * such view.
  */
-function viewPanelOf(language: string, kind: ViewKind): { id: string; component: string; title: string; short: string } | null {
+function viewPanelOf(language: Subject, kind: ViewKind): { id: string; component: string; title: string; short: string } | null {
 	const view = viewOf(language, kind);
 	return view && { id: `${VIEW_PREFIX}${kind}`, component: kind === ASM ? 'assembly' : kind, title: view.title, short: view.short };
 }
@@ -80,7 +80,7 @@ function viewOfPanel(id: string): ViewKind | null {
 }
 
 /** Returns the view kind dockview component `name` is of in `language`, or null when it is none of the language's views. */
-function viewOfComponent(language: string, name: string): ViewKind | null {
+function viewOfComponent(language: Subject, name: string): ViewKind | null {
 	return viewsOf(language)?.views.find((v) => (v.kind === ASM ? 'assembly' : v.kind) === name)?.kind ?? null;
 }
 
@@ -143,7 +143,7 @@ class CompilerViewRenderer implements IContentRenderer {
 				if (!this.disposed) this.view = createCompilerView(this.element, this.kind, { ...this.host(), explorer });
 			},
 			(e: unknown) => {
-				this.element.textContent = `The ${viewOf(this.workspace.language, this.kind)?.title ?? 'compiler output'} view could not be loaded: ${e instanceof Error ? e.message : String(e)}`;
+				this.element.textContent = `The ${viewOf(subjectOf(this.workspace.language), this.kind)?.title ?? 'compiler output'} view could not be loaded: ${e instanceof Error ? e.message : String(e)}`;
 			},
 		);
 	}
@@ -297,7 +297,7 @@ class EditorRenderer implements IContentRenderer {
 		// Editors are made anew for each project, so only a language with the views offers them.
 		// The C++ views' action ids (yukibana.showIr, yukibana.showAsm) are the ones they always had.
 		const ACTION_IDS: Readonly<Record<string, string>> = { 'llvm-ir': 'yukibana.showIr', asm: 'yukibana.showAsm' };
-		for (const { kind, title } of viewsOf(this.workspace.language)?.views ?? [])
+		for (const { kind, title } of viewsOf(subjectOf(this.workspace.language))?.views ?? [])
 			editor.addAction({ id: ACTION_IDS[kind] ?? `yukibana.show-${kind}`, label: `Show ${title}`, run: () => void this.workspace.showView(kind) });
 	}
 
@@ -488,7 +488,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 				case 'debug':
 					return new SvelteRenderer(Debug, workspace);
 				default: {
-					const view = viewOfComponent(workspace.language, name);
+					const view = viewOfComponent(subjectOf(workspace.language), name);
 					if (view) return new CompilerViewRenderer(view, workspace, () => viewHost);
 					const r = new EditorRenderer(workspace, navigation);
 					editors.set(id, r);
@@ -498,7 +498,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 		},
 		createTabComponent: ({ id, name }) => {
 			const view = viewOfPanel(id);
-			const short = view === null ? null : (viewPanelOf(workspace.language, view)?.short ?? null);
+			const short = view === null ? null : (viewPanelOf(subjectOf(workspace.language), view)?.short ?? null);
 			const tab = new TabRenderer(id, name === 'editor' || name === 'view', (panel, front) => tapped(panel, front), short);
 			tabs.set(id, tab);
 			return tab;
@@ -512,7 +512,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	const panel = (id: string) => dock.getPanel(id);
 	/** Where view `kind` comes in the language's list of views (providers/explore.ts); after them all when it is none of them. */
 	const viewOrder = (kind: ViewKind | null): number => {
-		const at = viewsOf(workspace.language)?.views.findIndex((v) => v.kind === kind) ?? -1;
+		const at = viewsOf(subjectOf(workspace.language))?.views.findIndex((v) => v.kind === kind) ?? -1;
 		return at === -1 ? Number.MAX_SAFE_INTEGER : at;
 	};
 	/** The views' panels, in the order the language lists its views. */
@@ -921,7 +921,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 			panel('preview')?.api.close();
 		},
 		showView(kind: ViewKind): void {
-			const view = viewPanelOf(workspace.language, kind);
+			const view = viewPanelOf(subjectOf(workspace.language), kind);
 			if (view === null) return;
 			const existing = panel(view.id);
 			if (existing) {
