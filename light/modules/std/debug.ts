@@ -17,7 +17,7 @@
  */
 
 import { defineToken, type Provider, type Token } from '../core/index.ts';
-import type { DebugChannel, DebugProgram } from '../protocol/index.ts';
+import type { DebugChannel, DebugProgram, TestSelector } from '../protocol/index.ts';
 import type { RunEvent, RunHandle, SessionRequest } from '../runtime/index.ts';
 import type { PackLanguage } from './language.ts';
 import { runMessage, sourceOf, type RunAvailability, type RunHost, type RunInput } from './run.ts';
@@ -120,16 +120,81 @@ export function debugProvider(mode: DebugMode, language: PackLanguage, when: Deb
 		available: when.available,
 		body: {
 			kind: 'eager',
-			perform: (input, { host }) => {
-				const { promise, resolve } = Promise.withResolvers<DebugProgram | null>();
-				const onEvent = (event: RunEvent): void => {
-					if (event.type === 'debug') resolve(event);
-					else if (ends(event)) resolve(null);
-					input.onEvent(event);
-				};
-				const run = host.pool.run({ snippet: input.snippet, source: sourceOf(language, host.packs, host.requires), request: debugMessage(mode, input, when.options), onEvent });
-				return { run, program: promise };
-			},
+			perform: (input, { host }) => performDebug(language, host, input, debugMessage(mode, input, when.options)),
 		},
+	};
+}
+
+/**
+ * Hands `host`'s pool `request` for `language`'s pack, passing every event
+ * of the run on to `input.onEvent`, and resolves the session's `program`
+ * with the run's `debug` event, or with null once the run ends without one.
+ */
+function performDebug(language: PackLanguage, host: RunHost, input: DebugInput, request: SessionRequest): DebugSession {
+	const { promise, resolve } = Promise.withResolvers<DebugProgram | null>();
+	const onEvent = (event: RunEvent): void => {
+		if (event.type === 'debug') resolve(event);
+		else if (ends(event)) resolve(null);
+		input.onEvent(event);
+	};
+	const run = host.pool.run({ snippet: input.snippet, source: sourceOf(language, host.packs, host.requires), request, onEvent });
+	return { run, program: promise };
+}
+
+/**
+ * What Debug tests is performed with where the language's runner can
+ * narrow it: a debugged test run's input, the one test to run, and whether
+ * to stop at each failed assertion.
+ */
+export interface DebugTestCaseInput extends DebugInput {
+	/** The test to debug alone (protocol `TestSelector`), or null for every test. */
+	readonly tests: TestSelector | null;
+	/**
+	 * Whether the program stops at each failed assertion: the runner calls
+	 * protocol's `TEST_FAILED_FUNCTION` there, and the host's debugger is to
+	 * set a function breakpoint on it before the program runs. Continue goes
+	 * on with the tests.
+	 */
+	readonly breakOnFailure: boolean;
+}
+
+/**
+ * Debug tests, narrowed: one test, or all of them, and optionally a stop at
+ * each failed assertion; a runner's `type: 'test'` with `debug`, `tests`
+ * and `breakOnFailure` (packs/CONTRACT.md, "Tests (optional)"). A provider
+ * of it requires `debugTest` for the same language, and a language provides
+ * it only when its runner honours both fields: one that ignored `tests`
+ * would debug every test while the host said it debugs one.
+ */
+export const debugTestCase: Token<DebugTestCaseInput, DebugSession, 'one'> = /* @__PURE__ */ defineToken<DebugTestCaseInput, DebugSession>()(
+	'@yukibana/std#debug-test-case',
+);
+
+/**
+ * Returns the message a runner is sent to debug `input`'s tests: Debug
+ * tests' message (`debugMessage('test', …)`) with `tests` when one is
+ * named and `breakOnFailure` only when it is true, so that a run asking for
+ * neither is exactly Debug tests' message.
+ */
+export function debugTestCaseMessage(input: DebugTestCaseInput, options: DebugOptions): SessionRequest {
+	return {
+		...debugMessage('test', input, options),
+		...(input.tests !== null ? { tests: { ...input.tests } } : {}),
+		...(input.breakOnFailure ? { breakOnFailure: true } : {}),
+	};
+}
+
+/**
+ * Returns `language`'s provider of `debugTestCase`: as `debugProvider`'s
+ * for Debug tests, sending `debugTestCaseMessage` instead.
+ */
+export function debugTestCaseProvider(language: PackLanguage, when: DebugAvailability): Provider<DebugTestCaseInput, DebugSession, RunHost, 'one'> {
+	return {
+		token: debugTestCase,
+		subject: { kind: 'language', id: language.key },
+		entry: { kind: 'one' },
+		requires: when.requires,
+		available: when.available,
+		body: { kind: 'eager', perform: (input, { host }) => performDebug(language, host, input, debugTestCaseMessage(input, when.options)) },
 	};
 }

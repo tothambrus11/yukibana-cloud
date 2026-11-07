@@ -13,7 +13,8 @@
 // twice: cold (empty browser cache) and warm (cached downloads and compiled
 // wasm), with timings. C++ exceptions, caught and uncaught, and the
 // sample's tests ({ type: 'test' }) in GoogleTest, doctest and Catch2,
-// passing and failing, and tests that mix two frameworks. RapidCheck
+// passing and failing, and tests that mix two frameworks. One test of two
+// selected in each framework (`tests`; src/test-selection.js). RapidCheck
 // properties through each framework and from a main of their own, a holding
 // and a failing one with its shrunk counterexample. The default
 // target fetches exactly the files it fetched before the Linux targets
@@ -276,7 +277,7 @@ try {
     // line each, then end of file), optionally terminate it after the program
     // printed `stopAfter`. Resolves with what came back and when.
     await page.evaluate(() => {
-        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.cpp', failInstantiate = false, type = 'run' } = {}) =>
+        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.cpp', failInstantiate = false, type = 'run', tests = null, breakOnFailure = false } = {}) =>
             new Promise((done) => {
                 const t0 = performance.now();
                 const result = { stdout: '', stderr: '', code: null, phases: [], loading: {}, stdinRequests: 0, stdoutBeforeInput: [], terminated: false };
@@ -348,7 +349,7 @@ try {
                         }, 1000);
                     }
                 };
-                worker.postMessage({ type, files, entry, stdin: sab });
+                worker.postMessage({ type, files, entry, stdin: sab, ...(tests ? { tests } : {}), ...(breakOnFailure ? { breakOnFailure } : {}) });
             });
     });
 
@@ -461,8 +462,8 @@ try {
     // report with the escapes removed, as the app's terminal shows it
     // (app/src/lib/ansi.ts); `raw` keeps them.
     const plain = (text) => text.replace(/\x1b\[[0-9;:]*[A-Za-z]/g, '');
-    const testRun = async (files) => {
-        const r = await run(files, { type: 'test' });
+    const testRun = async (files, opts = {}) => {
+        const r = await run(files, { type: 'test', ...opts });
         return { ...r, raw: r.stdout, stdout: plain(r.stdout) };
     };
     bytesSent = 0;
@@ -614,6 +615,86 @@ TEST_CASE("throws something else") {
         `code=${own.code} in ${own.ms} ms`
     );
     console.log(own.stderr.trimEnd().replace(/^/gm, '    ! '));
+
+    // One test of two (the run message's `tests`; src/test-selection.js),
+    // in each framework: only the chosen one runs. Each project's other test
+    // is the one a selection that was not escaped, or not exact, would also
+    // run: a name the chosen one's starts with, and (doctest, Catch2) the
+    // part of the chosen name before its comma.
+    const PICK = {
+        gtest: {
+            'tests/pick_test.cpp': `#include <gtest/gtest.h>
+#include <cstdio>
+
+TEST(Pick, Chosen) { std::puts("chosen ran"); }
+TEST(Pick, ChosenToo) { std::puts("other ran"); }
+`,
+            tests: { file: 'tests/pick_test.cpp', suite: 'Pick', name: 'Chosen' },
+            ran: /\[==========\] 1 test from 1 test suite ran\./,
+        },
+        doctest: {
+            'tests/pick_test.cpp': `#include <doctest/doctest.h>
+#include <cstdio>
+
+TEST_SUITE("pick") {
+TEST_CASE("chosen, with a comma") { std::puts("chosen ran"); }
+TEST_CASE("chosen") { std::puts("other ran"); }
+}
+`,
+            tests: { file: 'tests/pick_test.cpp', suite: 'pick', name: 'chosen, with a comma' },
+            ran: /test cases: 1 \| 1 passed \| 0 failed/,
+        },
+        catch2: {
+            'tests/pick_test.cpp': `#include <catch2/catch_test_macros.hpp>
+#include <cstdio>
+
+TEST_CASE("chosen, [not a tag] \\"quoted\\" back\\\\slash 2 * 3 ~tilde") { std::puts("chosen ran"); }
+TEST_CASE("chosen") { std::puts("other ran"); }
+`,
+            tests: { file: 'tests/pick_test.cpp', suite: null, name: 'chosen, [not a tag] "quoted" back\\slash 2 * 3 ~tilde' },
+            ran: /All tests passed \(\d+ assertions? in 1 test case\)|test cases: 1 \| 1 passed/,
+        },
+    };
+    for (const [fw, { tests: chosen, ran, ...pick }] of Object.entries(PICK)) {
+        const project = { 'compile_flags.txt': SAMPLE['compile_flags.txt'], 'main.cpp': 'int main() {}\n', ...pick };
+        const all = await testRun(project);
+        check(`${FW_NAMES[fw]}: a project of two tests runs both`, all.code === 0 && /chosen ran/.test(all.stdout) && /other ran/.test(all.stdout), `code=${all.code} ${JSON.stringify(all.stdout.slice(-300))} ${JSON.stringify(all.stderr.slice(0, 300))}`);
+        const one = await testRun(project, { tests: chosen });
+        check(
+            `${FW_NAMES[fw]}: one test selected (${JSON.stringify(chosen.name)}) runs alone, exit 0`,
+            one.code === 0 && /chosen ran/.test(one.stdout) && !/other ran/.test(one.stdout) && ran.test(one.stdout),
+            `code=${one.code} ${JSON.stringify(one.stdout.slice(-400))} ${JSON.stringify(one.stderr.slice(0, 300))}`
+        );
+        // A test that is not there: GoogleTest and Catch2 fail the run
+        // (GTEST_FAIL_IF_NO_TEST_SELECTED; Catch2's "No test cases
+        // matched"); doctest passes with none run.
+        const missing = await testRun(project, { tests: { ...chosen, name: 'NotThere' } });
+        check(
+            `${FW_NAMES[fw]}: a selected test that does not exist runs nothing${fw === 'doctest' ? ' (doctest: and passes, 0 test cases)' : ', exit non-zero'}`,
+            !/chosen ran|other ran/.test(missing.stdout) && (fw === 'doctest' ? missing.code === 0 && /test cases: 0 \| 0 passed/.test(missing.stdout) : missing.code !== 0 && missing.code !== null),
+            `code=${missing.code} ${JSON.stringify(missing.stdout.slice(-300))}`
+        );
+        // Stop on failed assertion without the debugger: nothing to stop,
+        // so no hook is compiled and the run is a test run.
+        const nodebug = await testRun(project, { tests: chosen, breakOnFailure: true });
+        check(
+            `${FW_NAMES[fw]}: breakOnFailure without the debugger compiles no hook`,
+            nodebug.code === 0 && !nodebug.phases.some(([t]) => t.includes('hook')) && /chosen ran/.test(nodebug.stdout) && !/other ran/.test(nodebug.stdout),
+            timeline(nodebug)
+        );
+    }
+    const badName = await testRun({ ...SAMPLE }, { tests: { file: 'tests/geometry_test.cpp', suite: 'Geometry', name: 'Norm:Other' } });
+    check(
+        'a GoogleTest selection that is no identifier is refused before anything is compiled, exit 1',
+        badName.code === 1 && /^GoogleTest names a test by two identifiers/.test(badName.stderr) && !badName.phases.some(([t]) => t.startsWith('Compiling')),
+        JSON.stringify(badName.stderr)
+    );
+    const ownMainPick = await testRun({ 'main.cpp': 'int main() {}\n', 'tests/own.cpp': 'int main() { return 0; }\n' }, { tests: { file: 'tests/own.cpp', suite: null, name: 'x' } });
+    check(
+        'one test asked of tests with their own main and no framework: refused, not run as the whole suite',
+        ownMainPick.code === 1 && /^One test can be run only with GoogleTest, doctest or Catch2/.test(ownMainPick.stderr),
+        JSON.stringify(ownMainPick.stderr)
+    );
 
     const none = await testRun({ 'main.cpp': 'int main() {}\n' });
     check('test mode without tests/: says so, exit 1', none.code === 1 && /No tests to run/.test(none.stderr), JSON.stringify(none.stderr.trim()));

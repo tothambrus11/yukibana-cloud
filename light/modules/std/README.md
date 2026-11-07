@@ -31,6 +31,14 @@ downloaded project.
   the run message of its mode with the debugger's channel as `debug`, and
   nothing else changes; its session's `program` resolves with the
   runner's `debug` event, or null when the run ends without one.
+* **One test only where the runner selects.** `testCase` and
+  `debugTestCase` send a test run's message with `tests` (and, for the
+  second, `breakOnFailure`), fields a runner that does not know them
+  ignores by running every test. So they are tokens of their own, which a
+  language provides only when its runner honours them, and which a host
+  offers ("Run test", "Debug test", "Stop on failed assertion") only where
+  they are available. With neither field set, their messages are Test's
+  and Debug tests' exactly.
 * **A preview provider owns its worker.** `preview`'s session builds the
   page in a runner worker of its own, kept for as long as the session; the
   host shows the page and decides when to rebuild it.
@@ -70,13 +78,13 @@ downloaded project.
 | `levels.ts` | `OptimizationLevel`, `defaultLevel`, `LevelChoice`, `savedLevel`, `levelProperty` (a level saved with the project) |
 | `linux.ts` | `TargetId`, `TARGET_SHORT`, `RunOptions`, `DEFAULT_RUN_OPTIONS`, `runOptionsOf`, `runOptionsProperty`, `describeRunOptions` |
 | `read.ts` | `valueOf` (a property's value as a build uses it), `always`, `NO_PROPERTIES` |
-| `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider` |
+| `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider`; `debugTestCase` (`Token<DebugTestCaseInput, DebugSession>`), `debugTestCaseMessage`, `debugTestCaseProvider` |
 | `export.ts` | `exportBuild` (`Token<null, BuildSystem, 'many'>`), `exportTooling` (`Token<null, LanguageTooling>`), the CI model (`Environment`, `Extra`, `Step`, `JobSpec`, `LocalCheck`, `BuildCi`), `ExportProject`, `LanguageExport`, `ExportBuildSpec`, `exportProviders`, `LanguageDownloads` |
 | `export-kit.ts` (`@yukibana/std/export-kit`) | What the language packages' export bodies share: `withExtra`, `env`, `sources`, `trackedFiles`, `steps`, `testJob`, and Spotless (`spotlessJob`, `spotlessMaven`, `spotlessGradle` and its pins) |
 | `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`), `isExplorerProvider` |
 | `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
-| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `PoolHost`, `RunHost`, `sourceOf`, `runMessage`, `runProviderFrom`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
+| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `PoolHost`, `RunHost`, `sourceOf`, `runMessage`, `runProviderFrom`, `runProvider`; `testCase` (`Token<TestCaseInput, RunHandle>`), `testCaseMessage`, `testCaseProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 
 It may import core, runtime and protocol. Its tests are in
 `../tests/std-run.test.mjs`, `../tests/std-debug.test.mjs` and

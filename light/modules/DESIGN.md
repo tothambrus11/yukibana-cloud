@@ -13,6 +13,8 @@ This design is grounded in today's code: `languages.ts` (the `Language` booleans
 
 Governing rule: the rewrite moves decisions out of the app into providers that send today's pack messages unchanged. No pack contract changes. No new execution architecture.
 
+One exception, agreed with Ambrus after the rewrite's steps: a test run's optional `tests` and `breakOnFailure` (packs/CONTRACT.md, "Tests (optional)"), additive fields a runner that does not know them ignores, offered only through std's `testCase` and `debugTestCase`, which a language provides only where its runner honours them. The messages of every other token are unchanged.
+
 ## 1. Decisions
 
 | # | Decision | Reason (the review's concerns that moved it) |

@@ -9,12 +9,14 @@
  *   its packs), and `runProvider`, which makes a language's provider of one
  *   of them that sends its pack's runner today's run message, over
  *   `runProviderFrom`, which sends it to a runner the host names (one it
- *   built itself); `warm` and `warmProvider`, the runner a host keeps
+ *   built itself); `testCase` and `testCaseProvider`, one test run alone;
+ *   `warm` and `warmProvider`, the runner a host keeps
  *   started ahead of a run.
  * - debug.ts: `debug` and `debugTest` (`Token<DebugInput, DebugSession>`),
  *   a run or a test run under the debugger, and `debugProvider`, which
  *   makes a language's provider of one that sends today's run message with
- *   the debugger's channel.
+ *   the debugger's channel; `debugTestCase` and `debugTestCaseProvider`,
+ *   Debug tests narrowed to one test and stopping at failed assertions.
  * - preview.ts: `preview` (`Token<PreviewInput, PreviewSession>`), a web
  *   project's page built by its pack's runner, again at every edit.
  * - explore.ts: `explore` (`Token<EmitInput, Promise<EmitResult>>`), one
