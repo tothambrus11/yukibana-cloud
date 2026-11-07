@@ -142,8 +142,12 @@ on:
       - light/packs/**
       # What a split pack's tests read outside the packs (its test.sh
       # --inputs; test-workflows.mjs checks that each is here).
-      - light/app/src/lib/languages.ts
-      - light/app/src/lib/cpp-tests.ts
+      - light/modules/lang-cpp/**
+      - light/modules/lang-rust/**
+      - light/modules/std/**
+      - light/modules/core/**
+      - light/modules/runtime/**
+      - light/modules/protocol/**
       - light/scripts/pack-store.sh
       - light/scripts/test-pack-store.mjs
       - light/scripts/pack-toolchain.sh
@@ -170,8 +174,12 @@ on:
       - light/packs/**
       # What a split pack's tests read outside the packs (its test.sh
       # --inputs; test-workflows.mjs checks that each is here).
-      - light/app/src/lib/languages.ts
-      - light/app/src/lib/cpp-tests.ts
+      - light/modules/lang-cpp/**
+      - light/modules/lang-rust/**
+      - light/modules/std/**
+      - light/modules/core/**
+      - light/modules/runtime/**
+      - light/modules/protocol/**
       - light/scripts/pack-store.sh
       - light/scripts/test-pack-store.mjs
       - light/scripts/pack-toolchain.sh

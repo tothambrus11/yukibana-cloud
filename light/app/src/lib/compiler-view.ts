@@ -1,6 +1,6 @@
 /**
  * A compiler output view (LLVM IR, assembly, SIL, MIR, Core, …: the
- * language's, providers/explore.ts) inside a dockview panel: a header saying
+ * language's, modules/lang-<pack>) inside a dockview panel: a header saying
  * what the output is of and how it went, the view's toggles, a progress
  * line while the compiler downloads or compiles, and a read-only Monaco
  * editor showing the output, or the compiler's messages when the source
@@ -45,7 +45,7 @@
  */
 import type { monaco as Monaco } from './monaco';
 import { registerOutputLanguages } from './asm-languages';
-import { asmLanguageOf, isCppTargetId, TARGET_SHORT, targetById } from './cpp-targets';
+import { asmLanguageOf, isCppTargetId, TARGET_SHORT, targetById } from '@yukibana/lang-cpp/targets';
 import { sourceOf, userFlags, viewSummary, type SourceLine } from './explorer-map';
 import { linkerFor, type LinkHost } from './linking';
 import { placePopover } from './anchor';

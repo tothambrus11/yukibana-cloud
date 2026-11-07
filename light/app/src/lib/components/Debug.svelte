@@ -17,7 +17,7 @@
 	const dbg = $derived(workspace.debugger);
 	const status = $derived(dbg.status);
 	const stopped = $derived(status.kind === 'stopped');
-	// Offered as the language's providers say (providers/debug.ts), as the top bar does.
+	// Offered as the language's providers say (modules/lang-<pack>/index.ts), as the top bar does.
 	const subject = $derived(subjectOf(workspace.language));
 	const hasDebug = $derived(yukibana().has(subject, debug));
 	const debugAvailable = $derived(yukibana().availability(subject, debug, workspace.snapshot()));

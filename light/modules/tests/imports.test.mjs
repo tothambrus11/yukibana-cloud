@@ -13,8 +13,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { modules } from '../list.mjs';
 
-/** The entry points a host imports: every module's index.ts (list.mjs), a module after those it imports. */
-const ENTRIES = modules().map((module) => `../${module.name}/index.ts`);
+/**
+ * The entry points a host imports: every file each module's package.json
+ * exports (list.mjs), its index.ts first, a module after those it imports.
+ */
+const ENTRIES = modules().flatMap((module) => module.entries.map((entry) => `../${module.name}/${entry.source}`));
 
 /** What a module could reach for on a page, each a tripwire while the modules load. */
 const PAGE = ['window', 'document', 'self', 'location', 'localStorage', 'sessionStorage', 'MonacoEnvironment', 'matchMedia', 'monaco'];

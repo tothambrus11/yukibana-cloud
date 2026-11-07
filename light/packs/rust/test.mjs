@@ -3,7 +3,7 @@
 // Worker('/packs/rust/server.js', { type: 'module' })` in Chromium, one
 // JSON-RPC object per postMessage. Two sessions:
 //
-// 1. The app's sample project (app/src/lib/languages.ts: Cargo.toml,
+// 1. The app's sample project (modules/lang-rust/body.ts: Cargo.toml,
 //    src/main.rs, src/lib.rs, src/point.rs, tests/geometry.rs), files served
 //    raw: no diagnostics (the standard library and the crate graph
 //    resolve: `use geometry::...` names the library), errors for an
@@ -74,8 +74,8 @@ const plain = await serve(false);
 const encoded = await serve(true);
 
 
-const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
-const SAMPLE = sampleOf(languages, 'rust');
+const { BODIES } = await import('../../modules/lang-rust/body.ts');
+const SAMPLE = BODIES['rust'].sample;
 const MAIN = SAMPLE['src/main.rs'];
 const POINT = SAMPLE['src/point.rs'];
 
@@ -393,23 +393,3 @@ try {
 }
 console.log(failures ? `${failures} failed` : 'all passed');
 process.exit(failures ? 1 : 0);
-
-/** The `sample` object literal of one language in languages.ts, evaluated:
- * template literals of plain text keyed by file name. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    return new Function(`return (${source.slice(start, i + 1)});`)();
-}

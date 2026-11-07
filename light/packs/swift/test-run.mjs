@@ -7,7 +7,7 @@
 //
 //   node test-run.mjs        (after ./build.sh; needs playwright-core)
 //
-// Cases: the app's sample project (languages.ts, main.swift + Geometry.swift)
+// Cases: the app's sample project (the body.ts, main.swift + Geometry.swift)
 // cold (empty caches) and warm (the downloads in Cache Storage, through a
 // service worker that does for /packs/ what the app's does), a prompt without newline and
 // two lines read with readLine(), end of input, a type error (on stderr,
@@ -87,10 +87,10 @@ self.addEventListener('fetch', (e) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-// The sample project of app/src/lib/languages.ts, read from there so the test
+// The sample project of modules/lang-swift/body.ts, read from there so the test
 // runs exactly what a new project contains.
-const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
-const SAMPLE = sampleOf(languages, 'swift');
+const { BODIES } = await import('../../modules/lang-swift/body.ts');
+const SAMPLE = BODIES['swift'].sample;
 
 const STDIN = {
     'main.swift': `print("first number: ", terminator: "")
@@ -631,23 +631,3 @@ await c.runTest()
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
-
-/** The `sample` object literal of one language in languages.ts, evaluated:
- * template literals of plain text keyed by file name. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    return new Function(`return (${source.slice(start, i + 1)});`)();
-}

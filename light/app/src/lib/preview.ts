@@ -4,7 +4,7 @@
  * terminal.
  *
  * The page is built by the language's provider of @yukibana/std's
- * `preview` (providers/preview.ts: the pack's runner, `type: 'preview'`,
+ * `preview` (lang-javascript/index.ts: the pack's runner, `type: 'preview'`,
  * see packs/javascript/README.md, "Preview"), whose session keeps its
  * worker for as long as the preview is shown, so TypeScript is loaded once:
  * it answers with one HTML document in which the stylesheets are inlined
@@ -72,7 +72,7 @@ export class Preview {
 	private placeholder: HTMLElement | null = null;
 	/** The bar above the page: Auto reload, Reload and what is going on. */
 	private bar: { auto: HTMLInputElement; reload: HTMLButtonElement; status: HTMLElement } | null = null;
-	/** The session building the page shown, while previewing (providers/preview.ts). */
+	/** The session building the page shown, while previewing (lang-javascript/index.ts). */
 	private session: PreviewSession | null = null;
 	/** Whose session it is: the language it was opened for, while previewing. */
 	private owner: LanguageKey | null = null;

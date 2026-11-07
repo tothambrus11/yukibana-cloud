@@ -117,7 +117,7 @@ export function isViewSource(path: string): boolean {
 /**
  * The source a view shows once the editor shows `active`: `active` itself
  * when it is a source the views can show (`isSource`: the language's,
- * providers/explore.ts; a C or C++ source by default), else (a header, any
+ * modules/lang-<pack>; a C or C++ source by default), else (a header, any
  * other file, no file) the source shown before, `previous`, which may be
  * null: the view then asks for a source to be opened.
  */

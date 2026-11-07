@@ -23,13 +23,13 @@
 	import { BUILD_SETTINGS_EVENT, buildSummary } from '../build-settings';
 	import type { Workspace } from '../workspace.svelte';
 	import Sanitizers from './Sanitizers.svelte';
-	import { TARGETS, type CppTargetId } from '../cpp-targets';
-	import { MIRI_TARGETS, RUST_TARGETS, type MiriTarget, type RustTarget } from '../rust-targets';
-	import { TEST_FRAMEWORKS, type TestFramework } from '../cpp-tests';
+	import { TARGETS, type CppTargetId } from '@yukibana/lang-cpp/targets';
+	import { MIRI_TARGETS, RUST_TARGETS, type MiriTarget, type RustTarget } from '@yukibana/lang-rust/targets';
+	import { TEST_FRAMEWORKS, type TestFramework } from '@yukibana/lang-cpp/tests';
 	import { levelsOf } from '../optimization';
 	import { isCFamily } from '../languages';
-	import { CPP_STANDARDS, C_STANDARDS, describeStandard, defaultStandard } from '../cpp-standards';
-	import { describeTidy } from '../tidy-config';
+	import { CPP_STANDARDS, C_STANDARDS, describeStandard, defaultStandard } from '@yukibana/lang-cpp/standards';
+	import { describeTidy } from '@yukibana/lang-cpp/tidy';
 
 	let { workspace }: { workspace: Workspace } = $props();
 
@@ -126,7 +126,7 @@
 	<h2>Build settings</h2>
 	<div class="rows">
 		{#if cFamily}
-			<!-- The target is compile_flags.txt's --target line (cpp-targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
+			<!-- The target is compile_flags.txt's --target line (lang-cpp/targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
 			<div class="row target">
 				<span class="name">Target</span>
 				<span class="field">
@@ -135,7 +135,7 @@
 				</span>
 			</div>
 			{#if workspace.standard}
-				<!-- compile_flags.txt's -std= line for the project's language (cpp-standards.ts): choosing one rewrites it; a hand-written one is shown as it is. -->
+				<!-- compile_flags.txt's -std= line for the project's language (lang-cpp/standards.ts): choosing one rewrites it; a hand-written one is shown as it is. -->
 				<div class="row standard" role="group" aria-label="Standard">
 					<span class="name">Standard</span>
 					<span class="field">
@@ -169,7 +169,7 @@
 			{/if}
 		{/if}
 		{#if rust}
-			<!-- The target is .cargo/config.toml's [build] target (rust-targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
+			<!-- The target is .cargo/config.toml's [build] target (lang-rust/targets.ts): choosing one rewrites it; a hand-edited one is shown as it is. -->
 			<div class="row target">
 				<span class="name">Target</span>
 				<span class="field">
@@ -212,7 +212,7 @@
 			</div>
 		{/if}
 		{#if cFamily}
-			<!-- The -fsanitize= line of compile_flags.txt (cpp-sanitizers.ts): ticking one rewrites it; a hand-written one is honoured. -->
+			<!-- The -fsanitize= line of compile_flags.txt (lang-cpp/sanitizers.ts): ticking one rewrites it; a hand-written one is honoured. -->
 			<div class="row" role="group" aria-label="Sanitizers">
 				<span class="name">Sanitizers</span>
 				<span class="field"><Sanitizers {workspace} /></span>

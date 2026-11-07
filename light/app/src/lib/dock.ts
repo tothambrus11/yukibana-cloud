@@ -510,7 +510,7 @@ export function createDock(element: HTMLElement, workspace: Workspace): Dock {
 	element.dataset['layoutMode'] = mode;
 
 	const panel = (id: string) => dock.getPanel(id);
-	/** Where view `kind` comes in the language's list of views (providers/explore.ts); after them all when it is none of them. */
+	/** Where view `kind` comes in the language's list of views (modules/lang-<pack>); after them all when it is none of them. */
 	const viewOrder = (kind: ViewKind | null): number => {
 		const at = viewsOf(subjectOf(workspace.language))?.views.findIndex((v) => v.kind === kind) ?? -1;
 		return at === -1 ? Number.MAX_SAFE_INTEGER : at;

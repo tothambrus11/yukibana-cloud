@@ -195,7 +195,7 @@ All packages are lockstep and `sideEffects: false`. Each has its own tsconfig.
 | `std/` **new** | tokens and input types: `std/run` (`run`, `test`, `mutate`: `Token<RunInput, RunHandle>`), `std/debug`, `std/preview`, `std/explore` (`Token<EmitInput, EmitResult>`, `ViewKind` brand), `std/export` (`many`). Also helpers `runProvider(meta, build)` and `packsOf(meta)`. No language ids. | core, runtime, protocol | same as runtime |
 | `monaco/` | today's code, plus `bind.ts` (Monaco models ↔ `Project`, `LanguageSession` ↔ Monaco features, from `lsp/client.ts`), plus `EditorKinds['monaco']` | core, runtime, protocol, `import type` monaco-editor | DOM |
 | `editors/` **new, step 8** | `editors/textarea` (`EditorKinds['textarea']`); CodeMirror later as a subpath | core | DOM |
-| `languages/<pack>/` **new** (`@yukibana/lang-cpp` serves `c` and `cpp`; `lang-javascript` serves javascript, typescript, web, p5, p5-global; one each for python, swift, scala, rust, php, java, kotlin, haskell, go, zig) | `index.ts` holds `LanguageMeta` and provider metadata (`available`, `requires`, entry) only. Subpaths: `/body` (sample, server settings, properties), `/run`, `/explore`, `/debug`, `/preview`, `/monaco` (Monarch grammar, `monacoLanguages`) | core, std, runtime, protocol. `/monaco` may also `import type` monaco-editor. Never another `languages/*` | DOM |
+| `lang-<pack>/` **new, step 6** (`@yukibana/lang-cpp` serves `c` and `cpp`; `lang-javascript` serves javascript, typescript, web, p5, p5-global; one each for python, swift, scala, rust, php, java, kotlin, haskell, go, zig) | `index.ts` holds each language's `PackLanguageSpec` and its providers, whose bodies are std's or loaded on a first request. Subpaths: `/body` (sample, server settings, properties), `/monaco` (`MONACO_LANGUAGES`, and Haskell's and Zig's grammars, lazy), and the property modules the app's pickers read (section 14) | core, std, runtime, protocol. `/monaco` may also `import type` monaco-editor, where the package's `peerDependencies` name it. Never another `lang-*` | DOM |
 
 Packs and `CONTRACT.md` are unchanged.
 
@@ -203,8 +203,8 @@ Packs and `CONTRACT.md` are unchanged.
 
 1. `ALLOWED` is derived from each `package.json`'s `dependencies` and `peerDependencies`. `build.mjs PUBLISHED`, the app's `check` tsc list and `light-modules.yml` read the same directory list.
 2. `core/`: forbid the identifiers `document`, `window`, `HTMLElement`, `customElements`, `Worker`, `location`, `crossOriginIsolated`, `fetch` and `MessagePort`. A tsconfig compile test (as already done for protocol) proves the core compiles without DOM.
-3. `core/`, `std/`, `runtime/`, `monaco/` and `editors/`: forbid every `LanguageId` literal, read from `languages/*/index.ts` meta keys, in string literals.
-4. `languages/<pack>/index.ts` may value-import only `core` and token modules of `std` (`std/run`, not `std/run/*` bodies). Anything that sends a message lives in a subpath reached by `import()` or, for Light's eager set, a static import in the host config.
+3. `core/`, `std/`, `runtime/`, `monaco/` and `editors/`: forbid every `LanguageId` literal, read from the `spec: { key: … }` of each `lang-*/index.ts`, in string literals. A `lang-*` never imports another `lang-*`.
+4. `lang-<pack>/index.ts` may value-import only `core` and token modules of `std` (`std/run`, not `std/run/*` bodies). Anything that sends a message lives in a subpath reached by `import()` or, for Light's eager set, a static import in the host config.
 5. A module that is the target of any `import()` has no static importer inside its own package.
 6. No top-level call other than `/* @__PURE__ */ defineToken(...)` and `provide(...)` in an entry module. `tests/imports.test.mjs` tripwires cover every new entry.
 7. Any `as` cast outside `core/brand.ts` and the named parse boundaries (`MetaBinding.parse`, `languageOf`) needs an allow-list entry with a reason.
@@ -216,6 +216,8 @@ Packs and `CONTRACT.md` are unchanged.
    - `EditorPort<'textarea'>.native` is not a Monaco editor.
 
 ## 4. Light's app mapped onto it
+
+Where this table says `languages/<pack>`, step 6 made it `lang-<pack>` (decision D1); what it built, and where it departs from this table, is section 14.
 
 | `light/app/src/lib` file | Goes to |
 |---|---|
@@ -816,3 +818,109 @@ section and sections 11 and 12 differ, this one holds.
   they did nothing. `e2e-debug.mjs` adds doctest to the GoogleTest tests
   and checks the Log panel. A debugged run whose provider throws now also
   ends the debugger's session, which it left started.
+
+## 14. Step 6 as built: std and the language packages
+
+What step 6 built, and where it departs from sections 3 to 5 and from
+decision D1. Where this section and those differ, this one holds.
+
+* **One flat directory per pack** (D1): `lang-python`, `lang-javascript`
+  (javascript, typescript, web, p5, p5-global), `lang-cpp` (c, cpp),
+  `lang-swift`, `lang-scala`, `lang-rust`, `lang-php`, `lang-java`,
+  `lang-kotlin`, `lang-haskell`, `lang-go` and `lang-zig`, each
+  `@yukibana/lang-<pack>`. list.mjs finds them as it finds every module,
+  and now also reads each package's `exports` (`entries`, under the
+  `@yukibana/source` condition) and whether it is allowed Monaco's types
+  (`monacoTypes`, a `monaco-editor` peer dependency). The app's Vite
+  aliases (`moduleSources()`), the Node resolve hook the app's tests
+  register (`tests/modules-hook.mjs`, over `sourceUrlOf`) and the import
+  tripwires (52 entries) all read that list, so adding a language is
+  adding a directory.
+* **A package exports its languages as specs and providers, and the host
+  gives the body.** `index.ts` exports `LANGUAGES`, by key, each a
+  `PackageLanguage<PackHost>`: its `spec` (`PackLanguageSpec`: key,
+  label, short, pack, uses, entry, extension; at most 250 B gzip each,
+  checked in languages.test.mjs) and `providers(language)`. `body.ts`
+  exports `BODIES` (`PackLanguageBody`: sample, server settings,
+  properties, `configFiles`), and `monaco.ts` `MONACO_LANGUAGES`. The
+  host pairs them with std's `packLanguage(spec, body)`, which checks the
+  key, entry and pack and takes the body's thunk. Section 3 had
+  `index.ts` reach its body by `import('./body.ts')`: Light imports every
+  body statically (the eager set, N9), so that `import()` would be a
+  dynamic import of a module already in its importer's static closure,
+  which rule 5 and the bundle test now refuse. Another host passes a
+  thunk that imports the body when it wants.
+* **No `/run`, `/debug` or `/explore` subpaths.** The bodies of Run,
+  Test, Mutate, Debug, Debug tests and the explorer are std's
+  (`runProvider`, `debugProvider`, `explorerProvider`, whose explorer
+  workers std already loads on a first request), so a language's
+  providers are their metadata and nothing to split. The one body of a
+  package's own is lang-javascript's preview session
+  (`preview-session.ts`), still loaded on a first Preview. `/export`
+  waits for step 9.
+* **Subpaths the app's pickers read.** lang-cpp exports `/levels`,
+  `/properties`, `/sanitizers`, `/standards`, `/targets`, `/tests` and
+  `/tidy`; lang-rust `/properties` and `/targets`; lang-swift and
+  lang-scala `/properties` (their levels and property models). These are
+  the lenses of step 3, moved with their unit tests' paths; the app's
+  table (`properties/index.ts`, `optimization.ts`) reads the very models
+  the bodies carry.
+* **std gained what more than one language shares**, so that no `lang-*`
+  imports another: `std/linux` (targets' short names, run options and
+  their property, which C, C++ and Rust use; section 4's choice),
+  `std/levels` (optimisation levels and `levelProperty`), `std/read`
+  (`valueOf`, `always`, `NO_PROPERTIES`) and `std/explore-views` (the
+  view kinds' titles and the toggles several languages offer). Each
+  language's own views moved to its package. `isExplorerProvider` lets
+  the app find the explorers among the providers it registered.
+* **The app keeps `LanguageId` and the picker.** languages.ts imports
+  every package's `LANGUAGES`, `BODIES` and `MONACO_LANGUAGES`, and
+  `LanguageId` is `keyof typeof INSTALLED`, the union of the installed
+  keys; the picker's order, `isCFamily`, `languageOf` and
+  `isLanguageId` stay. `Language` gained a required `pack`, `uses`,
+  `configFiles`, `properties` and `providers`, so packs.ts reads the
+  pack from the language instead of a table.
+* **Haskell's and Zig's grammars are lazy** (D2). `registerHaskell` and
+  `registerZig` (`/monaco`) register the language and set its language
+  configuration at once, and load the Monarch tokenizer
+  (`grammar.ts`) by `import()` when Monaco first meets the language.
+  Haskell's configuration used to be set in `onLanguage` too; it is now
+  eager, as Zig's is, because Zig's comment and bracket rules once arrived
+  after the first model and were missed. The bundle test checks both
+  grammars are lazy chunks outside the initial set.
+* **The guards.** boundaries.test.mjs: core, std, runtime and monaco name
+  no language id (read from each `lang-*/index.ts` spec); no `lang-*`
+  imports another; an `index.ts` value-imports only core, std and its own
+  package's metadata modules; a module some `import()` reaches has no
+  static importer in its package (rule 5), each with a negative.
+  bundle.test.mjs: no dynamic import already in its importer's static
+  closure; no language's index or body is a lazy chunk; the offline shell
+  holds the initial set and every shared module's lazy body, and not the
+  app's own lazy views (explorer.svelte.ts, compiler-view.ts).
+* **The offline shell is classified by owner, then by graph.**
+  offline-manifest.mjs takes a dynamic entry of Monaco's or of the app's
+  `src/` as a lazy root and one of a shared module's or of Kit's as
+  startup (precached), then closes over the import graph. The shell came
+  out as before except that the preview session and the two grammars,
+  now shared modules' lazy bodies, are precached (equal or better), and
+  one fix: build/index.html links RunOptions.css, which was classified
+  lazy before this step too; every file the page links is now in the
+  shell. Shell 46 entries before, 48 after.
+* **Not done, and why.** `paths.ts` stays in runtime (re-exported by
+  core, as step 1 left it): moving it changes runtime's published API for
+  no consumer. core, std and every `lang-*` stay private: publishing core
+  and std means publishing their source-only `.ts` entries and Monaco's
+  types as a peer, which is not trivial; build.mjs still publishes
+  protocol and runtime, and package.test.mjs installs those. No initial
+  drop from moving samples, which section 5 expected: Light imports
+  every body with the page.
+* **Packs' tests read the packages.** The pack tests that ran the app's
+  sample (go, swift, rust, cpp, zig, java, scala) imported it by parsing
+  languages.ts's source; they now `import()` the package's `body.ts` (and
+  java and scala its `index.ts`, for the entry), which Node loads as it
+  is. packs/cpp's test imports the test-framework chooser from
+  lang-cpp's `tests.ts`. Their `test.sh --inputs` print the package's,
+  std's, core's, runtime's and protocol's files, and light-packs.yml and
+  light-ci.yml's exports job list those directories.
+* **The initial set** went from 1,251,213 B (27 files) to 1,249,399 B (24
+  files) gzip, recorded in `app/bundle-baseline.json` (budget +1%).

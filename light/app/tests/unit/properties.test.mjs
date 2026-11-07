@@ -1,4 +1,4 @@
-// The build settings as properties (src/lib/properties/): each file lens
+// The build settings as properties (modules/lang-*/properties.ts, the app's table in src/lib/properties/): each file lens
 // reads what the Build settings always read and writes back keeping every
 // line that is not its own, byte for byte, including the lines another
 // lens does not recognise; each meta lens maps onto the field the project
@@ -23,9 +23,10 @@ const { pathOf, readProperty, writeProperty } = await import('../../../modules/c
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
 const { metaOf } = await import('../../src/lib/yukibana.ts');
 const { runnerOptionsOf, settingsOf } = await import('../../src/lib/properties/index.ts');
-const cpp = await import('../../src/lib/properties/cpp.ts');
-const rust = await import('../../src/lib/properties/rust.ts');
-const { levelProperty } = await import('../../src/lib/properties/levels.ts');
+const cpp = await import('../../../modules/lang-cpp/properties.ts');
+const rust = await import('../../../modules/lang-rust/properties.ts');
+const { SWIFT_LEVEL } = await import('../../../modules/lang-swift/properties.ts');
+const { SCALA_LEVEL } = await import('../../../modules/lang-scala/properties.ts');
 
 /** A project of `files`, with `meta` as its saved fields, as the workspace's snapshot answers. */
 function snapshotOf(files = {}, meta = {}) {
@@ -160,11 +161,11 @@ test('the Rust target lens rewrites [build] target alone, keeping every other li
 });
 
 test('a meta property saves its field as the project always did, the default as unset', () => {
-	const swift = levelProperty('swift');
+	const swift = SWIFT_LEVEL;
 	assert.deepEqual(writeProperty(snapshotOf(), swift, '-O'), { kind: 'meta', key: 'optimization', value: '-O' });
 	assert.deepEqual(writeProperty(snapshotOf(), swift, '-Onone'), { kind: 'meta', key: 'optimization', value: null });
 	assert.deepEqual(readProperty(snapshotOf({}, { optimization: '-O3' }), swift), { kind: 'default' }, "a level of another language's reads as unset");
-	assert.deepEqual(readProperty(snapshotOf({}, { optimization: 'on' }), levelProperty('scala')), { kind: 'value', value: 'on' });
+	assert.deepEqual(readProperty(snapshotOf({}, { optimization: 'on' }), SCALA_LEVEL), { kind: 'value', value: 'on' });
 	assert.deepEqual(writeProperty(snapshotOf(), rust.MIRI, 'off'), { kind: 'meta', key: 'miri', value: null });
 	assert.deepEqual(writeProperty(snapshotOf(), rust.MIRI, 's390x'), { kind: 'meta', key: 'miri', value: 's390x' });
 	assert.deepEqual(writeProperty(snapshotOf(), cpp.CLANG_TIDY, false), { kind: 'meta', key: 'clangTidy', value: false });

@@ -1,28 +1,22 @@
 /**
  * The app's instance of @yukibana/core: every language of languages.ts as
- * `LanguageMeta`, the providers of what each can do (providers/: run,
- * test and mutate, debug, preview, explore), and the host they borrow
- * from, the page's one runner pool, explorer workers and pack locator.
+ * a `PackLanguage`, the providers of what each can do, as its package
+ * makes them (run, test and mutate, debug, preview, explore), and the
+ * host they borrow from, the page's one runner pool, explorer workers and
+ * pack locator.
  *
  * Made on first use, once per page, so importing this module does nothing:
  * the pool reads the page's origin and the locator its base, which a
- * prerendered page has not. languages.ts stays the source of each
- * language's metadata until the languages are packages of their own
- * (light/modules/DESIGN.md, step 6).
+ * prerendered page has not.
  */
-import { createInstance, languageKey, pathOf, type Instance, type Subject } from '@yukibana/core';
+import { createInstance, type AnyProvider, type Instance, type Subject } from '@yukibana/core';
 import { RunnerPool, workerTransport, type PackLocator } from '@yukibana/runtime';
-import { pageExplorers, viewIn, type ExploreHolder, type ExplorerProvider, type ExplorerWorkers, type ExploreHost, type ExploreView, type LanguageViews, type PackLanguage, type RunHost, type ViewKind } from '@yukibana/std';
+import { isExplorerProvider, packLanguage, pageExplorers, viewIn, type ExploreHolder, type ExplorerProvider, type ExplorerWorkers, type ExploreView, type LanguageViews, type PackHost, type PackLanguage, type ViewKind } from '@yukibana/std';
 import { LANGUAGES, type Language } from './languages.ts';
-import { APP_RUNNER_NEEDS, appPacks, packsOf } from './packs.ts';
-import { debugProvidersOf } from './providers/debug.ts';
-import { exploreProvidersOf } from './providers/explore.ts';
-import { previewProvidersOf } from './providers/preview.ts';
-import { runProvidersOf } from './providers/run.ts';
-import { settingsOf } from './properties/index.ts';
+import { APP_RUNNER_NEEDS, appPacks } from './packs.ts';
 
-/** What the app's providers borrow: what runs need, and what the compiler output views need. */
-export type AppHost = RunHost & ExploreHost;
+/** What the app's providers borrow: what runs need, and what the compiler output views need (std's `PackHost`). */
+export type AppHost = PackHost;
 
 /**
  * What the app's providers borrow: the page's runners and explorer
@@ -79,25 +73,15 @@ export class PageHost implements AppHost {
 }
 
 /**
- * Returns `language` as the core knows it: its metadata, the packs it runs
- * on, and its sample, server settings and build settings (properties/) as
- * its body. Throws, as `packsOf`
- * does, for a pack that is not a pack id: when the instance is made, not
- * when Run is first pressed.
+ * Returns `language` as the core knows it: its package's spec, checked
+ * (std's `packLanguage`), and its sample, server settings, build settings
+ * and configuration files as its body, which the page already has.
+ * Throws, as `packLanguage` does, for a pack that is not a pack id: when
+ * the instance is made, not when Run is first pressed.
  */
 export function metaOf(language: Language): PackLanguage {
-	const [pack, ...uses] = packsOf(language);
-	if (pack === undefined) throw new RangeError(`${language.label} has no pack.`);
-	return {
-		key: languageKey(language.id),
-		label: language.label,
-		short: language.short ?? null,
-		pack,
-		uses,
-		entry: pathOf(language.entry),
-		extension: language.extension,
-		body: async () => ({ sample: language.sample, serverSettings: language.settings, properties: settingsOf(language.id).model }),
-	};
+	const spec = { key: language.id, label: language.label, short: language.short ?? null, pack: language.pack, uses: language.uses, entry: language.entry, extension: language.extension };
+	return packLanguage(spec, async () => ({ sample: language.sample, serverSettings: language.settings, properties: language.properties, configFiles: language.configFiles }));
 }
 
 /**
@@ -119,13 +103,10 @@ const keyOf = (subject: Subject): string => `${subject.kind}:${subject.id}`;
 function made(): Page {
 	if (page === null) {
 		const host = new PageHost();
-		const languages = LANGUAGES.map((language) => ({ id: language.id, meta: metaOf(language) }));
-		const explorers = languages.flatMap(({ id, meta }) => exploreProvidersOf(id, meta));
-		const instance = createInstance<AppHost>({
-			languages: languages.map(({ meta }) => meta),
-			providers: [...languages.flatMap(({ id, meta }) => [...runProvidersOf(id, meta), ...debugProvidersOf(id, meta), ...previewProvidersOf(id, meta)]), ...explorers],
-			host,
-		});
+		const languages = LANGUAGES.map((language) => ({ language, meta: metaOf(language) }));
+		const providers: AnyProvider<AppHost>[] = languages.flatMap(({ language, meta }) => language.providers(meta));
+		const explorers = providers.filter(isExplorerProvider);
+		const instance = createInstance<AppHost>({ languages: languages.map(({ meta }) => meta), providers, host });
 		page = { host, instance, explorers: new Map(explorers.map((provider) => [keyOf(provider.subject), provider])) };
 	}
 	return page;
@@ -156,7 +137,7 @@ export function subjectOf(id: string): Subject {
 
 /**
  * Returns the compiler output views of `subject`, as its provider of
- * `explore` carries them (providers/explore.ts), or null when it has none:
+ * `explore` carries them (its package's views), or null when it has none:
  * read synchronously, by the top bar, the dock and the views.
  */
 export function viewsOf(subject: Subject): LanguageViews | null {

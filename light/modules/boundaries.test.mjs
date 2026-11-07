@@ -50,20 +50,36 @@ const FORBIDDEN_NAMES = {
  * to say (DESIGN.md, rule 3), so a language id in one of their string
  * literals is a decision about that language made in the wrong place.
  */
-const NO_LANGUAGES = new Set(['core', 'std']);
+const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco']);
+
+/** `true` iff `module` is a language package (`lang-<pack>`, DESIGN.md section 3). */
+const isLanguagePackage = (module) => module.startsWith('lang-');
 
 /**
- * The app's language ids, read from its `LanguageId` type
- * (app/src/lib/languages.ts) until each language is a package of its own.
+ * Every language id, read from the language packages: the `key` of each
+ * spec their index.ts files describe a language with (`key: 'cpp'`).
  */
-const LANGUAGE_IDS = (() => {
-	const source = readFileSync(join(here, '../app/src/lib/languages.ts'), 'utf8');
-	const union = /export type LanguageId =([^;]+);/.exec(source)?.[1] ?? '';
-	return new Set([...union.matchAll(/'([^']+)'/g)].map((m) => m[1]));
-})();
+const LANGUAGE_IDS = new Set(
+	modules()
+		.filter((module) => isLanguagePackage(module.name))
+		.flatMap((module) => [...readFileSync(join(here, module.name, 'index.ts'), 'utf8').matchAll(/\bspec: \{ key: '([^']+)'/g)].map((m) => m[1])),
+);
 
-/** Modules that may `import type` from monaco-editor, and nothing else from it. */
-const MONACO_TYPES = new Set(['monaco']);
+/**
+ * Modules that may `import type` from monaco-editor, and nothing else from
+ * it: monaco, and every module whose package.json names monaco-editor as a
+ * peer dependency (the grammars of lang-haskell and lang-zig), list.mjs's
+ * `monacoTypes`.
+ */
+const MONACO_TYPES = new Set(['monaco', ...modules().filter((module) => module.monacoTypes).map((module) => module.name)]);
+
+/**
+ * Modules a language package's entry point (its index.ts) may import
+ * values from, besides its own files: the core and std, whose tokens and
+ * provider factories send nothing until a host performs (DESIGN.md, rule
+ * 4). Anything else it needs is a subpath of its own.
+ */
+const LANGUAGE_INDEX_VALUES = new Set(['core', 'std']);
 
 /**
  * Words no module's source may contain, comments included: each names
@@ -169,10 +185,14 @@ function problemsOf(root, module, path, source) {
 		}
 		if (target === null || !(target in ALLOWED)) {
 			problems.push(`${name} imports '${specifier}', which is outside the shared modules`);
+		} else if (isLanguagePackage(module) && isLanguagePackage(target) && target !== module) {
+			problems.push(`${name} imports '${specifier}', another language's package: a language package never imports another`);
 		} else if (!ALLOWED[module].includes(target)) {
 			problems.push(`${name} imports '${specifier}', but ${module} may import only ${ALLOWED[module].join(', ')}`);
 		} else if (!typeOnly && TYPES_ONLY[module]?.has(target)) {
 			problems.push(`${name} imports '${specifier}' as a value, but ${module} may import only types from ${target}`);
+		} else if (!typeOnly && isLanguagePackage(module) && name === join(module, 'index.ts') && target !== module && !LANGUAGE_INDEX_VALUES.has(target)) {
+			problems.push(`${name} imports '${specifier}' as a value, but a language's index.ts may import values only from core, std and its own package`);
 		}
 	}
 	for (const identifier of identifiersOf(path, source)) {
@@ -213,6 +233,65 @@ test('every shared module imports only the modules its arrows allow, and mention
 	}
 	assert.ok(files >= Object.keys(ALLOWED).length, 'every module has at least its index.ts');
 	assert.deepEqual(problems, []);
+});
+
+/**
+ * What is wrong with the lazy imports of `module`, whose source files are
+ * `files` (absolute path to source): an `import()` of a file of its own
+ * that a file of its own also imports statically, or that its package.json
+ * exports (a host may import an entry point statically), would put the
+ * file in the importer's chunk and fetch nothing (DESIGN.md, rule 5).
+ */
+function lazyProblemsOf(module, files, entries) {
+	const statics = new Set();
+	const dynamics = [];
+	for (const [path, source] of files) {
+		for (const node of lazyAndStatic(path, source)) {
+			if (node.specifier === null || !node.specifier.startsWith('.')) continue;
+			const target = resolve(dirname(path), node.specifier);
+			if (node.dynamic) dynamics.push({ from: path, target, specifier: node.specifier });
+			else statics.add(target);
+		}
+	}
+	const exported = new Set(entries.map((entry) => join(here, module, entry.source)));
+	return dynamics.flatMap(({ from, target, specifier }) => {
+		const name = relative(here, from);
+		if (statics.has(target)) return [`${name} imports '${specifier}' lazily, and a file of ${module} imports it statically, so the lazy import fetches nothing`];
+		if (exported.has(target)) return [`${name} imports '${specifier}' lazily, and ${module} exports it, so a host that imports it statically makes the lazy import fetch nothing`];
+		return [];
+	});
+}
+
+/** Every import of a source file with whether it is an `import()`, type-only imports aside (they load nothing). */
+function lazyAndStatic(path, source) {
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const found = [];
+	const visit = (node) => {
+		if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+			const [argument] = node.arguments;
+			found.push({ specifier: argument && ts.isStringLiteralLike(argument) ? argument.text : null, dynamic: true });
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+	for (const { specifier, typeOnly } of importsOf(path, source)) {
+		if (!typeOnly && !found.some((f) => f.dynamic && f.specifier === specifier)) found.push({ specifier, dynamic: false });
+	}
+	return found;
+}
+
+test('a file a module imports lazily is imported lazily alone: no file of its own and no entry point is it', () => {
+	const problems = [];
+	for (const module of modules()) {
+		const files = sourcesUnder(join(here, module.name)).map((path) => [path, readFileSync(path, 'utf8')]);
+		problems.push(...lazyProblemsOf(module.name, files, module.entries));
+	}
+	assert.deepEqual(problems, []);
+	const lang = (file) => join(here, 'lang-x', file);
+	const entries = [{ subpath: '.', source: 'index.ts' }, { subpath: './body', source: 'body.ts' }];
+	assert.equal(lazyProblemsOf('lang-x', [[lang('index.ts'), "export const b = () => import('./body.ts');"]], entries).length, 1);
+	assert.equal(lazyProblemsOf('lang-x', [[lang('index.ts'), "export const g = () => import('./grammar.ts');"], [lang('monaco.ts'), "import { G } from './grammar.ts';"]], entries).length, 1);
+	assert.deepEqual(lazyProblemsOf('lang-x', [[lang('index.ts'), "export const g = () => import('./grammar.ts');"], [lang('monaco.ts'), "import type { G } from './grammar.ts';"]], entries), []);
 });
 
 // The checker itself, on sources that break each rule: a rule that never
@@ -271,12 +350,32 @@ test('std may import the runtime, core and protocol, and nothing above it', () =
 	assert.equal(check('core', "import { run } from '@yukibana/std';").length, 1);
 });
 
-test('core and std name no language, though their comments may', () => {
+test('a language package imports no other, and its index.ts imports values from core, std and itself alone', () => {
+	assert.equal(check('lang-cpp', "import { RUST_TARGETS } from '../lang-rust/targets.ts';").length, 1);
+	assert.equal(check('lang-cpp', "import type { RustTarget } from '@yukibana/lang-rust/targets';").length, 1);
+	const index = (source) => problemsOf(here, 'lang-cpp', fake('lang-cpp', 'index.ts'), source);
+	assert.deepEqual(index("import { runProvider } from '../std/index.ts';\nimport { CPP_VIEWS } from './views.ts';"), []);
+	assert.equal(index("import { readFromRunner } from '../protocol/index.ts';").length, 1);
+	assert.deepEqual(index("import type { PackId } from '../runtime/index.ts';").length, 1, 'a language package does not declare the runtime');
+	assert.deepEqual(problemsOf(here, 'lang-javascript', fake('lang-javascript', 'preview-session.ts'), "import { readFromRunner } from '../protocol/index.ts';"), []);
+});
+
+test('only the packages that declare Monaco as a peer may name its types', () => {
+	assert.ok(MONACO_TYPES.has('lang-haskell') && MONACO_TYPES.has('lang-zig') && !MONACO_TYPES.has('lang-cpp'));
+	assert.deepEqual(check('lang-haskell', "import type * as Monaco from 'monaco-editor';"), []);
+	assert.equal(check('lang-haskell', "import * as monaco from 'monaco-editor';").length, 1);
+	assert.equal(check('lang-cpp', "import type * as Monaco from 'monaco-editor';").length, 1);
+});
+
+test('core, std, the runtime and monaco name no language, though their comments may', () => {
 	assert.ok(LANGUAGE_IDS.has('cpp') && LANGUAGE_IDS.has('python'), 'the language ids were read');
 	assert.equal(check('std', "export const tests = (id: string) => id === 'python';").length, 1);
 	assert.equal(check('core', 'export const pack = `cpp`;').length, 1);
 	assert.deepEqual(check('std', "// cpp's runner takes 'test'\nexport const id = 'std#run';"), []);
-	assert.deepEqual(check('runtime', "export const id = 'cpp';"), []);
+	assert.equal(check('runtime', "export const id = 'cpp';").length, 1);
+	assert.equal(check('monaco', "export const id = 'haskell';").length, 1);
+	assert.deepEqual(check('lang-cpp', "export const id = 'cpp';"), []);
+	assert.ok(LANGUAGE_IDS.has('p5-global') && LANGUAGE_IDS.has('c') && LANGUAGE_IDS.size === 17, `the language ids are every package's: ${[...LANGUAGE_IDS].join(', ')}`);
 });
 
 test('the runtime may import protocol but never the Monaco integration', () => {

@@ -34,8 +34,8 @@ import { internals } from './monaco-internals';
 import { WORKSPACE } from './project';
 import { AppDialogService, WorkspaceBulkEditService } from './workspace-edits';
 import { projectNotice } from './undo-text';
-import { registerHaskell } from './haskell-language';
-import { registerZig } from './zig-language';
+import { registerHaskell } from '@yukibana/lang-haskell/monaco';
+import { registerZig } from '@yukibana/lang-zig/monaco';
 
 export type { QuickPick, QuickPickItem };
 
@@ -112,7 +112,8 @@ import 'monaco-editor/languages/definitions/php/register';
 import 'monaco-editor/languages/definitions/java/register';
 import 'monaco-editor/languages/definitions/kotlin/register';
 import 'monaco-editor/languages/definitions/go/register';
-// Monaco has no Haskell or Zig grammar: ours, registered by startEditor.
+// Monaco has no Haskell or Zig grammar: their packages', registered by
+// startEditor, whose tokenizers load with the first model of the language.
 
 // Monaco runs diffing and word-based helpers in a worker of its own, and each
 // of the JSON, HTML and CSS services in another, started the first time the
@@ -183,8 +184,9 @@ export function startEditor(): void {
 			fileMatch: [`${name}.json`, `*/${name}.json`, `${name}.*.json`],
 		})),
 	});
-	registerHaskell();
-	registerZig();
+	const grammarFailed = (error: unknown) => console.error('A grammar could not be loaded:', error);
+	registerHaskell(monaco, grammarFailed);
+	registerZig(monaco, grammarFailed);
 
 	// Neither is ever disposed: the page keeps its editors until it closes.
 	referencesPeekKeys(monaco.editor, internals, { report: (problem) => console.error(problem) });

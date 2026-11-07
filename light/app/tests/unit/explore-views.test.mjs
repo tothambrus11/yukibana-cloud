@@ -1,8 +1,9 @@
-// Unit tests of which compiler output views each language has
-// (src/lib/providers/explore.ts): the views, the files they can show, the
-// toggles and how a new session starts them, and that the app's instance
-// has a provider of `explore` exactly where a language has views, which
-// carries them (yukibana.ts `viewsOf`, what the app reads).
+// Unit tests of which compiler output views each language has (each
+// language package's provider of `explore`, modules/lang-*/index.ts): the
+// views, the files they can show, the toggles and how a new session starts
+// them, and that the app's instance has a provider of `explore` exactly
+// where a language has views, which carries them (yukibana.ts `viewsOf`,
+// what the app reads).
 //
 //   node --test tests/unit/explore-views.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
@@ -19,10 +20,17 @@ registerHooks({
 	},
 });
 
-const { LANGUAGE_VIEWS } = await import('../../src/lib/providers/explore.ts');
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
-const { subjectOf, viewOf: viewOfSubject, viewsOf: viewsOfSubject, yukibana } = await import('../../src/lib/yukibana.ts');
-const { defaultOptions: defaultsOfView, explore, viewKind } = await import('../../../modules/std/index.ts');
+const { metaOf, subjectOf, viewOf: viewOfSubject, viewsOf: viewsOfSubject, yukibana } = await import('../../src/lib/yukibana.ts');
+const { defaultOptions: defaultsOfView, explore, isExplorerProvider, viewKind } = await import('../../../modules/std/index.ts');
+
+/** The views each language's package gives its provider of `explore`, by language id, for the languages that have one. */
+const LANGUAGE_VIEWS = Object.fromEntries(
+	LANGUAGES.flatMap((language) => {
+		const views = language.providers(metaOf(language)).find(isExplorerProvider)?.views;
+		return views === undefined ? [] : [[language.id, views]];
+	}),
+);
 
 /** The kinds the views had before they were providers' data: a saved layout names a panel `view:<kind>`. */
 const ALL_KINDS = ['typed', 'lowered', 'sil', 'mir', 'core', 'stg', 'cmm', 'llvm-ir', 'asm', 'bytecode'];
@@ -70,7 +78,7 @@ test('a kind is called the same in every language that has it', () => {
 test('the instance explores exactly the languages with views, C with C++’s', () => {
 	for (const { id } of LANGUAGES) {
 		assert.equal(yukibana().has(subjectOf(id), explore), viewsOf(id) !== null, id);
-		assert.equal(viewsOf(id), LANGUAGE_VIEWS[id] ?? null, `${id}'s provider carries the table's views`);
+		assert.equal(viewsOf(id), LANGUAGE_VIEWS[id] ?? null, `${id}'s provider carries the views its package made`);
 	}
 	assert.equal(viewsOf('c'), viewsOf('cpp'));
 });

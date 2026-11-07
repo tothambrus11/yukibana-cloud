@@ -23,15 +23,14 @@ export function appPacks(): UnpinnedPackLocator {
 }
 
 /**
- * The pack directory of a language: its `pack`, or its id when it has
- * none (TypeScript and web projects use the JavaScript pack's). Throws for
- * one that is not a pack id ({@link packIdOf}): the languages table is the
- * app's own, so a wrong entry is a mistake for the first page that uses it
- * to show, not a value to pass on. It lives here, not in languages.ts,
- * which the Node-run tests load without the modules' package names.
+ * The pack directory of a language: its `pack` (TypeScript and web
+ * projects use the JavaScript pack's). Throws for one that is not a pack
+ * id ({@link packIdOf}): the languages are the app's own packages, so a
+ * wrong entry is a mistake for the first page that uses it to show, not a
+ * value to pass on.
  */
 export function packOf(language: Language): PackId {
-	const name = language.pack ?? language.id;
+	const name = language.pack;
 	const pack = packIdOf(name);
 	if (pack === null) throw new RangeError(`${JSON.stringify(name)}, the pack of ${language.label}, is not a pack id`);
 	return pack;
@@ -47,7 +46,7 @@ export function packOf(language: Language): PackId {
 export function packsOf(language: Language): PackId[] {
 	return [
 		packOf(language),
-		...(language.uses ?? []).map((name) => {
+		...language.uses.map((name) => {
 			const pack = packIdOf(name);
 			if (pack === null) throw new RangeError(`${JSON.stringify(name)}, a pack ${language.label} uses, is not a pack id`);
 			return pack;

@@ -184,8 +184,8 @@ jobs:
             light/app/src/lib/export.ts
             light/app/src/lib/export-tooling.ts
             light/app/src/lib/languages.ts
-            light/app/src/lib/cpp-*.ts
             light/app/src/lib/optimization.ts
+            light/modules
             light/app/tests/export-ci.mjs
             .github/workflows/light-ci.yml
 

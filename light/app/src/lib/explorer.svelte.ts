@@ -1,6 +1,6 @@
 /**
  * The compiler output views' client: asks the instance (`explore`,
- * providers/explore.ts) for the output of the active source that each view
+ * modules/lang-<pack>) for the output of the active source that each view
  * shows (the LLVM IR or the assembly of a C++ source, the SIL of a Swift
  * file, the Core of a Haskell module: the language's views), and keeps what
  * each view shows. The provider asks the pack's `explorer.js` worker
@@ -38,7 +38,7 @@ export interface ViewState {
 	/** When the output is optimised, the project lines that have code without optimisation (explorer-map.ts), else empty. */
 	unoptimized: readonly LineCode[];
 	/**
-	 * The target the output is for (a C++ target's id, cpp-targets.ts, which
+	 * The target the output is for (a C++ target's id, lang-cpp/targets.ts, which
 	 * the other packs use too: `wasm32-wasi`), null before the first answer
 	 * or when the project's target is unsupported.
 	 */
@@ -59,7 +59,7 @@ export interface ViewState {
 
 /**
  * A view's options, as the explorer protocol names them: one boolean per
- * toggle of the view (providers/explore.ts), `demangle`, `directives`, …
+ * toggle of the view (modules/lang-<pack>), `demangle`, `directives`, …
  */
 export type ViewOptions = Readonly<Record<string, boolean>>;
 

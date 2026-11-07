@@ -14,24 +14,24 @@ import { Preview } from './preview';
 import { severityOf, worstFirst, type Severity } from './severity';
 import { buildSystems, exportProject, type BuildSystem, type ExportOptions } from './export';
 import { zip } from './zip';
-import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from './cpp-tests';
-import { DEFAULT_RUN_OPTIONS, runOptionsOf, targetById, targetOf, type CppTargetId, type RunOptions, type TargetChoice } from './cpp-targets';
-import { describeSanitizers, sanitizersOf, type SanitizerChoice } from './cpp-sanitizers';
-import { CARGO_CONFIG, isMiriTarget, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, type MiriTarget, type RustTarget, type RustTargetChoice } from './rust-targets';
+import { chooseTestFramework, detectTestFramework, TESTS_DIR, type TestFramework } from '@yukibana/lang-cpp/tests';
+import { targetById, targetOf, type CppTargetId, type TargetChoice } from '@yukibana/lang-cpp/targets';
+import { describeSanitizers, sanitizersOf, type SanitizerChoice } from '@yukibana/lang-cpp/sanitizers';
+import { CARGO_CONFIG, isMiriTarget, MIRI_TARGETS, RUST_TARGETS, rustTargetOf, type MiriTarget, type RustTarget, type RustTargetChoice } from '@yukibana/lang-rust/targets';
 import { cppLevelOf, defaultLevel, levelsOf, type LevelChoice } from './optimization';
-import { describeStandard, standardOf, type Standard, type StandardChoice } from './cpp-standards';
-import { checksOf, TIDY_FILE, type CheckGlob } from './tidy-config';
+import { describeStandard, standardOf, type Standard, type StandardChoice } from '@yukibana/lang-cpp/standards';
+import { checksOf, TIDY_FILE, type CheckGlob } from '@yukibana/lang-cpp/tidy';
 import type { Explorer } from './explorer.svelte';
 import { CallHierarchy } from './call-hierarchy.svelte';
 import { Debugger } from './debug.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
 import { pathOf, writeProperty, type Files, type ProjectEdit, type ProjectSnapshot, type Property, type Subject } from '@yukibana/core';
-import { debugTokenOf, explore, preview, test, tokenOf, warm, type DebugMode, type PreviewSession, type ViewKind } from '@yukibana/std';
+import { DEFAULT_RUN_OPTIONS, debugTokenOf, explore, preview, runOptionsOf, test, tokenOf, warm, type DebugMode, type PreviewSession, type RunOptions, type ViewKind } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, releaseExplorer, subjectOf, viewOf, viewsOf, yukibana } from './yukibana';
 import { runnerOptionsOf, settingsOf, type LanguageSettings } from './properties/index.ts';
-import { COMPILE_FLAGS, standardSettingOf } from './properties/cpp.ts';
+import { COMPILE_FLAGS, standardSettingOf } from '@yukibana/lang-cpp/properties';
 import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
 import { holdsProject } from './project-link';
 
@@ -128,23 +128,23 @@ export class Workspace {
 	problems = $state<Problem[]>([]);
 	/**
 	 * A C++ project's test framework, as its tests/ files include it
-	 * (cpp-tests.ts): `mixed` when they include more than one, null when
+	 * (lang-cpp/tests.ts): `mixed` when they include more than one, null when
 	 * none (or the project is not C++).
 	 */
 	testFramework = $state<TestFramework | 'mixed' | null>(null);
 	/**
 	 * A C or C++ project's target, as its compile_flags.txt says
-	 * (cpp-targets.ts); null when the project is neither.
+	 * (lang-cpp/targets.ts); null when the project is neither.
 	 */
 	target = $state<TargetChoice | null>(null);
 	/**
 	 * A Rust project's target, as its .cargo/config.toml says
-	 * (rust-targets.ts); null when the project is not Rust.
+	 * (lang-rust/targets.ts); null when the project is not Rust.
 	 */
 	rustTarget = $state<RustTargetChoice | null>(null);
 	/**
 	 * The sanitizers a C or C++ project has on, as its compile_flags.txt
-	 * says (cpp-sanitizers.ts); null when the project is not C or C++.
+	 * says (lang-cpp/sanitizers.ts); null when the project is not C or C++.
 	 */
 	sanitizers = $state<SanitizerChoice | null>(null);
 	/**
@@ -160,7 +160,7 @@ export class Workspace {
 	optimization = $state<LevelChoice | null>(null);
 	/**
 	 * A C or C++ project's language standard, as its compile_flags.txt says
-	 * (cpp-standards.ts); null when the project is neither.
+	 * (lang-cpp/standards.ts); null when the project is neither.
 	 */
 	standard = $state<StandardChoice | null>(null);
 	/**
@@ -177,7 +177,7 @@ export class Workspace {
 	miri = $state<MiriTarget['id'] | null>(null);
 	/**
 	 * A C or C++ project's clang-tidy rules: the `Checks` of its .clang-tidy
-	 * (tidy-config.ts), null when the file has no such key or there is no
+	 * (lang-cpp/tidy.ts), null when the file has no such key or there is no
 	 * file (clangd's own few checks then), and for any other project.
 	 */
 	tidyChecks = $state<CheckGlob[] | null>(null);
@@ -198,7 +198,7 @@ export class Workspace {
 		problem: (text) => this.write('warning', text, 'run'),
 	});
 	/**
-	 * The compiler output views' client (languages with views, providers/explore.ts), loaded
+	 * The compiler output views' client (languages with views, modules/lang-<pack>), loaded
 	 * with the views the first time one opens: null until then, so the app
 	 * shell carries none of it.
 	 */
@@ -390,7 +390,7 @@ export class Workspace {
 	 * snapshot (the top bar's availability) derive again after each change.
 	 * The same snapshot is returned while the revision is the same, so that
 	 * what a rule reads of it is read once per revision however many buttons
-	 * ask (providers/refusals.ts keeps what it found per snapshot).
+	 * ask (lang-cpp/refusals.ts keeps what it found per snapshot).
 	 */
 	snapshot(): ProjectSnapshot {
 		const models = this.models;
@@ -458,9 +458,9 @@ export class Workspace {
 	 * Runs the project: the language's entry file when the project has one,
 	 * else the file shown; `mode` 'test' runs its tests instead, 'mutate'
 	 * mutation-tests the project against them, where the language's
-	 * providers offer that (providers/run.ts). Every file goes along, as last
+	 * providers offer that (modules/lang-<pack>/index.ts). Every file goes along, as last
 	 * edited. A web project's Run previews its page instead, where the
-	 * language has a provider of `preview` (providers/preview.ts).
+	 * language has a provider of `preview` (lang-javascript/index.ts).
 	 */
 	run(mode: RunMode = 'run'): void {
 		const language = languageOf(this.language);
@@ -538,7 +538,7 @@ export class Workspace {
 
 	/**
 	 * Runs the project under the debugger, where the language's providers
-	 * offer that (providers/debug.ts): its program, or with `mode` 'test' its
+	 * offer that (modules/lang-<pack>/index.ts): its program, or with `mode` 'test' its
 	 * tests. The debugger's worker starts, then the run, with the channel it
 	 * listens on; the program stops at the breakpoints set in the editors'
 	 * margins. The terminal shows the program's output and takes its input,
@@ -608,7 +608,7 @@ export class Workspace {
 
 	/**
 	 * Opens a compiler output view of the active C or C++ source (languages
-	 * with that view, providers/explore.ts); does nothing for another language.
+	 * with that view, modules/lang-<pack>); does nothing for another language.
 	 */
 	async showView(kind: ViewKind): Promise<void> {
 		if (!viewOf(subjectOf(this.language), kind)) return;
@@ -668,7 +668,7 @@ export class Workspace {
 	}
 
 	/**
-	 * Puts a C or C++ project on target `id` (cpp-targets.ts): compile_flags.txt
+	 * Puts a C or C++ project on target `id` (lang-cpp/targets.ts): compile_flags.txt
 	 * is rewritten (or created) as one edit, which Undo takes back, then
 	 * saved; clangd, Run and the views follow the file. The Log panel
 	 * says what changed.
@@ -684,7 +684,7 @@ export class Workspace {
 
 	/**
 	 * Turns the C or C++ project's sanitizers on or off as `choice` says
-	 * (cpp-sanitizers.ts): compile_flags.txt's -fsanitize= line is
+	 * (lang-cpp/sanitizers.ts): compile_flags.txt's -fsanitize= line is
 	 * rewritten (or the file created) as one edit, which Undo takes back,
 	 * then saved; clangd, Run, Test, the views and Download follow the file.
 	 * The Log panel says what changed.
@@ -720,7 +720,7 @@ export class Workspace {
 	}
 
 	/**
-	 * Puts a C or C++ project on a language standard (cpp-standards.ts):
+	 * Puts a C or C++ project on a language standard (lang-cpp/standards.ts):
 	 * compile_flags.txt's `-std=` line for the project's language is
 	 * rewritten (removed for `'default'`, or the file created) as one edit,
 	 * which Undo takes back, then saved; clangd, Run, the views and Download
@@ -751,7 +751,7 @@ export class Workspace {
 
 	/**
 	 * Sets a C or C++ project's clang-tidy rules: .clang-tidy's `Checks`
-	 * rewritten (tidy-config.ts `withChecks`; every other line kept, the file
+	 * rewritten (lang-cpp/tidy.ts `withChecks`; every other line kept, the file
 	 * created if missing) as one edit, which Undo takes back, then saved.
 	 * clangd reads the file again and diagnoses with the new rules.
 	 */
@@ -762,7 +762,7 @@ export class Workspace {
 	}
 
 	/**
-	 * Puts a Rust project on target `id` (rust-targets.ts): the `[build]`
+	 * Puts a Rust project on target `id` (lang-rust/targets.ts): the `[build]`
 	 * table's `target` of .cargo/config.toml is rewritten (or the file
 	 * created) as one edit, which Undo takes back, then saved; Run, Test
 	 * and Download follow the file. The Log panel says what changed.
@@ -919,7 +919,7 @@ export class Workspace {
 	}
 
 	/**
-	 * Switches a C++ project's tests to `framework` (cpp-tests.ts): the
+	 * Switches a C++ project's tests to `framework` (lang-cpp/tests.ts): the
 	 * sample's tests are rewritten for it, or a sample test file is added,
 	 * and the Log panel says which. Each rewritten file changes as one
 	 * edit of its own, which Undo in that file takes back without touching

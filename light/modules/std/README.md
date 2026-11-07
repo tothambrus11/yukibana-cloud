@@ -3,13 +3,15 @@
 The tokens any language of Yukibana Light may provide, and the helpers that
 make a language's providers of them from its pack. Step 2 of
 `../DESIGN.md`: run, test and mutate; step 4: debug, debug tests and
-preview; step 5: explore. Export follows in a later step.
+preview; step 5: explore; step 6: what the language packages share (the
+spec a package describes a language with, levels, a Linux target's run
+options, the views' kinds). Export follows in a later step.
 
 ## Contract
 
-* **No language.** It names no language id: a language package (for now,
-  the app's `src/lib/providers`) says which tokens its language has and
-  when they are available; `../boundaries.test.mjs` refuses a language id
+* **No language.** It names no language id: a language package
+  (`../lang-<pack>`) says which tokens its language has and when they are
+  available; `../boundaries.test.mjs` refuses a language id
   in its string literals.
 * **Today's messages.** A provider made by `runProvider` sends its pack's
   runner the very message the app sent before (`runMessage`: `type`,
@@ -40,15 +42,20 @@ preview; step 5: explore. Export follows in a later step.
   the provider's body are loaded at the first request
   (`explore-workers.ts`); an answer that is not what the contract says is
   `broken`, naming the field.
-* **No side effects.** Importing it defines eight tokens and does nothing
-  else (`../tests/imports.test.mjs`); the explorer workers' code is not
-  even loaded until a request needs it.
+* **No side effects.** Importing it defines eight tokens and some plain
+  data (the shared toggles) and does nothing else
+  (`../tests/imports.test.mjs`); the explorer workers' code is not even
+  loaded until a request needs it.
 
 | File | What |
 |---|---|
-| `language.ts` | `PackLanguage`: a `LanguageMeta` with the pack it runs on and the packs that one uses (checked pack ids), and its server's settings in its body |
+| `language.ts` | `PackLanguage`: a `LanguageMeta` with the pack it runs on and the packs that one uses (checked pack ids), and its server's settings and configuration files in its body; `PackLanguageSpec`, a language package's plain description of one, and `packLanguage`, which checks it; `PackageLanguage<H>`, a spec and its providers; `PackHost` |
+| `explore-views.ts` | `exploreView` (a kind's title, short form and noun), `exploreToggle`, and the toggles more than one language offers (`demangleToggle`, `DIRECTIVES_TOGGLE`, `libraryToggle`, `optimizeToggle`) |
+| `levels.ts` | `OptimizationLevel`, `defaultLevel`, `LevelChoice`, `savedLevel`, `levelProperty` (a level saved with the project) |
+| `linux.ts` | `TargetId`, `TARGET_SHORT`, `RunOptions`, `DEFAULT_RUN_OPTIONS`, `runOptionsOf`, `runOptionsProperty`, `describeRunOptions` |
+| `read.ts` | `valueOf` (a property's value as a build uses it), `always`, `NO_PROPERTIES` |
 | `debug.ts` | `debug`, `debugTest` (`Token<DebugInput, DebugSession>`), `debugTokenOf`, `debugMessage`, `debugProvider` |
-| `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`) |
+| `explore.ts` | `explore` (`Token<EmitInput, Promise<EmitResult>>`), `ViewKind` and `viewKind`, `LanguageViews`, `ExploreView`, `ExploreToggle`, `viewIn`, `defaultOptions`, `ExploreHost`, `ExploreHolder`, `pageExplorers`, `explorerProvider` (an `ExplorerProvider`: its views and its `release`), `isExplorerProvider` |
 | `explore-workers.ts` | loaded lazily: `ExplorerWorkers` (with `pagePlatform`), `resultOf`, `explorePerform` |
 | `preview.ts` | `preview` (`Token<PreviewInput, PreviewSession>`), `BuiltPage` |
 | `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |

@@ -9,7 +9,7 @@
 //    member access, hover, definition across files, an unsaved header edit
 //    seen by its includer, references, rename, signature help, document
 //    symbols, formatting, semantic tokens.
-// 2. The app's own sample project (app/src/lib/languages.ts, copied here),
+// 2. The app's own sample project (modules/lang-cpp/body.ts, copied here),
 //    opened in the app's order with its compile_flags.txt last, served with
 //    Content-Encoding (the .br or .gz sibling, as the app's host does): the
 //    flags apply from the first parse (C++20, -Wall), compile_flags.txt
@@ -141,7 +141,7 @@ await stat(join(STATIC, 'packs/cpp/server.js')).catch(() => {
     console.error(`no ${join(STATIC, 'packs/cpp/server.js')}: run ./build.sh first`);
     process.exit(2);
 });
-// The app's C++ sample (app/src/lib/languages.ts), in the order the app opens
+// The app's C++ sample (modules/lang-cpp/body.ts), in the order the app opens
 // it: compile_flags.txt comes last.
 const SAMPLE = {
     'main.cpp': `#include <cstdio>

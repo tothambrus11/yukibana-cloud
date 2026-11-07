@@ -1,6 +1,6 @@
 <!--
   The clang-tidy rules of a C or C++ project: a view of the `Checks` of its
-  .clang-tidy (tidy-config.ts), opened from Build settings. Every check the
+  .clang-tidy (lang-cpp/tidy.ts), opened from Build settings. Every check the
   pack's clang-tidy has is listed (tidy-checks.json, which the pack's build
   makes from clang-tidy's own documentation) with what it finds and whether
   it is on; the search box narrows the list by name, a pattern
@@ -14,7 +14,7 @@
 <script lang="ts">
 	import { appPacks, packOf } from '../packs';
 	import { languageOf } from '../languages';
-	import { checksOf, describeTidy, docsUrl, globOfSearch, globText, isEnabled, isTidyChecks, matches, setChecks, TIDY_FILE, type CheckGlob, type TidyChecks } from '../tidy-config';
+	import { checksOf, describeTidy, docsUrl, globOfSearch, globText, isEnabled, isTidyChecks, matches, setChecks, TIDY_FILE, type CheckGlob, type TidyChecks } from '@yukibana/lang-cpp/tidy';
 	import type { Workspace } from '../workspace.svelte';
 
 	let { workspace }: { workspace: Workspace } = $props();

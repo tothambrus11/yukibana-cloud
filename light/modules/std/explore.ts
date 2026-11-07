@@ -26,7 +26,7 @@
  * are the host's.
  */
 
-import { AVAILABLE, defineToken, type Brand, type Files, type Path, type Provider, type Token } from '../core/index.ts';
+import { AVAILABLE, defineToken, type AnyProvider, type Brand, type Files, type Path, type Provider, type Token } from '../core/index.ts';
 import type { PackId, PackLocator } from '../runtime/index.ts';
 import type { ExplorerWorkers } from './explore-workers.ts';
 import type { PackLanguage } from './language.ts';
@@ -334,4 +334,14 @@ export function explorerProvider(language: PackLanguage, views: LanguageViews): 
 		views,
 		release: (host, holder) => host.madeExplorers?.release(language.pack, holder),
 	};
+}
+
+/**
+ * Returns `true` iff `provider` is a provider of `explore` that
+ * `explorerProvider` made, carrying its language's views: how a host that
+ * took a language's providers as one list finds the one it reads views
+ * from.
+ */
+export function isExplorerProvider<H>(provider: AnyProvider<H>): provider is AnyProvider<H> & ExplorerProvider {
+	return provider.token === explore && 'views' in provider && 'release' in provider;
 }

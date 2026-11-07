@@ -62,10 +62,10 @@ const server = createServer(async (req, res) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-// The sample project of app/src/lib/languages.ts, read from there so the test
+// The sample project of modules/lang-zig/body.ts, read from there so the test
 // runs exactly what a new project contains.
-const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
-const SAMPLE = sampleOf(languages, 'zig');
+const { BODIES } = await import('../../modules/lang-zig/body.ts');
+const SAMPLE = BODIES['zig'].sample;
 const EXPECTED = '(0, 0) to (3, 4): 5\n5\n';
 
 const program = (text) => ({ 'main.zig': text });
@@ -339,22 +339,3 @@ try {
 }
 console.log(failed ? `${failed} FAILED` : 'all passed');
 process.exit(failed ? 1 : 0);
-
-/** The sample project of a language, evaluated from languages.ts's source. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    return new Function(`return (${source.slice(start, i + 1)});`)();
-}

@@ -120,7 +120,7 @@
 			...(offline.arePacksCached(packsOf(l)) ? { detail: 'offline' } : {}),
 		})),
 	);
-	/** The language's compiler output views (its provider of explore, providers/explore.ts), none for most. */
+	/** The language's compiler output views (its provider of explore, modules/lang-<pack>), none for most. */
 	const views = $derived(viewsOf(subject)?.views ?? []);
 	/** "the active C or C++ file" and the like, for the views' buttons. */
 	const activeSource = $derived(`the active ${shortLabel(language)} ${workspace.language === 'haskell' ? 'module' : 'file'}`);

@@ -13,7 +13,7 @@ import { snapshotOf } from './core-fakes.mjs';
 const TARGETS = ['wasm32-wasi', 'x86_64-linux', 'aarch64-linux'];
 const flags = pathOf('compile_flags.txt');
 
-/** A target property over the `--target=` line of compile_flags.txt, a small model of cpp-targets.ts. */
+/** A target property over the `--target=` line of compile_flags.txt, a small model of lang-cpp/targets.ts. */
 const target = {
 	id: '@yukibana/test#target',
 	label: 'Target',

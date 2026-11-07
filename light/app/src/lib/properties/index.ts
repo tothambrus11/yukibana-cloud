@@ -10,20 +10,24 @@
  * and that null is what the workspace asks in place of the language's
  * name.
  *
- * Temporary and app-side: step 6 of light/modules/DESIGN.md moves each
- * language's model into its package, and the roles become the host's.
+ * Each language's model and properties are its package's (its `/body`
+ * carries the model, its `/properties` the properties); the roles are the
+ * host's, and this table is the app's, which names languages as the
+ * app's Build settings do.
  */
-import { someProperty, type Property, type PropertyModel, type ProjectSnapshot } from '@yukibana/core';
+import type { Property, PropertyModel, ProjectSnapshot } from '@yukibana/core';
+import { BODIES as CPP_BODIES } from '@yukibana/lang-cpp/body';
+import { C_STANDARD, CLANG_TIDY, CPP_LEVEL, CPP_RUN_OPTIONS, CPP_STANDARD, CPP_TARGET, SANITIZERS, TIDY_CHECKS, type ChecksSetting, type StandardSetting } from '@yukibana/lang-cpp/properties';
+import type { SanitizerChoice } from '@yukibana/lang-cpp/sanitizers';
+import type { StdLanguage } from '@yukibana/lang-cpp/standards';
+import type { CppTargetId } from '@yukibana/lang-cpp/targets';
+import { MIRI, RUST_LEVEL, RUST_MODEL, RUST_RUN_OPTIONS, RUST_TARGET, type MiriSetting } from '@yukibana/lang-rust/properties';
+import type { RustTarget } from '@yukibana/lang-rust/targets';
+import { SCALA_LEVEL, SCALA_MODEL } from '@yukibana/lang-scala/properties';
+import { SWIFT_LEVEL, SWIFT_MODEL } from '@yukibana/lang-swift/properties';
 import type { RunnerOptions } from '@yukibana/protocol';
+import { NO_PROPERTIES, valueOf, type RunOptions } from '@yukibana/std';
 import type { LanguageId } from '../languages.ts';
-import type { CppTargetId, RunOptions } from '../cpp-targets.ts';
-import type { StdLanguage } from '../cpp-standards.ts';
-import type { SanitizerChoice } from '../cpp-sanitizers.ts';
-import type { RustTarget } from '../rust-targets.ts';
-import { cFamilyModel, C_STANDARD, CLANG_TIDY, CPP_LEVEL, CPP_RUN_OPTIONS, CPP_STANDARD, CPP_TARGET, SANITIZERS, TIDY_CHECKS, type ChecksSetting, type StandardSetting } from './cpp.ts';
-import { levelProperty } from './levels.ts';
-import { MIRI, RUST_LEVEL, RUST_MODEL, RUST_RUN_OPTIONS, RUST_TARGET, type MiriSetting } from './rust.ts';
-import { valueOf } from './read.ts';
 
 /**
  * A language's build settings by role, each null where the language has
@@ -70,10 +74,10 @@ const NONE: LanguageSettings = {
 	runOptions: null,
 	rustTarget: null,
 	miri: null,
-	model: { properties: [], summary: () => '' },
+	model: NO_PROPERTIES,
 };
 
-/** Returns the settings of C (`'c'`) or C++ (`'cpp'`). */
+/** Returns the settings of C (`'c'`) or C++ (`'cpp'`), with the model its body carries. */
 function cFamily(language: StdLanguage): LanguageSettings {
 	return {
 		...NONE,
@@ -84,13 +88,13 @@ function cFamily(language: StdLanguage): LanguageSettings {
 		tidyChecks: TIDY_CHECKS,
 		clangTidy: CLANG_TIDY,
 		runOptions: CPP_RUN_OPTIONS,
-		model: cFamilyModel(language),
+		model: CPP_BODIES[language].properties,
 	};
 }
 
-/** Returns the settings of a language whose one setting is its level, saved with the project. */
-function levelOnly(level: Property<string>): LanguageSettings {
-	return { ...NONE, level, model: { properties: [someProperty(level)], summary: (snapshot) => valueOf(snapshot, level) } };
+/** Returns the settings of a language whose one setting is its level, saved with the project, with its model. */
+function levelOnly(level: Property<string>, model: PropertyModel): LanguageSettings {
+	return { ...NONE, level, model };
 }
 
 /** Every language's settings. */
@@ -103,8 +107,8 @@ const SETTINGS: Readonly<Record<LanguageId, LanguageSettings>> = {
 	'p5-global': NONE,
 	c: cFamily('c'),
 	cpp: cFamily('cpp'),
-	swift: levelOnly(levelProperty('swift')),
-	scala: levelOnly(levelProperty('scala')),
+	swift: levelOnly(SWIFT_LEVEL, SWIFT_MODEL),
+	scala: levelOnly(SCALA_LEVEL, SCALA_MODEL),
 	rust: { ...NONE, rustTarget: RUST_TARGET, level: RUST_LEVEL, miri: MIRI, runOptions: RUST_RUN_OPTIONS, model: RUST_MODEL },
 	php: NONE,
 	java: NONE,

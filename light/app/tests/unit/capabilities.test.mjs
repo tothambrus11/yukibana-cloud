@@ -1,4 +1,4 @@
-// What the top bar offers for each language (src/lib/providers/, through
+// What the top bar offers for each language (the providers of modules/lang-*/index.ts, through
 // the app's instance in src/lib/yukibana.ts): Run, Test, Mutate and Debug
 // are shown and enabled exactly where they were when the Language table
 // said it with `runs`, `tests`, `mutates`, `cannotRun` and `debugs`, a
@@ -25,8 +25,8 @@ const { LANGUAGES } = await import('../../src/lib/languages.ts');
 const { metaOf, subjectOf, yukibana } = await import('../../src/lib/yukibana.ts');
 const std = await import('../../../modules/std/index.ts');
 const { pathOf } = await import('../../../modules/core/index.ts');
-const { withTarget } = await import('../../src/lib/cpp-targets.ts');
-const { chooseTestFramework } = await import('../../src/lib/cpp-tests.ts');
+const { withTarget } = await import('../../../modules/lang-cpp/targets.ts');
+const { chooseTestFramework } = await import('../../../modules/lang-cpp/tests.ts');
 
 /** What the Language table said of each language before it moved into providers. */
 const TODAY = {
@@ -151,7 +151,7 @@ function cppProject(framework, target = 'wasm32-wasi') {
 
 const DEBUG_ON_LINUX = (label) => `disabled: The debugger runs programs for WebAssembly only, for now: remove the --target line (${label}) from compile_flags.txt to debug.`;
 
-// What the runner refuses, the button says before it is pressed (providers/refusals.ts,
+// What the runner refuses, the button says before it is pressed (lang-cpp/refusals.ts,
 // in the runner's own words); everywhere else it is offered as before.
 test('C and C++: Debug and Debug tests are disabled on a Linux target, with the sentence the runner would print', () => {
 	const instance = yukibana();

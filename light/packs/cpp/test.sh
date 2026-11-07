@@ -51,10 +51,12 @@ source "$HERE/glue-lib.sh"
 
 case "${1:-}" in
   --inputs)
-    # test-run.mjs reads the app's sample and imports its test-framework
-    # chooser (which imports only a type from languages.ts);
-    # test-run-linux.mjs reads the sample too.
-    printf '%s\n' light/app/src/lib/languages.ts light/app/src/lib/cpp-tests.ts
+    # test-run.mjs imports the app's sample (lang-cpp's body.ts) and its
+    # test-framework chooser (lang-cpp's tests.ts); test-run-linux.mjs
+    # imports the sample too. Node loads them as they are, with what they
+    # import: the package's own files, and std's, core's, runtime's and
+    # protocol's.
+    (cd "$HERE/../../.." && git ls-files -- 'light/modules/lang-cpp/*.ts' 'light/modules/std/*.ts' 'light/modules/core/*.ts' 'light/modules/runtime/*.ts' 'light/modules/protocol/*.ts')
     exit 0 ;;
   --setup)
     npm_deps "$HERE"
