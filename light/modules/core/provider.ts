@@ -11,7 +11,7 @@
 import type { LanguageKey } from './brand.ts';
 import type { EditorKind } from './editor-port.ts';
 import type { ProjectSnapshot } from './project.ts';
-import type { AnyToken, Token } from './token.ts';
+import type { AnyToken, Cardinality, Token } from './token.ts';
 
 /** What a provider serves: a language, or a kind of editor. */
 export type Subject =
@@ -91,19 +91,27 @@ export type Entry =
 export type ManyEntry = Extract<Entry, { readonly kind: 'many' }>;
 
 /**
- * One implementation of `token` for `subject`, taking an `I` and giving an
- * `R`, with a host of type `H`.
- *
- * Invariant: `entry.kind` is `token.cardinality` (`createInstance` refuses
- * otherwise); `available` reads nothing but the snapshot it is given.
+ * The entry a provider of a token of cardinality `C` has: `{ kind: 'one' }`
+ * for `'one'`, a `ManyEntry` for `'many'`, so that a provider filed the
+ * wrong way for its token is a type error and not only `Incoherent`.
  */
-export interface Provider<I, R, H> {
+export type EntryOf<C extends Cardinality> = C extends 'one' ? Extract<Entry, { readonly kind: 'one' }> : ManyEntry;
+
+/**
+ * One implementation of `token` for `subject`, taking an `I` and giving an
+ * `R`, with a host of type `H`, for a token of cardinality `C`.
+ *
+ * Invariant: `entry.kind` is `token.cardinality` (the type says so for a
+ * known `C`, and `createInstance` refuses otherwise); `available` reads
+ * nothing but the snapshot it is given.
+ */
+export interface Provider<I, R, H, C extends Cardinality = Cardinality> {
 	/** The token it implements. */
-	readonly token: Token<I, R>;
+	readonly token: Token<I, R, C>;
 	/** What it serves. */
 	readonly subject: Subject;
 	/** Where it is filed among the token's providers for the subject. */
-	readonly entry: Entry;
+	readonly entry: EntryOf<C>;
 	/**
 	 * The tokens that must be available for the same subject for this one to
 	 * be: "mutation testing only where there are tests" is `requires: [test]`.
@@ -115,17 +123,14 @@ export interface Provider<I, R, H> {
 	readonly body: Body<I, R, H>;
 }
 
-/**
- * Any provider for a host of type `H`, whatever its token: what an instance
- * is made from. A `Provider<I, R, H>` is one.
- */
-export interface AnyProvider<H> {
+/** Any provider of a token of cardinality `C`, for a host of type `H`, whatever its token's input and result. */
+export interface AnyProviderOf<H, C extends Cardinality> {
 	/** The token it implements. */
-	readonly token: AnyToken;
+	readonly token: AnyToken<C>;
 	/** What it serves. */
 	readonly subject: Subject;
 	/** Where it is filed among the token's providers for the subject. */
-	readonly entry: Entry;
+	readonly entry: EntryOf<C>;
 	/** The tokens that must be available for the same subject for this one to be. */
 	readonly requires: readonly AnyToken[];
 	/** Returns whether it can be performed on the project `snapshot`. */
@@ -135,10 +140,19 @@ export interface AnyProvider<H> {
 }
 
 /**
- * Returns `provider` itself: written around a provider's literal so that its
- * `I`, `R` and `H` are inferred from its token and checked against its body.
+ * Any provider for a host of type `H`, whatever its token: what an instance
+ * is made from. A `Provider<I, R, H, 'one'>` or `Provider<I, R, H, 'many'>`
+ * is one; a provider whose entry does not match its token's cardinality is
+ * not.
  */
-export function provide<I, R, H>(provider: Provider<I, R, H>): Provider<I, R, H> {
+export type AnyProvider<H> = AnyProviderOf<H, 'one'> | AnyProviderOf<H, 'many'>;
+
+/**
+ * Returns `provider` itself: written around a provider's literal so that its
+ * `I`, `R`, `H` and `C` are inferred from its token and checked against its
+ * body and its entry.
+ */
+export function provide<I, R, H, C extends Cardinality>(provider: Provider<I, R, H, C>): Provider<I, R, H, C> {
 	return provider;
 }
 

@@ -200,7 +200,7 @@ export class Runner {
 	 * of a run's time then answers Run at once. The page's pool starts it
 	 * now, and another after a run whose runner could not be kept (H8: a
 	 * warm runner only where the host asks; the app asks for languages
-	 * with `warmRunner`). null stops that and lets an idle one go, so it
+	 * with a provider of @yukibana/std's `warm`). null stops that and lets an idle one go, so it
 	 * does not compete with the language server's own download.
 	 */
 	keepWarm(source: SessionSource | null): void {

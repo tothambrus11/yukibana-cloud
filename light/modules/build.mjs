@@ -28,16 +28,21 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:f
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { modules } from './list.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 /**
  * The modules that are published, in build order: a module comes after
  * every module it imports, since it is compiled against their built
- * declarations. @yukibana/monaco is not among them until step MP2, after its
- * feature API is settled (M7).
+ * declarations. Read from the directories (list.mjs): every module whose
+ * package.json is not private. @yukibana/monaco is private until step MP2,
+ * after its feature API is settled (M7); @yukibana/core and @yukibana/std
+ * until a published module imports them (README.md, "Packages").
  */
-export const PUBLISHED = ['protocol', 'runtime'];
+export const PUBLISHED = modules()
+	.filter((module) => module.published)
+	.map((module) => module.name);
 
 /** TS2876: "This relative import path is unsafe to rewrite". */
 const UNSAFE_REWRITE = 2876;

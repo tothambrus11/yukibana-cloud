@@ -49,11 +49,11 @@ decisions onto it.
 |---|---|
 | `brand.ts` | `Brand`, `LanguageKey`, `Path`, `MetaKey` and the functions that make them (`languageKey`, `pathOf`, `metaKey`), `Disposable`, `JsonValue` |
 | `token.ts` | `defineToken`, `Token`, `AnyToken`, `Cardinality`, `TokenId` |
-| `provider.ts` | `Subject`, `Availability`, `Body` (`eager` \| `lazy`), `Entry`, `Provider`, `AnyProvider`, `provide`, `Context` |
-| `language.ts` | `LanguageMeta` (the eager tier of a language) and `LanguageBody` |
+| `provider.ts` | `Subject`, `Availability`, `Body` (`eager` \| `lazy`), `Entry`, `EntryOf`, `Provider`, `AnyProvider`, `provide`, `Context` |
+| `language.ts` | `LanguageMeta` (the eager tier of a language) and `LanguageBody`; where it runs (a pack) is std's `PackLanguage` |
 | `instance.ts` | `createInstance`, `Incoherent`, `Instance`, `Outcome` |
 | `project.ts` | `Project`, `ProjectSnapshot`, `ProjectChange`, `Files`, `MetaBinding` |
-| `property.ts` | `Property`, `Storage` (`file` \| `meta`), `Read`, `readProperty`, `writeProperty`, `ProjectEdit`, `PropertyModel` |
+| `property.ts` | `Property`, `SomeProperty` (a property of a list, opened to a function generic in its type), `Storage` (`file` \| `meta`), `Read`, `readProperty`, `writeProperty`, `ProjectEdit`, `PropertyModel` |
 | `slot.ts` | `slot`, `Slot`, `SlotResult` |
 | `editor-port.ts` | `EditorPort`, `EditorKinds` (merged by editor packages), `EditorCapabilities`; types only |
 

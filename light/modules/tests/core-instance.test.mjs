@@ -18,8 +18,6 @@ const meta = (key) => ({
 	key: languageKey(key),
 	label: key,
 	short: null,
-	pack: key,
-	uses: [],
 	entry: pathOf(`main.${key}`),
 	extension: key,
 	body: () => Promise.reject(new Error('not loaded in these tests')),

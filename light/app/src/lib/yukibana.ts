@@ -9,11 +9,11 @@
  * language's metadata until the languages are packages of their own
  * (light/modules/DESIGN.md, step 6).
  */
-import { createInstance, languageKey, pathOf, type Instance, type LanguageMeta, type PropertyModel, type Subject } from '@yukibana/core';
+import { createInstance, languageKey, pathOf, type Instance, type PropertyModel, type Subject } from '@yukibana/core';
 import { RunnerPool, workerTransport, type PackLocator } from '@yukibana/runtime';
-import type { RunHost } from '@yukibana/std';
-import { LANGUAGES, type Language, type LanguageId } from './languages.ts';
-import { APP_RUNNER_NEEDS, appPacks } from './packs.ts';
+import type { PackLanguage, RunHost } from '@yukibana/std';
+import { LANGUAGES, type Language } from './languages.ts';
+import { APP_RUNNER_NEEDS, appPacks, packsOf } from './packs.ts';
 import { runProvidersOf } from './providers/run.ts';
 
 /**
@@ -52,14 +52,21 @@ export class PageHost implements RunHost {
  */
 const NO_PROPERTIES: PropertyModel = { properties: [], summary: () => '' };
 
-/** Returns `language` as the core knows it: its metadata, and its sample and server settings as its body. */
-export function metaOf(language: Language): LanguageMeta {
+/**
+ * Returns `language` as the core knows it: its metadata, the packs it runs
+ * on, and its sample and server settings as its body. Throws, as `packsOf`
+ * does, for a pack that is not a pack id: when the instance is made, not
+ * when Run is first pressed.
+ */
+export function metaOf(language: Language): PackLanguage {
+	const [pack, ...uses] = packsOf(language);
+	if (pack === undefined) throw new RangeError(`${language.label} has no pack.`);
 	return {
 		key: languageKey(language.id),
 		label: language.label,
 		short: language.short ?? null,
-		pack: language.pack ?? language.id,
-		uses: language.uses ?? [],
+		pack,
+		uses,
 		entry: pathOf(language.entry),
 		extension: language.extension,
 		body: async () => ({ sample: language.sample, serverSettings: language.settings, properties: NO_PROPERTIES }),
@@ -97,8 +104,11 @@ export function pageHost(): PageHost {
 	return made().host;
 }
 
-/** Returns the subject of the language `id`, as the instance knows it. */
-export function subjectOf(id: LanguageId): Subject {
+/**
+ * Returns the subject of the language `id`, as the instance knows it: any
+ * language of the instance, whether or not the app's own table has it.
+ */
+export function subjectOf(id: string): Subject {
 	const language = yukibana().languageOf(id);
 	if (language === null) throw new RangeError(`The app's instance has no language ${id}.`);
 	return { kind: 'language', id: language.key };

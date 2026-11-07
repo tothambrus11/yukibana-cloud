@@ -5,5 +5,8 @@
 	"type": "module",
 	"exports": {
 		".": "./index.ts"
+	},
+	"dependencies": {
+		"@yukibana/protocol": "^0.1.0"
 	}
 }

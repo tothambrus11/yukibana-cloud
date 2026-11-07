@@ -28,7 +28,7 @@ import { Debugger } from './debug.svelte';
 import type * as lsp from 'vscode-languageserver-protocol';
 import { parentOf, pathProblem } from '@yukibana/runtime';
 import { pathOf, type ProjectSnapshot } from '@yukibana/core';
-import { run, test, tokenOf } from '@yukibana/std';
+import { test, tokenOf, warm } from '@yukibana/std';
 import { appPacks, packOf, runnerSourceOf } from './packs';
 import { pageHost, subjectOf, yukibana } from './yukibana';
 import { linkOf, loadLanguage, loadProject, projectOfLink, sampleProject, saveLanguage, saveProject, tabProject, WORKSPACE, type Project } from './project';
@@ -232,10 +232,11 @@ export class Workspace {
 	private host: EditorHost | null = null;
 	/**
 	 * Changes on every change to the project's files or saved settings, so
-	 * a snapshot (`snapshot`) says which project it answers for. A number
-	 * bumped, not a state: nothing re-renders on it.
+	 * a snapshot (`snapshot`) says which project it answers for. State, so
+	 * that what derives from a snapshot follows the project; cheap to follow,
+	 * since an availability that does not change re-renders nothing.
 	 */
-	private revision = 0;
+	private revision = $state(0);
 	/** Whether the user chose run options for this project: only then are they saved with it. */
 	private runOptionsChosen = false;
 	/** The level chosen for a language whose level no project file holds (Swift, Scala), saved with the project; null: the default. */
@@ -383,22 +384,37 @@ export class Workspace {
 	/**
 	 * The project as the core sees it (@yukibana/core's `ProjectSnapshot`),
 	 * over the editor's models: nothing is read until a provider asks, and
-	 * every file only when one dispatches (`files`), never per keystroke. It
-	 * reads through to the models, so it answers for the project as it is
-	 * while `revision` is unchanged.
+	 * every file only when one dispatches (`files`), never per keystroke.
+	 * It reads through to the models, so it answers for the project only
+	 * while `revision` is the one it was made at: a read after the project
+	 * has changed throws, rather than answer for a newer project under an
+	 * older revision. Reading `revision` here makes whatever derives from a
+	 * snapshot (the top bar's availability) derive again after each change.
 	 */
 	snapshot(): ProjectSnapshot {
 		const models = this.models;
+		const revision = this.revision;
+		const current = (): void => {
+			if (this.revision !== revision) throw new Error(`A snapshot of revision ${revision} of the project was read at revision ${this.revision}: it no longer says what the project holds.`);
+		};
 		return {
-			revision: this.revision,
-			paths: () => [...models.keys()].map(pathOf),
-			file: (path) => models.get(path)?.getValue() ?? null,
+			revision,
+			paths: () => {
+				current();
+				return [...models.keys()].map(pathOf);
+			},
+			file: (path) => {
+				current();
+				return models.get(path)?.getValue() ?? null;
+			},
 			files: () => {
+				current();
 				const files: Record<string, string> = {};
-				for (const [path, model] of models) files[path] = model.getValue();
+				for (const [path, model] of models) files[pathOf(path)] = model.getValue();
 				return files;
 			},
 			meta: (binding) => {
+				current();
 				const stored: unknown = new Map<string, unknown>(Object.entries(this.savedSettings())).get(binding.key);
 				return stored === undefined ? null : binding.parse(stored);
 			},
@@ -1057,7 +1073,20 @@ export class Workspace {
 		this.runner.keepWarm(null);
 		client.start(() => this.models.values()).then(
 			() => {
-				if (this.client === client && language.warmRunner && yukibana().has(subjectOf(language.id), run)) this.runner.keepWarm(runnerSourceOf(language));
+				if (this.client !== client) return;
+				// The runner to keep warm is the one the language's runs use, as
+				// its provider of `warm` says, where it has one and Run is available.
+				const subject = subjectOf(language.id);
+				const snapshot = this.snapshot();
+				if (yukibana().availability(subject, warm, snapshot).kind !== 'available') return;
+				yukibana()
+					.perform(subject, warm, null, snapshot, new AbortController().signal)
+					.then(
+						(outcome) => {
+							if (this.client === client && outcome.kind === 'done') this.runner.keepWarm(outcome.value);
+						},
+						(e: unknown) => this.write('error', `Could not keep a ${language.label} runner warm: ${e instanceof Error ? e.message : String(e)}`),
+					);
 			},
 			async (e: unknown) => {
 				if (this.client !== client) return;

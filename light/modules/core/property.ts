@@ -40,12 +40,14 @@ export type Storage<V> =
 			/** The file. */
 			readonly path: Path;
 			/** Returns what `text` (null when the file is absent) holds. */
-			read(text: string | null): Read<V>;
+			readonly read: (text: string | null) => Read<V>;
 			/**
 			 * Returns `text` (null when the file is absent) with `value` in it,
-			 * every other byte as it was.
+			 * every other byte as it was. A function property, not a method, so
+			 * that a `Property<V>` is never a `Property<W>` of another type: a
+			 * method's parameter would be compared both ways and let one through.
 			 */
-			write(text: string | null, value: V): string;
+			readonly write: (text: string | null, value: V) => string;
 	  }
 	| {
 			/** In a field of the saved project (`runOptions`). */
@@ -75,12 +77,30 @@ export interface Property<V> {
 }
 
 /**
+ * A `Property` of a value type only it knows: what a list of properties of
+ * different types holds. Opening it hands the property to a function generic
+ * in its type, so the only values that can be written to it are its own
+ * (its `default`, its `choices`, what `readProperty` read of it).
+ */
+export interface SomeProperty {
+	/** Its name, as the property's `id`. */
+	readonly id: `${string}#${string}`;
+	/** Returns what `use` returns for the property. */
+	readonly open: <T>(use: <V>(property: Property<V>) => T) => T;
+}
+
+/** Returns `property` as a `SomeProperty`, for a `PropertyModel`'s list. */
+export function someProperty<V>(property: Property<V>): SomeProperty {
+	return { id: property.id, open: (use) => use(property) };
+}
+
+/**
  * A language's settings, in the order a host shows them, and the summary of
  * them a host puts on the button that opens them.
  */
 export interface PropertyModel {
-	/** The settings; each element is a `Property` of its own value type. */
-	readonly properties: readonly Property<unknown>[];
+	/** The settings, each of its own value type. */
+	readonly properties: readonly SomeProperty[];
 	/** Returns the settings of `snapshot` in a few words (`'x86-64 Linux · C++20 · -O2'`). */
 	summary(snapshot: ProjectSnapshot): string;
 }

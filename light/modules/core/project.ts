@@ -13,9 +13,15 @@ import type { Disposable, JsonValue, MetaKey, Path } from './brand.ts';
 /**
  * The files of a project, each path mapped to its text.
  *
- * Invariant: every key is a `Path`; the record is not changed after it is handed out.
+ * Keyed by `string`, not `Path`: a record cannot check its keys when it is
+ * made, so a `Path` key would guard nothing and only make every reader cast
+ * to look a file up. The one-file APIs (`file`, `ProjectChange`) take a
+ * `Path`.
+ *
+ * Invariant: every key is a path `pathOf` accepts (whoever makes the record
+ * checks it); the record is not changed after it is handed out.
  */
-export type Files = Readonly<Record<Path, string>>;
+export type Files = Readonly<Record<string, string>>;
 
 /**
  * How a project field of type `V` is read from a saved project: its key and
@@ -28,9 +34,13 @@ export interface MetaBinding<V> {
 	 * Returns the stored value as a `V`, or null when it is not one (a link
 	 * from an older Light, a hand-edited file), which then reads as unset.
 	 */
-	parse(stored: unknown): V | null;
-	/** Returns `value` as it is stored; `parse` of the result is `value` again. */
-	write(value: V): JsonValue;
+	readonly parse: (stored: unknown) => V | null;
+	/**
+	 * Returns `value` as it is stored; `parse` of the result is `value` again.
+	 * A function property, not a method, so that a binding of one type is
+	 * never taken for a binding of another.
+	 */
+	readonly write: (value: V) => JsonValue;
 }
 
 /**

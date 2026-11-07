@@ -7,7 +7,7 @@ platform) share, as five packages that point one way:
 ```text
 app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol  <-  packs' glue, runner frame
 app, embeds  ->  @yukibana/std     ->  @yukibana/runtime
-monaco, std, runtime  ->  @yukibana/core  --(types only)-->  @yukibana/protocol
+std  ->  @yukibana/core  --(types only)-->  @yukibana/protocol
 ```
 
 `DESIGN.md` is the settled design these modules are being rewritten
@@ -18,9 +18,9 @@ into which package, and the order.
 |---|---|---|
 | `protocol/` | types and pure codecs for what crosses a boundary: LSP connection, stdin buffer, runner messages, loading progress, a pack's requirements, the frame messages | itself |
 | `core/` | the embeddable core, with no platform: tokens, providers, the instance that answers for them, a project's shape, properties, slots, the editor port (types) | itself, and `import type` from protocol |
-| `runtime/` | workers, packs and sessions in a browser: workspace paths, pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, core, protocol |
-| `std/` | the tokens any language may provide (run, test, mutate) and the helpers that make a language's providers of them from its pack; it names no language | itself, runtime, core, protocol |
-| `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme | itself, runtime, core, protocol, and `import type` from `monaco-editor` |
+| `runtime/` | workers, packs and sessions in a browser: workspace paths, pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, protocol |
+| `std/` | the tokens any language may provide (run, test, mutate, warm) and the helpers that make a language's providers of them from its pack; it names no language | itself, runtime, core, protocol |
+| `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme | itself, protocol, and `import type` from `monaco-editor` |
 
 Rules every module keeps, so that a host can import one without taking on
 the app:
@@ -48,7 +48,15 @@ with the language and the few platform types every host has
 (`protocol/platform.d.ts`), and `runtime/` and `monaco/` with the DOM; none
 sees Node's types. They share
 `tsconfig.base.json`, and `npm run check` in `light/app` runs
-`tsc -p ../modules/<name>` for each. `boundaries.test.mjs` fails on any
+`tsc -p ../modules/<name>` for each (`typecheck.mjs`).
+
+The modules are the directories here with a `package.json` (`list.mjs`),
+and what a module may import is what its `package.json` names under
+`dependencies` and `peerDependencies`: the table above is those manifests.
+Every list of the modules (the boundary test's arrows, `build.mjs`'s
+`PUBLISHED`, the type-check, the app's aliases, the import tripwires) is
+read from there, so adding a module is adding a directory, and an arrow is
+a dependency a host installs too. `boundaries.test.mjs` fails on any
 import or mention that breaks the table or the rules above, and on a
 protocol project that would compile a source reaching for a page or Node
 (`npm run test:unit` in `light/app` runs it). The modules' own tests are in `tests/`,
@@ -61,9 +69,10 @@ beside them rather than in them, since a test imports `node:test`; the same
 `@yukibana/protocol` and `@yukibana/runtime` are also packages a site
 outside this repository installs (step MP1 of the architecture plan; the
 Monaco integration follows once its feature API is settled, MP2).
-`@yukibana/core` and `@yukibana/std` have a package's manifest but are not
-published until a published module imports them: then it joins `build.mjs`'s `PUBLISHED`, the
-release workflow and the runtime's dependencies together. A host's
+`@yukibana/core` and `@yukibana/std` have a package's manifest, marked
+`private`, and are not published until a published module imports them:
+then dropping `private` puts it in `build.mjs`'s `PUBLISHED`, together
+with the release workflow and the runtime's dependencies. A host's
 Node refuses to strip types inside `node_modules`, and Vite's SSR leaves
 dependencies external, so the sources alone fail in a prerender such as
 Astro's. `node build.mjs` (with `light/app` installed) therefore writes each

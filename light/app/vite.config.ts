@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig, type Plugin } from 'vite';
+import { MODULES_DIR, modules as sharedModules } from '../modules/list.mjs';
 
 // Language servers that block on stdin need SharedArrayBuffer, which needs a
 // cross-origin isolated page. The dev and preview servers send the headers;
@@ -37,12 +38,11 @@ const monacoWorkers: Plugin = {
  * package.json `imports`: those may only point inside this package and must
  * be `#` names, and the modules live beside the app and are called
  * `@yukibana/<name>` by every host. kit.alias also writes the TypeScript
- * paths, so svelte-check resolves the same names Vite does.
+ * paths, so svelte-check resolves the same names Vite does. The modules
+ * are read from their directories (modules/list.mjs), so a new one needs
+ * no edit here.
  */
-const modules = fileURLToPath(new URL('../modules', import.meta.url));
-const moduleAliases = Object.fromEntries(
-	['protocol', 'core', 'runtime', 'std', 'monaco'].map((name) => [`@yukibana/${name}`, `${modules}/${name}/index.ts`]),
-);
+const moduleAliases = Object.fromEntries(sharedModules().map(({ name }) => [`@yukibana/${name}`, `${MODULES_DIR}/${name}/index.ts`]));
 
 /**
  * Where svelte-check finds `monaco-editor` for the modules' sources: their
@@ -78,7 +78,7 @@ export default defineConfig({
 	],
 	// The dev server serves files only from the directories it allows; the
 	// modules live beside the app, not in it.
-	server: { headers: isolation, fs: { allow: [modules] } },
+	server: { headers: isolation, fs: { allow: [MODULES_DIR] } },
 	preview: { headers: isolation },
 	worker: { format: 'es' },
 });

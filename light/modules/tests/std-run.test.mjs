@@ -1,14 +1,16 @@
 // Run, Test and Mutate as tokens (std/run.ts): a provider made by
 // runProvider sends its pack's runner the message the app always sent,
 // through the host's pool, and its handle sees the run's events from the
-// first state on; mutation testing exists only where tests do.
+// first state on; mutation testing exists only where tests do, and the
+// runner kept warm is the one runs use.
 //
 //   node --test light/modules/          (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AVAILABLE, createInstance, languageKey, pathOf } from '../core/index.ts';
+import { packIdOf } from '../runtime/packs.ts';
 import { RunnerPool } from '../runtime/run-pool.ts';
-import { mutate, run, runMessage, runProvider, sourceOf, test as testToken, tokenOf } from '../std/index.ts';
+import { mutate, run, runMessage, runProvider, sourceOf, test as testToken, tokenOf, warm, warmProvider } from '../std/index.ts';
 import { snapshotOf } from './core-fakes.mjs';
 import { fakeClock, fakeTransport, OPTIONAL_STDIN, recorder, served, settle } from './run-fakes.mjs';
 
@@ -17,7 +19,7 @@ const languageOf = (key, pack = key) => ({
 	key: languageKey(key),
 	label: key.toUpperCase(),
 	short: null,
-	pack,
+	pack: packIdOf(pack),
 	uses: [],
 	entry: pathOf('main.x'),
 	extension: 'x',
@@ -101,8 +103,17 @@ test('a run provider that is unavailable says why, and starts nothing', async ()
 	assert.equal(runners.length, 0);
 });
 
-test('a language whose pack is not a pack id is refused when it runs, by name', async () => {
-	const bad = { ...languageOf('x'), pack: '../x' };
-	const { instance } = instanceOf([bad], [runProvider('run', bad, always)]);
-	await assert.rejects(instance.perform({ kind: 'language', id: bad.key }, run, input(recorder()), snapshotOf(), new AbortController().signal), /the pack of X, is not a pack id/);
+test('the runner a language keeps warm is the one its runs start from, and is offered only where it runs', async () => {
+	const x = languageOf('x');
+	const y = languageOf('y');
+	const cannot = { requires: [], available: () => ({ kind: 'unavailable', reason: 'Y has no runner yet.' }) };
+	const { instance, pool, host } = instanceOf([x, y], [runProvider('run', x, always), warmProvider(x), runProvider('run', y, cannot), warmProvider(y)]);
+	const subject = { kind: 'language', id: x.key };
+	const outcome = await instance.perform(subject, warm, null, snapshotOf(), new AbortController().signal);
+	assert.equal(outcome.kind, 'done');
+	assert.deepEqual(outcome.value, sourceOf(x, host.packs, host.requires));
+	await instance.perform(subject, run, input(recorder()), snapshotOf(), new AbortController().signal);
+	await settle();
+	assert.equal(pool.sessions(outcome.value).length, 1, 'the run went to the runner of the source warm gave');
+	assert.deepEqual(instance.availability({ kind: 'language', id: y.key }, warm, snapshotOf()), { kind: 'unavailable', reason: 'Y has no runner yet.' });
 });

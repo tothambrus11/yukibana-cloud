@@ -1,28 +1,29 @@
 // What the top bar offers for each language (src/lib/providers/run.ts,
 // through the app's instance in src/lib/yukibana.ts): Run, Test and Mutate
 // are shown and enabled exactly where they were when the Language table
-// said it with `runs`, `tests`, `mutates` and `cannotRun`, whatever the
-// project holds. That table is gone; TODAY below is what it said.
+// said it with `runs`, `tests`, `mutates` and `cannotRun`, and a runner is
+// kept warm where `warmRunner` said. That table is gone; TODAY below is
+// what it said.
 //
 //   node --test tests/unit/capabilities.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
+import { sourceUrlOf } from '../../../modules/list.mjs';
 
 // The app imports the shared modules by their names (vite.config.ts's
-// aliases); Node is told the same names here.
-const modules = new URL('../../../modules/', import.meta.url);
+// aliases); Node is told the same names here, from the same list.
 registerHooks({
 	resolve(specifier, context, next) {
-		const name = /^@yukibana\/([a-z]+)$/.exec(specifier)?.[1];
-		return name === undefined ? next(specifier, context) : { url: new URL(`${name}/index.ts`, modules).href, shortCircuit: true };
+		const url = sourceUrlOf(specifier);
+		return url === null ? next(specifier, context) : { url, shortCircuit: true };
 	},
 });
 
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
-const { subjectOf, yukibana } = await import('../../src/lib/yukibana.ts');
+const { metaOf, subjectOf, yukibana } = await import('../../src/lib/yukibana.ts');
 const std = await import('../../../modules/std/index.ts');
-const { metaKey, pathOf } = await import('../../../modules/core/index.ts');
+const { pathOf } = await import('../../../modules/core/index.ts');
 
 /** What the Language table said of each language before it moved into providers. */
 const TODAY = {
@@ -56,30 +57,6 @@ function snapshotOf(files = {}, meta = {}) {
 	};
 }
 
-const catch2 = '#include <catch2/catch_test_macros.hpp>\nTEST_CASE("x") {}\n';
-const doctest = '#include <doctest/doctest.h>\nTEST_CASE("x") {}\n';
-const gtest = '#include <gtest/gtest.h>\nTEST(A, B) {}\n';
-
-/**
- * Projects whose differences a runner cares about: the C++ targets (the
- * runner refuses Catch2 and doctest on Linux, with Test enabled all the
- * same), each test framework and a mix, and Miri on and off.
- */
-const SNAPSHOTS = {
-	empty: snapshotOf(),
-	wasi: snapshotOf({ 'main.cpp': 'int main() {}\n', 'compile_flags.txt': '-std=c++23\n' }),
-	...Object.fromEntries(
-		['x86_64', 'aarch64', 'riscv64'].flatMap((arch) =>
-			Object.entries({ catch2, doctest, gtest, mixed: catch2 + gtest }).map(([framework, text]) => [
-				`${arch}-linux ${framework}`,
-				snapshotOf({ 'main.cpp': 'int main() {}\n', 'compile_flags.txt': `--target=${arch}-linux-musl\n`, 'tests/test.cpp': text }),
-			]),
-		),
-	),
-	'miri on': snapshotOf({ 'src/main.rs': 'fn main() {}\n' }, { [metaKey('miri')]: 'x86_64-unknown-linux-gnu' }),
-	'miri off': snapshotOf({ 'src/main.rs': 'fn main() {}\n' }),
-};
-
 /** What the top bar showed for a mode: absent, or shown and enabled, or shown, disabled, with that title. */
 const offered = (instance, subject, token, snapshot) => {
 	if (!instance.has(subject, token)) return 'absent';
@@ -87,7 +64,7 @@ const offered = (instance, subject, token, snapshot) => {
 	return availability.kind === 'available' ? 'enabled' : `disabled: ${availability.reason}`;
 };
 
-test('every language of the picker is a language of the instance, with its pack and entry', () => {
+test('every language of the picker is a language of the instance, with its packs and entry', () => {
 	assert.deepEqual(Object.keys(TODAY).sort(), LANGUAGES.map((l) => l.id).sort());
 	for (const language of LANGUAGES) {
 		const meta = yukibana().languageOf(language.id);
@@ -98,17 +75,38 @@ test('every language of the picker is a language of the instance, with its pack 
 	}
 });
 
-test('Run, Test and Mutate are offered and enabled for each language as the Language table said, on every kind of project', () => {
+test("a language whose pack is not a pack id is refused when it is described, not when it first runs", () => {
+	const [first] = LANGUAGES;
+	assert.throws(() => metaOf({ ...first, pack: '../x' }), /is not a pack id/);
+	assert.throws(() => metaOf({ ...first, uses: ['Linux'] }), /is not a pack id/);
+});
+
+// Every provider of the app answers alike for every project (providers/run.ts:
+// none reads the snapshot yet), so each language is asked about its own sample
+// project. This does not hold that the answers ignore the project: the first
+// provider whose answer reads it (a C++ target, DESIGN.md N1) adds the
+// projects where it differs here.
+test('Run, Test and Mutate are offered and enabled for each language as the Language table said', () => {
 	const instance = yukibana();
 	for (const language of LANGUAGES) {
 		const was = TODAY[language.id];
 		const subject = subjectOf(language.id);
-		for (const [name, snapshot] of Object.entries(SNAPSHOTS)) {
-			const where = `${language.id}, ${name}`;
-			assert.equal(offered(instance, subject, std.run, snapshot), was.runs ? 'enabled' : `disabled: ${was.cannotRun}`, `Run: ${where}`);
-			assert.equal(offered(instance, subject, std.test, snapshot), was.tests ? 'enabled' : 'absent', `Test: ${where}`);
-			assert.equal(offered(instance, subject, std.mutate, snapshot), was.mutates ? 'enabled' : 'absent', `Mutate: ${where}`);
-		}
+		const snapshot = snapshotOf(language.sample);
+		const where = language.id;
+		assert.equal(offered(instance, subject, std.run, snapshot), was.runs ? 'enabled' : `disabled: ${was.cannotRun}`, `Run: ${where}`);
+		assert.equal(offered(instance, subject, std.test, snapshot), was.tests ? 'enabled' : 'absent', `Test: ${where}`);
+		assert.equal(offered(instance, subject, std.mutate, snapshot), was.mutates ? 'enabled' : 'absent', `Mutate: ${where}`);
+	}
+});
+
+// That the runner kept warm is the one runs use is std's (modules/tests/std-run.test.mjs).
+test('a runner is kept warm for the languages that kept one, and only where Run is available', () => {
+	const instance = yukibana();
+	const warmed = LANGUAGES.filter((language) => instance.availability(subjectOf(language.id), std.warm, snapshotOf(language.sample)).kind === 'available');
+	assert.deepEqual(warmed.map((l) => l.id).sort(), ['haskell', 'kotlin']);
+	for (const language of LANGUAGES) {
+		const subject = subjectOf(language.id);
+		if (instance.has(subject, std.warm)) assert.ok(instance.has(subject, std.run), language.id);
 	}
 });
 

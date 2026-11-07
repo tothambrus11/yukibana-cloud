@@ -1,6 +1,7 @@
 {
 	"name": "@yukibana/core",
 	"version": "0.1.0",
+	"private": true,
 	"description": "The embeddable core of Yukibana Light: typed tokens, the providers that implement them for a language or an editor, the instance that answers for them over a project, and a project's properties.",
 	"repository": {
 		"type": "git",
@@ -20,5 +21,8 @@
 		"dist",
 		"*.ts",
 		"README.md"
-	]
+	],
+	"dependencies": {
+		"@yukibana/protocol": "^0.1.0"
+	}
 }

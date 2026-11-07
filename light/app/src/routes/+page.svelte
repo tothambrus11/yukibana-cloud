@@ -97,9 +97,9 @@
 	// What the top bar offers, as the language's providers say (providers/run.ts):
 	// a button is shown where the language has the token, and enabled where it is
 	// available for the project. The snapshot reads nothing until a provider asks.
-	// These re-derive when the language changes, not on an edit: no provider's
-	// answer reads the project yet, and the first that does (a C++ target) needs
-	// the workspace's revision to be state the page can follow.
+	// These re-derive when the language or the project changes (a snapshot reads
+	// the workspace's revision), so a provider whose answer reads the project is
+	// followed after each edit; none of the app's does yet.
 	const subject = $derived(subjectOf(workspace.language));
 	const runAvailable = $derived(yukibana().availability(subject, run, workspace.snapshot()));
 	const hasTest = $derived(yukibana().has(subject, test));

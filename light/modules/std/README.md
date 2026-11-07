@@ -19,12 +19,16 @@ follow in later steps.
 * **The host lends the pool.** A provider makes no pool and no worker: its
   host (`RunHost`) has the page's pool, the pack locator and what the
   host's runners need, so every instance on a page shares runners.
-* **No side effects.** Importing it defines three tokens and does nothing
+* **The runner kept warm is the runner runs use.** `warm`'s provider
+  (`warmProvider`) gives the source the language's run providers start
+  from, and requires `run`; when to warm it is the host's choice.
+* **No side effects.** Importing it defines four tokens and does nothing
   else (`../tests/imports.test.mjs`).
 
 | File | What |
 |---|---|
-| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider` |
+| `language.ts` | `PackLanguage`: a `LanguageMeta` with the pack it runs on and the packs that one uses (checked pack ids), and its server's settings in its body |
+| `run.ts` | `run`, `test`, `mutate` (`Token<RunInput, RunHandle>`), `tokenOf`, `RunInput`, `RunHost`, `sourceOf`, `runMessage`, `runProvider`; `warm` (`Token<null, SessionSource>`), `warmProvider` |
 
 It may import core, runtime and protocol. Its tests are in
 `../tests/std-run.test.mjs`.

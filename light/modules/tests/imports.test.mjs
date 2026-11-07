@@ -11,9 +11,10 @@
 //   node --test light/modules/tests/imports.test.mjs
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { modules } from '../list.mjs';
 
-/** The entry points a host imports. */
-const ENTRIES = ['../protocol/index.ts', '../core/index.ts', '../runtime/index.ts', '../std/index.ts', '../monaco/index.ts'];
+/** The entry points a host imports: every module's index.ts (list.mjs), a module after those it imports. */
+const ENTRIES = modules().map((module) => `../${module.name}/index.ts`);
 
 /** What a module could reach for on a page, each a tripwire while the modules load. */
 const PAGE = ['window', 'document', 'self', 'location', 'localStorage', 'sessionStorage', 'MonacoEnvironment', 'matchMedia', 'monaco'];

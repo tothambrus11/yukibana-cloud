@@ -10,7 +10,7 @@
  * - language.ts: `LanguageMeta`, the eager part of a language, and its `LanguageBody`.
  * - instance.ts: `createInstance`, its `Incoherent` refusals, `Instance`, `Outcome`.
  * - project.ts: the `Project` port, its `ProjectSnapshot` and `ProjectChange`.
- * - property.ts: `Property` lenses, `readProperty`, `writeProperty`, `ProjectEdit`.
+ * - property.ts: `Property` lenses, `SomeProperty`, `readProperty`, `writeProperty`, `ProjectEdit`.
  * - slot.ts: `slot`, newest-wins supersession with at most one job in flight.
  * - editor-port.ts: `EditorPort`, a view of one document (types only).
  */

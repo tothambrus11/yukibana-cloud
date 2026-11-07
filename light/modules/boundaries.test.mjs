@@ -1,8 +1,7 @@
-// The shared modules keep to their arrows (README.md): protocol imports
-// only itself, core only itself and protocol's types, runtime also core and
-// protocol, std also runtime, monaco also runtime and Monaco's types, and
-// none of them
-// reaches for the app, its framework or the page's globals.
+// The shared modules keep to their arrows (README.md): each imports only
+// itself and what its package.json depends on (core only protocol's types,
+// monaco Monaco's types too), and none of them reaches for the app, its
+// framework or the page's globals.
 // A module that broke this would still type-check and build; it would only
 // fail later, in a host that does not have what it took for granted.
 //
@@ -17,18 +16,17 @@ import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { modules } from './list.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const ts = createRequire(join(here, '../app/package.json'))('typescript');
 
-/** Each module and the modules it may import, itself included. */
-const ALLOWED = {
-	protocol: ['protocol'],
-	core: ['core', 'protocol'],
-	runtime: ['runtime', 'core', 'protocol'],
-	std: ['std', 'core', 'runtime', 'protocol'],
-	monaco: ['monaco', 'runtime', 'core', 'protocol'],
-};
+/**
+ * Each module and the modules it may import, itself included: what its
+ * package.json depends on (list.mjs), so an arrow is a dependency a host
+ * installs too, and a new module's arrows are its manifest's.
+ */
+const ALLOWED = Object.fromEntries(modules().map((module) => [module.name, [module.name, ...module.imports]]));
 
 /**
  * Per module, the modules of its ALLOWED list it may import types from and
@@ -237,8 +235,16 @@ test("the core may import only itself and protocol's types, and nothing that run
 	assert.equal(check('core', "import { workspaceRoot } from '../runtime/paths.ts';").length, 1);
 	assert.equal(check('core', "import type { Convert } from '@yukibana/monaco';").length, 1);
 	assert.equal(check('protocol', "import { slot } from '@yukibana/core';").length, 1);
-	assert.deepEqual(check('runtime', "import { slot } from '../core/slot.ts';"), []);
-	assert.deepEqual(check('monaco', "import { slot } from '@yukibana/core';"), []);
+	assert.deepEqual(check('std', "import { slot } from '../core/slot.ts';"), []);
+});
+
+test("a module's arrows are its package.json's dependencies, and nothing it does not declare", () => {
+	assert.deepEqual(ALLOWED.protocol, ['protocol']);
+	assert.deepEqual([...ALLOWED.std].sort(), ['core', 'protocol', 'runtime', 'std']);
+	// Neither declares the core yet, so neither may import it: the runtime
+	// is published and the core is not (DESIGN.md, section 8).
+	assert.equal(check('runtime', "import { slot } from '../core/slot.ts';").length, 1);
+	assert.equal(check('monaco', "import { slot } from '@yukibana/core';").length, 1);
 });
 
 test("the core's code names none of a page's or a worker's objects, though its comments may", () => {
@@ -357,4 +363,28 @@ test("the runtime, std and the Monaco integration do not compile if they reach f
 		assert.notDeepEqual(typeErrors(module, "export const bytes = Buffer.from('x');"), [], module);
 		assert.deepEqual(typeErrors(module, "export const get = () => fetch('/x');"), [], module);
 	}
+});
+
+// The core's types refuse what its run-time checks would only catch later.
+test('a provider filed the wrong way for its token does not compile, and one filed the right way does', () => {
+	const head = `import { AVAILABLE, defineToken, languageKey, provide } from './index.ts';
+const many = defineToken<number, string>()('x#many', 'many');
+const one = defineToken<number, string>()('x#one');
+const rest = { subject: { kind: 'language', id: languageKey('x') }, requires: [], available: () => AVAILABLE, body: { kind: 'eager', perform: (n: number) => String(n) } } as const;
+`;
+	assert.notDeepEqual(typeErrors('core', `${head}export const p = provide({ token: many, entry: { kind: 'one' }, ...rest });`), []);
+	assert.notDeepEqual(typeErrors('core', `${head}export const p = provide({ token: one, entry: { kind: 'many', key: 'k', label: 'K' }, ...rest });`), []);
+	assert.deepEqual(typeErrors('core', `${head}export const p = provide({ token: many, entry: { kind: 'many', key: 'k', label: 'K' }, ...rest });`), []);
+	assert.deepEqual(typeErrors('core', `${head}import type { AnyProvider } from './index.ts';\nexport const p: AnyProvider<unknown> = provide({ token: one, entry: { kind: 'one' }, ...rest });`), []);
+});
+
+test("a property of a list takes only values of its own type, though the list does not say which", () => {
+	const head = `import { writeProperty, type Property, type PropertyModel, type ProjectSnapshot } from './index.ts';
+declare const snapshot: ProjectSnapshot;
+declare const model: PropertyModel;
+declare const text: Property<string>;
+`;
+	assert.notDeepEqual(typeErrors('core', `${head}export const e = model.properties[0]?.open((p) => writeProperty(snapshot, p, Symbol()));`), []);
+	assert.notDeepEqual(typeErrors('core', `${head}export const p: Property<unknown> = text;`), []);
+	assert.deepEqual(typeErrors('core', `${head}export const e = model.properties[0]?.open((p) => writeProperty(snapshot, p, p.default));`), []);
 });

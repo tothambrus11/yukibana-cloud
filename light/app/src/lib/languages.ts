@@ -35,7 +35,8 @@ export interface Language {
 	 * Whether the pack's runner runs the project, its tests or a mutation
 	 * test of it is no longer said here: those are the language's providers
 	 * of Run, Test and Mutate (providers/run.ts), which the app asks
-	 * through its instance (yukibana.ts).
+	 * through its instance (yukibana.ts); nor whether a runner is kept warm
+	 * ahead of a run (its provider of `warm`, there too).
 	 */
 	/**
 	 * Whether the runner can run the program under the debugger (a run
@@ -43,13 +44,6 @@ export interface Language {
 	 * and the editors take breakpoints in their margin.
 	 */
 	debugs?: boolean;
-	/**
-	 * Whether the app keeps a runner started ahead of each Run (once the
-	 * language server is up, and again after each run): for a runner whose
-	 * own start-up is most of a run, as Haskell's (GHC loads in some 8 s,
-	 * then compiles and runs a small program in under one).
-	 */
-	warmRunner?: boolean;
 	/**
 	 * The directory under `static/packs/` whose server and runner serve this
 	 * language, when it is not `id`: TypeScript and web projects use the
@@ -1228,7 +1222,6 @@ class GeometryTest {
 		settings: {},
 		entry: 'src/main/kotlin/Main.kt',
 		extension: '.kt',
-		warmRunner: true,
 		sample: {
 			'src/main/kotlin/Main.kt': `fun main() {
     val a = Point(0.0, 0.0)
@@ -1285,7 +1278,6 @@ class GeometryTest {
 		settings: {},
 		entry: 'Main.hs',
 		extension: '.hs',
-		warmRunner: true,
 		sample: {
 			'Main.hs': `module Main (main) where
 

@@ -1,6 +1,7 @@
 /**
  * Running a program, its tests, or a mutation test of it: three tokens of
- * one shape, and the helper that makes a language's provider of one.
+ * one shape, and the helper that makes a language's provider of one; and
+ * `warm`, which says which runner to keep started ahead of a run.
  *
  * The three take the same input and give the runtime's `RunHandle`, because
  * a pack's runner takes all three as one message that differs only in its
@@ -10,9 +11,10 @@
  * pool: no pack changes, and the terminal sees the same events.
  */
 
-import { defineToken, type AnyToken, type Availability, type Files, type LanguageMeta, type Path, type ProjectSnapshot, type Provider, type Token } from '../core/index.ts';
+import { AVAILABLE, defineToken, type AnyToken, type Availability, type Files, type Path, type ProjectSnapshot, type Provider, type Token } from '../core/index.ts';
 import { PROTOCOL_MAJOR, type Requires, type RunMode, type RunnerOptions } from '../protocol/index.ts';
-import { packIdOf, type PackLocator, type RunEvent, type RunHandle, type RunnerPool, type SessionRequest, type SessionSource } from '../runtime/index.ts';
+import type { PackLocator, RunEvent, RunHandle, RunnerPool, SessionRequest, SessionSource } from '../runtime/index.ts';
+import type { PackLanguage } from './language.ts';
 
 /**
  * What a run, a test run or a mutation test is performed with: the project
@@ -92,13 +94,9 @@ export interface RunHost {
  * `packs`, under the language's name, needing `requires`. Languages that
  * share a pack share its runner (the pool keys runners by where the pack
  * is, not by this object).
- *
- * - Requires: `language.pack` is a pack id (runtime/packs.ts `packIdOf`).
  */
-export function sourceOf(language: Pick<LanguageMeta, 'pack' | 'label'>, packs: PackLocator, requires: Requires): SessionSource {
-	const id = packIdOf(language.pack);
-	if (id === null) throw new RangeError(`${JSON.stringify(language.pack)}, the pack of ${language.label}, is not a pack id`);
-	return { pack: { id, name: language.label, protocol: PROTOCOL_MAJOR, build: null, requires }, locator: packs };
+export function sourceOf(language: Pick<PackLanguage, 'pack' | 'label'>, packs: PackLocator, requires: Requires): SessionSource {
+	return { pack: { id: language.pack, name: language.label, protocol: PROTOCOL_MAJOR, build: null, requires }, locator: packs };
 }
 
 /**
@@ -123,11 +121,8 @@ export interface RunAvailability {
  * Returns `language`'s provider of the token of `mode` (`tokenOf`): an
  * eager one that hands the pool of its host today's run message
  * (`runMessage`) for its pack (`sourceOf`), and returns the pool's handle.
- *
- * - Requires: `language.pack` is a pack id; checked when it is performed,
- *   as `sourceOf` checks it.
  */
-export function runProvider(mode: RunMode, language: LanguageMeta, when: RunAvailability): Provider<RunInput, RunHandle, RunHost> {
+export function runProvider(mode: RunMode, language: PackLanguage, when: RunAvailability): Provider<RunInput, RunHandle, RunHost, 'one'> {
 	return {
 		token: tokenOf(mode),
 		subject: { kind: 'language', id: language.key },
@@ -139,5 +134,31 @@ export function runProvider(mode: RunMode, language: LanguageMeta, when: RunAvai
 			perform: (input, { host }) =>
 				host.pool.run({ snippet: input.snippet, source: sourceOf(language, host.packs, host.requires), request: runMessage(mode, input), onEvent: input.onEvent }),
 		},
+	};
+}
+
+/**
+ * Says which runner a host may keep started ahead of each Run, for a
+ * language whose runner's own start (loading a compiler, as Haskell's GHC)
+ * is most of a run's time: the source the language's runs start from, so
+ * that the runner kept warm is the one they use. When to warm it (Light:
+ * once the language server has started, as both load the same compiler) is
+ * the host's to decide. A provider of it requires `run`.
+ */
+export const warm: Token<null, SessionSource, 'one'> = /* @__PURE__ */ defineToken<null, SessionSource>()('@yukibana/std#warm');
+
+/**
+ * Returns `language`'s provider of `warm`: available wherever its Run is
+ * (it requires `run`), giving the source its run providers start from
+ * (`sourceOf`, with the same host).
+ */
+export function warmProvider(language: PackLanguage): Provider<null, SessionSource, RunHost, 'one'> {
+	return {
+		token: warm,
+		subject: { kind: 'language', id: language.key },
+		entry: { kind: 'one' },
+		requires: [run],
+		available: () => AVAILABLE,
+		body: { kind: 'eager', perform: (_, { host }) => sourceOf(language, host.packs, host.requires) },
 	};
 }

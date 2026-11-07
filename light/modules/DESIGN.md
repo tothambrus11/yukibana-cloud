@@ -401,3 +401,76 @@ before). Where it departs from the sketches above:
   another way). The checks for self-referencing `dynamicImports` and a
   graph-classified offline shell are left for the step that first moves
   code into a lazy chunk.
+
+## 9. Step 2 as built, and the review of steps 1 and 2
+
+Step 2 moved Run, Test and Mutate into providers. Where it departs from
+the sketches above, including the changes a review of steps 1 and 2 made:
+
+* **`RunInput` is `{ files, entry, options, snippet, onEvent }`**, not
+  `{ files, entry, options }`. `snippet` names the page's snippet, since
+  the pool replaces a snippet's previous run. `onEvent` gets every event
+  from the first state on, because the pool reports events before
+  `perform`'s handle is known.
+* **`runProvider(mode, language, { requires, available })`**, not
+  `runProvider(meta, build)`. One factory serves all three modes, and the
+  caller says when it is available. The entry and the `RunnerOptions` are
+  still computed by the app's workspace (its `cFamily`, Rust/Miri and
+  Swift-level branches). They move into the provider with the property
+  model in step 3, whose exit criterion is that those branches are gone.
+* **`RunHost`, not `BrowserHost`**: `{ pool, packs, requires }`, the part
+  of the host that runs need. The app's `PageHost` (src/lib/yukibana.ts)
+  implements it and owns the page's pool, which the terminal's `Runner`
+  borrows too.
+* **The terminal's start has two phases**: `begin()` clears the terminal
+  and returns the listener, and `start(handle)` shows the run. Events that
+  arrive between the two are kept.
+* **Availability does not read the project yet.** Every provider of the app
+  answers the same for every snapshot, as the buttons did. The first
+  snapshot rule (C++ Test refused on a Linux target with Catch2 or
+  doctest, N1) would change what the top bar offers, so it waits for the
+  step that is allowed to change it. The plumbing is ready for it: the
+  workspace's `revision` is Svelte state, read by `snapshot()`, so the top
+  bar's availability re-derives after every edit. `capabilities.test.mjs`
+  asks each language about its sample project and does not claim that the
+  answers ignore the project.
+* **A snapshot refuses stale reads.** The workspace's snapshot reads its
+  models lazily. A read after the revision has moved on throws, rather than
+  answering for a newer project under the old revision.
+* **`warm` is a token** (`Token<null, SessionSource>`), not a field of the
+  run provider: the instance exposes tokens, not provider fields. Its
+  provider requires `run` and gives the source that the run providers start
+  from. The app warms through the instance, gated on availability, once
+  the language server is up. `warmRunner` has left `Language`.
+* **Packs are std's.** `LanguageMeta` has no `pack` or `uses`, and
+  `LanguageBody` has no `serverSettings`. std's `PackLanguage` adds them,
+  with the pack ids branded. The app's `metaOf` checks them when the
+  instance is made, not when Run is first pressed.
+* **`Files` is keyed by `string`.** A record cannot check its keys, so a
+  `Path` key guarded nothing and made every reader cast. The one-file APIs
+  keep `Path`. The workspace's `files()` passes each key through `pathOf`.
+* **`Provider<I, R, H, C>` ties `entry` to the token's cardinality**
+  (`EntryOf<C>`), and `AnyProvider<H>` is a union over `'one'` and
+  `'many'`. A provider filed the wrong way is now a compile error, and
+  `Incoherent` stays as the guard at run time.
+* **`PropertyModel.properties` is `readonly SomeProperty[]`**, an
+  existential: `open(use)` hands the property to a function generic in its
+  value type. Storage and binding `write`s are function properties, not
+  methods, so `Property<V>` is invariant and a value of another type cannot
+  be written to it.
+* **The lists are derived** (`list.mjs`). A module is a directory with a
+  `package.json`. Its arrows are that manifest's `dependencies` and
+  `peerDependencies`. `PUBLISHED` is the modules not marked `private`, in
+  dependency order (core and std are `private` until a published module
+  imports them). The app's `check` runs `typecheck.mjs`, and the Vite
+  aliases, the import tripwires, `capabilities.test.mjs`'s resolve hook
+  and the release workflow all read the same list. Since the manifests
+  are the truth, the runtime and monaco may not import core until they
+  declare it (neither does today), and core and monaco now declare the
+  protocol they import.
+* **Not done: providers from outside the app.** The app's instance is
+  still made from its own `LANGUAGES` and `RUNNERS`. Third-party language
+  packages are step 6. Until then, a host outside the app builds its own
+  instance from std's `runProvider` and `warmProvider`. `subjectOf` now
+  takes any string that `languageOf` knows, not only the app's
+  `LanguageId`.
