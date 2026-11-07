@@ -70,7 +70,12 @@ export interface PackLanguageSpec {
 	readonly extension: string;
 }
 
-/** What a language package's providers borrow of their host: what runs need, and what the compiler output views need. */
+/**
+ * What a language package's providers borrow of their host when it has
+ * compiler output views: what runs need, and what the views need. A
+ * package whose languages have no views types them by `RunHost` alone, so
+ * that a host that only runs code takes them as they are.
+ */
 export type PackHost = RunHost & ExploreHost;
 
 /**
@@ -78,6 +83,10 @@ export type PackHost = RunHost & ExploreHost;
  * has, made for the `PackLanguage` a host made of the spec. Making the
  * providers loads no body: each provider's body is std's own, eager, or
  * an `import()` of the package's subpath.
+ *
+ * `H` is the least host its providers need (`RunHost` for a language
+ * that only runs, `PackHost` for one with compiler output views): a
+ * provider's host is an input, so a host that has more takes it too.
  */
 export interface PackageLanguage<H> {
 	/** The language, as its package describes it. */

@@ -12,10 +12,10 @@
  * one of three architectures under QEMU.
  */
 import { AVAILABLE } from '../core/index.ts';
-import { runProvider, type PackageLanguage, type PackHost } from '../std/index.ts';
+import { runProvider, type PackageLanguage, type RunHost } from '../std/index.ts';
 
 /** Go: Run and Test. */
-const GO: PackageLanguage<PackHost> = {
+const GO: PackageLanguage<RunHost> = {
 	spec: { key: 'go', label: 'Go', short: null, pack: 'go', uses: ['linux'], entry: 'main.go', extension: '.go' },
 	providers: (language) => [
 		runProvider('run', language, { requires: [], available: () => AVAILABLE }),

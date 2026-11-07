@@ -4,7 +4,7 @@ The reference for rewriting Light's app onto the shared modules: what was
 decided after the review of the prototypes, the core's concepts, the
 packages, where each of the app's files goes, and the steps in order. Paths
 of the app's files are under `light/app/src/lib`; of the modules, under
-`light/modules`. Sections 8 to 15 record how steps 1 to 7 were built, and
+`light/modules`. Sections 8 to 16 record how steps 1 to 7 were built, and
 what the reviews of them changed, and where they depart from the sketches
 here; the code and its `/** */`
 contracts are the authority where the two differ.
@@ -35,6 +35,27 @@ Governing rule: the rewrite moves decisions out of the app into providers that s
 | N10 | **Workers are page-shared, state is per instance.** The page's `RunnerPool` (already page-scoped) and language servers are leased through a host value. There is no `packCache` Map; bytes stay in HTTP and Cache Storage. | Efficiency, Generalizability. |
 | N11 | **Lockstep packaging.** One version and one tag (`light-modules-vX`) for every package under `light/modules`. `build.mjs PUBLISHED`, the app's `check` tsc list and `boundaries.test.mjs ALLOWED` are derived from directories and `package.json` dependencies. `core` is a peerDependency of everything else. | Maintainability: about 18 packages, not about 50, and no version matrix. |
 | N12 | **A bundle gate before any extraction.** Commit Light's baseline (1,240,796 B gzip initial set). Extend `tests/unit/bundle.test.mjs`: Light's initial set must stay ≤ baseline + 1%, nothing may self-reference in `dynamicImports`, and the eager list must be in the initial set. The offline manifest must classify by graph, not by path prefix. | Bundle. |
+
+### Decisions for steps 4 to 9
+
+Taken after the review of steps 1 to 3, before step 4 was built. Sections 11 to 15 cite them by these ids; where a section records a departure, the section holds.
+
+| # | Decision | Reason |
+|---|---|---|
+| D1 | **Language packages live in flat `light/modules/lang-<pack>/` directories**, each `@yukibana/lang-<pack>` (`lang-cpp` serves c and cpp; `lang-javascript` javascript, typescript, web, p5 and p5-global). Rules 3 and 4 become "never another `lang-*`". | `list.mjs` takes each direct child of `modules/` with a `package.json` as a package named after its directory, so every derived list (ALLOWED, PUBLISHED, typecheck, the Vite aliases, the tripwires) takes a new one unchanged. Nested `modules/languages/<pack>` breaks that; `packs/<pack>/` are toolchain build trees with their own CI and caches. |
+| D2 | **Monaco stays eager in Light.** Only Haskell's and Zig's grammars go lazy, in step 6, behind their packages' `/monaco`. | Making Monaco lazy would move when the first editor appears, a behaviour change. |
+| D3 | **Debugging tests is a second token**: `debug` and `debugTest`, both `DebugInput` → `DebugSession`. `debugTest` requires `[test, debug]`; only C++ provides it. | Availability reads the project, not the input (N1), so one token with a mode could not offer Debug for Swift while refusing Debug tests (its runner ignores `debug` when testing). |
+| D4 | **Debug checks availability and builds its input at the click**, and performs at the debugger's `ready` with a frozen snapshot. | The run must be the project as it was when Debug was pressed. |
+| D5 | **Snapshot-dependent availability (N1) lands in step 4**, as its own commit: Debug refused on Linux targets, Catch2 and doctest refused on Linux. | Sections 9 and 10 deferred it; Debug cannot be described without it. |
+| D6 | **Preview's busy/again is one `Slot` whose job renders**; the provider owns only the page-building worker and its watchdog. The iframe and the CSS swap stay the app's. | The swap needs the app's iframe, so `update(changed)` was dropped. |
+| D7 | **No blankets in steps 4 to 9.** Every provider is per language, made by a factory. | No in-repo user (section 6). |
+| D8 | **Explore keeps the explorer worker**, one per pack, page-scoped in the host, leased by std's `explorerProvider`; a view's request settles as soon as its signal is aborted. | Every pack's explorer.js drops a superseded request's answer, so a job waiting for it would hang. |
+| D9 | **`lsp/client.ts` splits into `runtime/language-session.ts` and `monaco/bind.ts`.** The session is fed edits by the binding's model listeners, as ranges by version; `Project.onChange` only says which files exist. Client capabilities come from the binding. Two commits: the halves behind a facade, then the call sites. | A project's change events do not say what changed inside a file, so feeding a session from them would resend whole files on every keystroke. |
+| D10 | **Step 8's second host is a minimal two-up**; `ServerLeases` is deferred. | No consumer needs page-shared servers yet. |
+| D11 | **`examples/hylo` moves to `std/run`** through a run provider over a host-built source (`PoolHost`, `runProviderFrom`); its page is unchanged. | Hylo's runner has no pack or locator. |
+| D12 | **Export is `exportBuild` (`many`, keyed by build system) plus `exportTooling` (`one`)**, with per-key availability on the instance. | Build systems are alternatives a project picks one of; the tooling is one per language. |
+| D13 | **Debug and the call hierarchy load on use (step 9)**: breakpoints split into a small eager store, the DAP session lazy. | The glyph margin reads breakpoints with the page. |
+| D14 | **Timing of what sections 8 to 10 deferred**: the self-reference check and the graph-classified offline shell at the start of step 6; paths.ts into core and publishing core and std with step 6; Build settings rendered from the model outside steps 4 to 9. | Step 6 is the first step with lazy bodies; section 14 records what of this it did not do. |
 
 ## 2. The concept set (`@yukibana/core`)
 
@@ -679,7 +700,7 @@ reads it there. Where it departs from the sketches above:
   project was reset). How a worker is started and its URL probed after a
   failure is an `ExplorerPlatform` (`pagePlatform()`: a module `Worker`
   and a HEAD `fetch`), so the tests drive fake workers.
-* **A request settles as soon as its signal is aborted** (decision 7).
+* **A request settles as soon as its signal is aborted** (D8).
   Every pack's explorer.js drops the answer to a request that a newer one
   of the same view replaced while it compiled, so a job that waited for
   its own id would hang. `ExplorerWorkers.emit` resolves `dropped` on
@@ -768,7 +789,7 @@ section and sections 11 and 12 differ, this one holds.
   (`'clang' | 'all'`), not a test of the language id in compiler-view.ts.
 * **One guard against a stale answer, not three.** The explorer keeps no
   `Slot` per view: a newer request aborts the view's `AbortController`,
-  whose request then settles `dropped` at once (decision 7 as before), and
+  whose request then settles `dropped` at once (D8, as before), and
   only the answer to the view's newest id (`latest`) is shown.
   `ExplorerWorkers` still matches answers to ids, which is what a shared
   worker must do. The slot's queue had never queued anything here.
@@ -834,11 +855,11 @@ decision D1. Where this section and those differ, this one holds.
   (`monacoTypes`, a `monaco-editor` peer dependency). The app's Vite
   aliases (`moduleSources()`), the Node resolve hook the app's tests
   register (`tests/modules-hook.mjs`, over `sourceUrlOf`) and the import
-  tripwires (52 entries) all read that list, so adding a language is
-  adding a directory.
+  tripwires (52 entries) all read that list, so none of them is edited
+  for a new language; section 16 lists what still is.
 * **A package exports its languages as specs and providers, and the host
   gives the body.** `index.ts` exports `LANGUAGES`, by key, each a
-  `PackageLanguage<PackHost>`: its `spec` (`PackLanguageSpec`: key,
+  `PackageLanguage<H>` for the least host its providers need (section 16): its `spec` (`PackLanguageSpec`: key,
   label, short, pack, uses, entry, extension; at most 250 B gzip each,
   checked in languages.test.mjs) and `providers(language)`. `body.ts`
   exports `BODIES` (`PackLanguageBody`: sample, server settings,
@@ -1010,3 +1031,64 @@ sections 2 to 5, and from D9:
   Symbol in Workspace was already the binding's. The app's
   `vscode-languageserver-protocol` imports are gone with them: what the
   app reads of a server is typed by `@yukibana/protocol`.
+
+## 16. The review of steps 6 and 7
+
+* **A run-only language asks only for a run host.** Every package typed
+  its languages `PackageLanguage<PackHost>`, so a host that only runs
+  code (the Hylo example, a playground) could not take Go's providers
+  without faking `explorers()`. A language is now typed by the least host
+  its providers need: Go, PHP, Kotlin, Zig and lang-javascript's five are
+  `PackageLanguage<RunHost>`; Python, Java, Haskell, Rust, Scala, Swift,
+  C and C++ have compiler output views and stay `PackHost`. The app's
+  `Language.providers` is still `PackHost`'s, which takes both, since a
+  provider's host is an input. Checked with a probe: `createInstance<RunHost>`
+  takes Go's providers and refuses Python's.
+* **The decisions are written down.** Sections 4 and 12 to 15 cited D1,
+  D2, D8 and D9, and code comments "decision 8" and "decision 7", ids that
+  were never in this file; section 1 now lists D1 to D14, and the comments
+  cite D8 and D9. language-session.ts named a `bindMonaco` that never
+  existed: it is `MonacoBinding`.
+* **What adding a language still edits.** Section 14 said adding a
+  language is adding a directory. It is not quite: besides the directory,
+  the app's languages.ts imports the package's `LANGUAGES`, `BODIES` and
+  `MONACO_LANGUAGES` and spreads each into its table, and monaco.ts imports
+  Monaco's own grammar for it, if Monaco has one. Each is checked: a
+  language in `INSTALLED` without its body or Monaco languages is a
+  compile error (`Record<LanguageId, …>`). That stays, because
+  `LanguageId` is the union of the installed keys, which only static
+  imports give the compiler; a manifest per package would need its
+  `index.ts` to import its body, which a host that loads bodies lazily
+  does not want. What no longer needs editing is the boundaries test's
+  count of language ids (17), which now compares the ids it reads from the
+  sources with every package's exported `LANGUAGES`.
+* **Rule 7 is enforced.** Step 6 said rules 3 to 7 were; 7 was not.
+  boundaries.test.mjs now finds every `as` cast with TypeScript's parser
+  (`as const` and comments aside; core/brand.ts exempt) and fails on one
+  that `CASTS` does not list, by file and by the type cast to, with why;
+  and on an entry no cast uses any more. There is no `MetaBinding.parse`
+  or `languageOf` cast to exempt: both narrow without one. The language
+  session's casts of a server's params are gone instead of listed: each
+  handler reads its params through a guard (`isMessageParams`,
+  `isProgress` and the rest), and a notification it cannot read is named
+  in the log and ignored, where `$/progress` without a `value` threw inside
+  the worker's message handler; a request it cannot read is answered
+  `INVALID_PARAMS` (new in protocol/connection.ts). `retriggers` reads the
+  error's data by `in`, without a cast.
+* **The bundle baseline is main's again.** Step 6 recorded its own
+  initial set (1,249,399 B) as the baseline, which made the 1% that steps
+  2 to 5 used the floor for the next steps. `bundle-baseline.json` holds
+  main's 1,242,711 B again, until a commit brings the set below it. After
+  this review the set is 1,250,316 B (24 files), +0.61%, under the
+  1,255,138 B budget; the guards above cost 379 B of it.
+* **Not done: lazy bodies of the other languages.** Section 5 has Light
+  import only the current language's body eagerly, and section 14 recorded
+  that it imports them all. The bodies' chunk is 18,259 B gzip of the
+  initial set (57,584 B raw). Making the others lazy is not a bundling
+  change only: `Language.sample`, `configFiles`, `properties` and
+  `settings` are read synchronously, by a new project and a language
+  switch (project.ts `newProject`), the explorer's hidden files, the tidy
+  rules' defaults and the build settings, so each would wait for a chunk
+  where today it does not, a behaviour change N9 rules out for a review
+  fix. It belongs with step 9's other on-use loads, and bundle.test.mjs's
+  "bodies load with the page" is to be turned around in that commit.

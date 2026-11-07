@@ -13,10 +13,10 @@
  * (packs/kotlin/README.md).
  */
 import { AVAILABLE } from '../core/index.ts';
-import { runProvider, warmProvider, type PackageLanguage, type PackHost } from '../std/index.ts';
+import { runProvider, warmProvider, type PackageLanguage, type RunHost } from '../std/index.ts';
 
 /** Kotlin: Run and Test, with a runner kept warm. */
-const KOTLIN: PackageLanguage<PackHost> = {
+const KOTLIN: PackageLanguage<RunHost> = {
 	spec: { key: 'kotlin', label: 'Kotlin', short: null, pack: 'kotlin', uses: [], entry: 'src/main/kotlin/Main.kt', extension: '.kt' },
 	providers: (language) => [
 		runProvider('run', language, { requires: [], available: () => AVAILABLE }),

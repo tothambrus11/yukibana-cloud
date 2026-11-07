@@ -97,6 +97,9 @@ test('no lazy import fetches nothing: what a chunk imports dynamically is not al
 	assert.deepEqual(problems, []);
 });
 
+// Every body loads with the page because the app reads a language's sample,
+// settings and build settings synchronously (DESIGN.md section 16); the
+// commit that loads the other languages' bodies on use turns this around.
 test("the languages' descriptions and bodies load with the page, and Haskell's and Zig's grammars with their language", { skip }, () => {
 	const chunks = manifest();
 	const initial = new Set(initialSet());

@@ -10,10 +10,10 @@
  * classes with a class map, as the downloaded composer.json does.
  */
 import { AVAILABLE } from '../core/index.ts';
-import { runProvider, type PackageLanguage, type PackHost } from '../std/index.ts';
+import { runProvider, type PackageLanguage, type RunHost } from '../std/index.ts';
 
 /** PHP: Run and Test. */
-const PHP: PackageLanguage<PackHost> = {
+const PHP: PackageLanguage<RunHost> = {
 	spec: { key: 'php', label: 'PHP', short: null, pack: 'php', uses: [], entry: 'main.php', extension: '.php' },
 	providers: (language) => [
 		runProvider('run', language, { requires: [], available: () => AVAILABLE }),

@@ -242,6 +242,24 @@ test("the server's diagnostics, refreshes and its error messages reach the clien
 	await assert.rejects(rename, (e) => e instanceof ResponseError && e.message === 'not here');
 });
 
+test('a notification the session cannot read is logged and ignored, and a request it cannot read is refused', async () => {
+	const { server, told, events } = await started({ textDocumentSync: 2 }, [MAIN]);
+	server.say({ jsonrpc: '2.0', method: '$/progress', params: { token: 1 } });
+	server.say({ jsonrpc: '2.0', method: 'textDocument/publishDiagnostics', params: { uri: MAIN.uri } });
+	server.say({ jsonrpc: '2.0', method: 'window/logMessage', params: { type: 9, message: 'odd' } });
+	server.say({ jsonrpc: '2.0', method: '$/progress', params: { token: 1, value: { kind: 'begin', title: 'Indexing' } } });
+	assert.deepEqual(told.diagnostics, []);
+	assert.deepEqual(
+		events.logs.filter(([level]) => level === 'warning').map(([, text]) => text.split(' notification')[0]),
+		['The language server sent a $/progress', 'The language server sent a textDocument/publishDiagnostics', 'The language server sent a window/logMessage'],
+	);
+	assert.ok(events.logs.some(([level, text]) => level === 'log' && text === 'Indexing'));
+	server.say({ jsonrpc: '2.0', id: 'c1', method: 'workspace/configuration', params: {} });
+	await settle();
+	const answer = server.sent.find((m) => m.id === 'c1');
+	assert.equal(answer?.error?.code, -32602);
+});
+
 test('a server that dies closes every document and tells the client and the host', async () => {
 	const { server, session, told, events } = await started({ textDocumentSync: 2 }, [MAIN]);
 	server.onerror({ message: 'wasm trap', preventDefault() {} });

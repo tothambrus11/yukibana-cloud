@@ -11,12 +11,12 @@
  * registrations) and its notifications, handed on as calls.
  *
  * What an editor does with them is its binding's (a {@link SessionClient},
- * such as `@yukibana/monaco`'s `bindMonaco`): it says which client
+ * such as `@yukibana/monaco`'s `MonacoBinding`): it says which client
  * capabilities to announce, since only it knows which features it shows,
  * and it feeds the session every edit as the editor made it, a range and
  * its new text by document version. A project's own change events say
  * which files there are, not what changed inside one, so they would make a
- * session resend whole files on every keystroke (decision 8).
+ * session resend whole files on every keystroke (D9 of light/modules/DESIGN.md).
  *
  * Why not Monaco's own client (`monaco.lsp.MonacoLspClient`, checked in
  * monaco-editor 0.57.0):
@@ -34,7 +34,7 @@
  *   not have (call hierarchy and workspace symbols are in its protocol
  *   types but not among its features).
  */
-import { Connection, REQUEST_CANCELLED, ResponseError, type ServerEndpoint } from '../protocol/connection.ts';
+import { Connection, INVALID_PARAMS, REQUEST_CANCELLED, ResponseError, type ServerEndpoint } from '../protocol/connection.ts';
 import { isLoadingProgress, loadingDone, LOADING_METHOD, type LoadingProgress } from '../protocol/loading.ts';
 import type * as lsp from '../protocol/lsp.ts';
 import { CONFIGURE_METHOD, isPartStatus, STATUS_METHOD, type PartStatus } from '../protocol/status.ts';
@@ -510,48 +510,66 @@ export class LanguageSession {
 			if (isPartStatus(p)) events.status(p);
 			else events.log('warning', `The language server sent a ${STATUS_METHOD} notification without an id, a label and a known state; it is ignored.`);
 		});
-		// The server's params below are as LSP types them: the connection
-		// checks the envelope, never the params, as before this module.
+		// The connection checks the envelope, never the params: each handler
+		// below reads only what its guard checked, and a notification it
+		// cannot read is named in the log and ignored (a throw there would
+		// escape the worker's message handler), a request answered with
+		// INVALID_PARAMS.
+		const unread = (method: string): void => events.log('warning', `The language server sent a ${method} notification this client cannot read; it is ignored.`);
+		const refuse = (method: string): never => {
+			throw new ResponseError(INVALID_PARAMS, `${method}: params this client cannot read`);
+		};
 		conn.onNotification('window/logMessage', (p) => {
-			const m = p as lsp.MessageParams;
-			events.log(LOG_LEVELS.get(m.type) ?? 'log', m.message);
+			if (!isMessageParams(p)) return unread('window/logMessage');
+			events.log(LOG_LEVELS.get(p.type) ?? 'log', p.message);
 		});
 		conn.onNotification('window/showMessage', (p) => {
-			const m = p as lsp.MessageParams;
-			events.log(LOG_LEVELS.get(m.type) ?? 'info', m.message);
-			if (m.type === 1) for (const listener of this.#shownErrors) listener(m.message);
+			if (!isMessageParams(p)) return unread('window/showMessage');
+			events.log(LOG_LEVELS.get(p.type) ?? 'info', p.message);
+			if (p.type === 1) for (const listener of this.#shownErrors) listener(p.message);
 		});
 		conn.onNotification('textDocument/publishDiagnostics', (p) => {
-			const d = p as { uri: lsp.DocumentUri; diagnostics: readonly lsp.Diagnostic[] };
-			this.#client?.diagnostics(d.uri, d.diagnostics);
+			if (!isPublishedDiagnostics(p)) return unread('textDocument/publishDiagnostics');
+			this.#client?.diagnostics(p.uri, p.diagnostics);
 		});
 		conn.onNotification('$/progress', (p) => {
-			const v = (p as { value: { kind: 'begin'; title: string; message?: string } | { kind: 'report' | 'end' } }).value;
+			if (!isProgress(p)) return unread('$/progress');
+			const v = p.value;
 			if (v.kind === 'begin') events.log('log', `${v.title}${v.message ? ': ' + v.message : ''}`);
 		});
-		conn.onNotification('$/logTrace', (p) => events.log('log', (p as { message: string }).message));
+		conn.onNotification('$/logTrace', (p) => {
+			if (!hasMessage(p)) return unread('$/logTrace');
+			events.log('log', p.message);
+		});
 		conn.onNotification('telemetry/event', () => {});
 
 		const settings = this.#options.settings;
-		conn.onRequest('workspace/configuration', (p) => (p as { items: readonly { section?: string }[] }).items.map((item) => (item.section ? lookup(settings, item.section) : settings) ?? null));
+		conn.onRequest('workspace/configuration', (p) => {
+			if (!isConfigurationParams(p)) return refuse('workspace/configuration');
+			return p.items.map((item) => (item.section ? lookup(settings, item.section) : settings) ?? null);
+		});
 		conn.onRequest('workspace/workspaceFolders', () => [{ uri: this.#options.rootUri, name: 'workspace' }]);
 		// Every dynamicRegistration is declared false, so a registration is a
 		// server's own choice; its features are already wired statically.
 		conn.onRequest('client/registerCapability', (p) => {
-			const methods = (p as { registrations: readonly { method: string }[] }).registrations.map((r) => r.method);
-			events.log('log', `server registered ${methods.join(', ')} (handled by the static setup)`);
+			if (!isRegistrationParams(p)) return refuse('client/registerCapability');
+			events.log('log', `server registered ${p.registrations.map((r) => r.method).join(', ')} (handled by the static setup)`);
 			return null;
 		});
 		conn.onRequest('client/unregisterCapability', () => null);
 		conn.onRequest('window/workDoneProgress/create', () => null);
 		conn.onRequest('window/showMessageRequest', (p) => {
-			events.log('info', (p as { message: string }).message);
+			if (!hasMessage(p)) return refuse('window/showMessageRequest');
+			events.log('info', p.message);
 			return null;
 		});
-		conn.onRequest('window/showDocument', (p) => ({ success: this.#client?.showDocument(p as lsp.ShowDocumentParams) ?? false }));
+		conn.onRequest('window/showDocument', (p) => {
+			if (!isShowDocumentParams(p)) return refuse('window/showDocument');
+			return { success: this.#client?.showDocument(p) ?? false };
+		});
 		conn.onRequest('workspace/applyEdit', async (p) => {
-			const params = p as { edit: lsp.WorkspaceEdit; label?: string };
-			return { applied: this.#client ? await this.#client.applyEdit(params.edit, params.label ?? null) : false };
+			if (!isApplyEditParams(p)) return refuse('workspace/applyEdit');
+			return { applied: this.#client ? await this.#client.applyEdit(p.edit, p.label ?? null) : false };
 		});
 		conn.onRequest('workspace/semanticTokens/refresh', () => {
 			this.#client?.refreshed('semanticTokens');
@@ -589,7 +607,65 @@ export class LanguageSession {
 
 /** `true` iff `e` is a pull the server refused for now and wants asked again (ServerCancelled, `retriggerRequest` not false). */
 function retriggers(e: unknown): boolean {
-	return e instanceof ResponseError && e.code === SERVER_CANCELLED && (e.data as lsp.DiagnosticServerCancellationData | undefined)?.retriggerRequest !== false;
+	if (!(e instanceof ResponseError) || e.code !== SERVER_CANCELLED) return false;
+	const data: unknown = e.data;
+	return !(typeof data === 'object' && data !== null && 'retriggerRequest' in data && data.retriggerRequest === false);
+}
+
+// The server's params as this client reads them. Each guard checks what its
+// handler reads and no deeper: a document's diagnostics, a workspace edit
+// and a document's selection are as LSP types them, handed to the client,
+// which reads them as the server sent them.
+
+/** `true` iff `p` is an object with a string `message`. */
+function hasMessage(p: unknown): p is { readonly message: string } {
+	return typeof p === 'object' && p !== null && 'message' in p && typeof p.message === 'string';
+}
+
+/** `true` iff `p` is `window/logMessage`'s or `window/showMessage`'s params: a message and a type from 1 to 5. */
+function isMessageParams(p: unknown): p is lsp.MessageParams {
+	return hasMessage(p) && 'type' in p && (p.type === 1 || p.type === 2 || p.type === 3 || p.type === 4 || p.type === 5);
+}
+
+/** `true` iff `p` is `textDocument/publishDiagnostics`'s params: a URI and a list. */
+function isPublishedDiagnostics(p: unknown): p is { readonly uri: lsp.DocumentUri; readonly diagnostics: readonly lsp.Diagnostic[] } {
+	return typeof p === 'object' && p !== null && 'uri' in p && typeof p.uri === 'string' && 'diagnostics' in p && Array.isArray(p.diagnostics);
+}
+
+/** A `$/progress` notification's value, as far as the log reads it. */
+type Progress = { readonly kind: 'begin'; readonly title: string; readonly message?: string } | { readonly kind: 'report' | 'end' };
+
+/** `true` iff `p` is `$/progress`'s params with a work-done value: a `begin` with a title (and a string message, if any), a `report` or an `end`. */
+function isProgress(p: unknown): p is { readonly value: Progress } {
+	if (typeof p !== 'object' || p === null || !('value' in p)) return false;
+	const v = p.value;
+	if (typeof v !== 'object' || v === null || !('kind' in v)) return false;
+	if (v.kind === 'report' || v.kind === 'end') return true;
+	return v.kind === 'begin' && 'title' in v && typeof v.title === 'string' && (!('message' in v) || v.message === undefined || typeof v.message === 'string');
+}
+
+/** `true` iff `p` is `workspace/configuration`'s params: a list of items, each an object whose `section`, if any, is a string. */
+function isConfigurationParams(p: unknown): p is { readonly items: readonly { readonly section?: string }[] } {
+	if (typeof p !== 'object' || p === null || !('items' in p) || !Array.isArray(p.items)) return false;
+	return p.items.every((item: unknown) => typeof item === 'object' && item !== null && (!('section' in item) || item.section === undefined || typeof item.section === 'string'));
+}
+
+/** `true` iff `p` is `client/registerCapability`'s params: a list of registrations, each naming a method. */
+function isRegistrationParams(p: unknown): p is { readonly registrations: readonly { readonly method: string }[] } {
+	if (typeof p !== 'object' || p === null || !('registrations' in p) || !Array.isArray(p.registrations)) return false;
+	return p.registrations.every((r: unknown) => typeof r === 'object' && r !== null && 'method' in r && typeof r.method === 'string');
+}
+
+/** `true` iff `p` is `window/showDocument`'s params: a URI. */
+function isShowDocumentParams(p: unknown): p is lsp.ShowDocumentParams {
+	return typeof p === 'object' && p !== null && 'uri' in p && typeof p.uri === 'string';
+}
+
+/** `true` iff `p` is `workspace/applyEdit`'s params: an edit (an object), and a string label, if any. */
+function isApplyEditParams(p: unknown): p is { readonly edit: lsp.WorkspaceEdit; readonly label?: string } {
+	return (
+		typeof p === 'object' && p !== null && 'edit' in p && typeof p.edit === 'object' && p.edit !== null && (!('label' in p) || p.label === undefined || typeof p.label === 'string')
+	);
 }
 
 /** Returns what `e` says, as one line of a log. */

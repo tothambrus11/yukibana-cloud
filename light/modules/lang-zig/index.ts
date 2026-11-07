@@ -12,10 +12,10 @@
  * build.zig takes as its defaults (packs/zig/README.md).
  */
 import { AVAILABLE } from '../core/index.ts';
-import { runProvider, type PackageLanguage, type PackHost } from '../std/index.ts';
+import { runProvider, type PackageLanguage, type RunHost } from '../std/index.ts';
 
 /** Zig: Run and Test. */
-const ZIG: PackageLanguage<PackHost> = {
+const ZIG: PackageLanguage<RunHost> = {
 	spec: { key: 'zig', label: 'Zig', short: null, pack: 'zig', uses: ['linux'], entry: 'main.zig', extension: '.zig' },
 	providers: (language) => [
 		runProvider('run', language, { requires: [], available: () => AVAILABLE }),

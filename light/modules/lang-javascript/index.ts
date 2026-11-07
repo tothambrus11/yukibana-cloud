@@ -16,7 +16,7 @@
  * the host's. Its run provider stays, for the Run button's availability.
  */
 import { AVAILABLE, pathOf, type Path, type Provider } from '../core/index.ts';
-import { preview, run, runProvider, test, type PackageLanguage, type PackHost, type PackLanguage, type PreviewInput, type PreviewSession, type RunHost } from '../std/index.ts';
+import { preview, run, runProvider, test, type PackageLanguage, type PackLanguage, type PreviewInput, type PreviewSession, type RunHost } from '../std/index.ts';
 
 /**
  * Returns the provider of `preview` for `language`, previewing `page`:
@@ -45,23 +45,23 @@ export function previewProvider(language: PackLanguage, page: Path): Provider<Pr
 const PAGE = 'index.html';
 
 /** Returns the providers of a language that runs, tests and mutation-tests. */
-const scripted = (language: PackLanguage): ReturnType<PackageLanguage<PackHost>['providers']> => [
+const scripted = (language: PackLanguage): ReturnType<PackageLanguage<RunHost>['providers']> => [
 	runProvider('run', language, { requires: [], available: () => AVAILABLE }),
 	runProvider('test', language, { requires: [], available: () => AVAILABLE }),
 	runProvider('mutate', language, { requires: [test], available: () => AVAILABLE }),
 ];
 
 /** Returns the providers of a web language: Run, and the preview of its page. */
-const page = (language: PackLanguage): ReturnType<PackageLanguage<PackHost>['providers']> => [
+const page = (language: PackLanguage): ReturnType<PackageLanguage<RunHost>['providers']> => [
 	runProvider('run', language, { requires: [], available: () => AVAILABLE }),
 	previewProvider(language, pathOf(PAGE)),
 ];
 
 /** JavaScript: Run, Test and Mutate. */
-const JAVASCRIPT: PackageLanguage<PackHost> = { spec: { key: 'javascript', label: 'JavaScript', short: null, pack: 'javascript', uses: [], entry: 'main.js', extension: '.js' }, providers: scripted };
+const JAVASCRIPT: PackageLanguage<RunHost> = { spec: { key: 'javascript', label: 'JavaScript', short: null, pack: 'javascript', uses: [], entry: 'main.js', extension: '.js' }, providers: scripted };
 
 /** TypeScript: Run, Test and Mutate. */
-const TYPESCRIPT: PackageLanguage<PackHost> = {
+const TYPESCRIPT: PackageLanguage<RunHost> = {
 	// TypeScript as Node 22.18+ runs it: types stripped, imports with their
 	// .ts extension, so the download runs with plain `node main.ts`.
 	spec: { key: 'typescript', label: 'TypeScript', short: null, pack: 'javascript', uses: [], entry: 'main.ts', extension: '.ts' },
@@ -69,7 +69,7 @@ const TYPESCRIPT: PackageLanguage<PackHost> = {
 };
 
 /** A web page: Run, which previews it. */
-const WEB: PackageLanguage<PackHost> = {
+const WEB: PackageLanguage<RunHost> = {
 	// A page: index.html, its stylesheet and its TypeScript, shown by Run
 	// in the Preview panel and reloaded live; downloads as a Vite project.
 	spec: { key: 'web', label: 'Web (HTML, CSS, TypeScript)', short: 'Web', pack: 'javascript', uses: [], entry: 'main.ts', extension: '.ts' },
@@ -77,7 +77,7 @@ const WEB: PackageLanguage<PackHost> = {
 };
 
 /** A p5.js sketch in instance mode: Run, which previews it. */
-const P5: PackageLanguage<PackHost> = {
+const P5: PackageLanguage<RunHost> = {
 	// A web project whose page is a p5.js sketch: a canvas that fills the
 	// window and a circle that follows the mouse. p5.js comes from the
 	// JavaScript pack (packs/javascript/README.md, "Packages"): Preview
@@ -90,7 +90,7 @@ const P5: PackageLanguage<PackHost> = {
 };
 
 /** A p5.js sketch in global mode: Run, which previews it. */
-const P5_GLOBAL: PackageLanguage<PackHost> = {
+const P5_GLOBAL: PackageLanguage<RunHost> = {
 	// The same sketch in global mode, as p5.js's own editor and most of
 	// its examples write it: setup() and draw() are plain functions and
 	// every p5 function a global. The sketch is a classic script (a

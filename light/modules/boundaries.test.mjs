@@ -15,7 +15,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { modules } from './list.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +96,83 @@ const FORBIDDEN = [
 	{ pattern: /yukibana\.json/, why: 'the app\'s project configuration' },
 	{ pattern: /\/\/\/\s*<reference/, why: 'a triple-slash reference, which brings in globals the module\'s tsconfig.json leaves out' },
 ];
+
+/**
+ * The `as` casts a module may make (DESIGN.md, rule 7), by file and by the
+ * type cast to as the source spells it, each with why the compiler cannot
+ * be told otherwise. `as const` is not a cast, and core/brand.ts, where a
+ * brand is made, is exempt as a whole. A cast not listed here fails the
+ * test, and so does an entry no cast uses any more, so the list says what
+ * is there. A value from outside (a server, a worker, JSON) is narrowed by
+ * a guard, not listed: runtime/language-session.ts's are.
+ */
+const CASTS = {
+	'core/instance.ts': {
+		unknown: 'with `Perform<I, R, H>` below: the provider list holds performs of erased input types, and the token passed in fixes them again (N3)',
+		'Perform<I, R, H>': 'the provider found for a `Token<I, R>` is that token\'s, which `createInstance` checked, so its perform takes `I`',
+	},
+	'core/token.ts': { 'Token<I, R, never>': 'a token\'s phantom field exists only in its type; `defineToken` is the one place a token is made' },
+	'lang-cpp/tests.ts': { 'TestFramework[]': '`Object.keys` of a record keyed by `TestFramework` gives `string[]`' },
+	'lang-cpp/tidy.ts': {
+		'Record<string, unknown>': 'the guard of tidy-checks.json reads fields of a non-null object',
+		TidyCheck: 'the same guard reads one check\'s fields to test their types',
+		string: '`JSON.parse` of a double-quoted YAML scalar, which is a JSON string',
+	},
+	'monaco/bind.ts': { 'lsp.CodeAction': 'a code action answer is a `Command` or a `CodeAction`, and one without a string `command` is the latter' },
+	'monaco/call-hierarchy.ts': {
+		'lsp.CallHierarchyIncomingCall': 'the direction asked for says which of the two shapes the server answered',
+		'lsp.CallHierarchyOutgoingCall': 'the direction asked for says which of the two shapes the server answered',
+	},
+	'monaco/convert.ts': {
+		'lsp.MarkupContent | lsp.MarkedString': 'a hover\'s contents that are not an array are one item; `Array.isArray` does not narrow a readonly array out of the union',
+		'monaco.languages.SymbolKind': 'LSP\'s symbol kinds are Monaco\'s, counted from 1 rather than 0',
+		'lsp.Location': 'a definition answer that is not an array is one location; `Array.isArray` does not narrow a readonly array out of the union',
+	},
+	'monaco/internals.ts': {
+		'Record<string, unknown>': 'Monaco\'s internal modules and services are probed by name, as objects, before they are used',
+		'[string, InternalModule][]': '`Object.entries` of the INTERNALS table loses its value type',
+		'{ prototype?: unknown }': 'a class export is probed for its prototype\'s methods',
+		T: 'a service whose every method the probe found is the service the caller names',
+		'QuickPick<T>': 'Monaco\'s quick input service creates an untyped quick pick',
+		'unknown[]': 'a workspace edit already made of Monaco\'s classes is passed on as it is',
+	},
+	'monaco/services.ts': {
+		'Partial<Element>': 'an event target is probed for `closest` before it is taken for an element',
+		Element: 'the target the probe found has `closest`',
+		'unknown[]': 'a quick input\'s groups, an array the `in` check found, are read item by item',
+		KeyboardEvent: 'Monaco\'s keybinding service hands its own event type a keyboard event',
+	},
+	'protocol/connection.ts': {
+		R: 'a response\'s result is what the caller typed the request as answering (LSP\'s types)',
+		'Partial<RequestMessage & ResponseMessage>': 'the envelope of a message from the worker, whose fields are each checked before use',
+	},
+	'protocol/loading.ts': { 'Record<string, unknown>': 'the guard `isLoadingProgress` reads fields of a non-null object' },
+	'protocol/runner.ts': { FromRunner: 'the message the guard table just checked field by field' },
+	'protocol/status.ts': { 'Record<string, unknown>': 'the guard `isPartStatus` reads fields of a non-null object' },
+	'runtime/packs.ts': { PackId: 'the brand\'s parse, `packIdOf`, after the pattern matched', unknown: '`Response.json()` answers `any`, which is taken as `unknown` at once' },
+	'runtime/run-session.ts': { 'ReturnType<typeof setTimeout>': 'the session\'s clock hands back the timer its own `setTimeout` made' },
+	'std/explore-workers.ts': { 'Readonly<Record<string, unknown>>': 'a worker\'s answer is read field by field once it is a non-null object' },
+	'std/explore.ts': { ViewKind: 'the brand\'s parse, `viewKind`, after the pattern matched' },
+	'std/linux.ts': { 'Record<string, unknown>': 'saved run options are read field by field once they are a non-null object' },
+};
+
+/** Files whose casts are not checked: where the core makes its brands (rule 7). */
+const CAST_EXEMPT = new Set(['core/brand.ts']);
+
+/** The type each `as` cast of a source file casts to, as the source spells it (whitespace folded), `as const` aside. */
+function castsOf(path, source) {
+	const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+	const found = [];
+	const visit = (node) => {
+		if (ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) {
+			const type = node.type.getText(file).replace(/\s+/g, ' ');
+			if (type !== 'const') found.push(type);
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+	return found;
+}
 
 /** Every import of a source file: its specifier and whether it is type-only. */
 function importsOf(path, source) {
@@ -206,6 +283,12 @@ function problemsOf(root, module, path, source) {
 	for (const { pattern, why } of FORBIDDEN) {
 		if (pattern.test(source)) problems.push(`${name} mentions ${pattern.source.replaceAll('\\', '')} (${why})`);
 	}
+	const key = name.split(sep).join('/');
+	if (!CAST_EXEMPT.has(key)) {
+		for (const type of castsOf(path, source)) {
+			if (!Object.hasOwn(CASTS[key] ?? {}, type)) problems.push(`${name} casts to ${type}, which CASTS does not list: narrow the value with a guard, or list the cast with why the compiler cannot be told (rule 7)`);
+		}
+	}
 	return problems;
 }
 
@@ -233,6 +316,16 @@ test('every shared module imports only the modules its arrows allow, and mention
 	}
 	assert.ok(files >= Object.keys(ALLOWED).length, 'every module has at least its index.ts');
 	assert.deepEqual(problems, []);
+});
+
+test('every cast CASTS lists is still made, so the list says what is there', () => {
+	const unused = [];
+	for (const [file, types] of Object.entries(CASTS)) {
+		const path = join(here, ...file.split('/'));
+		const made = new Set(castsOf(path, readFileSync(path, 'utf8')));
+		for (const type of Object.keys(types)) if (!made.has(type)) unused.push(`${file}: ${type}`);
+	}
+	assert.deepEqual(unused, []);
 });
 
 /**
@@ -378,7 +471,25 @@ test('core, std, the runtime and monaco name no language, though their comments 
 	assert.equal(check('runtime', "export const id = 'cpp';").length, 1);
 	assert.equal(check('monaco', "export const id = 'haskell';").length, 1);
 	assert.deepEqual(check('lang-cpp', "export const id = 'cpp';"), []);
-	assert.ok(LANGUAGE_IDS.has('p5-global') && LANGUAGE_IDS.has('c') && LANGUAGE_IDS.size === 17, `the language ids are every package's: ${[...LANGUAGE_IDS].join(', ')}`);
+	assert.ok(LANGUAGE_IDS.has('p5-global') && LANGUAGE_IDS.has('c'), `the language ids are every package's: ${[...LANGUAGE_IDS].join(', ')}`);
+});
+
+test("the language ids read from the sources are every package's languages, as each exports them", async () => {
+	const exported = [];
+	for (const module of modules().filter((m) => isLanguagePackage(m.name))) {
+		const { LANGUAGES } = await import(pathToFileURL(join(here, module.name, 'index.ts')).href);
+		exported.push(...Object.values(LANGUAGES).map((language) => language.spec.key));
+	}
+	assert.deepEqual([...LANGUAGE_IDS].sort(), exported.sort());
+});
+
+test('a cast needs an entry in CASTS, and `as const` and comments are not casts', () => {
+	assert.equal(check('std', "export const k = (s: string) => s as unknown as number;").length, 2);
+	assert.equal(check('std', "export const k = (s: unknown) => <string>s;").length, 1);
+	assert.deepEqual(check('std', "export const k = ['a'] as const;\n// read as Path, not cast\nexport const t = 'as Path';"), []);
+	assert.deepEqual(problemsOf(here, 'std', fake('std', 'explore.ts'), "export const v = (t: string) => t as ViewKind;"), []);
+	assert.equal(problemsOf(here, 'std', fake('std', 'explore.ts'), "export const v = (t: string) => t as Path;").length, 1);
+	assert.deepEqual(problemsOf(here, 'core', fake('core', 'brand.ts'), "export const p = (t: string) => t as Path;"), []);
 });
 
 test('the runtime may import protocol but never the Monaco integration', () => {

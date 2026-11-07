@@ -3,7 +3,7 @@
  * {@link MonacoBinding}. It is the session's {@link SessionClient}: it
  * announces the client capabilities Monaco's features have, feeds the
  * session every model's edits as Monaco reports them (ranges by version,
- * decision 8 of DESIGN.md), opens, closes and moves documents as the
+ * D9 of DESIGN.md), opens, closes and moves documents as the
  * host's `Project` says its files were created, deleted and renamed, shows the server's diagnostics as markers, and
  * answers Monaco's language features (completion, hover, rename, code
  * actions and the rest), the call hierarchy's action and Go to Symbol in
