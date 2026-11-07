@@ -5,9 +5,12 @@
 //
 //   node test.mjs            # builds first; SKIP_BUILD=1 to use dist/ as it is
 //
-// The packs are $PACKS or light/app/static/packs (packs.ts); a playground
-// whose pack is not installed is skipped with a message (Swift, where it is
-// not built). Chromium is $CHROMIUM, or the one this repository's images
+// The packs are $PACKS or light/app/static/packs (packs.ts). The packs
+// $REQUIRE_PACKS names (comma-separated; default javascript,cpp,rust,python)
+// must be installed; a playground of any other pack that is not installed
+// is skipped with a message naming it, and counted as skipped (CI fetches
+// what the pack store has, .github/workflows/light-ci.yml). JavaScript is
+// always required: the site's other pages are JavaScript. Chromium is $CHROMIUM, or the one this repository's images
 // install. Exits non-zero naming every check that failed, and prints the
 // JavaScript each page loads (gzip) for README.md's bundle note.
 import { spawn, spawnSync } from 'node:child_process';
@@ -29,13 +32,15 @@ if (process.env.SKIP_BUILD !== '1') {
 	}
 }
 linkPacks(join(here, 'dist'));
-for (const pack of ['javascript', 'cpp', 'rust', 'python']) {
+const required = new Set(['javascript', ...(process.env.REQUIRE_PACKS ?? 'javascript,cpp,rust,python').split(',').map((pack) => pack.trim()).filter((pack) => pack !== '')]);
+for (const pack of required) {
 	if (!installed(pack)) {
-		console.error(`The ${pack} pack is not installed in ${PACKS}: install it, or set PACKS.`);
+		console.error(`The ${pack} pack is not installed in ${PACKS}: install it, set PACKS, or leave it out of REQUIRE_PACKS.`);
 		process.exit(1);
 	}
 }
-const SWIFT = installed('swift');
+/** Why a check of `pack` is skipped, or null when the pack is installed. */
+const missing = (pack) => (installed(pack) ? null : `the ${pack} pack is not installed in ${PACKS} (build light/packs/${pack}, or light/scripts/pack-store.sh fetch ${pack} --any); its playground is built, not run`);
 
 /** A port nothing listens on now. */
 const freePort = () =>
@@ -202,8 +207,9 @@ try {
 	];
 	for (const tab of tabs) {
 		const name = `the ${tab.label} tab hydrates when chosen and its word count prints the five lines`;
-		if (tab.pack === 'swift' && !SWIFT) {
-			skip(name, `the Swift pack is not installed in ${PACKS} (build light/packs/swift); its playground is built and type-checked, not run`);
+		const why = missing(tab.pack);
+		if (why !== null) {
+			skip(name, why);
 			continue;
 		}
 		await check(name, async () => {
@@ -221,7 +227,8 @@ try {
 		await figure.locator('textarea.pg-stdin-text').fill('snow snow flower\n');
 		await runs(playground(page, 'figure#wf-js'), 'snow 2\nflower 1\n');
 	});
-	await check('an edited program runs as edited, and Reset brings the page’s code back', async () => {
+	if (missing('python') !== null) skip('an edited program runs as edited, and Reset brings the page’s code back', missing('python'));
+	else await check('an edited program runs as edited, and Reset brings the page’s code back', async () => {
 		const pg = playground(page, 'figure#wf-python');
 		await page.locator('.tab', { hasText: 'Python' }).click();
 		await pg.edit('[:5]', '[:2]');
@@ -274,24 +281,28 @@ try {
 	});
 	await web.close();
 
-	const data = await open('/python/csv-table/');
-	record('/python/csv-table/', 'on load', data.scripts);
-	const TABLE = 'station     Dec   Jan   Feb  total\nAomori      129   207   170    506\nSapporo      96   121   112    329\nNiigata      24    48    36    108\n';
-	await check('Python reads the CSV the page ships and prints the table', async () => {
-		const pg = playground(data.page, 'figure#table');
-		await pg.ready();
-		await runs(pg, TABLE);
-	});
-	await check('the chart continues the table snippet: its code runs first, then the bars', async () => {
-		const pg = playground(data.page, 'figure.playground >> nth=1');
-		await pg.ready();
-		await runs(pg, (output) => output.startsWith(TABLE) && output.includes('Aomori   ████████████████████████ 506 cm') && output.includes('Niigata  █████ 108 cm'));
-	});
-	await check('the chart uses the reader’s edit of the table snippet', async () => {
-		await playground(data.page, 'figure#table').edit('key=lambda station: -totals[station]', 'key=lambda station: station');
-		await runs(playground(data.page, 'figure.playground >> nth=1'), (output) => output.indexOf('Aomori   █') < output.indexOf('Niigata  █') && output.indexOf('Niigata  █') < output.indexOf('Sapporo  █'));
-	});
-	await data.close();
+	if (missing('python') !== null) {
+		for (const name of ['Python reads the CSV the page ships and prints the table', 'the chart continues the table snippet: its code runs first, then the bars', 'the chart uses the reader’s edit of the table snippet']) skip(name, missing('python'));
+	} else {
+		const data = await open('/python/csv-table/');
+		record('/python/csv-table/', 'on load', data.scripts);
+		const TABLE = 'station     Dec   Jan   Feb  total\nAomori      129   207   170    506\nSapporo      96   121   112    329\nNiigata      24    48    36    108\n';
+		await check('Python reads the CSV the page ships and prints the table', async () => {
+			const pg = playground(data.page, 'figure#table');
+			await pg.ready();
+			await runs(pg, TABLE);
+		});
+		await check('the chart continues the table snippet: its code runs first, then the bars', async () => {
+			const pg = playground(data.page, 'figure.playground >> nth=1');
+			await pg.ready();
+			await runs(pg, (output) => output.startsWith(TABLE) && output.includes('Aomori   ████████████████████████ 506 cm') && output.includes('Niigata  █████ 108 cm'));
+		});
+		await check('the chart uses the reader’s edit of the table snippet', async () => {
+			await playground(data.page, 'figure#table').edit('key=lambda station: -totals[station]', 'key=lambda station: station');
+			await runs(playground(data.page, 'figure.playground >> nth=1'), (output) => output.indexOf('Aomori   █') < output.indexOf('Niigata  █') && output.indexOf('Niigata  █') < output.indexOf('Sapporo  █'));
+		});
+		await data.close();
+	}
 
 	const chain = await open('/chaining/');
 	record('/chaining/', 'on load', chain.scripts);

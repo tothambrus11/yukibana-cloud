@@ -27,9 +27,28 @@ npm run test:e2e             # builds, astro preview, every playground in Chromi
 
 The packs are Light's installed ones (`light/app/static/packs`). Set
 `PACKS=/path/to/packs` to use others (from a git worktree, for example).
-A playground whose pack is not installed is skipped by the test with a
-message. Swift is the usual one: its snippet is built and type-checked as
-part of the page, but it is run only where `packs/swift` has been built.
+The test requires the packs `REQUIRE_PACKS` names (comma-separated;
+default `javascript,cpp,rust,python`, and JavaScript always) and fails
+naming any that is missing; a playground of any other pack that is not
+installed is skipped with a message naming the pack and how to get it.
+`REQUIRE_PACKS=javascript,cpp,rust,python,swift` makes Swift required too.
+
+**Swift has been run.** On 2026-11-07 all 22 checks passed, the Swift tab's
+word count among them (5 lines, exit 0), with every pack installed and the
+Swift pack built by `light/packs/swift/build.sh`'s steps for the runner:
+swift-toolchain-wasm `swift-6.3.3-wasm-4` (checksums verified), stripped,
+the sysroot trimmed, XCTest built, `runner.js`/`server.js` bundled. Two
+parts of that pack were left out because they do not touch Run:
+`swift-ls.wasm` (formatting and semantic tokens, which needs the native
+3.5 GB Swift toolchain to compile swift-syntax) and `swift-testing.tar`.
+Where no Swift pack is installed the tab is skipped and the snippet is only
+built into the page, not compiled.
+
+CI (`.github/workflows/light-ci.yml`, job `astro-docs-example`) runs the
+type-check, the build and this test with `REQUIRE_PACKS=javascript`, after
+fetching the newest stored build of each pack (`light/scripts/pack-store.sh
+fetch <pack> --any`) and building the JavaScript pack when the store has
+none, so the job's log names every playground it could not run.
 
 ## The component
 
@@ -96,6 +115,15 @@ top would show it.
 
 No package was changed for this example.
 
+What this example has to write itself, and every other host too, is
+`src/lib/host.ts`: the runners' needs (`RUNNER_NEEDS`, the same
+`{ crossOriginIsolated: 'optional-stdin', sameOriginPacks: true }` as
+Light, two-up and Hylo), a pool made on first use and the explorer workers.
+That is a gap in `@yukibana/std`/`@yukibana/runtime` (a ready-made page
+host, or each pack's `pack.json` saying what its runner needs), left for one
+change to the packages that every host then adopts, rather than a copy of
+it here.
+
 ## Hosting the packs, and the headers
 
 The packs are static files and are never bundled. The runners need them
@@ -138,7 +166,7 @@ fetched, packs excluded:
 | A page with no playground in view (the cookbook in a 260 px window) | none: Astro's island loader is inline | 0 KiB |
 | The first playground in view (any page) | the island (16.3 KiB: Preact component, Yukibana core, std, runtime, textarea editor), Preact (4.9 + 1.2 KiB hooks), Astro's Preact renderer (0.7 KiB), and the language's package index (0.5 to 0.7 KiB) | 23.8 KiB |
 | Each further language on the page | its package index (`lang-cpp` 1.8 KiB, `lang-rust`, `lang-python`, …) | about 1 to 2 KiB |
-| Run | the pack's runner and compiler (clang, rustc, CPython, TypeScript), from `/packs/`, once per page | the packs' own sizes |
+| Run | the pack's runner and compiler (clang, rustc, swift-frontend, CPython, TypeScript), from `/packs/`, once per page | the packs' own sizes |
 
 The cookbook's hidden tabs load nothing, not even their language package:
 the test checks that `lang-cpp`, `lang-rust`, `lang-swift` and
