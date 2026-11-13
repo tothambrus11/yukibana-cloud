@@ -354,8 +354,14 @@
 		background: var(--gray-6);
 		color: var(--white);
 	}
-	/* The ink of the design system's focus ring, inside the row. */
+	/*
+	 * The ink of the design system's focus ring, inside the row. The outline
+	 * is turned off here too: `.row` alone ties with design/base.css's
+	 * `.yk-root :focus-visible`, and a tie is won by whichever stylesheet the
+	 * build happens to put last.
+	 */
 	.row:focus-visible {
+		outline: none;
 		box-shadow: inset 0 0 0 var(--yk-focus-width) var(--yk-ink);
 	}
 	/* The open file: a fill and an edge in the greys, since green is for actions, links and the current tab's line. */
@@ -451,17 +457,25 @@
 	.editing:hover {
 		background: none;
 	}
+	/*
+	 * The name being typed. Its focus is the design system's ink ring
+	 * (design/base.css), not a border of its own: a green border under the
+	 * ring drew two. The ring sits 1px out rather than 2px so that it stays
+	 * inside the row and is not cut off at the top of the tree.
+	 */
 	input {
 		flex: 1;
 		min-width: 0;
-		height: 1.3rem;
+		height: 1.25rem;
 		padding: 0 0.3rem;
-		border: 1px solid var(--accent);
+		border: 1px solid var(--control-border);
 		border-radius: 0.25rem;
 		background: var(--black);
 		color: var(--white);
 		font: inherit;
-		outline: none;
+	}
+	input:focus-visible {
+		outline-offset: 1px;
 	}
 	input[aria-invalid] {
 		border-color: var(--red-high);

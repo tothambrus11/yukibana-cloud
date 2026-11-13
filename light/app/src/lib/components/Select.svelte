@@ -428,6 +428,10 @@
 		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
+	}
+	/* The list's focus is drawn on its active option (below), not around the list. Turned off on `:focus-visible` so
+	   that it outranks design/base.css's `.yk-root :focus-visible`, which `.options` alone only ties. */
+	.options:focus-visible {
 		outline: none;
 	}
 	.option {
