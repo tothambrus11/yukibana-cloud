@@ -34,7 +34,7 @@ export const TEXT_CONTRAST = 7;
 
 /**
  * Each theme's editor background and the caret line's. The background is
- * the design system's `--yk-code-bg` (design/tokens.css), as hex: the dock
+ * the design system's `--yk-code-bg` (@yukibana/design/tokens.css), as hex: the dock
  * fills the current tab with it, so tab and editor are one surface. The caret
  * line is a step from it towards `--yk-sunken`.
  */
@@ -46,7 +46,7 @@ export const EDITOR: Record<Theme, { background: Hex; caretLine: Hex; panel: Hex
 /**
  * The themes' own token colours, before raising (the rest come from Monaco's
  * `vs` and `vs-dark`): the design system's `--yk-code-*` tokens
- * (design/tokens.css), as hex. A type takes `--yk-code-function`'s blue,
+ * (@yukibana/design/tokens.css), as hex. A type takes `--yk-code-function`'s blue,
  * since Monaco's grammars mark types and not functions.
  */
 export const OWN_RULES: Record<Theme, TokenRule[]> = {

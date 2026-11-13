@@ -430,7 +430,7 @@
 		overscroll-behavior: contain;
 	}
 	/* The list's focus is drawn on its active option (below), not around the list. Turned off on `:focus-visible` so
-	   that it outranks design/base.css's `.yk-root :focus-visible`, which `.options` alone only ties. */
+	   that it outranks app.css's ring on `:focus-visible`. */
 	.options:focus-visible {
 		outline: none;
 	}

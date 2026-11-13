@@ -356,9 +356,8 @@
 	}
 	/*
 	 * The ink of the design system's focus ring, inside the row. The outline
-	 * is turned off here too: `.row` alone ties with design/base.css's
-	 * `.yk-root :focus-visible`, and a tie is won by whichever stylesheet the
-	 * build happens to put last.
+	 * is turned off here too, so that no ring is drawn around the row as
+	 * well as inside it.
 	 */
 	.row:focus-visible {
 		outline: none;
@@ -459,7 +458,7 @@
 	}
 	/*
 	 * The name being typed. Its focus is the design system's ink ring
-	 * (design/base.css), not a border of its own: a green border under the
+	 * (app.css), not a border of its own: a green border under the
 	 * ring drew two. The ring sits 1px out rather than 2px so that it stays
 	 * inside the row and is not cut off at the top of the tree.
 	 */

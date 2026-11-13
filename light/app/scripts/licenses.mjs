@@ -2,7 +2,9 @@
 // own code is built from (package.json's dependencies, Svelte and
 // SvelteKit's client runtime, and everything those depend on), each under
 // its name and version, with the third-party notices a package ships beside
-// its licence (Monaco's ThirdPartyNotices.txt). The Licences dialog
+// its licence (Monaco's ThirdPartyNotices.txt), and the licence of each font
+// a package carries in fonts/<family>/ (@yukibana/design's OFL.txt files).
+// The Licences dialog
 // (src/lib/components/Licenses.svelte) links it, beside each pack's own
 // LICENSE-*.txt files.
 //
@@ -11,7 +13,9 @@
 // package.json gets that licence's standard text under its author's name,
 // which is what those licences ask to be kept; any other package without a
 // licence file fails the build by name, since shipping it would leave its
-// licence undisclosed.
+// licence undisclosed. The exception is OWN: Yukibana's own packages, from
+// the same project as this app, which need no licence file to be listed (the
+// fonts @yukibana/design carries are third-party, and their licences are).
 //
 // Runs after `vite build` and before offline-manifest.mjs (package.json,
 // "build"), which lists the file among the lazy ones.
@@ -69,11 +73,29 @@ const STANDARD = {
 /** package.json's author, as a copyright line names them. */
 const authorOf = (meta) => (typeof meta.author === 'string' ? meta.author : meta.author?.name ? `${meta.author.name}${meta.author.email ? ` <${meta.author.email}>` : ''}` : null);
 const NOTICE = /^(third-?party-?notices|notice)(\.(md|txt))?$/i;
+/** Yukibana's own packages: listed without a licence file of their own. */
+const OWN = new Set(['@yukibana/design']);
+/** The licences of the fonts a package carries, one directory per family under fonts/, each headed by its path. */
+const fontLicences = (dir) => {
+	const fonts = join(dir, 'fonts');
+	if (!existsSync(fonts)) return [];
+	return readdirSync(fonts, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.sort((a, b) => a.name.localeCompare(b.name))
+		.flatMap((d) =>
+			readdirSync(join(fonts, d.name))
+				.filter((f) => /^(ofl|licen[cs]e)(\.(md|txt))?$/i.test(f))
+				.sort()
+				.map((f) => `fonts/${d.name}/${f}:\n\n${readFileSync(join(fonts, d.name, f), 'utf8').trim()}`),
+		);
+};
 const sections = [];
 for (const [dir, meta] of [...seen].sort(([, a], [, b]) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version))) {
 	const files = readdirSync(dir).filter((f) => LICENCE.test(f) || NOTICE.test(f)).sort((a, b) => Number(NOTICE.test(a)) - Number(NOTICE.test(b)) || a.localeCompare(b));
-	let texts = files.map((f) => readFileSync(join(dir, f), 'utf8').trim()).join('\n\n');
-	if (!files.some((f) => LICENCE.test(f))) {
+	let texts = [...files.map((f) => readFileSync(join(dir, f), 'utf8').trim()), ...fontLicences(dir)].join('\n\n');
+	if (OWN.has(meta.name)) {
+		texts = [`(${meta.name} is Yukibana's own, from the same project as this app. The fonts it carries are listed with their licences.)`, texts].filter(Boolean).join('\n\n');
+	} else if (!files.some((f) => LICENCE.test(f))) {
 		const standard = STANDARD[meta.license];
 		const who = authorOf(meta);
 		if (!standard || !who) {

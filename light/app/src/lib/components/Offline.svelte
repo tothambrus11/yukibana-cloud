@@ -179,7 +179,7 @@
 		background: var(--yk-accent-strong);
 		transition: width 0.2s;
 	}
-	/* A `yk-btn` (design/base.css) draws it; this is its size. */
+	/* A `yk-btn` (the package's buttons.css) draws it; this is its size. */
 	.button {
 		min-height: 1.9rem;
 		padding: 0 0.7rem;

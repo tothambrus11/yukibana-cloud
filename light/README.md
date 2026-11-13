@@ -34,6 +34,21 @@ them all; `pnpm install --filter ./app` (or `--filter .` inside one) installs
 one. It resolves only versions published at least 14 days ago
 (`minimumReleaseAge`), and refuses a lockfile that holds a younger one.
 
+The look is the Yukibana design system, `@yukibana/design`, a git
+dependency of the app pinned to one commit of the Yukibana repository
+(`app/package.json`: `github:tothambrus11/Yukibana#<commit>&path:packages/design`).
+The app imports its `tokens.css`, its `fonts.css` (the three typefaces, whose
+OFL licences `licenses/app.txt` lists) and the parts of its base styles it
+uses (`app/src/routes/+layout.svelte`); Light's own styles come after them.
+A git dependency has no publish date, so `minimumReleaseAge` does not apply
+to it. To move to a newer commit of the design system, once it is merged:
+
+1. change the commit in `app/package.json`, the full 40-character hash;
+2. `pnpm install --filter .` in `app/`, which updates `app/pnpm-lock.yaml`;
+3. check: `pnpm run check`, `pnpm run build`, and look at the app in both
+   themes (the package's README says what changed and why);
+4. commit `package.json` and `pnpm-lock.yaml` together.
+
 `--latest` is what makes this minutes on any branch: CI stores pack builds
 from `main` only, so on another branch (or a local commit) a pack's exact
 sources often have no stored build, and without `--latest` such a pack is

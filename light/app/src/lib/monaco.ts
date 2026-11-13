@@ -40,7 +40,7 @@ import { registerZig } from './zig-language';
 export type { QuickPick, QuickPickItem };
 
 /** The editors' font stack; the first entry is the bundled web font. */
-export const EDITOR_FONT = "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+export const EDITOR_FONT = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 // The editor features used, as editor.main.js imports them, minus the ones
 // this app has no use for (the diff editor, sticky scroll, inline

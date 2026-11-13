@@ -1,6 +1,6 @@
 /*
  * Light's colours, fonts and focus ring are the Yukibana design system's
- * (design/tokens.css and design/base.css, copied from @yukibana/design):
+ * (the @yukibana/design package's tokens.css and base styles, +layout.svelte):
  * cool blue-grey greys, one green accent for primary buttons, links and the
  * current tab's line, and the ink focus ring. The tokens are `light-dark()`
  * pairs, so they follow `color-scheme`, which `<html data-theme>` sets
@@ -9,14 +9,6 @@
  * token for (--label, --header-bg, the terminal's --ansi-*) are defined here.
  */
 :root {
-	/*
-	 * The families as their self-hosted fonts register them (@fontsource-
-	 * variable, +layout.svelte), ahead of the names tokens.css gives, which
-	 * an installed copy of the font still matches.
-	 */
-	--yk-font-family-heading: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-	--yk-font-family-body: 'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif;
-	--yk-font-family-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	--hue-base: 260;
 	--font: var(--yk-font-family-body);
 	--font-mono: var(--yk-font-family-mono);
@@ -24,7 +16,7 @@
 	--tab-bar-height: 2.35rem;
 	/* The edge of a control that must be seen against its background (WCAG's 3:1 for components). */
 	--control-border: var(--yk-line-strong);
-	/* The ink ring (design/base.css): 2px of the text colour, never green. */
+	/* The ink ring (the package's core.css): 2px of the text colour, never green. */
 	--focus-ring: var(--yk-focus-width) solid var(--yk-ink);
 
 	/* Secondary text and the buttons' labels: between the ink and the soft grey. */
@@ -135,7 +127,7 @@ html.yk-root {
 
 /*
  * Shared controls. Their look is the design system's: every button is a
- * `yk-btn` (design/base.css: a 6px corner, a semibold label, a secondary's
+ * `yk-btn` (the package's buttons.css: a 6px corner, a semibold label, a secondary's
  * line, the primary's green) or a `yk-icon-btn`, and `.btn` and `.icon-btn`
  * below say only how big they are, so they come after it and win for that.
  * A control's text never wraps: a label that does not fit
@@ -228,7 +220,7 @@ html.yk-root {
 	white-space: nowrap;
 	border: 0;
 }
-/* The ink ring (design/base.css `.yk-root :focus-visible`). */
+/* The ink ring (the package's core.css, `:where(:focus-visible)`). */
 :where(button, select, input, a, [tabindex]):focus-visible {
 	outline: var(--focus-ring);
 	outline-offset: var(--yk-focus-offset);
@@ -568,7 +560,7 @@ header.bar-host {
 }
 
 /*
- * The tab bar, as the design system's dock (design/base.css's `.yk-dock`;
+ * The tab bar, as the design system's dock (the package's `.yk-dock`, css/base/dock.css;
  * Light's tabs are dockview's, so the same rules are drawn here): a bar a
  * little darker than the editor with a hairline along its foot, short
  * dividers between tabs, the current tab of each group filled with the

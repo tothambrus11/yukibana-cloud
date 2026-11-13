@@ -8,15 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@fontsource-variable/atkinson-hyperlegible-next':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@fontsource-variable/bricolage-grotesque':
-        specifier: 5.3.0
-        version: 5.3.0
-      '@fontsource-variable/jetbrains-mono':
-        specifier: 5.3.0
-        version: 5.3.0
+      '@yukibana/design':
+        specifier: github:tothambrus11/Yukibana#db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb&path:packages/design
+        version: https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb#path:packages/design
       arktype:
         specifier: 2.2.9
         version: 2.2.9
@@ -65,15 +59,6 @@ packages:
 
   '@ark/util@0.56.8':
     resolution: {integrity: sha512-XLiQyGfpJcws1zCtp2Cva8s1oheCdFn1Rt6JSyC4NnkDrpwCJnlaiawuuOc1Z97vMH+jEzW5vyyf0xOju5wUQA==}
-
-  '@fontsource-variable/atkinson-hyperlegible-next@5.3.0':
-    resolution: {integrity: sha512-UnLzNUy1RWoLDfydAatP4NaRm99X/WbQEph7q/PymJnCFIOOwKOx3pBmp5ys8trO0dM+CKGuJgeZP9fAR4mQpA==}
-
-  '@fontsource-variable/bricolage-grotesque@5.3.0':
-    resolution: {integrity: sha512-TLi9Q4hJjS2UvoTMRSS2nHu6c4R56lAw60NR9QYtVRCHn0XtsFpiEhNffZ8Glsoxu6wEEwLKBP8lb94J52PNBA==}
-
-  '@fontsource-variable/jetbrains-mono@5.3.0':
-    resolution: {integrity: sha512-F32xpS2NsGYoQi2ADSkKTgpJj7ozajsGgDJ8woTnqjmIB+dxDIqImjl4pXZVEExu8UFZ2ndhmX18EBS/hdz3Lw==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -244,6 +229,10 @@ packages:
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
+  '@yukibana/design@https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb#path:packages/design':
+    resolution: {gitHosted: true, integrity: sha512-ULKTatUWef9ZMKxT4p6evmmRg4UDoC4yAj/StnXT1AP3nQbDDuLo91K6K0X7BEtTn76rRzeA7vUnrEuuX6EaKg==, path: packages/design, tarball: https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb}
+    version: 0.0.0-dev
 
   acorn@8.19.0:
     resolution: {integrity: sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==}
@@ -569,12 +558,6 @@ snapshots:
 
   '@ark/util@0.56.8': {}
 
-  '@fontsource-variable/atkinson-hyperlegible-next@5.3.0': {}
-
-  '@fontsource-variable/bricolage-grotesque@5.3.0': {}
-
-  '@fontsource-variable/jetbrains-mono@5.3.0': {}
-
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -690,6 +673,8 @@ snapshots:
 
   '@types/trusted-types@2.0.7':
     optional: true
+
+  '@yukibana/design@https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb#path:packages/design': {}
 
   acorn@8.19.0: {}
 

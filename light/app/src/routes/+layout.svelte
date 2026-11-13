@@ -1,15 +1,13 @@
 <script lang="ts">
-	// The design system's three families, self-hosted from npm like the editor's
-	// font always was (licences/app.txt lists them). Bricolage Grotesque with its
-	// weight axis only: Light sets it in the wordmark and the dialogs' headings
-	// and nowhere else, and the optical-size files the design system's
-	// reference page loads were 60 KB more of the offline shell.
-	import '@fontsource-variable/atkinson-hyperlegible-next';
-	import '@fontsource-variable/bricolage-grotesque/wght.css';
-	import '@fontsource-variable/jetbrains-mono';
-	// The design system's tokens and the parts of its base styles Light uses, then Light's own.
-	import '../design/tokens.css';
-	import '../design/base.css';
+	// The design system, from the @yukibana/design package (a git dependency,
+	// pinned to one commit in package.json): its tokens, its three typefaces
+	// (self-hosted from the package, Latin and Latin Extended; licences/app.txt
+	// carries their OFL), and the parts of its base styles Light uses. Then
+	// Light's own styles, which come after them and win where they differ.
+	import '@yukibana/design/tokens.css';
+	import '@yukibana/design/fonts.css';
+	import '@yukibana/design/css/base/core.css';
+	import '@yukibana/design/css/base/buttons.css';
 	import '../app.css';
 
 	let { children } = $props();

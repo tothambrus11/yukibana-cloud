@@ -233,7 +233,7 @@
 		overflow: auto;
 	}
 	code {
-		font-family: var(--mono, 'JetBrains Mono Variable', monospace);
+		font-family: var(--mono, 'JetBrains Mono', monospace);
 		font-size: 0.8rem;
 	}
 	footer {
@@ -242,7 +242,7 @@
 		gap: 0.5rem;
 		padding: 0.5rem 1rem 1rem;
 	}
-	/* A `yk-btn` (design/base.css) draws it; this is its size. */
+	/* A `yk-btn` (the package's buttons.css) draws it; this is its size. */
 	.button {
 		min-height: 2rem;
 		padding: 0 0.8rem;

@@ -42,7 +42,7 @@ export const VIEW_TEXT: Record<Theme, Hex[]> = {
 /**
  * Defines the two editor themes with the page's Monaco; `theme.start()` does,
  * once. The widgets' colours are the design system's tokens
- * (design/tokens.css) as hex: `--yk-surface` and `--yk-line` for widgets,
+ * (@yukibana/design/tokens.css) as hex: `--yk-surface` and `--yk-line` for widgets,
  * `--yk-ink` for the cursor, the focus border (the ink ring's colour) and the
  * chosen suggestion's text, `--yk-info` for its matched letters and faintly
  * for the selection. Green, the accent, is kept for actions, links and the
