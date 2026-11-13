@@ -49,8 +49,9 @@ test('a colour that already reaches the contrast is left as it is; one that does
 	const light = raise('#8a8080', '#ffffff', 7);
 	assert.ok(rgbOf(light)[0] < rgbOf('#8a8080')[0], light);
 	// The theme's own colours win over Monaco's for the tokens they name.
-	assert.equal(colourOf(RULES.dark, 'keyword'), raise('#e0788f', '#121111', 7));
-	assert.equal(colourOf(RULES.dark, 'keyword.flow'), raise('#c586c0', '#121111', 7));
+	const keyword = OWN_RULES.dark.find((r) => r.token === 'keyword').foreground;
+	assert.equal(colourOf(RULES.dark, 'keyword'), raise('#' + keyword, EDITOR.dark.background, 7));
+	assert.equal(colourOf(RULES.dark, 'keyword.flow'), raise('#c586c0', EDITOR.dark.background, 7));
 });
 
 test("the views' shade meets every criterion in both themes, for every hue", () => {

@@ -39,7 +39,15 @@ export const VIEW_TEXT: Record<Theme, Hex[]> = {
 	light: viewText(THEME_RULES.light, lineNumbers('light')),
 };
 
-/** Defines the two editor themes with the page's Monaco; `theme.start()` does, once. */
+/**
+ * Defines the two editor themes with the page's Monaco; `theme.start()` does,
+ * once. The widgets' colours are the design system's tokens
+ * (design/tokens.css) as hex: `--yk-surface` and `--yk-line` for widgets,
+ * `--yk-info-bg` for the chosen suggestion, `--yk-ink` for the cursor and the
+ * focus border (the ink ring's colour), `--yk-info` faintly for the
+ * selection. Green, the accent, is kept for actions, links and the current
+ * tab's line.
+ */
 function defineThemes(): void {
 	monaco.editor.defineTheme('yukibana-dark', {
 		base: 'vs-dark',
@@ -50,17 +58,17 @@ function defineThemes(): void {
 			'editor.lineHighlightBackground': EDITOR.dark.caretLine,
 			...lineNumbers('dark'),
 			'editorGutter.background': EDITOR.dark.background,
-			'editorWidget.background': '#1f1c1c',
-			'editorWidget.border': '#2e2a2a',
-			'editorHoverWidget.background': '#1f1c1c',
-			'editorHoverWidget.border': '#2e2a2a',
-			'editorSuggestWidget.background': '#1f1c1c',
-			'editorSuggestWidget.border': '#2e2a2a',
-			'editorSuggestWidget.selectedBackground': '#2b7256aa',
-			'list.hoverBackground': '#2e2a2a',
-			focusBorder: '#2b7256',
-			'editorCursor.foreground': '#4e9375',
-			'editor.selectionBackground': '#2b725666',
+			'editorWidget.background': '#12161d',
+			'editorWidget.border': '#262c34',
+			'editorHoverWidget.background': '#12161d',
+			'editorHoverWidget.border': '#262c34',
+			'editorSuggestWidget.background': '#12161d',
+			'editorSuggestWidget.border': '#262c34',
+			'editorSuggestWidget.selectedBackground': '#152839',
+			'list.hoverBackground': '#1d222a',
+			focusBorder: '#e8ebf0',
+			'editorCursor.foreground': '#e8ebf0',
+			'editor.selectionBackground': '#87c6f240',
 		},
 	});
 
@@ -72,15 +80,18 @@ function defineThemes(): void {
 			'editor.background': EDITOR.light.background,
 			'editor.lineHighlightBackground': EDITOR.light.caretLine,
 			...lineNumbers('light'),
-			'editorWidget.background': '#faf8f8',
-			'editorWidget.border': '#ddd5d5',
-			'editorHoverWidget.background': '#faf8f8',
-			'editorHoverWidget.border': '#ddd5d5',
-			'editorSuggestWidget.background': '#faf8f8',
-			'editorSuggestWidget.border': '#ddd5d5',
-			focusBorder: '#018053',
-			'editorCursor.foreground': '#018053',
-			'editor.selectionBackground': '#01805333',
+			'editorGutter.background': EDITOR.light.background,
+			'editorWidget.background': '#ffffff',
+			'editorWidget.border': '#dadee4',
+			'editorHoverWidget.background': '#ffffff',
+			'editorHoverWidget.border': '#dadee4',
+			'editorSuggestWidget.background': '#ffffff',
+			'editorSuggestWidget.border': '#dadee4',
+			'editorSuggestWidget.selectedBackground': '#e6f2fd',
+			'list.hoverBackground': '#ebeef3',
+			focusBorder: '#141b25',
+			'editorCursor.foreground': '#141b25',
+			'editor.selectionBackground': '#1f689d33',
 		},
 	});
 }
@@ -135,8 +146,8 @@ class ThemeState {
 	private apply(): void {
 		document.documentElement.dataset['theme'] = this.#current;
 		monaco.editor.setTheme(`yukibana-${this.#current}`);
-		// The installed app's title bar: app.html picks by system theme; a toggle overrides both.
-		for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = this.#current === 'dark' ? '#121111' : '#fbfafa';
+		// The installed app's title bar, `--yk-bg` as the top bar is: app.html picks by system theme; a toggle overrides both.
+		for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = this.#current === 'dark' ? '#0b0e15' : '#f5f7fa';
 	}
 }
 
