@@ -1,0 +1,2120 @@
+From 21a689f249f7c1b883d2409cf9952bf31e081d79 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 13 Nov 2026 08:33:29 +0000
+Subject: [PATCH 1/2] feat(design): the design system as W3C tokens, compiled
+ to CSS, with shared component styles
+
+Adds @yukibana/design: the tokens the design rounds settled (cool greys, Light's green as the one accent, type, radii,
+focus, motion), in the W3C Design Tokens format with a dark override file; a compiler to `--yk-*` custom properties with
+`light-dark()`; the shared `yk-` component styles (buttons, chips, fields, drawn checkboxes, callouts, page and dock
+tabs, Expressive Code frames, messages, skeleton, empty state, lattice, header, tables); and a reference page.
+
+The tests check that the committed CSS is what the tokens compile to, and that every text pair passes 4.5:1 and every
+control 3:1 in both themes. No app uses the package yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011CH6tKeE4iJ874reAvf4rR
+---
+ packages/design/.oxlintrc.json          |   5 +
+ packages/design/README.md               |  77 +++
+ packages/design/css/base.css            | 629 ++++++++++++++++++++++++
+ packages/design/css/tokens.css          |  86 ++++
+ packages/design/package.json            |  25 +
+ packages/design/reference/index.html    | 302 ++++++++++++
+ packages/design/scripts/build.ts        |  22 +
+ packages/design/src/contrast.ts         |  51 ++
+ packages/design/src/tokens.ts           | 168 +++++++
+ packages/design/tests/tokens.test.ts    | 147 ++++++
+ packages/design/tokens/base.tokens.json | 136 +++++
+ packages/design/tokens/dark.tokens.json |  47 ++
+ packages/design/tsconfig.json           |   6 +
+ packages/design/vitest.config.ts        |   5 +
+ pnpm-lock.yaml                          |  12 +
+ 15 files changed, 1718 insertions(+)
+ create mode 100644 packages/design/.oxlintrc.json
+ create mode 100644 packages/design/README.md
+ create mode 100644 packages/design/css/base.css
+ create mode 100644 packages/design/css/tokens.css
+ create mode 100644 packages/design/package.json
+ create mode 100644 packages/design/reference/index.html
+ create mode 100644 packages/design/scripts/build.ts
+ create mode 100644 packages/design/src/contrast.ts
+ create mode 100644 packages/design/src/tokens.ts
+ create mode 100644 packages/design/tests/tokens.test.ts
+ create mode 100644 packages/design/tokens/base.tokens.json
+ create mode 100644 packages/design/tokens/dark.tokens.json
+ create mode 100644 packages/design/tsconfig.json
+ create mode 100644 packages/design/vitest.config.ts
+
+diff --git a/packages/design/.oxlintrc.json b/packages/design/.oxlintrc.json
+new file mode 100644
+index 0000000..c8c6bbf
+--- /dev/null
++++ b/packages/design/.oxlintrc.json
+@@ -0,0 +1,5 @@
++{
++  "$schema": "../../node_modules/oxlint/configuration_schema.json",
++  "extends": ["../../oxlint.strict.json"],
++  "ignorePatterns": ["node_modules/**"]
++}
+diff --git a/packages/design/README.md b/packages/design/README.md
+new file mode 100644
+index 0000000..817f84a
+--- /dev/null
++++ b/packages/design/README.md
+@@ -0,0 +1,77 @@
++# @yukibana/design
++
++Yukibana's design system for the docs site, the cloud and Light: the tokens, the shared component styles, and a page
++that shows them. It was chosen in rounds of live previews in November 2026; this file is what those rounds decided and
++why, so that nobody has to rerun them to learn it.
++
++| Path | What it is |
++| --- | --- |
++| `tokens/base.tokens.json` | Every token, in the [W3C Design Tokens format](https://www.designtokens.org/tr/2025.10/format/), with the light theme's colours. |
++| `tokens/dark.tokens.json` | The dark theme: colours only, each overriding the token of the same path. |
++| `css/tokens.css` | Generated: custom properties `--yk-*`, colours as `light-dark()`. Committed, so Light (in its own repository) can copy it. |
++| `css/base.css` | The shared components, `yk-` classes, drawn from the tokens only. |
++| `reference/index.html` | The living reference. Open it from this directory. |
++
++```sh
++pnpm --filter @yukibana/design build   # tokens → css/tokens.css
++pnpm --filter @yukibana/design test    # the CSS is up to date, every colour pair passes WCAG, the compiler's tables
++```
++
++A page follows the system's light or dark scheme, unless its root element says `data-theme="light"` or `"dark"`.
++It loads the fonts itself: Bricolage Grotesque, Atkinson Hyperlegible Next and JetBrains Mono.
++
++## What was decided, and why
++
++**Character.** Cool, engineered, welcoming to beginners, slightly serious and plainly of its moment. To the point,
++progressive disclosure, never bloated. The look is meant to be refreshed as it ages: everything is a token, so a refresh
++is cheap; what stays put between refreshes is where controls are.
++
++**Type.** Bricolage Grotesque for headings (rounded, welcoming), Atkinson Hyperlegible Next for text (made for
++legibility), JetBrains Mono with ligatures off (students must see the characters they type, `!=` not `≠`).
++
++**Colour.** Cool blue-grey greys. One accent, Light's green, for primary buttons, links and the current tab's line.
++Because the accent is green, success never relies on colour: a graded chip has a check, an open one a circle. Notes
++are blue and warnings amber, never green. Every text pair passes 4.5:1 and every control border 3:1 in both themes;
++`tests/tokens.test.ts` lists the pairs.
++
++**Shape.** Small flat pill buttons, tinted chips, fields with an 8px radius (never fully round: long text looks
++cramped in a pill). No 3D, glow or offset shadows.
++
++**Signature.** The triangles lattice on the plain page colour, only in side rails, gutters, the landing hero and an
++empty list's patch. Never behind text, never in a header, and no colour stripe along the top.
++
++**Header.** Docs and cloud: a full-width square bar, sticky, with blur and a hairline. The landing page: the same bar
++floating, rounded, at most 1000px wide; below 760px it becomes the full-width bar. Sections (Docs, Playground, Embed)
++are plain links, because some lead to other sites; none is drawn as a selected segment. Actions: search, the GitHub
++mark, Sign in. No "Get started" and no Docs call to action in any header: the landing hero carries the one call to action
++(Download). The cloud's bar holds only the course switcher and the avatar.
++
++**Tabs.** Underline for moving between pages; labels turn bold without shifting anything. Light's dock tabs: short
++dividers, the current tab filled with the editor's colour on a slightly darker bar, a full 2px line, green in the group
++you are typing in and grey in the others. Code blocks in the docs use the same tab bar, without dragging.
++
++**Tables.** Every row is a link. A checkbox on the left selects it for the bulk bar, which keeps a gap above the list.
++Checkboxes are drawn, not native: a native one follows the page's colour scheme and came out dark grey in a light panel.
++
++**Focus.** The ink ring: 2px, a 2px gap, black in the light theme and white in the dark. Highest contrast, and it keeps
++green for actions.
++
++**Code.** Expressive Code frames, as on hylo-lang.org: the dock tab bar for files, Copy and Run in Light as icon
++buttons, no header on terminal blocks (Copy appears on hover), and marked, added and removed lines with a bar and a sign.
++
++**Feedback.** Where it can, the button says it is done ("✓ Saved" for two seconds). Otherwise a pill, bottom centre,
++on one line: dark for success, fading after three seconds; red for an error, with Retry, staying until dismissed. The
++pill was chosen over a bar along the bottom of a panel because it works on every page without a panel to attach to.
++
++**Deleting.** Something that cannot come back asks in a dialog. Everything else is deleted at once and offers Undo,
++which means the cloud keeps deleted rows for a while instead of removing them.
++
++**Empty and waiting.** An empty list: centred, the lattice patch, a title, one sentence, one button. Content that is
++coming shows skeleton rows; something small shows a spinner.
++
++**Motion and icons.** 120ms fades, no movement, no bounce. Thin outline icons, stroke 1.5, Lucide style.
++
++## Still to do
++
++The apps do not use this package yet. The cloud (`cloud/web/src/app.css`), the docs site and Light each move over in
++their own change, replacing their own variables with `--yk-*` and their components with the `yk-` classes.
+diff --git a/packages/design/css/base.css b/packages/design/css/base.css
+new file mode 100644
+index 0000000..dc03e3b
+--- /dev/null
++++ b/packages/design/css/base.css
+@@ -0,0 +1,629 @@
++/* Yukibana's shared components, drawn from the tokens in tokens.css only. Load tokens.css first.
++ *
++ * Every class starts with `yk-` so an app can adopt them one at a time next to its own styles. The rules each block
++ * follows were chosen in the design rounds of November 2026; the comments say why where the why is not obvious. Fonts are
++ * named, not loaded: the page loads Bricolage Grotesque, Atkinson Hyperlegible Next and JetBrains Mono itself.
++ */
++
++/* Base */
++.yk-root,
++.yk-root body {
++    background: var(--yk-bg);
++    color: var(--yk-ink);
++    font: var(--yk-font-weight-regular) var(--yk-font-size-md) / 1.55 var(--yk-font-family-body);
++}
++.yk-root :is(h1, h2, h3, h4) {
++    font-family: var(--yk-font-family-heading);
++    font-weight: var(--yk-font-weight-heading);
++    letter-spacing: -0.02em;
++    line-height: 1.2;
++}
++.yk-root :is(code, kbd, pre, samp) {
++    font-family: var(--yk-font-family-mono);
++    font-variant-ligatures: none;
++}
++.yk-root a {
++    color: var(--yk-accent-strong);
++    text-underline-offset: 2px;
++}
++/* The ink ring: black in the light theme, white in the dark, with a gap so it never merges with a border. Green stays
++   for actions, and a green ring on a green button would vanish. */
++.yk-root :focus-visible {
++    outline: var(--yk-focus-width) solid var(--yk-ink);
++    outline-offset: var(--yk-focus-offset);
++}
++.yk-root svg.yk-icon {
++    width: 16px;
++    height: 16px;
++    fill: none;
++    stroke: currentColor;
++    stroke-width: var(--yk-icon-stroke);
++    stroke-linecap: round;
++    stroke-linejoin: round;
++    flex: none;
++}
++
++/* Buttons: small flat pills. One primary (green) per view; no 3D, no glow, no offset shadows. */
++.yk-btn {
++    display: inline-flex;
++    align-items: center;
++    gap: 6px;
++    font: var(--yk-font-weight-bold) var(--yk-font-size-sm) / 1.2 var(--yk-font-family-body);
++    padding: 6px 13px;
++    border-radius: var(--yk-radius-pill);
++    border: 1px solid transparent;
++    background: transparent;
++    color: var(--yk-ink);
++    white-space: nowrap;
++    cursor: pointer;
++    text-decoration: none;
++    transition: background-color var(--yk-motion-fast) var(--yk-motion-ease);
++}
++.yk-btn--primary {
++    background: var(--yk-accent);
++    color: var(--yk-on-accent);
++}
++.yk-btn--primary:hover {
++    background: var(--yk-accent-strong);
++}
++.yk-btn--secondary {
++    background: var(--yk-surface);
++    border-color: var(--yk-line-strong);
++}
++.yk-btn--secondary:hover,
++.yk-btn--ghost:hover {
++    background: var(--yk-sunken);
++}
++.yk-btn--ghost {
++    color: var(--yk-soft);
++}
++.yk-btn--danger {
++    background: var(--yk-danger);
++    color: var(--yk-on-accent);
++}
++.yk-btn:disabled {
++    opacity: 0.45;
++    cursor: not-allowed;
++}
++/* "It worked", said by the button itself for two seconds where it can: nothing else to look for. */
++.yk-btn[data-done] {
++    background: var(--yk-accent-bg);
++    color: var(--yk-accent-strong);
++}
++.yk-icon-btn {
++    display: inline-grid;
++    place-items: center;
++    width: 28px;
++    height: 28px;
++    border: 0;
++    border-radius: var(--yk-radius-sm);
++    background: transparent;
++    color: var(--yk-soft);
++    cursor: pointer;
++}
++.yk-icon-btn:hover {
++    background: var(--yk-sunken);
++    color: var(--yk-ink);
++}
++
++/* Chips: a pale tint and a dark label of one hue. A status chip carries an icon too, never colour alone. */
++.yk-chip {
++    --yk-chip-bg: var(--yk-chip-grey-bg);
++    --yk-chip-fg: var(--yk-chip-grey-fg);
++    display: inline-flex;
++    align-items: center;
++    gap: 5px;
++    padding: 2px 9px;
++    border-radius: var(--yk-radius-pill);
++    background: var(--yk-chip-bg);
++    color: var(--yk-chip-fg);
++    font-size: var(--yk-font-size-xs);
++    font-weight: var(--yk-font-weight-bold);
++    white-space: nowrap;
++}
++.yk-chip svg {
++    width: 11px;
++    height: 11px;
++    stroke-width: 2.6;
++}
++.yk-chip--blue {
++    --yk-chip-bg: var(--yk-chip-blue-bg);
++    --yk-chip-fg: var(--yk-chip-blue-fg);
++}
++.yk-chip--violet {
++    --yk-chip-bg: var(--yk-chip-violet-bg);
++    --yk-chip-fg: var(--yk-chip-violet-fg);
++}
++.yk-chip--pink {
++    --yk-chip-bg: var(--yk-chip-pink-bg);
++    --yk-chip-fg: var(--yk-chip-pink-fg);
++}
++.yk-chip--teal {
++    --yk-chip-bg: var(--yk-chip-teal-bg);
++    --yk-chip-fg: var(--yk-chip-teal-fg);
++}
++.yk-chip--yellow {
++    --yk-chip-bg: var(--yk-chip-yellow-bg);
++    --yk-chip-fg: var(--yk-chip-yellow-fg);
++}
++.yk-chip--green {
++    --yk-chip-bg: var(--yk-chip-green-bg);
++    --yk-chip-fg: var(--yk-chip-green-fg);
++}
++
++/* Fields: outlined, label on top, never fully round (long text looks cramped in a pill). On a wide settings page the
++   label may sit beside the field; it moves back on top on a phone. */
++.yk-field {
++    display: grid;
++    gap: 4px;
++}
++.yk-field > label {
++    font-size: var(--yk-font-size-sm);
++    font-weight: var(--yk-font-weight-bold);
++}
++.yk-field > small {
++    font-size: var(--yk-font-size-xs);
++    color: var(--yk-soft);
++}
++.yk-input {
++    font: inherit;
++    color: var(--yk-ink);
++    background: var(--yk-surface);
++    border: 1px solid var(--yk-line-strong);
++    border-radius: var(--yk-radius-md);
++    padding: 7px 11px;
++    min-width: 0;
++}
++.yk-input:focus-visible {
++    outline: none;
++    border-color: var(--yk-accent);
++    box-shadow: 0 0 0 3px color-mix(in oklch, var(--yk-accent) 22%, transparent);
++}
++.yk-field[data-invalid] .yk-input {
++    border-color: var(--yk-danger);
++}
++.yk-field[data-invalid] > small {
++    color: var(--yk-danger);
++}
++@media (min-width: 720px) {
++    .yk-field--beside {
++        grid-template-columns: 10rem minmax(0, 1fr);
++        column-gap: 12px;
++        align-items: center;
++    }
++    .yk-field--beside > label {
++        text-align: right;
++    }
++    .yk-field--beside > small {
++        grid-column: 2;
++    }
++}
++
++/* Checkboxes are drawn, not native: a native one follows the page's colour scheme, and inside a light panel on a dark
++   page it came out dark grey. */
++.yk-check {
++    appearance: none;
++    width: 16px;
++    height: 16px;
++    margin: 0;
++    border: 1px solid var(--yk-line-strong);
++    border-radius: 4px;
++    background: var(--yk-surface);
++    display: inline-grid;
++    place-items: center;
++    vertical-align: middle;
++    cursor: pointer;
++    transition:
++        background-color var(--yk-motion-fast),
++        border-color var(--yk-motion-fast);
++}
++.yk-check:hover {
++    border-color: var(--yk-ink);
++}
++.yk-check:is(:checked, :indeterminate) {
++    background: var(--yk-accent);
++    border-color: var(--yk-accent);
++}
++.yk-check:checked::after {
++    content: '';
++    width: 9px;
++    height: 5px;
++    border: solid var(--yk-on-accent);
++    border-width: 0 0 2px 2px;
++    transform: translateY(-1px) rotate(-45deg);
++}
++.yk-check:indeterminate::after {
++    content: '';
++    width: 8px;
++    height: 2px;
++    border-radius: 1px;
++    background: var(--yk-on-accent);
++}
++
++/* Notes and warnings in the docs: a tinted box with the icon in its own column. Blue and amber, never green. */
++.yk-callout {
++    --yk-callout-fg: var(--yk-info);
++    --yk-callout-bg: var(--yk-info-bg);
++    display: grid;
++    grid-template-columns: auto 1fr;
++    gap: 10px;
++    padding: 12px 14px;
++    border-radius: var(--yk-radius-lg);
++    background: var(--yk-callout-bg);
++}
++.yk-callout > svg {
++    color: var(--yk-callout-fg);
++    margin-top: 3px;
++}
++.yk-callout b:first-child {
++    color: var(--yk-callout-fg);
++}
++.yk-callout--warn {
++    --yk-callout-fg: var(--yk-warn);
++    --yk-callout-bg: var(--yk-warn-bg);
++}
++
++/* Page tabs: an underline under the current one. Labels turn bold in place: each reserves the width of its bold self
++   (data-label holds the text), so switching tabs moves nothing. */
++.yk-tabs {
++    display: flex;
++    gap: 20px;
++    box-shadow: inset 0 -1px 0 var(--yk-line);
++}
++.yk-tabs > a {
++    display: inline-grid;
++    padding: 8px 0;
++    color: var(--yk-soft);
++    text-decoration: none;
++}
++.yk-tabs > a::after {
++    content: attr(data-label);
++    font-weight: var(--yk-font-weight-bold);
++    height: 0;
++    visibility: hidden;
++    overflow: hidden;
++}
++.yk-tabs > a:hover {
++    color: var(--yk-ink);
++}
++.yk-tabs > a[aria-current] {
++    color: var(--yk-ink);
++    font-weight: var(--yk-font-weight-bold);
++    box-shadow: inset 0 -2px 0 var(--yk-accent);
++}
++
++/* Light's dock tab bar, also above code in the docs: a bar a little darker than the editor, short dividers, the current
++   tab filled with the editor's colour and a full 2px line, green in the focused group and grey in the others. */
++.yk-dock {
++    display: flex;
++    align-items: stretch;
++    min-height: 34px;
++    background: var(--yk-code-bar);
++    box-shadow: inset 0 -1px 0 var(--yk-line);
++    font-size: var(--yk-font-size-sm);
++}
++.yk-dock > .yk-dock-tab {
++    position: relative;
++    display: inline-flex;
++    align-items: center;
++    gap: 6px;
++    padding: 0 14px;
++    color: var(--yk-soft);
++    border: 0;
++    background: transparent;
++    font: inherit;
++    cursor: pointer;
++}
++.yk-dock > .yk-dock-tab + .yk-dock-tab::before {
++    content: '';
++    position: absolute;
++    left: 0;
++    top: 9px;
++    bottom: 9px;
++    width: 1px;
++    background: var(--yk-line);
++}
++.yk-dock > .yk-dock-tab[aria-selected='true'] {
++    background: var(--yk-code-bg);
++    color: var(--yk-ink);
++    box-shadow: inset 0 -2px 0 var(--yk-line-strong);
++}
++.yk-dock[data-focused] > .yk-dock-tab[aria-selected='true'] {
++    box-shadow: inset 0 -2px 0 var(--yk-accent);
++}
++.yk-dock > .yk-dock-tab[aria-selected='true']::before,
++.yk-dock > .yk-dock-tab[aria-selected='true'] + .yk-dock-tab::before {
++    opacity: 0;
++}
++.yk-dock > .yk-dock-actions {
++    margin-left: auto;
++    display: flex;
++    align-items: center;
++    gap: 2px;
++    padding: 0 6px;
++}
++
++/* Code blocks in the docs, as Expressive Code frames: the dock bar for files, none for the terminal; Copy and Run in
++   Light are icon buttons with room around them. Marked, inserted and deleted lines carry a bar and a sign, not colour
++   alone. */
++.yk-code {
++    border: 1px solid var(--yk-line);
++    border-radius: var(--yk-radius-md);
++    overflow: hidden;
++    background: var(--yk-code-bg);
++    position: relative;
++}
++.yk-code > pre {
++    margin: 0;
++    padding: 10px 0;
++    overflow-x: auto;
++    color: var(--yk-code-ink);
++    font-size: var(--yk-font-size-sm);
++    line-height: 1.65;
++}
++.yk-code > pre > span {
++    display: block;
++    padding: 0 16px;
++    border-left: 2px solid transparent;
++}
++.yk-code > pre > .mark {
++    background: color-mix(in oklch, var(--yk-info) 12%, transparent);
++    border-left-color: var(--yk-info);
++}
++.yk-code > pre > .ins {
++    background: color-mix(in oklch, var(--yk-ok) 13%, transparent);
++    border-left-color: var(--yk-ok);
++}
++.yk-code > pre > .del {
++    background: color-mix(in oklch, var(--yk-danger) 11%, transparent);
++    border-left-color: var(--yk-danger);
++}
++.yk-code > pre > :is(.ins, .del)::before {
++    display: inline-block;
++    width: 10px;
++    margin-left: -10px;
++}
++.yk-code > pre > .ins::before {
++    content: '+';
++    color: var(--yk-ok);
++}
++.yk-code > pre > .del::before {
++    content: '-';
++    color: var(--yk-danger);
++}
++.yk-code .tok-k {
++    color: var(--yk-code-keyword);
++}
++.yk-code .tok-f {
++    color: var(--yk-code-function);
++}
++.yk-code .tok-s {
++    color: var(--yk-code-string);
++}
++.yk-code .tok-n {
++    color: var(--yk-code-number);
++}
++.yk-code .tok-c,
++.yk-code .tok-prompt {
++    color: var(--yk-code-comment);
++}
++.yk-code .tok-prompt {
++    user-select: none;
++}
++.yk-code--terminal > .yk-icon-btn {
++    position: absolute;
++    top: 6px;
++    right: 6px;
++    opacity: 0;
++    transition: opacity var(--yk-motion-fast);
++}
++.yk-code--terminal:hover > .yk-icon-btn,
++.yk-code--terminal > .yk-icon-btn:focus-visible {
++    opacity: 1;
++}
++
++/* Messages: one family. Success is the dark pill and fades after --yk-motion-toast; an error is the same pill in red and
++   stays until it is retried or dismissed. One line, bottom centre. */
++.yk-toast {
++    position: fixed;
++    left: 50%;
++    bottom: 20px;
++    translate: -50% 0;
++    display: flex;
++    align-items: center;
++    gap: 10px;
++    width: max-content;
++    max-width: calc(100vw - 32px);
++    padding: 8px 14px 8px 16px;
++    border-radius: var(--yk-radius-pill);
++    background: var(--yk-toast);
++    color: var(--yk-on-toast);
++    font-size: var(--yk-font-size-sm);
++    font-weight: var(--yk-font-weight-bold);
++    white-space: nowrap;
++    box-shadow: 0 12px 30px -16px oklch(0% 0 0 / 0.6);
++}
++.yk-toast--error {
++    background: var(--yk-danger);
++    color: var(--yk-on-accent);
++}
++.yk-toast button {
++    font: inherit;
++    color: inherit;
++    background: none;
++    border: 0;
++    padding: 0;
++    cursor: pointer;
++    text-decoration: underline;
++    text-underline-offset: 2px;
++}
++
++/* Waiting: skeleton rows for content that is coming, a spinner for something small such as a button or one panel. */
++.yk-skeleton {
++    height: 12px;
++    border-radius: 6px;
++    background: linear-gradient(90deg, var(--yk-sunken) 40%, color-mix(in oklch, var(--yk-sunken) 40%, var(--yk-surface)) 50%, var(--yk-sunken) 60%) 0 0 / 300% 100%;
++    animation: yk-shimmer 1.4s linear infinite;
++}
++.yk-spinner {
++    width: 20px;
++    height: 20px;
++    border-radius: 50%;
++    border: 2.5px solid var(--yk-line);
++    border-top-color: var(--yk-accent);
++    animation: yk-turn 0.8s linear infinite;
++}
++@keyframes yk-shimmer {
++    from {
++        background-position: 100% 0;
++    }
++    to {
++        background-position: 0 0;
++    }
++}
++@keyframes yk-turn {
++    to {
++        rotate: 1turn;
++    }
++}
++
++/* The triangles lattice: on the plain page colour, only in rails, gutters, the landing hero and an empty state's patch;
++   never behind text, never in a header. */
++.yk-lattice {
++    background-color: var(--yk-rail);
++}
++.yk-lattice,
++.yk-empty::before {
++    background-image:
++        linear-gradient(60deg, transparent 49.3%, var(--yk-lattice) 49.3% 50.7%, transparent 50.7%),
++        linear-gradient(-60deg, transparent 49.3%, var(--yk-lattice) 49.3% 50.7%, transparent 50.7%),
++        linear-gradient(0deg, transparent 48%, var(--yk-lattice) 48% 52%, transparent 52%);
++    background-size: 28px 48.5px;
++}
++
++/* An empty list: centred, a small fading patch of the lattice, a title, one sentence and the one button. */
++.yk-empty {
++    display: grid;
++    justify-items: center;
++    gap: 8px;
++    padding: 32px 16px;
++    text-align: center;
++}
++.yk-empty::before {
++    content: '';
++    width: 160px;
++    height: 44px;
++    mask: radial-gradient(closest-side, #000, transparent);
++}
++.yk-empty > p {
++    margin: 0;
++    color: var(--yk-soft);
++}
++
++/* The header. Full width and square in the docs and the cloud, with blur and a hairline. On the landing page it floats
++   as a rounded bar of at most --yk-layout-header-max until the window is too narrow to leave room around it. Its
++   sections are plain links: some lead to other sites, so none is drawn as the selected segment. */
++.yk-header {
++    position: sticky;
++    top: 0;
++    z-index: 10;
++    display: flex;
++    align-items: center;
++    gap: 16px;
++    padding: 8px 16px;
++    background: color-mix(in oklch, var(--yk-surface) 82%, transparent);
++    backdrop-filter: blur(14px) saturate(1.4);
++    box-shadow: inset 0 -1px 0 var(--yk-line);
++}
++.yk-header nav {
++    display: flex;
++    gap: 4px;
++    margin-inline: auto;
++}
++.yk-header nav a {
++    padding: 4px 10px;
++    border-radius: 7px;
++    color: var(--yk-soft);
++    text-decoration: none;
++}
++.yk-header nav a:hover {
++    color: var(--yk-ink);
++    background: var(--yk-sunken);
++}
++@media (min-width: 760px) {
++    .yk-header--float {
++        top: 12px;
++        max-width: var(--yk-layout-header-max);
++        margin: 12px auto 0;
++        border: 1px solid var(--yk-line);
++        border-radius: var(--yk-radius-xl);
++        box-shadow: 0 10px 30px -18px oklch(20% 0.03 260 / 0.45);
++    }
++}
++
++/* Tables: every row is a link; a drawn checkbox on the left selects it for the bulk bar, which keeps a gap above the list. */
++.yk-table {
++    width: 100%;
++    border-collapse: separate;
++    border-spacing: 0;
++    background: var(--yk-surface);
++    border: 1px solid var(--yk-line);
++    border-radius: var(--yk-radius-lg);
++    overflow: hidden;
++}
++.yk-table :is(th, td) {
++    padding: 9px 12px;
++    text-align: left;
++    border-bottom: 1px solid var(--yk-line);
++}
++.yk-table tr:last-child td {
++    border-bottom: 0;
++}
++.yk-table :is(th, td):has(> .yk-check) {
++    width: 1%;
++    padding-right: 0;
++}
++.yk-table th {
++    font-size: var(--yk-font-size-xs);
++    color: var(--yk-soft);
++}
++.yk-table tbody tr:hover {
++    background: var(--yk-sunken);
++    cursor: pointer;
++}
++.yk-table tbody tr:has(.yk-check:checked) {
++    background: var(--yk-accent-bg);
++}
++.yk-bulk {
++    display: flex;
++    align-items: center;
++    gap: 8px;
++    margin-bottom: 12px;
++    padding: 6px 8px 6px 14px;
++    border: 1px solid var(--yk-line-strong);
++    border-radius: var(--yk-radius-pill);
++    background: var(--yk-surface);
++}
++
++/* The docs' sidebar: the current page is a grey fill, not a coloured bar. */
++.yk-sidenav a {
++    display: block;
++    padding: 4px 10px;
++    border-radius: var(--yk-radius-md);
++    color: var(--yk-ink);
++    text-decoration: none;
++}
++.yk-sidenav a:hover {
++    background: var(--yk-sunken);
++}
++.yk-sidenav a[aria-current] {
++    background: var(--yk-sunken);
++    font-weight: var(--yk-font-weight-bold);
++}
++
++@media (prefers-reduced-motion: reduce) {
++    .yk-skeleton,
++    .yk-spinner {
++        animation-duration: 0s;
++    }
++}
+diff --git a/packages/design/css/tokens.css b/packages/design/css/tokens.css
+new file mode 100644
+index 0000000..950ed5c
+--- /dev/null
++++ b/packages/design/css/tokens.css
+@@ -0,0 +1,86 @@
++/* Generated by packages/design/scripts/build.ts from tokens/base.tokens.json and tokens/dark.tokens.json. Do not edit: change the tokens and run `pnpm --filter @yukibana/design build`. */
++:root {
++    color-scheme: light dark;
++    --yk-bg: light-dark(oklch(97.6% 0.0045 260), oklch(16.5% 0.0144 260));
++    --yk-surface: light-dark(oklch(100% 0 0), oklch(20% 0.0162 260));
++    --yk-sunken: light-dark(oklch(94.8% 0.0081 260), oklch(25% 0.0171 260));
++    --yk-rail: light-dark(oklch(96.4% 0.0054 260), oklch(18.5% 0.0153 260));
++    --yk-ink: light-dark(oklch(22% 0.0225 260), oklch(94% 0.0072 260));
++    --yk-soft: light-dark(oklch(47% 0.018 260), oklch(73% 0.0144 260));
++    --yk-line: light-dark(oklch(90% 0.009 260), oklch(29% 0.018 260));
++    --yk-line-strong: light-dark(oklch(63% 0.0135 260), oklch(54% 0.0216 260));
++    --yk-lattice: light-dark(oklch(50% 0.03 260 / 0.28), oklch(80% 0.03 260 / 0.16));
++    --yk-accent: light-dark(oklch(50% 0.115 162), oklch(74% 0.0863 162));
++    --yk-accent-strong: light-dark(oklch(44% 0.115 162), oklch(84% 0.0633 162));
++    --yk-accent-bg: light-dark(oklch(95% 0.03 162), oklch(28% 0.055 162));
++    --yk-on-accent: light-dark(oklch(99% 0 0), oklch(17% 0.018 260));
++    --yk-ok: light-dark(oklch(46% 0.1 165), oklch(80% 0.11 165));
++    --yk-danger: light-dark(oklch(52% 0.17 25), oklch(74% 0.13 25));
++    --yk-danger-bg: light-dark(oklch(95.5% 0.025 25), oklch(27% 0.05 25));
++    --yk-warn: light-dark(oklch(50% 0.11 70), oklch(82% 0.11 80));
++    --yk-warn-bg: light-dark(oklch(96% 0.035 85), oklch(28% 0.045 75));
++    --yk-info: light-dark(oklch(50% 0.11 245), oklch(80% 0.09 240));
++    --yk-info-bg: light-dark(oklch(95.5% 0.02 245), oklch(27% 0.04 245));
++    --yk-toast: light-dark(oklch(22% 0.0225 260), oklch(94% 0.0072 260));
++    --yk-on-toast: light-dark(oklch(97.6% 0.0045 260), oklch(16.5% 0.0144 260));
++    --yk-code-bg: light-dark(oklch(96.6% 0.0063 260), oklch(18% 0.0153 260));
++    --yk-code-ink: light-dark(oklch(25% 0.0225 260), oklch(92% 0.009 260));
++    --yk-code-bar: light-dark(oklch(93.5% 0.009 260), oklch(15% 0.0135 260));
++    --yk-code-keyword: light-dark(oklch(48% 0.16 300), oklch(78% 0.12 305));
++    --yk-code-function: light-dark(oklch(46% 0.13 245), oklch(80% 0.1 240));
++    --yk-code-string: light-dark(oklch(46% 0.1 165), oklch(82% 0.1 165));
++    --yk-code-number: light-dark(oklch(52% 0.13 55), oklch(82% 0.11 65));
++    --yk-code-comment: light-dark(oklch(47% 0.018 260), oklch(68% 0.0144 260));
++    --yk-chip-blue-bg: light-dark(oklch(93.5% 0.045 238), oklch(30% 0.06 238));
++    --yk-chip-blue-fg: light-dark(oklch(38% 0.1 238), oklch(88% 0.07 238));
++    --yk-chip-violet-bg: light-dark(oklch(93.5% 0.045 300), oklch(30% 0.06 300));
++    --yk-chip-violet-fg: light-dark(oklch(38% 0.1 300), oklch(88% 0.07 300));
++    --yk-chip-pink-bg: light-dark(oklch(93.5% 0.045 355), oklch(30% 0.06 355));
++    --yk-chip-pink-fg: light-dark(oklch(38% 0.1 355), oklch(88% 0.07 355));
++    --yk-chip-teal-bg: light-dark(oklch(93.5% 0.045 178), oklch(30% 0.06 178));
++    --yk-chip-teal-fg: light-dark(oklch(38% 0.1 178), oklch(88% 0.07 178));
++    --yk-chip-yellow-bg: light-dark(oklch(93.5% 0.045 80), oklch(30% 0.06 80));
++    --yk-chip-yellow-fg: light-dark(oklch(38% 0.1 80), oklch(88% 0.07 80));
++    --yk-chip-green-bg: light-dark(oklch(93.5% 0.045 160), oklch(30% 0.06 160));
++    --yk-chip-green-fg: light-dark(oklch(38% 0.1 160), oklch(88% 0.07 160));
++    --yk-chip-grey-bg: light-dark(oklch(93.5% 0.006 260), oklch(30% 0.008 260));
++    --yk-chip-grey-fg: light-dark(oklch(38% 0.01 260), oklch(88% 0.01 260));
++    --yk-font-family-heading: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
++    --yk-font-family-body: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif;
++    --yk-font-family-mono: 'JetBrains Mono', ui-monospace, monospace;
++    --yk-font-size-xs: 12px;
++    --yk-font-size-sm: 13px;
++    --yk-font-size-md: 15px;
++    --yk-font-size-lg: 18px;
++    --yk-font-size-xl: 24px;
++    --yk-font-size-2xl: 32px;
++    --yk-font-size-hero: 52px;
++    --yk-font-weight-regular: 400;
++    --yk-font-weight-bold: 700;
++    --yk-font-weight-heading: 750;
++    --yk-radius-sm: 6px;
++    --yk-radius-md: 8px;
++    --yk-radius-lg: 12px;
++    --yk-radius-xl: 16px;
++    --yk-radius-pill: 999px;
++    --yk-space-1: 4px;
++    --yk-space-2: 8px;
++    --yk-space-3: 12px;
++    --yk-space-4: 16px;
++    --yk-space-6: 24px;
++    --yk-space-8: 32px;
++    --yk-focus-width: 2px;
++    --yk-focus-offset: 2px;
++    --yk-icon-stroke: 1.5;
++    --yk-motion-fast: 120ms;
++    --yk-motion-ease: cubic-bezier(0.2, 0, 0, 1);
++    --yk-motion-toast: 3000ms;
++    --yk-layout-header-max: 1000px;
++    --yk-layout-header-float: 760px;
++}
++:root[data-theme='light'] {
++    color-scheme: light;
++}
++:root[data-theme='dark'] {
++    color-scheme: dark;
++}
+diff --git a/packages/design/package.json b/packages/design/package.json
+new file mode 100644
+index 0000000..b5b95df
+--- /dev/null
++++ b/packages/design/package.json
+@@ -0,0 +1,25 @@
++{
++  "private": true,
++  "name": "@yukibana/design",
++  "description": "Yukibana's design system: W3C design tokens compiled to CSS custom properties, the base styles of the shared components, and a reference page that shows them.",
++  "version": "0.0.0-dev",
++  "license": "MIT",
++  "type": "module",
++  "exports": {
++    "./tokens.css": "./css/tokens.css",
++    "./base.css": "./css/base.css",
++    "./tokens/*": "./tokens/*",
++    "./package.json": "./package.json"
++  },
++  "scripts": {
++    "build": "node scripts/build.ts",
++    "test": "node scripts/build.ts --check && vitest run",
++    "typecheck": "tsc --noEmit",
++    "lint": "oxlint --type-aware --deny-warnings"
++  },
++  "devDependencies": {
++    "@types/node": "catalog:",
++    "typescript": "catalog:",
++    "vitest": "catalog:"
++  }
++}
+diff --git a/packages/design/reference/index.html b/packages/design/reference/index.html
+new file mode 100644
+index 0000000..9429cc2
+--- /dev/null
++++ b/packages/design/reference/index.html
+@@ -0,0 +1,302 @@
++<!doctype html>
++<html lang="en" class="yk-root">
++    <head>
++        <meta charset="utf-8" />
++        <meta name="viewport" content="width=device-width, initial-scale=1" />
++        <title>Yukibana design system</title>
++        <link rel="preconnect" href="https://fonts.googleapis.com" />
++        <link
++            rel="stylesheet"
++            href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=JetBrains+Mono:wght@400;700&display=swap"
++        />
++        <link rel="stylesheet" href="../css/tokens.css" />
++        <link rel="stylesheet" href="../css/base.css" />
++        <style>
++            body {
++                margin: 0;
++            }
++            main {
++                max-width: 1040px;
++                margin: 0 auto;
++                padding: 24px 16px 80px;
++                display: grid;
++                gap: 36px;
++            }
++            section {
++                display: grid;
++                gap: 12px;
++            }
++            section > h2 {
++                margin: 0;
++                font-size: var(--yk-font-size-xl);
++            }
++            section > p {
++                margin: 0;
++                color: var(--yk-soft);
++                max-width: 70ch;
++            }
++            .row {
++                display: flex;
++                flex-wrap: wrap;
++                gap: 10px;
++                align-items: center;
++            }
++            .grid {
++                display: grid;
++                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
++                gap: 10px;
++            }
++            .sw {
++                border: 1px solid var(--yk-line);
++                border-radius: var(--yk-radius-md);
++                overflow: hidden;
++                background: var(--yk-surface);
++                font-size: var(--yk-font-size-xs);
++            }
++            .sw i {
++                display: block;
++                height: 44px;
++                border-bottom: 1px solid var(--yk-line);
++            }
++            .sw span {
++                display: block;
++                padding: 6px 8px;
++                font-family: var(--yk-font-family-mono);
++            }
++            .panel {
++                background: var(--yk-surface);
++                border: 1px solid var(--yk-line);
++                border-radius: var(--yk-radius-lg);
++                padding: 16px;
++                display: grid;
++                gap: 12px;
++            }
++            .rails {
++                display: grid;
++                grid-template-columns: 48px 1fr 48px;
++                border: 1px solid var(--yk-line);
++                border-radius: var(--yk-radius-lg);
++                overflow: hidden;
++                min-height: 120px;
++            }
++            .rails > div:nth-child(2) {
++                background: var(--yk-bg);
++                padding: 16px;
++            }
++            .toast-demo {
++                position: relative;
++                height: 70px;
++            }
++            .toast-demo .yk-toast {
++                position: absolute;
++            }
++            .theme {
++                margin-left: auto;
++            }
++        </style>
++    </head>
++    <body>
++        <header class="yk-header">
++            <b style="font-family: var(--yk-font-family-heading); font-size: 17px">Yukibana</b>
++            <nav aria-label="Sections"><a href="#colour">Colour</a><a href="#controls">Controls</a><a href="#docs">Docs</a><a href="#states">States</a></nav>
++            <button class="yk-btn yk-btn--secondary theme" type="button" id="theme">Dark theme</button>
++        </header>
++        <main>
++            <section>
++                <h1 style="margin: 0; font-size: var(--yk-font-size-2xl)">Yukibana design system</h1>
++                <p>
++                    Everything here is drawn from <code>css/tokens.css</code>, compiled from the W3C token files in <code>tokens/</code>, and <code>css/base.css</code>. Open this
++                    file from the package (it loads both by relative path). The why behind each choice is in the package's README.
++                </p>
++            </section>
++
++            <section id="colour">
++                <h2>Colour</h2>
++                <p>Cool blue-grey, and Light's green as the one accent. Every pair of text and background below is tested for 4.5:1 in both themes.</p>
++                <div class="grid" id="swatches"></div>
++                <div class="row">
++                    <span class="yk-chip yk-chip--blue">C++</span><span class="yk-chip yk-chip--violet">Haskell</span><span class="yk-chip yk-chip--pink">Rust</span
++                    ><span class="yk-chip yk-chip--teal">Python</span><span class="yk-chip yk-chip--yellow">○ Open</span
++                    ><span class="yk-chip yk-chip--green"
++                        ><svg class="yk-icon" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10" /></svg>Graded</span
++                    ><span class="yk-chip">Draft</span>
++                </div>
++            </section>
++
++            <section id="controls">
++                <h2>Controls</h2>
++                <div class="row">
++                    <button class="yk-btn yk-btn--primary" type="button">Publish</button><button class="yk-btn yk-btn--secondary" type="button">Extend deadline</button
++                    ><button class="yk-btn yk-btn--ghost" type="button">Cancel</button><button class="yk-btn yk-btn--danger" type="button">Delete</button
++                    ><button class="yk-btn yk-btn--primary" type="button" id="done-demo">Save</button>
++                    <button class="yk-icon-btn" type="button" aria-label="Copy">
++                        <svg class="yk-icon" viewBox="0 0 24 24">
++                            <rect x="8" y="8" width="12" height="12" rx="2" />
++                            <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" />
++                        </svg>
++                    </button>
++                </div>
++                <div class="panel">
++                    <div class="yk-field"><label for="f1">Project name</label><input class="yk-input" id="f1" value="Linked lists" /><small>Students see this name.</small></div>
++                    <div class="yk-field" data-invalid>
++                        <label for="f2">Due date</label><input class="yk-input" id="f2" value="31.02.2026" aria-describedby="f2e" /><small id="f2e">February has no 31st.</small>
++                    </div>
++                    <div class="yk-field yk-field--beside">
++                        <label for="f3">Late penalty</label><input class="yk-input" id="f3" value="10 % a day" /><small>Settings pages may put the label beside.</small>
++                    </div>
++                </div>
++                <nav class="yk-tabs" aria-label="Edition">
++                    <a href="#controls" data-label="Projects" aria-current="page">Projects</a><a href="#controls" data-label="Students">Students</a
++                    ><a href="#controls" data-label="Staff">Staff</a><a href="#controls" data-label="Settings">Settings</a>
++                </nav>
++                <div>
++                    <div class="yk-bulk">
++                        <b>1 selected</b><button class="yk-btn yk-btn--secondary" type="button">Publish</button><span style="flex: 1"></span
++                        ><button class="yk-btn yk-btn--ghost" type="button">Clear</button>
++                    </div>
++                    <table class="yk-table">
++                        <thead>
++                            <tr>
++                                <th><input class="yk-check" type="checkbox" aria-label="Select all" /></th>
++                                <th>Project</th>
++                                <th>Due</th>
++                                <th>State</th>
++                            </tr>
++                        </thead>
++                        <tbody>
++                            <tr>
++                                <td><input class="yk-check" type="checkbox" aria-label="Select Linked lists" /></td>
++                                <td>Linked lists</td>
++                                <td>18 Nov</td>
++                                <td><span class="yk-chip yk-chip--yellow">○ Open</span></td>
++                            </tr>
++                            <tr>
++                                <td><input class="yk-check" type="checkbox" checked aria-label="Select Binary search" /></td>
++                                <td>Binary search</td>
++                                <td>4 Nov</td>
++                                <td><span class="yk-chip yk-chip--green">✓ Graded</span></td>
++                            </tr>
++                        </tbody>
++                    </table>
++                </div>
++            </section>
++
++            <section id="docs">
++                <h2>Docs</h2>
++                <div class="yk-callout">
++                    <svg class="yk-icon" viewBox="0 0 24 24">
++                        <circle cx="12" cy="12" r="9" />
++                        <path d="M12 11v6M12 7.5v.5" />
++                    </svg>
++                    <div><b>Note</b> Students only see a release once its start date has passed.</div>
++                </div>
++                <div class="yk-callout yk-callout--warn">
++                    <svg class="yk-icon" viewBox="0 0 24 24"><path d="M12 3 2 20h20zM12 10v4M12 17v.5" /></svg>
++                    <div><b>Careful</b> Publishing again replaces the starter files of students who have not started.</div>
++                </div>
++                <div class="yk-code">
++                    <div class="yk-dock" role="tablist" data-focused>
++                        <button class="yk-dock-tab" role="tab" aria-selected="true" type="button">list.hpp</button
++                        ><button class="yk-dock-tab" role="tab" aria-selected="false" type="button">tests.cpp</button>
++                        <span class="yk-dock-actions"
++                            ><button class="yk-icon-btn" type="button" aria-label="Copy">
++                                <svg class="yk-icon" viewBox="0 0 24 24">
++                                    <rect x="8" y="8" width="12" height="12" rx="2" />
++                                    <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" />
++                                </svg></button
++                            ><button class="yk-icon-btn" type="button" aria-label="Run in Light">
++                                <svg class="yk-icon" viewBox="0 0 24 24"><path d="M7 4v16l13-8z" /></svg></button
++                        ></span>
++                    </div>
++                    <pre><span><span class="tok-k">template</span> &lt;<span class="tok-k">typename</span> T&gt;</span><span><span class="tok-k">void</span> List&lt;T&gt;::<span class="tok-f">push_front</span>(T x) {</span><span class="del">    head = <span class="tok-k">new</span> Node{x};</span><span class="ins">    head = <span class="tok-k">new</span> Node{x, head};</span><span class="mark">    ++size;  <span class="tok-c">// the test checks this</span></span><span>}</span></pre>
++                </div>
++                <div class="yk-code yk-code--terminal">
++                    <button class="yk-icon-btn" type="button" aria-label="Copy">
++                        <svg class="yk-icon" viewBox="0 0 24 24">
++                            <rect x="8" y="8" width="12" height="12" rx="2" />
++                            <path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" />
++                        </svg>
++                    </button>
++                    <pre><span><span class="tok-prompt">$ </span>yukibana publish</span><span class="tok-c">Packed starter.tar (12 files) and grading.tar (3 hidden tests)</span></pre>
++                </div>
++                <div class="rails">
++                    <div class="yk-lattice"></div>
++                    <div>Rails and gutters carry the lattice; the reading column never does.</div>
++                    <div class="yk-lattice"></div>
++                </div>
++                <nav class="yk-sidenav panel" aria-label="Docs" style="max-width: 240px">
++                    <a href="#docs">Introduction</a><a href="#docs" aria-current="page">Releases</a><a href="#docs">Grading</a>
++                </nav>
++            </section>
++
++            <section id="states">
++                <h2>States</h2>
++                <div class="panel">
++                    <div class="yk-skeleton" style="width: 70%"></div>
++                    <div class="yk-skeleton"></div>
++                    <div class="yk-spinner" role="status" aria-label="Loading"></div>
++                </div>
++                <div class="panel yk-empty">
++                    <b style="font-family: var(--yk-font-family-heading); font-size: var(--yk-font-size-lg)">No projects yet</b>
++                    <p>A project is one exercise: starter code, tests and a due date.</p>
++                    <button class="yk-btn yk-btn--primary" type="button">New project</button>
++                </div>
++                <div class="toast-demo">
++                    <div class="yk-toast" role="status" style="left: 25%">
++                        <svg class="yk-icon" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10" /></svg>Release 3 published
++                    </div>
++                    <div class="yk-toast yk-toast--error" role="alert" style="left: 72%">
++                        <svg class="yk-icon" viewBox="0 0 24 24"><path d="M12 3 2 20h20zM12 10v4M12 17v.5" /></svg>Upload failed<button type="button">Retry</button
++                        ><button type="button" aria-label="Dismiss" style="text-decoration: none">×</button>
++                    </div>
++                </div>
++            </section>
++        </main>
++        <script>
++            const COLOURS = [
++                'bg',
++                'surface',
++                'sunken',
++                'rail',
++                'ink',
++                'soft',
++                'line',
++                'line-strong',
++                'accent',
++                'accent-strong',
++                'accent-bg',
++                'ok',
++                'danger',
++                'warn',
++                'info',
++                'code-bg',
++                'code-bar',
++            ];
++            const host = document.getElementById('swatches');
++            for (const c of COLOURS) {
++                const sw = document.createElement('div');
++                sw.className = 'sw';
++                sw.innerHTML = `<i style="background: var(--yk-${c})"></i><span>--yk-${c}</span>`;
++                host.append(sw);
++            }
++            const btn = document.getElementById('theme');
++            const isDark = () =>
++                document.documentElement.dataset.theme === 'dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
++            btn.textContent = isDark() ? 'Light theme' : 'Dark theme';
++            btn.addEventListener('click', () => {
++                const dark = !isDark();
++                document.documentElement.dataset.theme = dark ? 'dark' : 'light';
++                btn.textContent = dark ? 'Light theme' : 'Dark theme';
++            });
++            const done = document.getElementById('done-demo');
++            done.addEventListener('click', () => {
++                done.dataset.done = '';
++                done.textContent = '✓ Saved';
++                setTimeout(() => {
++                    delete done.dataset.done;
++                    done.textContent = 'Save';
++                }, 2000);
++            });
++        </script>
++    </body>
++</html>
+diff --git a/packages/design/scripts/build.ts b/packages/design/scripts/build.ts
+new file mode 100644
+index 0000000..25e32aa
+--- /dev/null
++++ b/packages/design/scripts/build.ts
+@@ -0,0 +1,22 @@
++/** Writes css/tokens.css from the token files. `--check` writes nothing and exits non-zero if the committed file is not
++ *  what the tokens compile to, which is how CI catches a token edited without a rebuild. */
++
++import { readFileSync, writeFileSync } from 'node:fs';
++import { fileURLToPath } from 'node:url';
++import { compileCss, parseTokens } from '../src/tokens.ts';
++
++const at = (p: string): string => fileURLToPath(new URL('../' + p, import.meta.url));
++const read = (p: string): unknown => JSON.parse(readFileSync(at(p), 'utf8'));
++
++const css = compileCss(parseTokens(read('tokens/base.tokens.json')), parseTokens(read('tokens/dark.tokens.json')));
++const out = at('css/tokens.css');
++if (process.argv.includes('--check')) {
++    let current = '';
++    try {
++        current = readFileSync(out, 'utf8');
++    } catch {}
++    if (current !== css) {
++        console.error('css/tokens.css is not what the tokens compile to. Run `pnpm --filter @yukibana/design build` and commit the result.');
++        process.exit(1);
++    }
++} else writeFileSync(out, css);
+diff --git a/packages/design/src/contrast.ts b/packages/design/src/contrast.ts
+new file mode 100644
+index 0000000..07e0856
+--- /dev/null
++++ b/packages/design/src/contrast.ts
+@@ -0,0 +1,51 @@
++/** WCAG 2 contrast between two OKLCH colours, as the browser would show them in sRGB.
++ *
++ *  A colour outside sRGB is clipped per channel, which is what browsers do today for `oklch()` in an sRGB display; a
++ *  token far outside the gamut would show a different hue than its numbers say, and this clipping would hide it, so
++ *  `inGamut` lets a test refuse such tokens instead. Translucent colours are composited over the background first. */
++
++import type { Oklch } from './tokens.js';
++
++type Rgb = readonly [number, number, number];
++
++/** Linear-light sRGB, each channel nominally from 0 to 1 but not clipped, by Björn Ottosson's OKLab matrices. */
++export function linearSrgb({ l, c, h }: Oklch): Rgb {
++    const hr = (h * Math.PI) / 180;
++    const a = c * Math.cos(hr);
++    const b = c * Math.sin(hr);
++    const lc = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
++    const mc = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
++    const sc = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
++    return [
++        4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc,
++        -1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc,
++        -0.0041960863 * lc - 0.7034186147 * mc + 1.707614701 * sc,
++    ];
++}
++
++/** True if no channel of the colour lies further than `tolerance` outside sRGB's 0 to 1 (in linear light). The default
++ *  allows only rounding. */
++export function inGamut(color: Oklch, tolerance = 0.002): boolean {
++    return linearSrgb(color).every(ch => ch >= -tolerance && ch <= 1 + tolerance);
++}
++
++const clip = (x: number): number => Math.min(1, Math.max(0, x));
++const encode = (x: number): number => (x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055);
++const decode = (x: number): number => (x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4);
++
++/** The colour in gamma-encoded sRGB from 0 to 1, clipped, after compositing over `under` when it is translucent. */
++function shown(color: Oklch, under: Rgb): Rgb {
++    const [r, g, b] = linearSrgb(color);
++    const over = (ch: number, base: number): number => encode(clip(ch)) * color.alpha + base * (1 - color.alpha);
++    return [over(r, under[0]), over(g, under[1]), over(b, under[2])];
++}
++
++const luminance = (rgb: Rgb): number => 0.2126 * decode(rgb[0]) + 0.7152 * decode(rgb[1]) + 0.0722 * decode(rgb[2]);
++
++/** The WCAG 2 contrast ratio, from 1 to 21, of `fg` drawn on `bg`. `bg` must be opaque. */
++export function contrast(fg: Oklch, bg: Oklch): number {
++    const back = shown(bg, [1, 1, 1]);
++    const a = luminance(shown(fg, back));
++    const b = luminance(back);
++    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
++}
+diff --git a/packages/design/src/tokens.ts b/packages/design/src/tokens.ts
+new file mode 100644
+index 0000000..e4d69b5
+--- /dev/null
++++ b/packages/design/src/tokens.ts
+@@ -0,0 +1,168 @@
++/** Reading W3C design token files (format 2025.10) and compiling them to CSS custom properties.
++ *
++ *  Pure: functions of parsed JSON and strings, no file system. `scripts/build.ts` does the reading and writing. Only the
++ *  token types Yukibana uses are understood; any other `$type`, or a value that does not fit its type, is an error that
++ *  names the token's path, because a token silently dropped from the CSS is a colour that quietly falls back to nothing.
++ */
++
++/** A colour in OKLCH, the only colour space the tokens use. `l` is lightness from 0 to 1, `c` chroma (0 to about 0.37),
++ *  `h` hue in degrees, `alpha` from 0 to 1. */
++export type Oklch = { readonly l: number; readonly c: number; readonly h: number; readonly alpha: number };
++
++/** What one token holds, by its `$type`. A dimension's unit is `px` or `rem`; a duration's is `ms` or `s`. */
++export type TokenValue =
++    | { readonly type: 'color'; readonly color: Oklch }
++    | { readonly type: 'dimension'; readonly value: number; readonly unit: 'px' | 'rem' }
++    | { readonly type: 'duration'; readonly value: number; readonly unit: 'ms' | 's' }
++    | { readonly type: 'fontFamily'; readonly families: readonly string[] }
++    | { readonly type: 'fontWeight'; readonly weight: number }
++    | { readonly type: 'number'; readonly value: number }
++    | { readonly type: 'cubicBezier'; readonly points: readonly [number, number, number, number] };
++
++/** One token: where it sits in the file (`['color', 'code', 'bg']`) and its value. */
++export type Token = { readonly path: readonly string[]; readonly value: TokenValue };
++
++/** Thrown for a token file that is not what this module understands. The message names the token. */
++export class TokenError extends Error {}
++
++const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
++const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
++
++/** Every token in a parsed token file, in the order the file lists them. A group's `$type` applies to the tokens below
++ *  it unless one says its own. Keys starting with `$` are the format's own and never tokens or groups. */
++export function parseTokens(file: unknown): Token[] {
++    const out: Token[] = [];
++    walk(file, [], undefined, out);
++    return out;
++}
++
++function walk(node: unknown, path: string[], inherited: string | undefined, out: Token[]): void {
++    const where = path.join('.') || '(root)';
++    if (!isObject(node)) throw new TokenError(`${where}: expected a group or a token, found ${JSON.stringify(node)}`);
++    const own = node['$type'];
++    if (own !== undefined && typeof own !== 'string') throw new TokenError(`${where}: $type must be a string`);
++    const type = own ?? inherited;
++    if ('$value' in node) {
++        if (type === undefined) throw new TokenError(`${where}: no $type on the token or any group above it`);
++        out.push({ path, value: valueOf(node['$value'], type, where) });
++        return;
++    }
++    for (const [key, child] of Object.entries(node)) if (!key.startsWith('$')) walk(child, [...path, key], type, out);
++}
++
++function valueOf(v: unknown, type: string, where: string): TokenValue {
++    const bad = (what: string): never => {
++        throw new TokenError(`${where}: ${what}, found ${JSON.stringify(v)}`);
++    };
++    switch (type) {
++        case 'color': {
++            if (!isObject(v) || v['colorSpace'] !== 'oklch') return bad('a color must be { colorSpace: "oklch", components: [l, c, h] }');
++            const comps = v['components'];
++            const [l, c, h, extra] = Array.isArray(comps) ? (comps as unknown[]) : [];
++            if (!isNumber(l) || !isNumber(c) || !isNumber(h) || extra !== undefined) return bad('components must be three numbers');
++            const alpha = v['alpha'] ?? 1;
++            if (!isNumber(alpha) || alpha < 0 || alpha > 1) return bad('alpha must be a number from 0 to 1');
++            if (l < 0 || l > 1) return bad('lightness must be from 0 to 1');
++            if (c < 0) return bad('chroma cannot be negative');
++            return { type, color: { l, c, h, alpha } };
++        }
++        case 'dimension': {
++            if (!isObject(v) || !isNumber(v['value']) || (v['unit'] !== 'px' && v['unit'] !== 'rem')) return bad('a dimension must be { value, unit: "px" | "rem" }');
++            return { type, value: v['value'], unit: v['unit'] };
++        }
++        case 'duration': {
++            if (!isObject(v) || !isNumber(v['value']) || (v['unit'] !== 'ms' && v['unit'] !== 's')) return bad('a duration must be { value, unit: "ms" | "s" }');
++            return { type, value: v['value'], unit: v['unit'] };
++        }
++        case 'fontFamily': {
++            const list: unknown[] = typeof v === 'string' ? [v] : Array.isArray(v) ? (v as unknown[]) : [];
++            const families = list.filter((f): f is string => typeof f === 'string' && f !== '');
++            if (families.length === 0 || families.length !== list.length) return bad('a font family must be a name or a list of names');
++            return { type, families };
++        }
++        case 'fontWeight':
++            if (!isNumber(v) || v < 1 || v > 1000) return bad('a font weight must be a number from 1 to 1000');
++            return { type, weight: v };
++        case 'number':
++            if (!isNumber(v)) return bad('expected a number');
++            return { type, value: v };
++        case 'cubicBezier': {
++            const [x1, y1, x2, y2, extra] = Array.isArray(v) ? (v as unknown[]) : [];
++            if (!isNumber(x1) || !isNumber(y1) || !isNumber(x2) || !isNumber(y2) || extra !== undefined) return bad('a cubic bezier must be four numbers');
++            if (x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1) return bad('the x coordinates of a cubic bezier must be from 0 to 1');
++            return { type, points: [x1, y1, x2, y2] };
++        }
++        default:
++            return bad(`the type ${type} is not one this package compiles`);
++    }
++}
++
++/** The custom property a token compiles to: `--yk-` and its path joined by `-`, without the leading `color` group, so
++ *  `color.code.bg` is `--yk-code-bg` and `radius.md` is `--yk-radius-md`. */
++export function propertyName(path: readonly string[]): string {
++    const parts = path[0] === 'color' ? path.slice(1) : path;
++    return '--yk-' + parts.join('-');
++}
++
++const trim = (n: number, digits: number): string => String(Number(n.toFixed(digits)));
++
++/** A colour as CSS, `oklch(L% C H)` or `oklch(L% C H / A)`, lightness in percent so a reader sees the step. */
++export function cssColor({ l, c, h, alpha }: Oklch): string {
++    const body = `${trim(l * 100, 2)}% ${trim(c, 4)} ${trim(h, 2)}`;
++    return alpha === 1 ? `oklch(${body})` : `oklch(${body} / ${trim(alpha, 3)})`;
++}
++
++const quoteFamily = (f: string): string => (/^[a-z-]+$/.test(f) ? f : `'${f.replaceAll("'", "\\'")}'`);
++
++/** A token's value as CSS. Generic family names (`monospace`, `ui-sans-serif`) stay unquoted, as CSS requires. */
++export function cssValue(v: TokenValue): string {
++    if (v.type === 'color') return cssColor(v.color);
++    if (v.type === 'dimension' || v.type === 'duration') return `${trim(v.value, 4)}${v.unit}`;
++    if (v.type === 'fontFamily') return v.families.map(quoteFamily).join(', ');
++    if (v.type === 'fontWeight') return String(v.weight);
++    if (v.type === 'number') return trim(v.value, 4);
++    return `cubic-bezier(${v.points.map(p => trim(p, 4)).join(', ')})`;
++}
++
++/** The stylesheet for both themes: one `:root` rule in which each colour is `light-dark(light, dark)` and every other
++ *  token is its value, then `data-theme` rules that pin a scheme. A page follows the system's scheme unless its root
++ *  says `data-theme="light"` or `"dark"`.
++ *
++ *  `dark` may only override colours that `light` has: a dark token with no light counterpart, or a non-colour in the
++ *  dark file, is a `TokenError`, so the two files cannot drift apart. A light colour with no dark override is the same
++ *  in both themes. */
++export function compileCss(light: readonly Token[], dark: readonly Token[]): string {
++    const key = (t: Token): string => t.path.join('.');
++    const darkByPath = new Map(dark.map(t => [key(t), t]));
++    const lightPaths = new Set(light.map(key));
++    for (const t of dark) {
++        if (!lightPaths.has(key(t))) throw new TokenError(`${key(t)}: the dark theme overrides a token the base file does not have`);
++        if (t.value.type !== 'color') throw new TokenError(`${key(t)}: the dark theme may only override colours`);
++    }
++    const lines = light.map(t => {
++        const d = darkByPath.get(key(t));
++        const value = t.value.type === 'color' && d !== undefined ? `light-dark(${cssValue(t.value)}, ${cssValue(d.value)})` : cssValue(t.value);
++        return `    ${propertyName(t.path)}: ${value};`;
++    });
++    return [
++        '/* Generated by packages/design/scripts/build.ts from tokens/base.tokens.json and tokens/dark.tokens.json. Do not edit: change the tokens and run `pnpm --filter @yukibana/design build`. */',
++        ':root {',
++        '    color-scheme: light dark;',
++        ...lines,
++        '}',
++        ":root[data-theme='light'] {",
++        '    color-scheme: light;',
++        '}',
++        ":root[data-theme='dark'] {",
++        '    color-scheme: dark;',
++        '}',
++        '',
++    ].join('\n');
++}
++
++/** A colour token by its path in the given list, for tests and tools. Throws if it is missing or not a colour. */
++export function colorAt(tokens: readonly Token[], path: string): Oklch {
++    const t = tokens.find(x => x.path.join('.') === path);
++    if (t === undefined || t.value.type !== 'color') throw new TokenError(`${path}: no such colour token`);
++    return t.value.color;
++}
+diff --git a/packages/design/tests/tokens.test.ts b/packages/design/tests/tokens.test.ts
+new file mode 100644
+index 0000000..f3f6b17
+--- /dev/null
++++ b/packages/design/tests/tokens.test.ts
+@@ -0,0 +1,147 @@
++import { readFileSync } from 'node:fs';
++import { describe, expect, it } from 'vitest';
++import { contrast, inGamut } from '../src/contrast.js';
++import { colorAt, compileCss, cssValue, parseTokens, propertyName, TokenError, type Token } from '../src/tokens.js';
++
++const file = (p: string): unknown => JSON.parse(readFileSync(new URL('../' + p, import.meta.url), 'utf8'));
++const light = parseTokens(file('tokens/base.tokens.json'));
++const dark = parseTokens(file('tokens/dark.tokens.json'));
++/** The dark theme as a full set: every light token, with the dark file's colours in place. */
++const darkFull: Token[] = light.map(t => dark.find(d => d.path.join('.') === t.path.join('.')) ?? t);
++
++describe('the token files', () => {
++    it('compile to the css/tokens.css that is committed, so apps outside this repository can copy it', () => {
++        expect(readFileSync(new URL('../css/tokens.css', import.meta.url), 'utf8')).toBe(compileCss(light, dark));
++    });
++
++    it('give every colour of the dark theme a light counterpart, and only colours', () => {
++        expect(() => compileCss(light, dark)).not.toThrow();
++        expect(dark.every(t => t.value.type === 'color')).toBe(true);
++    });
++
++    // Several chosen colours (the green accent, the chip tints) sit a hair outside sRGB, at most 0.052 of a channel in
++    // linear light. The browser clips that per channel, which shifts nothing a person can see, and the colours were picked
++    // by eye as the browser showed them. A colour further out would change hue when clipped, so it is refused.
++    it('hold only colours a screen can show without a visible shift when the browser clips them', () => {
++        const outside = [...light, ...dark].filter(t => t.value.type === 'color' && !inGamut(t.value.color, 0.06)).map(t => t.path.join('.'));
++        expect(outside).toEqual([]);
++    });
++});
++
++/** Text that must be readable: WCAG AA, 4.5:1. */
++const TEXT: [string, string][] = [
++    ['ink', 'bg'],
++    ['ink', 'surface'],
++    ['ink', 'sunken'],
++    ['soft', 'bg'],
++    ['soft', 'surface'],
++    ['soft', 'sunken'],
++    ['accent-strong', 'bg'],
++    ['accent-strong', 'surface'],
++    ['accent-strong', 'accent-bg'],
++    ['on-accent', 'accent'],
++    ['on-accent', 'danger'],
++    ['danger', 'surface'],
++    ['danger', 'danger-bg'],
++    ['warn', 'warn-bg'],
++    ['info', 'info-bg'],
++    ['on-toast', 'toast'],
++    ['code.ink', 'code.bg'],
++    ['code.keyword', 'code.bg'],
++    ['code.function', 'code.bg'],
++    ['code.string', 'code.bg'],
++    ['code.number', 'code.bg'],
++    ['code.comment', 'code.bg'],
++    ['soft', 'code.bar'],
++    ...['blue', 'violet', 'pink', 'teal', 'yellow', 'green', 'grey'].map((h): [string, string] => [`chip.${h}.fg`, `chip.${h}.bg`]),
++];
++/** Things that must be seen but are not text: controls' borders, the focus ring, icons. WCAG 1.4.11, 3:1. */
++const UI: [string, string][] = [
++    ['line-strong', 'surface'],
++    ['line-strong', 'bg'],
++    ['accent', 'surface'],
++    ['accent', 'code.bg'],
++    ['ink', 'bg'],
++    ['ok', 'surface'],
++    ['ok', 'bg'],
++];
++
++describe.each([
++    ['light', light],
++    ['dark', darkFull],
++])('in the %s theme', (_, set) => {
++    it.each(TEXT)('%s on %s is readable text (4.5:1)', (fg, bg) => {
++        expect(contrast(colorAt(set, `color.${fg}`), colorAt(set, `color.${bg}`))).toBeGreaterThanOrEqual(4.5);
++    });
++    it.each(UI)('%s on %s is visible as a control or icon (3:1)', (fg, bg) => {
++        expect(contrast(colorAt(set, `color.${fg}`), colorAt(set, `color.${bg}`))).toBeGreaterThanOrEqual(3);
++    });
++});
++
++describe('reading a token file', () => {
++    it('takes the type from the nearest group that names one', () => {
++        expect(parseTokens({ a: { $type: 'number', b: { c: { $value: 2 } }, d: { $type: 'fontWeight', $value: 700 } } })).toEqual([
++            { path: ['a', 'b', 'c'], value: { type: 'number', value: 2 } },
++            { path: ['a', 'd'], value: { type: 'fontWeight', weight: 700 } },
++        ]);
++    });
++
++    it.each([
++        ['a token with no type anywhere above it', { a: { $value: 1 } }, 'a: no $type'],
++        ['a colour in another colour space', { a: { $type: 'color', $value: { colorSpace: 'srgb', components: [1, 0, 0] } } }, 'a: a color must be'],
++        ['a lightness given in percent', { a: { $type: 'color', $value: { colorSpace: 'oklch', components: [50, 0.1, 160] } } }, 'a: lightness must be from 0 to 1'],
++        ['a dimension in em', { a: { $type: 'dimension', $value: { value: 1, unit: 'em' } } }, 'a: a dimension must be'],
++        ['a type this package does not compile', { a: { $type: 'shadow', $value: {} } }, 'a: the type shadow'],
++        ['a token that is not an object', { a: { b: 3 } }, 'a.b: expected a group or a token'],
++    ])('refuses %s, naming the token', (_, input, message) => {
++        expect(() => parseTokens(input)).toThrow(TokenError);
++        expect(() => parseTokens(input)).toThrow(message);
++    });
++});
++
++describe('compiling to CSS', () => {
++    it.each([
++        [['color', 'bg'], '--yk-bg'],
++        [['color', 'code', 'bg'], '--yk-code-bg'],
++        [['radius', 'md'], '--yk-radius-md'],
++        [['font', 'family', 'mono'], '--yk-font-family-mono'],
++    ])('names %j %s', (path, name) => {
++        expect(propertyName(path)).toBe(name);
++    });
++
++    it.each([
++        [{ type: 'color', color: { l: 0.5, c: 0.115, h: 162, alpha: 1 } } as const, 'oklch(50% 0.115 162)'],
++        [{ type: 'color', color: { l: 0.8, c: 0.03, h: 260, alpha: 0.16 } } as const, 'oklch(80% 0.03 260 / 0.16)'],
++        [{ type: 'dimension', value: 8, unit: 'px' } as const, '8px'],
++        [{ type: 'duration', value: 120, unit: 'ms' } as const, '120ms'],
++        [{ type: 'fontFamily', families: ['JetBrains Mono', 'ui-monospace', 'monospace'] } as const, "'JetBrains Mono', ui-monospace, monospace"],
++        [{ type: 'cubicBezier', points: [0.2, 0, 0, 1] } as const, 'cubic-bezier(0.2, 0, 0, 1)'],
++    ])('writes %j as %s', (value, css) => {
++        expect(cssValue(value)).toBe(css);
++    });
++
++    it('pairs each colour with its dark value and leaves other tokens alone', () => {
++        const css = compileCss(
++            [
++                { path: ['color', 'ink'], value: { type: 'color', color: { l: 0.2, c: 0, h: 0, alpha: 1 } } },
++                { path: ['radius', 'md'], value: { type: 'dimension', value: 8, unit: 'px' } },
++            ],
++            [{ path: ['color', 'ink'], value: { type: 'color', color: { l: 0.9, c: 0, h: 0, alpha: 1 } } }],
++        );
++        expect(css).toContain('    --yk-ink: light-dark(oklch(20% 0 0), oklch(90% 0 0));');
++        expect(css).toContain('    --yk-radius-md: 8px;');
++    });
++
++    it('refuses a dark theme that overrides a token the light theme lacks', () => {
++        expect(() => compileCss([], [{ path: ['color', 'ink'], value: { type: 'color', color: { l: 0.9, c: 0, h: 0, alpha: 1 } } }])).toThrow('does not have');
++    });
++});
++
++describe('contrast', () => {
++    it('is 21 for black on white and 1 for a colour on itself', () => {
++        const black = { l: 0, c: 0, h: 0, alpha: 1 };
++        const white = { l: 1, c: 0, h: 0, alpha: 1 };
++        expect(contrast(black, white)).toBeCloseTo(21, 1);
++        expect(contrast(white, white)).toBeCloseTo(1, 5);
++    });
++});
+diff --git a/packages/design/tokens/base.tokens.json b/packages/design/tokens/base.tokens.json
+new file mode 100644
+index 0000000..175ef68
+--- /dev/null
++++ b/packages/design/tokens/base.tokens.json
+@@ -0,0 +1,136 @@
++{
++  "$description": "Yukibana's design tokens, in the W3C Design Tokens format (2025.10). This file holds every token and the light theme's colours; dark.tokens.json overrides the colours for the dark theme and nothing else. scripts/build.ts compiles both into css/tokens.css.",
++  "color": {
++    "$type": "color",
++    "$description": "Greys are cool blue-grey (hue 260, chroma 0.009 per step). Green (hue 162) is the one accent: primary buttons, links, current-tab lines and nothing else, so success states carry an icon and never rely on green alone.",
++    "bg": { "$value": { "colorSpace": "oklch", "components": [0.976, 0.0045, 260] }, "$description": "The page behind everything." },
++    "surface": { "$value": { "colorSpace": "oklch", "components": [1, 0, 0] }, "$description": "Cards, tables, fields, the header bar." },
++    "sunken": {
++      "$value": { "colorSpace": "oklch", "components": [0.948, 0.0081, 260] },
++      "$description": "Inside a surface: the current sidebar item, a hovered row, a segmented track."
++    },
++    "rail": { "$value": { "colorSpace": "oklch", "components": [0.964, 0.0054, 260] }, "$description": "The side rails and gutters that carry the triangles lattice." },
++    "ink": { "$value": { "colorSpace": "oklch", "components": [0.22, 0.0225, 260] }, "$description": "Body text and headings. Also the focus ring." },
++    "soft": {
++      "$value": { "colorSpace": "oklch", "components": [0.47, 0.018, 260] },
++      "$description": "Secondary text: hints, metadata, inactive tabs. Passes 4.5:1 on bg, surface and sunken."
++    },
++    "line": { "$value": { "colorSpace": "oklch", "components": [0.9, 0.009, 260] }, "$description": "Hairlines that separate, never the only sign of a control." },
++    "line-strong": {
++      "$value": { "colorSpace": "oklch", "components": [0.63, 0.0135, 260] },
++      "$description": "Borders of controls: fields, secondary buttons, checkboxes. 3:1 against surface."
++    },
++    "lattice": {
++      "$value": { "colorSpace": "oklch", "components": [0.5, 0.03, 260], "alpha": 0.28 },
++      "$description": "The triangles lattice's lines. Only in rails, gutters and the landing hero; never behind text or in a header."
++    },
++    "accent": {
++      "$value": { "colorSpace": "oklch", "components": [0.5, 0.115, 162] },
++      "$description": "Light's green: the primary button, the current tab's line in the focused group."
++    },
++    "accent-strong": { "$value": { "colorSpace": "oklch", "components": [0.44, 0.115, 162] }, "$description": "Green as text: links, the label of a selected tinted control." },
++    "accent-bg": { "$value": { "colorSpace": "oklch", "components": [0.95, 0.03, 162] }, "$description": "A green tint behind accent-strong text." },
++    "on-accent": { "$value": { "colorSpace": "oklch", "components": [0.99, 0, 0] }, "$description": "Text on accent and on danger." },
++    "ok": { "$value": { "colorSpace": "oklch", "components": [0.46, 0.1, 165] }, "$description": "The check icon of a success. Always with the icon." },
++    "danger": { "$value": { "colorSpace": "oklch", "components": [0.52, 0.17, 25] }, "$description": "Errors and destructive buttons." },
++    "danger-bg": { "$value": { "colorSpace": "oklch", "components": [0.955, 0.025, 25] } },
++    "warn": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.11, 70] }, "$description": "Warnings in the docs. Amber, never green." },
++    "warn-bg": { "$value": { "colorSpace": "oklch", "components": [0.96, 0.035, 85] } },
++    "info": { "$value": { "colorSpace": "oklch", "components": [0.5, 0.11, 245] }, "$description": "Notes in the docs, marked lines in code." },
++    "info-bg": { "$value": { "colorSpace": "oklch", "components": [0.955, 0.02, 245] } },
++    "toast": { "$value": { "colorSpace": "oklch", "components": [0.22, 0.0225, 260] }, "$description": "The success message pill: dark in both themes' sense of 'ink'." },
++    "on-toast": { "$value": { "colorSpace": "oklch", "components": [0.976, 0.0045, 260] } },
++    "code": {
++      "bg": { "$value": { "colorSpace": "oklch", "components": [0.966, 0.0063, 260] }, "$description": "Code blocks and the editor in the docs." },
++      "ink": { "$value": { "colorSpace": "oklch", "components": [0.25, 0.0225, 260] } },
++      "bar": {
++        "$value": { "colorSpace": "oklch", "components": [0.935, 0.009, 260] },
++        "$description": "The tab bar above code: Light's dock strip, slightly darker than the code."
++      },
++      "keyword": { "$value": { "colorSpace": "oklch", "components": [0.48, 0.16, 300] } },
++      "function": { "$value": { "colorSpace": "oklch", "components": [0.46, 0.13, 245] } },
++      "string": { "$value": { "colorSpace": "oklch", "components": [0.46, 0.1, 165] } },
++      "number": { "$value": { "colorSpace": "oklch", "components": [0.52, 0.13, 55] } },
++      "comment": { "$value": { "colorSpace": "oklch", "components": [0.47, 0.018, 260] } }
++    },
++    "chip": {
++      "$description": "Tinted chips: a pale fill and a dark label of one hue. A status chip also carries an icon (check for Graded, circle for Open, pencil for Draft).",
++      "blue": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.045, 238] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 238] } } },
++      "violet": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.045, 300] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 300] } } },
++      "pink": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.045, 355] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 355] } } },
++      "teal": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.045, 178] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 178] } } },
++      "yellow": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.045, 80] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 80] } } },
++      "green": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.045, 160] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.1, 160] } } },
++      "grey": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.935, 0.006, 260] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.38, 0.01, 260] } } }
++    }
++  },
++  "font": {
++    "family": {
++      "$type": "fontFamily",
++      "heading": { "$value": ["Bricolage Grotesque", "ui-sans-serif", "system-ui", "sans-serif"] },
++      "body": { "$value": ["Atkinson Hyperlegible Next", "ui-sans-serif", "system-ui", "sans-serif"] },
++      "mono": { "$value": ["JetBrains Mono", "ui-monospace", "monospace"], "$description": "With ligatures off: font-variant-ligatures: none." }
++    },
++    "size": {
++      "$type": "dimension",
++      "xs": { "$value": { "value": 12, "unit": "px" } },
++      "sm": { "$value": { "value": 13, "unit": "px" } },
++      "md": { "$value": { "value": 15, "unit": "px" }, "$description": "Body text." },
++      "lg": { "$value": { "value": 18, "unit": "px" } },
++      "xl": { "$value": { "value": 24, "unit": "px" } },
++      "2xl": { "$value": { "value": 32, "unit": "px" } },
++      "hero": { "$value": { "value": 52, "unit": "px" } }
++    },
++    "weight": {
++      "$type": "fontWeight",
++      "regular": { "$value": 400 },
++      "bold": { "$value": 700 },
++      "heading": { "$value": 750 }
++    }
++  },
++  "radius": {
++    "$type": "dimension",
++    "sm": { "$value": { "value": 6, "unit": "px" }, "$description": "Icon buttons, tabs inside a bar." },
++    "md": { "$value": { "value": 8, "unit": "px" }, "$description": "Fields and code blocks. Fields are never fully round." },
++    "lg": { "$value": { "value": 12, "unit": "px" }, "$description": "Cards, dialogs, callouts." },
++    "xl": { "$value": { "value": 16, "unit": "px" }, "$description": "The floating landing header." },
++    "pill": { "$value": { "value": 999, "unit": "px" }, "$description": "Buttons, chips, the message pill." }
++  },
++  "space": {
++    "$type": "dimension",
++    "1": { "$value": { "value": 4, "unit": "px" } },
++    "2": { "$value": { "value": 8, "unit": "px" } },
++    "3": { "$value": { "value": 12, "unit": "px" } },
++    "4": { "$value": { "value": 16, "unit": "px" } },
++    "6": { "$value": { "value": 24, "unit": "px" } },
++    "8": { "$value": { "value": 32, "unit": "px" } }
++  },
++  "focus": {
++    "width": {
++      "$type": "dimension",
++      "$value": { "value": 2, "unit": "px" },
++      "$description": "The ink ring, with a gap of the same width: black in the light theme, white in the dark."
++    },
++    "offset": { "$type": "dimension", "$value": { "value": 2, "unit": "px" } }
++  },
++  "icon": {
++    "stroke": { "$type": "number", "$value": 1.5, "$description": "Thin outline icons, Lucide style." }
++  },
++  "motion": {
++    "fast": { "$type": "duration", "$value": { "value": 120, "unit": "ms" }, "$description": "Every transition: fades only, no movement, no bounce." },
++    "ease": { "$type": "cubicBezier", "$value": [0.2, 0, 0, 1] },
++    "toast": {
++      "$type": "duration",
++      "$value": { "value": 3000, "unit": "ms" },
++      "$description": "How long a success message stays. An error stays until it is retried or dismissed."
++    }
++  },
++  "layout": {
++    "header-max": {
++      "$type": "dimension",
++      "$value": { "value": 1000, "unit": "px" },
++      "$description": "The landing page's floating header bar. Below header-float it becomes the full-width bar, as the docs always use."
++    },
++    "header-float": { "$type": "dimension", "$value": { "value": 760, "unit": "px" } }
++  }
++}
+diff --git a/packages/design/tokens/dark.tokens.json b/packages/design/tokens/dark.tokens.json
+new file mode 100644
+index 0000000..eff3d70
+--- /dev/null
++++ b/packages/design/tokens/dark.tokens.json
+@@ -0,0 +1,47 @@
++{
++  "$description": "The dark theme: only colours, each overriding the token of the same path in base.tokens.json. A path that base.tokens.json lacks is an error, so the two cannot drift apart silently.",
++  "color": {
++    "$type": "color",
++    "bg": { "$value": { "colorSpace": "oklch", "components": [0.165, 0.0144, 260] } },
++    "surface": { "$value": { "colorSpace": "oklch", "components": [0.2, 0.0162, 260] } },
++    "sunken": { "$value": { "colorSpace": "oklch", "components": [0.25, 0.0171, 260] } },
++    "rail": { "$value": { "colorSpace": "oklch", "components": [0.185, 0.0153, 260] } },
++    "ink": { "$value": { "colorSpace": "oklch", "components": [0.94, 0.0072, 260] } },
++    "soft": { "$value": { "colorSpace": "oklch", "components": [0.73, 0.0144, 260] } },
++    "line": { "$value": { "colorSpace": "oklch", "components": [0.29, 0.018, 260] } },
++    "line-strong": { "$value": { "colorSpace": "oklch", "components": [0.54, 0.0216, 260] } },
++    "lattice": { "$value": { "colorSpace": "oklch", "components": [0.8, 0.03, 260], "alpha": 0.16 } },
++    "accent": { "$value": { "colorSpace": "oklch", "components": [0.74, 0.0863, 162] } },
++    "accent-strong": { "$value": { "colorSpace": "oklch", "components": [0.84, 0.0633, 162] } },
++    "accent-bg": { "$value": { "colorSpace": "oklch", "components": [0.28, 0.055, 162] } },
++    "on-accent": { "$value": { "colorSpace": "oklch", "components": [0.17, 0.018, 260] } },
++    "ok": { "$value": { "colorSpace": "oklch", "components": [0.8, 0.11, 165] } },
++    "danger": { "$value": { "colorSpace": "oklch", "components": [0.74, 0.13, 25] } },
++    "danger-bg": { "$value": { "colorSpace": "oklch", "components": [0.27, 0.05, 25] } },
++    "warn": { "$value": { "colorSpace": "oklch", "components": [0.82, 0.11, 80] } },
++    "warn-bg": { "$value": { "colorSpace": "oklch", "components": [0.28, 0.045, 75] } },
++    "info": { "$value": { "colorSpace": "oklch", "components": [0.8, 0.09, 240] } },
++    "info-bg": { "$value": { "colorSpace": "oklch", "components": [0.27, 0.04, 245] } },
++    "toast": { "$value": { "colorSpace": "oklch", "components": [0.94, 0.0072, 260] } },
++    "on-toast": { "$value": { "colorSpace": "oklch", "components": [0.165, 0.0144, 260] } },
++    "code": {
++      "bg": { "$value": { "colorSpace": "oklch", "components": [0.18, 0.0153, 260] } },
++      "ink": { "$value": { "colorSpace": "oklch", "components": [0.92, 0.009, 260] } },
++      "bar": { "$value": { "colorSpace": "oklch", "components": [0.15, 0.0135, 260] } },
++      "keyword": { "$value": { "colorSpace": "oklch", "components": [0.78, 0.12, 305] } },
++      "function": { "$value": { "colorSpace": "oklch", "components": [0.8, 0.1, 240] } },
++      "string": { "$value": { "colorSpace": "oklch", "components": [0.82, 0.1, 165] } },
++      "number": { "$value": { "colorSpace": "oklch", "components": [0.82, 0.11, 65] } },
++      "comment": { "$value": { "colorSpace": "oklch", "components": [0.68, 0.0144, 260] } }
++    },
++    "chip": {
++      "blue": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 238] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.07, 238] } } },
++      "violet": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 300] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.07, 300] } } },
++      "pink": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 355] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.07, 355] } } },
++      "teal": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 178] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.07, 178] } } },
++      "yellow": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 80] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.07, 80] } } },
++      "green": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.06, 160] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.07, 160] } } },
++      "grey": { "bg": { "$value": { "colorSpace": "oklch", "components": [0.3, 0.008, 260] } }, "fg": { "$value": { "colorSpace": "oklch", "components": [0.88, 0.01, 260] } } }
++    }
++  }
++}
+diff --git a/packages/design/tsconfig.json b/packages/design/tsconfig.json
+new file mode 100644
+index 0000000..4201591
+--- /dev/null
++++ b/packages/design/tsconfig.json
+@@ -0,0 +1,6 @@
++{
++  "extends": "../../tsconfig.strict.json",
++  // The build script is TypeScript that Node runs as it is, so it imports with the .ts extension.
++  "compilerOptions": { "allowImportingTsExtensions": true },
++  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
++}
+diff --git a/packages/design/vitest.config.ts b/packages/design/vitest.config.ts
+new file mode 100644
+index 0000000..23bccde
+--- /dev/null
++++ b/packages/design/vitest.config.ts
+@@ -0,0 +1,5 @@
++import { defineConfig } from 'vitest/config';
++
++export default defineConfig({
++    test: { environment: 'node', include: ['tests/**/*.test.ts'] },
++});
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index fe5eb6f..fe4c80a 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -1166,6 +1166,18 @@ importers:
+         specifier: 'catalog:'
+         version: 5.0.5(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(jsdom@30.1.3(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+ 
++  packages/design:
++    devDependencies:
++      '@types/node':
++        specifier: 'catalog:'
++        version: 24.19.2
++      typescript:
++        specifier: 'catalog:'
++        version: 7.0.2
++      vitest:
++        specifier: 'catalog:'
++        version: 5.0.5(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(jsdom@30.1.3(@noble/hashes@1.8.0))(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
++
+   packages/fixtures: {}
+ 
+ packages:
+-- 
+2.43.0
+
+
+From af9ed435657ebab9b75209f88f3672eded6a29b0 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 13 Nov 2026 08:56:24 +0000
+Subject: [PATCH 2/2] design: header as designed in the rounds, spinner only
+ inside buttons
+
+The header is one row of three columns (brand, centred sections, search
+with Ctrl K, GitHub, Sign in); the landing's lifted bar puts the sections in
+a grey tray. Below 760px only brand, GitHub and Sign in remain. Prose link
+colour no longer leaks into links drawn as something else.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011CH6tKeE4iJ874reAvf4rR
+---
+ packages/design/README.md            |  15 ++--
+ packages/design/css/base.css         | 120 ++++++++++++++++++++++++---
+ packages/design/reference/index.html |   4 +-
+ 3 files changed, 121 insertions(+), 18 deletions(-)
+
+diff --git a/packages/design/README.md b/packages/design/README.md
+index 817f84a..36d2bb4 100644
+--- a/packages/design/README.md
++++ b/packages/design/README.md
+@@ -40,11 +40,14 @@ cramped in a pill). No 3D, glow or offset shadows.
+ **Signature.** The triangles lattice on the plain page colour, only in side rails, gutters, the landing hero and an
+ empty list's patch. Never behind text, never in a header, and no colour stripe along the top.
+ 
+-**Header.** Docs and cloud: a full-width square bar, sticky, with blur and a hairline. The landing page: the same bar
+-floating, rounded, at most 1000px wide; below 760px it becomes the full-width bar. Sections (Docs, Playground, Embed)
+-are plain links, because some lead to other sites; none is drawn as a selected segment. Actions: search, the GitHub
+-mark, Sign in. No "Get started" and no Docs call to action in any header: the landing hero carries the one call to action
+-(Download). The cloud's bar holds only the course switcher and the avatar.
++**Header.** One row of three columns: the logo and "Yukibana" (Bricolage 650, 16px) on the left, the sections (Docs,
++Playground, Embed) centred, and search (a field-like button with Ctrl K), the filled GitHub mark and Sign in on the right.
++Docs and cloud: a full-width square bar, sticky, with blur and a hairline, the sections as plain links. The landing page:
++the same bar lifted off the edge, rounded (16px), at most 1000px wide, with a soft shadow, the sections in a grey tray.
++No section is ever drawn as selected, because some lead to other sites. Below 760px there is no room around it: it
++becomes the full-width bar with the brand, the GitHub mark and Sign in. No "Get started" and no Docs call to action in
++any header: the landing hero carries the one call to action (Download). The cloud's bar holds only the course switcher
++and the avatar.
+ 
+ **Tabs.** Underline for moving between pages; labels turn bold without shifting anything. Light's dock tabs: short
+ dividers, the current tab filled with the editor's colour on a slightly darker bar, a full 2px line, green in the group
+@@ -67,7 +70,7 @@ pill was chosen over a bar along the bottom of a panel because it works on every
+ which means the cloud keeps deleted rows for a while instead of removing them.
+ 
+ **Empty and waiting.** An empty list: centred, the lattice patch, a title, one sentence, one button. Content that is
+-coming shows skeleton rows; something small shows a spinner.
++coming shows skeleton rows. A spinner appears only inside a button that is working, never next to a skeleton.
+ 
+ **Motion and icons.** 120ms fades, no movement, no bounce. Thin outline icons, stroke 1.5, Lucide style.
+ 
+diff --git a/packages/design/css/base.css b/packages/design/css/base.css
+index dc03e3b..a184ab1 100644
+--- a/packages/design/css/base.css
++++ b/packages/design/css/base.css
+@@ -22,7 +22,8 @@
+     font-family: var(--yk-font-family-mono);
+     font-variant-ligatures: none;
+ }
+-.yk-root a {
++/* Links in running text. A link drawn as something else (a button, a tab, the brand) has a class and keeps its own colour. */
++.yk-root :where(a:not([class])) {
+     color: var(--yk-accent-strong);
+     text-underline-offset: 2px;
+ }
+@@ -458,7 +459,8 @@
+     text-underline-offset: 2px;
+ }
+ 
+-/* Waiting: skeleton rows for content that is coming, a spinner for something small such as a button or one panel. */
++/* Waiting: skeleton rows where content is coming. The spinner only ever sits inside a button that is working, in the
++   button's own colour; a page or a panel never shows both. */
+ .yk-skeleton {
+     height: 12px;
+     border-radius: 6px;
+@@ -473,6 +475,13 @@
+     border-top-color: var(--yk-accent);
+     animation: yk-turn 0.8s linear infinite;
+ }
++.yk-btn .yk-spinner {
++    width: 13px;
++    height: 13px;
++    border-width: 2px;
++    border-color: color-mix(in oklch, currentColor 30%, transparent);
++    border-top-color: currentColor;
++}
+ @keyframes yk-shimmer {
+     from {
+         background-position: 100% 0;
+@@ -520,25 +529,44 @@
+     color: var(--yk-soft);
+ }
+ 
+-/* The header. Full width and square in the docs and the cloud, with blur and a hairline. On the landing page it floats
+-   as a rounded bar of at most --yk-layout-header-max until the window is too narrow to leave room around it. Its
+-   sections are plain links: some lead to other sites, so none is drawn as the selected segment. */
++/* The header: brand on the left, the sections in the middle, search, the GitHub mark and Sign in on the right, one row of
++   three columns so the sections stay centred whatever the ends hold. In the docs and the cloud it is full width and
++   square, with blur and a hairline, and its sections are plain links: some lead to other sites, so none is drawn as the
++   selected one. On the landing page (--float) it is the same bar lifted off the edge, rounded, at most
++   --yk-layout-header-max wide, its sections in a grey tray. Below 760px there is no room around it, so it becomes the
++   full-width bar and keeps only the brand, the GitHub mark and Sign in. */
+ .yk-header {
+     position: sticky;
+     top: 0;
+     z-index: 10;
+-    display: flex;
++    display: grid;
++    grid-template-columns: 1fr auto 1fr;
+     align-items: center;
+-    gap: 16px;
++    gap: 14px;
+     padding: 8px 16px;
+     background: color-mix(in oklch, var(--yk-surface) 82%, transparent);
+     backdrop-filter: blur(14px) saturate(1.4);
+-    box-shadow: inset 0 -1px 0 var(--yk-line);
++    border-bottom: 1px solid var(--yk-line);
++    font-family: var(--yk-font-family-body);
++}
++.yk-header__brand {
++    display: flex;
++    align-items: center;
++    gap: 10px;
++    min-width: 0;
++    color: var(--yk-ink);
++    text-decoration: none;
++    font: 650 16px/1.5 var(--yk-font-family-heading);
++    letter-spacing: -0.02em;
++}
++.yk-header__brand img {
++    width: 24px;
++    height: 24px;
+ }
+ .yk-header nav {
+     display: flex;
+     gap: 4px;
+-    margin-inline: auto;
++    font-size: 13.5px;
+ }
+ .yk-header nav a {
+     padding: 4px 10px;
+@@ -550,14 +578,86 @@
+     color: var(--yk-ink);
+     background: var(--yk-sunken);
+ }
++.yk-header__end {
++    display: flex;
++    align-items: center;
++    justify-content: flex-end;
++    gap: 10px;
++    min-width: 0;
++}
++.yk-header .yk-icon-btn {
++    width: 30px;
++    height: 30px;
++    border-radius: 8px;
++}
++.yk-header .yk-icon-btn svg {
++    width: 17px;
++    height: 17px;
++}
++/* The search box opens the search dialog; it is a button that looks like a field, with its shortcut. */
++.yk-search {
++    display: flex;
++    flex: 0 1 200px;
++    align-items: center;
++    gap: 8px;
++    min-width: 0;
++    padding: 5px 10px;
++    border: 1px solid var(--yk-line);
++    border-radius: 10px;
++    background: var(--yk-sunken);
++    color: var(--yk-soft);
++    font: 13px/1.4 var(--yk-font-family-body);
++    cursor: pointer;
++}
++.yk-search svg {
++    width: 15px;
++    height: 15px;
++    flex: none;
++    fill: none;
++    stroke: currentColor;
++    stroke-width: var(--yk-icon-stroke);
++}
++.yk-search kbd {
++    margin-left: auto;
++    padding: 0 5px;
++    border: 1px solid var(--yk-line);
++    border-radius: 5px;
++    background: var(--yk-surface);
++    font: 11px/1.5 var(--yk-font-family-mono);
++    font-variant-ligatures: none;
++}
+ @media (min-width: 760px) {
+     .yk-header--float {
+         top: 12px;
+         max-width: var(--yk-layout-header-max);
+         margin: 12px auto 0;
++        padding: 8px 10px 8px 14px;
+         border: 1px solid var(--yk-line);
+         border-radius: var(--yk-radius-xl);
+-        box-shadow: 0 10px 30px -18px oklch(20% 0.03 260 / 0.45);
++        box-shadow:
++            inset 0 1px 0 color-mix(in oklch, var(--yk-surface) 60%, transparent),
++            0 10px 30px -18px oklch(20% 0.03 260 / 0.45);
++    }
++    .yk-header--float nav {
++        gap: 2px;
++        padding: 3px;
++        border-radius: 10px;
++        background: var(--yk-sunken);
++    }
++    .yk-header--float nav a {
++        padding: 3px 12px;
++    }
++    .yk-header--float nav a:hover {
++        background: var(--yk-surface);
++    }
++}
++@media (max-width: 759.98px) {
++    .yk-header {
++        grid-template-columns: auto 1fr;
++    }
++    .yk-header nav,
++    .yk-header .yk-search {
++        display: none;
+     }
+ }
+ 
+diff --git a/packages/design/reference/index.html b/packages/design/reference/index.html
+index 9429cc2..8c89ac5 100644
+--- a/packages/design/reference/index.html
++++ b/packages/design/reference/index.html
+@@ -99,7 +99,7 @@
+         <header class="yk-header">
+             <b style="font-family: var(--yk-font-family-heading); font-size: 17px">Yukibana</b>
+             <nav aria-label="Sections"><a href="#colour">Colour</a><a href="#controls">Controls</a><a href="#docs">Docs</a><a href="#states">States</a></nav>
+-            <button class="yk-btn yk-btn--secondary theme" type="button" id="theme">Dark theme</button>
++            <button class="yk-btn yk-btn--secondary theme" type="button" id="theme" style="justify-self: end">Dark theme</button>
+         </header>
+         <main>
+             <section>
+@@ -234,7 +234,7 @@
+                 <div class="panel">
+                     <div class="yk-skeleton" style="width: 70%"></div>
+                     <div class="yk-skeleton"></div>
+-                    <div class="yk-spinner" role="status" aria-label="Loading"></div>
++                    <button class="yk-btn yk-btn--primary" type="button" disabled><span class="yk-spinner" role="status" aria-label="Publishing"></span>Publishing</button>
+                 </div>
+                 <div class="panel yk-empty">
+                     <b style="font-family: var(--yk-font-family-heading); font-size: var(--yk-font-size-lg)">No projects yet</b>
+-- 
+2.43.0
+
