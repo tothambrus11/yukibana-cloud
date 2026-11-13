@@ -644,6 +644,8 @@ header.bar-host {
 	max-width: 16rem;
 	height: 100%;
 	padding: 0 0.75rem;
+	/* Draws nothing (the current tab's line is the box shadow on `.dv-tab`), but takes the line's 2px off the bottom
+	   so the label is centred in the space above it; without it every label sits 1px lower. */
 	border-bottom: 2px solid transparent;
 	white-space: nowrap;
 	cursor: pointer;
