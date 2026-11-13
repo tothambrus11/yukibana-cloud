@@ -152,6 +152,7 @@
 							/>
 							<label class="check" title="The GNU dialect (-std=gnu++20 rather than -std=c++20): GNU's extensions to the language, on by default in clang">
 								<input
+									class="yk-check"
 									type="checkbox"
 									checked={gnu}
 									disabled={workspace.standard.kind !== 'standard'}
@@ -234,7 +235,7 @@
 				<span class="name">clang-tidy</span>
 				<span class="field">
 					<label class="check">
-						<input type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
+						<input class="yk-check" type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
 						Check the code as you type
 					</label>
 					<small>{describeTidy(workspace.clangTidy, workspace.tidyStatus)} Its rules are the project's .clang-tidy.</small>

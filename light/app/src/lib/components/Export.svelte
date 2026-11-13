@@ -124,8 +124,8 @@
 
 	<fieldset>
 		<legend>Repository</legend>
-		<label class="check"><input type="checkbox" checked={choices.devcontainer} onchange={(e) => set({ devcontainer: e.currentTarget.checked })} /><span>Dev container <span class="hint">(VS Code, Codespaces: the tools in a container)</span></span></label>
-		<label class="check"><input type="checkbox" checked={choices.gitattributes} onchange={(e) => set({ gitattributes: e.currentTarget.checked })} /><span>.gitattributes <span class="hint">(LF line endings on every system, whatever core.autocrlf says)</span></span></label>
+		<label class="check"><input class="yk-check" type="checkbox" checked={choices.devcontainer} onchange={(e) => set({ devcontainer: e.currentTarget.checked })} /><span>Dev container <span class="hint">(VS Code, Codespaces: the tools in a container)</span></span></label>
+		<label class="check"><input class="yk-check" type="checkbox" checked={choices.gitattributes} onchange={(e) => set({ gitattributes: e.currentTarget.checked })} /><span>.gitattributes <span class="hint">(LF line endings on every system, whatever core.autocrlf says)</span></span></label>
 	</fieldset>
 
 	<details class="files">
@@ -216,8 +216,13 @@
 	.check input {
 		margin-top: 0.15rem;
 	}
-	input {
-		accent-color: var(--yk-accent);
+	/*
+	 * The checkboxes are the design system's drawn `.yk-check`. It draws no
+	 * radio buttons of their own, so these stay native, in ink: a choice is
+	 * a state, not an action, and green is for actions.
+	 */
+	input[type='radio'] {
+		accent-color: var(--yk-ink);
 	}
 	.files {
 		margin: 0.5rem 1rem;

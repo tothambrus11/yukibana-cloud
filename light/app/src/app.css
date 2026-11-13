@@ -202,6 +202,11 @@ html.yk-root {
 	white-space: nowrap;
 	text-overflow: ellipsis;
 }
+/* The design system's drawn checkbox (check.css) has no disabled look of its own; this is the buttons'. */
+.yk-check:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
 /* `hidden` hides, whatever display a class gives the element (a hidden .chip stayed visible). */
 [hidden] {
 	display: none !important;
