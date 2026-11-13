@@ -187,7 +187,7 @@
 	<div class="bar">
 		<a class="brand" href="./" aria-label="Yukibana Light" title="Yukibana Light">
 			<img src="logo-64.png" alt="" width="28" height="28" />
-			<span class="name">Yukibana</span><span class="product">Light</span>
+			<span class="wordmark"><span class="name">Yukibana</span><span class="product">Light</span></span>
 		</a>
 
 		<!-- The chosen language is shown by .lang-label: its full or short name, by the bar's width. -->
@@ -371,6 +371,15 @@
 		width: 1.75rem;
 		height: 1.75rem;
 	}
+	/* The two words sit on one baseline, a little closer than a space, and nudged down so the capitals sit
+	   centred on the icon (centring the line box leaves the letters high: it reserves room for descenders,
+	   which the wordmark has only in "g"). "Light" is the light weight, 300. */
+	.wordmark {
+		display: flex;
+		align-items: baseline;
+		gap: 0.2rem;
+		transform: translateY(0.1rem);
+	}
 	/* The brand in the design system's heading face, Bricolage Grotesque, at the header's 650. */
 	.name {
 		font-family: var(--yk-font-family-heading);
@@ -380,7 +389,7 @@
 	}
 	.product {
 		font-family: var(--yk-font-family-heading);
-		font-weight: 600;
+		font-weight: 300;
 		font-size: 1.05rem;
 		color: var(--gray-2);
 	}

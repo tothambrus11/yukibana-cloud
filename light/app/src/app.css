@@ -417,8 +417,7 @@ header.bar-host {
 }
 
 @container bar (width < 56rem) {
-	.bar-host.cq .brand .name,
-	.bar-host.cq .brand .product,
+	.bar-host.cq .brand .wordmark,
 	.bar-host.cq .share-word,
 	.bar-host.cq .build-summary {
 		display: none;
@@ -427,9 +426,8 @@ header.bar-host {
 		display: inline;
 	}
 }
-.bar-host:not(.cq)[data-tier~='56'] .brand .name,
+.bar-host:not(.cq)[data-tier~='56'] .brand .wordmark,
 .bar-host:not(.cq)[data-tier~='56'] .share-word,
-.bar-host:not(.cq)[data-tier~='56'] .brand .product,
 .bar-host:not(.cq)[data-tier~='56'] .build-summary {
 	display: none;
 }
