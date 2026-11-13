@@ -35,7 +35,7 @@
 	</div>
 	<label class="row">
 		<span>strace<small>Show the program's system calls in the terminal, dimmed.</small></span>
-		<input type="checkbox" checked={options.strace} onchange={(e) => workspace.setRunOptions({ strace: e.currentTarget.checked })} />
+		<input class="yk-check" type="checkbox" checked={options.strace} onchange={(e) => workspace.setRunOptions({ strace: e.currentTarget.checked })} />
 	</label>
 </div>
 

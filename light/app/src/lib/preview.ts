@@ -173,6 +173,7 @@ export class Preview {
 		label.title = `Rebuild the page ${RELOAD_DELAY_MS} ms after you stop typing, when the project has no errors`;
 		const auto = document.createElement('input');
 		auto.type = 'checkbox';
+		auto.className = 'yk-check';
 		auto.checked = this.auto;
 		auto.addEventListener('change', () => this.setAuto(auto.checked));
 		label.append(auto, 'Auto reload');

@@ -18,7 +18,7 @@
 <div class="sanitizers">
 	{#each SANITIZERS as s (s.id)}
 		<label>
-			<input type="checkbox" checked={choice[s.id]} onchange={(e) => toggle(s.id, e.currentTarget.checked)} />
+			<input class="yk-check" type="checkbox" checked={choice[s.id]} onchange={(e) => toggle(s.id, e.currentTarget.checked)} />
 			<span>{s.label} <code>-fsanitize={s.id}</code><small>{s.finds}</small></span>
 		</label>
 	{/each}

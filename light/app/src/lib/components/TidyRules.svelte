@@ -84,7 +84,7 @@
 
 	<div class="state">
 		<label class="toggle">
-			<input type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
+			<input class="yk-check" type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
 			<span>Check the code with clang-tidy as you type</span>
 		</label>
 		<small>{describeTidy(workspace.clangTidy, workspace.tidyStatus)}</small>
@@ -129,7 +129,7 @@
 					{@const on = enabled.has(check.name)}
 					<li class="check" class:on>
 						<label>
-							<input type="checkbox" checked={on} onchange={(e) => set(check.name, e.currentTarget.checked)} />
+							<input class="yk-check" type="checkbox" checked={on} onchange={(e) => set(check.name, e.currentTarget.checked)} />
 							<span class="name">{check.name}</span>
 						</label>
 						<span class="badges">
