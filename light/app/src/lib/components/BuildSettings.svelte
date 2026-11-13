@@ -285,7 +285,7 @@
 		display: none;
 	}
 	.build-summary {
-		color: var(--white);
+		color: var(--yk-ink);
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
 	}
@@ -309,7 +309,7 @@
 	}
 	.name {
 		padding-top: 0.3rem;
-		color: var(--gray-2);
+		color: var(--label);
 		font-weight: 600;
 	}
 	.field {
@@ -336,7 +336,7 @@
 		justify-self: start;
 	}
 	small {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		line-height: 1.35;
 	}
@@ -348,7 +348,7 @@
 		width: 100%;
 		margin: 0;
 		border: 0;
-		border-top: 1px solid var(--gray-5);
+		border-top: 1px solid var(--yk-line);
 	}
 	/* A phone: the label above its control. */
 	@media (width < 30rem) {

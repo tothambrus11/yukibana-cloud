@@ -122,10 +122,10 @@
 		line-height: 1.55;
 		white-space: pre-wrap;
 		word-break: break-word;
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 	.stderr {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.place {
 		display: inline;
@@ -140,24 +140,24 @@
 		user-select: text;
 	}
 	.place:hover {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 		text-decoration-style: solid;
 	}
 	.stdin {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 	}
 	.info {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-style: italic;
 	}
 	/* System calls (strace on a Linux target): there to read when wanted, not to compete with the output. */
 	.trace {
-		color: var(--gray-4);
+		color: var(--yk-line-strong);
 		font-style: italic;
 	}
 	.empty {
 		margin: 0.2rem 0;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.8125rem;
 	}
 	.input {
@@ -166,15 +166,15 @@
 		gap: 0.5rem;
 		margin: 0 0.75rem 0.4rem;
 		padding: 0 0.6rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.35rem;
-		background: var(--gray-6);
+		background: var(--yk-sunken);
 	}
 	.input.waiting {
-		border-color: var(--accent-high);
+		border-color: var(--yk-accent-strong);
 	}
 	.prompt {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 		font-family: var(--font-mono);
 	}
 	.input input {
@@ -184,7 +184,7 @@
 		border: 0;
 		outline: 0;
 		background: none;
-		color: var(--white);
+		color: var(--yk-ink);
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 	}
@@ -195,8 +195,8 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0 0.25rem 0 1rem;
-		border-top: 1px solid var(--gray-5);
-		color: var(--gray-3);
+		border-top: 1px solid var(--yk-line);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		min-height: 2rem;
 	}
@@ -208,10 +208,10 @@
 		display: none;
 	}
 	.failed {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.clear {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.clear svg {
 		width: 1rem;

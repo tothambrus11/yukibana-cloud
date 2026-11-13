@@ -58,7 +58,7 @@
 	}
 	.empty {
 		margin: 0.2rem 1rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-family: var(--font);
 		font-size: 0.8125rem;
 	}
@@ -66,37 +66,37 @@
 		padding: 0 1rem;
 		white-space: pre-wrap;
 		word-break: break-word;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	.line.error {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.line.warning {
-		color: var(--orange-high);
+		color: var(--yk-warn);
 	}
 	.line.log {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.time {
 		margin-right: 0.75rem;
-		color: var(--gray-4);
+		color: var(--yk-line-strong);
 	}
 	.source {
 		display: inline-block;
 		/* As wide as the widest tag, so the messages start in one column. */
 		min-width: 7ch;
 		margin-right: 0.6rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.clear {
 		position: absolute;
 		top: 0.4rem;
 		right: 0.9rem;
 		padding: 0.15rem 0.55rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
+		background: var(--yk-sunken);
+		color: var(--label);
 		font: inherit;
 		font-size: 0.75rem;
 		cursor: pointer;
@@ -108,6 +108,6 @@
 		opacity: 1;
 	}
 	.clear:hover {
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 </style>

@@ -171,7 +171,7 @@
 		align-items: center;
 		gap: 0.15rem;
 		padding: 0.3rem 0.5rem;
-		border-bottom: 1px solid var(--gray-5);
+		border-bottom: 1px solid var(--yk-line);
 	}
 	.toolbar button {
 		display: inline-flex;
@@ -184,15 +184,15 @@
 		border: 1px solid transparent;
 		border-radius: 0.3rem;
 		background: none;
-		color: var(--gray-2);
+		color: var(--label);
 		font: inherit;
 		font-size: 0.78rem;
 		cursor: pointer;
 	}
 	.toolbar button:hover:not(:disabled),
 	.toolbar button:focus-visible {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 		outline: none;
 	}
 	.toolbar button:disabled {
@@ -200,7 +200,7 @@
 		cursor: default;
 	}
 	.toolbar .start {
-		border-color: var(--gray-5);
+		border-color: var(--yk-line);
 		padding: 0 0.6rem;
 	}
 	/* Drawn like the header's icons (stroked, round), and coloured as in
@@ -220,22 +220,22 @@
 	}
 	.toolbar .go,
 	.toolbar .start svg {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 	}
 	.toolbar .pause {
-		color: var(--orange-high);
+		color: var(--yk-warn);
 	}
 	.toolbar .step {
-		color: var(--blue-high);
+		color: var(--yk-info);
 	}
 	.toolbar .stop {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.state {
 		min-width: 0;
 		margin-left: 0.5rem;
 		overflow: hidden;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
@@ -247,11 +247,11 @@
 	.empty,
 	.note {
 		margin: 0.5rem 0.9rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	h3 {
 		margin: 0.6rem 0.8rem 0.2rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.7rem;
 		font-weight: 600;
 		letter-spacing: 0.04em;
@@ -259,7 +259,7 @@
 	}
 	h4 {
 		margin: 0.3rem 0.8rem 0.1rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		font-weight: 500;
 	}
@@ -278,7 +278,7 @@
 		padding: 0.15rem 0.8rem;
 		border: 0;
 		background: none;
-		color: var(--gray-2);
+		color: var(--label);
 		font: inherit;
 		text-align: start;
 		cursor: pointer;
@@ -286,15 +286,15 @@
 	.frame:hover,
 	.bp:hover,
 	.scope:hover {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 	}
 	.frame.selected {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 	}
 	.frame.outside {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.fn {
 		min-width: 0;
@@ -307,7 +307,7 @@
 	.where {
 		flex: none;
 		margin-left: auto;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 	}
 	.var {
@@ -321,7 +321,7 @@
 		white-space: nowrap;
 	}
 	.var:hover {
-		background: var(--gray-6);
+		background: var(--yk-sunken);
 	}
 	.twisty {
 		display: inline-grid;
@@ -333,23 +333,23 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		cursor: pointer;
 	}
 	.name {
-		color: var(--blue-high);
+		color: var(--yk-info);
 	}
 	.value {
 		min-width: 0;
 		overflow: hidden;
-		color: var(--white);
+		color: var(--yk-ink);
 		text-overflow: ellipsis;
 	}
 	.type {
 		flex: none;
 		margin-left: auto;
 		padding-left: 0.6rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.72rem;
 	}
 	.breakpoints li {
@@ -372,10 +372,10 @@
 		padding: 0 0.5rem;
 		border: 0;
 		background: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		cursor: pointer;
 	}
 	.remove:hover {
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 </style>

@@ -342,7 +342,7 @@
 		position: relative;
 		z-index: 10;
 		flex: none;
-		border-bottom: 1px solid var(--gray-5);
+		border-bottom: 1px solid var(--yk-line);
 		background: var(--header-bg);
 		backdrop-filter: blur(0.5rem);
 	}
@@ -363,7 +363,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-right: 0.4rem;
-		color: var(--white);
+		color: var(--yk-ink);
 		text-decoration: none;
 		white-space: nowrap;
 	}
@@ -391,7 +391,7 @@
 		font-family: var(--yk-font-family-heading);
 		font-weight: 300;
 		font-size: 1.05rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	/* The language picker: a Select (Select.svelte) whose button is drawn as the bar's, a secondary yk-btn. */
 	.bar :global(.lang) {
@@ -425,7 +425,7 @@
 		fill: currentColor;
 	}
 	.run.stop svg {
-		fill: var(--red-high);
+		fill: var(--yk-danger);
 	}
 	/* The other word, unseen, in the same cell: the button is as wide as "Run" or "Stop", whichever is wider, in either state. */
 	.run-label {
@@ -455,11 +455,11 @@
 		z-index: 20;
 		max-width: calc(100vw - 2rem);
 		padding: 0.55rem 0.9rem;
-		border: 1px solid var(--accent);
+		border: 1px solid var(--yk-accent);
 		border-radius: 0.5rem;
-		background: var(--gray-6);
+		background: var(--yk-sunken);
 		box-shadow: 0 0.5rem 1.5rem oklch(0% 0 0 / 0.3);
-		color: var(--white);
+		color: var(--yk-ink);
 		font-size: 0.85rem;
 		text-align: center;
 		opacity: 0;
@@ -529,7 +529,7 @@
 		cursor: pointer;
 	}
 	.licenses-link:hover {
-		color: var(--white);
+		color: var(--yk-ink);
 		text-decoration: underline;
 	}
 	.status-bar {
@@ -539,8 +539,8 @@
 		gap: 0.75rem;
 		min-height: 1.75rem;
 		padding: 0 0.6rem;
-		border-top: 1px solid var(--gray-5);
-		color: var(--gray-3);
+		border-top: 1px solid var(--yk-line);
+		color: var(--yk-soft);
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
@@ -565,8 +565,8 @@
 		cursor: pointer;
 	}
 	.status-bar > button:hover {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 	}
 	/* What gives way first as the bar narrows: the server's name, then the build summary. */
 	.server {
@@ -595,21 +595,21 @@
 		width: 6rem;
 		height: 0.35rem;
 		border-radius: 1rem;
-		background: var(--gray-5);
+		background: var(--yk-line);
 		overflow: hidden;
 	}
 	.meter span {
 		display: block;
 		height: 100%;
-		background: var(--accent-high);
+		background: var(--yk-accent-strong);
 		transition: width 0.2s;
 	}
 	.spinner {
 		flex: none;
 		width: 0.75rem;
 		height: 0.75rem;
-		border: 1.5px solid var(--gray-4);
-		border-top-color: var(--accent-high);
+		border: 1.5px solid var(--yk-line-strong);
+		border-top-color: var(--yk-accent-strong);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -627,10 +627,10 @@
 		border-radius: 50%;
 	}
 	.ok {
-		background: var(--accent-high);
+		background: var(--yk-accent-strong);
 	}
 	.bad {
-		background: var(--red-high);
+		background: var(--yk-danger);
 	}
 	.dot {
 		font-size: 0.85rem;
@@ -638,13 +638,13 @@
 	}
 	/* The marks are drawn, not written, so each count's text is its number alone (what the e2e suites read). */
 	.dot.error {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.dot.error::before {
 		content: '⊗';
 	}
 	.dot.warning {
-		color: var(--orange-high);
+		color: var(--yk-warn);
 	}
 	.dot.warning::before {
 		content: '⚠';

@@ -4,10 +4,9 @@
  * cool blue-grey greys, one green accent for primary buttons, links and the
  * current tab's line, and the ink focus ring. The tokens are `light-dark()`
  * pairs, so they follow `color-scheme`, which `<html data-theme>` sets
- * (theme.svelte.ts): one definition below serves both themes. Light's own
- * names (--white for text, --black for the editor's surface, --gray-1 to
- * --gray-7 between) stay, mapped onto the tokens, so every component keeps
- * its rules and takes the new colours.
+ * (theme.svelte.ts): one definition below serves both themes. Components
+ * use the `--yk-*` tokens directly; the few colours the design system has no
+ * token for (--label, --header-bg, the terminal's --ansi-*) are defined here.
  */
 :root {
 	/*
@@ -28,24 +27,8 @@
 	/* The ink ring (design/base.css): 2px of the text colour, never green. */
 	--focus-ring: var(--yk-focus-width) solid var(--yk-ink);
 
-	--white: var(--yk-ink);
 	/* Secondary text and the buttons' labels: between the ink and the soft grey. */
-	--gray-1: color-mix(in oklch, var(--yk-ink) 55%, var(--yk-soft));
-	--gray-2: color-mix(in oklch, var(--yk-ink) 55%, var(--yk-soft));
-	--gray-3: var(--yk-soft);
-	--gray-4: var(--yk-line-strong);
-	--gray-5: var(--yk-line);
-	--gray-6: var(--yk-sunken);
-	--gray-7: var(--yk-rail);
-	/* The editor's colour: the dock's groups and the current tab are filled with it (palette.ts EDITOR has it as hex). */
-	--black: var(--yk-code-bg);
-	--accent-low: var(--yk-accent-bg);
-	--accent: var(--yk-accent);
-	--accent-high: var(--yk-accent-strong);
-	--red-low: var(--yk-danger-bg);
-	--red-high: var(--yk-danger);
-	--orange-high: var(--yk-warn);
-	--blue-high: var(--yk-info);
+	--label: color-mix(in oklch, var(--yk-ink) 55%, var(--yk-soft));
 	/* The top bar: the page colour, a little translucent under its blur. */
 	--header-bg: color-mix(in oklch, var(--yk-bg) 85%, transparent);
 	/*
@@ -70,8 +53,8 @@
 	--ansi-13: oklch(80% 0.12 330);
 	--ansi-14: oklch(84% 0.09 205);
 	--ansi-15: oklch(97% 0.004 var(--hue-base));
-	--ansi-default-fg: var(--white);
-	--ansi-default-bg: var(--black);
+	--ansi-default-fg: var(--yk-ink);
+	--ansi-default-bg: var(--yk-code-bg);
 	color-scheme: dark;
 }
 
@@ -211,16 +194,16 @@ html.yk-root {
 	gap: 0.3rem;
 	min-height: 1.5rem;
 	padding: 0 0.5rem;
-	border: 1px solid var(--gray-5);
+	border: 1px solid var(--yk-line);
 	border-radius: 0.35rem;
-	background: var(--gray-6);
-	color: var(--gray-3);
+	background: var(--yk-sunken);
+	color: var(--yk-soft);
 	font: inherit;
 	white-space: nowrap;
 	cursor: pointer;
 }
 .chip:hover {
-	color: var(--white);
+	color: var(--yk-ink);
 }
 .truncate {
 	min-width: 0;
@@ -275,11 +258,11 @@ html.yk-root {
 	max-height: calc(var(--app-height, 100dvh) - var(--nav-height) - 1rem);
 	overflow: auto;
 	padding: 0.4rem;
-	border: 1px solid var(--gray-5);
+	border: 1px solid var(--yk-line);
 	border-radius: 0.5rem;
-	background: var(--gray-6);
+	background: var(--yk-sunken);
 	box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.3);
-	color: var(--white);
+	color: var(--yk-ink);
 	font-size: 0.85rem;
 }
 .yk-popover.anchored {
@@ -311,7 +294,7 @@ html.yk-root {
 	border: 0;
 	border-radius: 0.3rem;
 	background: none;
-	color: var(--white);
+	color: var(--yk-ink);
 	font: inherit;
 	text-align: start;
 	white-space: nowrap;
@@ -319,32 +302,32 @@ html.yk-root {
 }
 .menu-item:hover,
 .menu-item:focus-visible {
-	background: var(--gray-5);
+	background: var(--yk-line);
 	outline: none;
 }
 .menu-item .check {
 	flex: none;
 	width: 1rem;
-	color: var(--accent-high);
+	color: var(--yk-accent-strong);
 	text-align: center;
 }
 .menu-item .hint {
 	margin-left: auto;
 	padding-left: 1rem;
-	color: var(--gray-3);
+	color: var(--yk-soft);
 	font-size: 0.75rem;
 }
 .menu-item.danger {
-	color: var(--red-high);
+	color: var(--yk-danger);
 }
 .menu-divider {
 	height: 1px;
 	margin: 0.3rem 0.2rem;
-	background: var(--gray-5);
+	background: var(--yk-line);
 }
 .menu-heading {
 	padding: 0.3rem 0.6rem 0.1rem;
-	color: var(--gray-3);
+	color: var(--yk-soft);
 	font-size: 0.72rem;
 	font-weight: 600;
 	letter-spacing: 0.03em;
@@ -543,31 +526,32 @@ header.bar-host {
 	--dv-floating-group-border: none;
 	--dv-active-sash-transition-duration: 0.1s;
 	--dv-active-sash-transition-delay: 0.3s;
-	--dv-group-view-background-color: var(--black);
+	/* The editor's colour: the dock's groups and the current tab are filled with it (palette.ts EDITOR has it as hex). */
+	--dv-group-view-background-color: var(--yk-code-bg);
 	--dv-tabs-and-actions-container-background-color: var(--yk-code-bar);
 	--dv-tabs-and-actions-container-height: var(--tab-bar-height);
 	--dv-tabs-and-actions-container-font-size: 0.8rem;
-	--dv-activegroup-visiblepanel-tab-background-color: var(--black);
+	--dv-activegroup-visiblepanel-tab-background-color: var(--yk-code-bg);
 	--dv-activegroup-hiddenpanel-tab-background-color: transparent;
-	--dv-inactivegroup-visiblepanel-tab-background-color: var(--black);
+	--dv-inactivegroup-visiblepanel-tab-background-color: var(--yk-code-bg);
 	--dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
 	--dv-activegroup-visiblepanel-tab-color: var(--yk-ink);
 	--dv-activegroup-hiddenpanel-tab-color: var(--yk-soft);
 	--dv-inactivegroup-visiblepanel-tab-color: var(--yk-ink);
 	--dv-inactivegroup-hiddenpanel-tab-color: var(--yk-soft);
 	--dv-tab-divider-color: transparent;
-	--dv-separator-border: var(--gray-5);
-	--dv-paneview-header-border-color: var(--gray-5);
+	--dv-separator-border: var(--yk-line);
+	--dv-paneview-header-border-color: var(--yk-line);
 	--dv-sash-color: transparent;
 	--dv-active-sash-color: var(--yk-line-strong);
 	--dv-drag-over-background-color: color-mix(in srgb, var(--yk-info) 18%, transparent);
 	--dv-drag-over-border-color: var(--yk-info);
 	--dv-drag-over-border: 1px solid var(--yk-info);
-	--dv-icon-hover-background-color: var(--gray-5);
-	--dv-tabs-container-scrollbar-color: var(--gray-4);
-	--dv-scrollbar-background-color: var(--gray-4);
-	--dv-context-menu-background-color: var(--gray-6);
-	--dv-context-menu-color: var(--white);
+	--dv-icon-hover-background-color: var(--yk-line);
+	--dv-tabs-container-scrollbar-color: var(--yk-line-strong);
+	--dv-scrollbar-background-color: var(--yk-line-strong);
+	--dv-context-menu-background-color: var(--yk-sunken);
+	--dv-context-menu-color: var(--yk-ink);
 	--dv-dnd-compass-color: var(--yk-info);
 	--dv-edge-dock-indicator-color: var(--yk-info);
 	height: 100%;
@@ -629,7 +613,7 @@ header.bar-host {
 }
 
 .dockview-theme-yukibana .dv-groupview {
-	border-left: 1px solid var(--gray-5);
+	border-left: 1px solid var(--yk-line);
 }
 
 /*
@@ -690,8 +674,8 @@ header.bar-host {
 	height: 1.1rem;
 	padding: 0 0.3rem;
 	border-radius: 0.55rem;
-	background: var(--gray-5);
-	color: var(--white);
+	background: var(--yk-line);
+	color: var(--yk-ink);
 	font-family: var(--font);
 	font-size: 0.68rem;
 	font-weight: 600;
@@ -910,8 +894,8 @@ header.bar-host {
 
 .dock-tab-close:hover,
 .dock-tab-close:focus-visible {
-	background: var(--gray-5);
-	color: var(--white);
+	background: var(--yk-line);
+	color: var(--yk-ink);
 	opacity: 1;
 }
 
@@ -958,7 +942,7 @@ header.bar-host {
 	gap: 0.75rem;
 	min-height: 1.9rem;
 	padding: 0 0.5rem;
-	border-bottom: 1px solid var(--gray-5);
+	border-bottom: 1px solid var(--yk-line);
 	font-size: 0.8rem;
 	white-space: nowrap;
 }
@@ -972,11 +956,11 @@ header.bar-host {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	color: var(--gray-3);
+	color: var(--yk-soft);
 }
 .preview-empty {
 	margin: 1rem;
-	color: var(--gray-3);
+	color: var(--yk-soft);
 	font-size: 0.85rem;
 }
 
@@ -987,10 +971,10 @@ header.bar-host {
 .app-dialog {
 	width: min(30rem, calc(100vw - 2rem));
 	padding: 0;
-	border: 1px solid var(--gray-5);
+	border: 1px solid var(--yk-line);
 	border-radius: 0.5rem;
-	background: var(--gray-7);
-	color: var(--white);
+	background: var(--yk-rail);
+	color: var(--yk-ink);
 	font-size: 0.9rem;
 }
 .app-dialog::backdrop {
@@ -1006,7 +990,7 @@ header.bar-host {
 }
 .app-dialog-detail {
 	margin: 0.5rem 0 0;
-	color: var(--gray-2);
+	color: var(--label);
 	line-height: 1.4;
 }
 .app-dialog footer {

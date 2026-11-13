@@ -148,10 +148,10 @@
 		width: min(34rem, calc(100vw - 2rem));
 		max-height: calc(var(--app-height, 100dvh) - 2rem);
 		padding: 0;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.5rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
 	}
 	.export::backdrop {
@@ -170,29 +170,29 @@
 	.close {
 		min-width: 2.5rem;
 		min-height: 2.5rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	p {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 		line-height: 1.4;
 	}
 	fieldset {
 		margin: 0.5rem 1rem;
 		padding: 0.4rem 0.75rem 0.6rem;
-		border: 1px solid var(--gray-6);
+		border: 1px solid var(--yk-sunken);
 		border-radius: 0.4rem;
 	}
 	legend {
 		padding: 0 0.3rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-weight: 500;
 	}
 	fieldset p {
 		margin: 0 0 0.4rem;
 	}
 	.hint {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.8rem;
 	}
 	.choices {
@@ -217,11 +217,11 @@
 		margin-top: 0.15rem;
 	}
 	input {
-		accent-color: var(--accent);
+		accent-color: var(--yk-accent);
 	}
 	.files {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	.files summary {
 		cursor: pointer;

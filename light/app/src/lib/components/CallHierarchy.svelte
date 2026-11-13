@@ -96,14 +96,14 @@
 	}
 	.empty {
 		margin: 0.6rem 1rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.toolbar {
 		display: flex;
 		align-items: center;
 		gap: 0.25rem;
 		padding: 0.35rem 0.6rem;
-		border-bottom: 1px solid var(--gray-5);
+		border-bottom: 1px solid var(--yk-line);
 	}
 	.toolbar button {
 		display: inline-flex;
@@ -113,20 +113,20 @@
 		border: 1px solid transparent;
 		border-radius: 0.3rem;
 		background: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font: inherit;
 		font-size: 0.78rem;
 		cursor: pointer;
 	}
 	.toolbar button:hover,
 	.toolbar button:focus-visible {
-		color: var(--white);
+		color: var(--yk-ink);
 		outline: none;
 	}
 	.toolbar button.on {
-		border-color: var(--gray-5);
-		background: var(--gray-6);
-		color: var(--white);
+		border-color: var(--yk-line);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 	}
 	.spacer {
 		flex: 1;
@@ -154,7 +154,7 @@
 		padding: 0;
 		border: 0;
 		background: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		cursor: pointer;
 	}
 	.row {
@@ -166,7 +166,7 @@
 		padding: 0.15rem 0.6rem 0.15rem 0.2rem;
 		border: 0;
 		background: none;
-		color: var(--gray-2);
+		color: var(--label);
 		font: inherit;
 		text-align: start;
 		white-space: nowrap;
@@ -174,20 +174,20 @@
 	}
 	.line:hover,
 	.line:focus-within {
-		background: var(--gray-6);
+		background: var(--yk-sunken);
 	}
 	.row:hover,
 	.row:focus-visible {
-		color: var(--white);
+		color: var(--yk-ink);
 		outline: none;
 	}
 	.kind {
 		align-self: center;
 		flex: none;
-		color: var(--blue-high);
+		color: var(--yk-info);
 	}
 	.name {
-		color: var(--white);
+		color: var(--yk-ink);
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
 	}
@@ -195,14 +195,14 @@
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 	}
 	.where {
 		flex: none;
 		margin-left: auto;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 	}
 	.sites {
@@ -213,26 +213,26 @@
 	}
 	.site {
 		padding: 0 0.4rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.25rem;
 		background: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-family: var(--font-mono);
 		font-size: 0.72rem;
 		cursor: pointer;
 	}
 	.site:hover,
 	.site:focus-visible {
-		border-color: var(--gray-4);
-		color: var(--white);
+		border-color: var(--yk-line-strong);
+		color: var(--yk-ink);
 		outline: none;
 	}
 	.note {
 		margin: 0.15rem 0;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.78rem;
 	}
 	.note.failed {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 </style>

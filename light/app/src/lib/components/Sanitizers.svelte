@@ -41,7 +41,7 @@
 		margin-top: 0.2rem;
 	}
 	code {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		white-space: nowrap;
 	}
@@ -49,7 +49,7 @@
 	p {
 		display: block;
 		margin: 0;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		line-height: 1.35;
 	}

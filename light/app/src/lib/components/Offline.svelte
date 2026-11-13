@@ -99,10 +99,10 @@
 		width: min(40rem, calc(100vw - 2rem));
 		max-height: calc(var(--app-height, 100dvh) - 2rem);
 		padding: 0;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.5rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
 	}
 	.offline::backdrop {
@@ -121,11 +121,11 @@
 	.close {
 		min-width: 2.5rem;
 		min-height: 2.5rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	p {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 		line-height: 1.4;
 	}
 	table {
@@ -134,14 +134,14 @@
 		border-collapse: collapse;
 	}
 	th {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-weight: 500;
 		text-align: left;
 	}
 	th,
 	td {
 		padding: 0.3rem 0.4rem;
-		border-bottom: 1px solid var(--gray-6);
+		border-bottom: 1px solid var(--yk-sunken);
 	}
 	.size {
 		text-align: right;
@@ -170,13 +170,13 @@
 		min-width: 6rem;
 		height: 0.4rem;
 		border-radius: 1rem;
-		background: var(--gray-5);
+		background: var(--yk-line);
 		overflow: hidden;
 	}
 	.meter span {
 		display: block;
 		height: 100%;
-		background: var(--accent-high);
+		background: var(--yk-accent-strong);
 		transition: width 0.2s;
 	}
 	/* A `yk-btn` (design/base.css) draws it; this is its size. */
@@ -186,15 +186,15 @@
 		font-size: 0.8rem;
 	}
 	.ok {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 	}
 	.muted {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.error {
 		width: 100%;
 		margin: 0;
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	/* A phone: the header row goes, and each language is a name over its size and button. */
 	@container offline (width < 26rem) {
@@ -211,7 +211,7 @@
 			align-items: center;
 			gap: 0 0.5rem;
 			padding: 0.4rem 0;
-			border-bottom: 1px solid var(--gray-6);
+			border-bottom: 1px solid var(--yk-sunken);
 		}
 		td {
 			padding: 0;
@@ -223,7 +223,7 @@
 		}
 		.size {
 			text-align: left;
-			color: var(--gray-3);
+			color: var(--yk-soft);
 		}
 		footer .button {
 			width: 100%;
