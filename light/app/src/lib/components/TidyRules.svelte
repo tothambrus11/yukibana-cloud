@@ -106,8 +106,8 @@
 					{#if glob}{matching.length} matching <code>{glob}</code>, {matchingOn} on{:else}{enabled.size} of {names.length} checks on{/if}
 				{/if}
 			</span>
-			<button class="btn" disabled={!glob || !catalogue || (matching.length > 0 && matchingOn === matching.length)} onclick={() => glob && set(glob, true)}>Turn on {glob ? 'all matching' : ''}</button>
-			<button class="btn" disabled={!glob || !catalogue || matchingOn === 0} onclick={() => glob && set(glob, false)}>Turn off {glob ? 'all matching' : ''}</button>
+			<button class="btn yk-btn yk-btn--secondary" disabled={!glob || !catalogue || (matching.length > 0 && matchingOn === matching.length)} onclick={() => glob && set(glob, true)}>Turn on {glob ? 'all matching' : ''}</button>
+			<button class="btn yk-btn yk-btn--secondary" disabled={!glob || !catalogue || matchingOn === 0} onclick={() => glob && set(glob, false)}>Turn off {glob ? 'all matching' : ''}</button>
 		</div>
 		<div class="filter" role="radiogroup" aria-label="Show">
 			{#each [['all', 'All'], ['on', 'On'], ['off', 'Off']] as const as [value, label] (value)}
@@ -160,8 +160,8 @@
 			{/if}
 		</div>
 		<div class="buttons">
-			<button class="btn" disabled={isDefault} onclick={reset} title="Put back the {languageOf(workspace.language).label} defaults">Reset to defaults</button>
-			<button class="btn" onclick={openFile} disabled={!workspace.files.includes(TIDY_FILE)}>Open {TIDY_FILE}</button>
+			<button class="btn yk-btn yk-btn--secondary" disabled={isDefault} onclick={reset} title="Put back the {languageOf(workspace.language).label} defaults">Reset to defaults</button>
+			<button class="btn yk-btn yk-btn--secondary" onclick={openFile} disabled={!workspace.files.includes(TIDY_FILE)}>Open {TIDY_FILE}</button>
 		</div>
 	</footer>
 </dialog>

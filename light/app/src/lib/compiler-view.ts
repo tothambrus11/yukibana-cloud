@@ -284,7 +284,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	dl.append(el('dt', '', 'Target'), targetDd, el('dt', '', 'Flags you set'), chosenDd);
 	const command = el('code', 'yk-view-flags');
 	const actions = el('div', 'actions');
-	const copy = el('button', 'btn', 'Copy command');
+	const copy = el('button', 'btn yk-btn yk-btn--secondary', 'Copy command');
 	copy.type = 'button';
 	copy.addEventListener('click', () => {
 		void navigator.clipboard?.writeText(command.textContent ?? '').then(
@@ -293,7 +293,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		);
 		setTimeout(() => (copy.textContent = 'Copy command'), 1500);
 	});
-	const change = el('button', 'btn', 'Change build settings…');
+	const change = el('button', 'btn yk-btn yk-btn--secondary', 'Change build settings…');
 	change.type = 'button';
 	change.addEventListener('click', () => {
 		menu.hidePopover();

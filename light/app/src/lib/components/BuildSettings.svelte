@@ -115,7 +115,7 @@
 	});
 </script>
 
-<button class="btn build-chip" data-fold="30" popovertarget="build-settings" aria-expanded={open} aria-label="Build settings: {summary}" title="Build settings: {summary}">
+<button class="btn yk-btn yk-btn--secondary build-chip" data-fold="30" popovertarget="build-settings" aria-expanded={open} aria-label="Build settings: {summary}" title="Build settings: {summary}">
 	<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" /></svg>
 	<span class="build-word">Build</span>
 	<span class="build-summary truncate">{summary}</span>
@@ -238,7 +238,7 @@
 						Check the code as you type
 					</label>
 					<small>{describeTidy(workspace.clangTidy, workspace.tidyStatus)} Its rules are the project's .clang-tidy.</small>
-					<button class="btn rules-button" onclick={() => void openRules()}>Edit rules…</button>
+					<button class="btn yk-btn yk-btn--secondary rules-button" onclick={() => void openRules()}>Edit rules…</button>
 				</span>
 			</div>
 		{/if}

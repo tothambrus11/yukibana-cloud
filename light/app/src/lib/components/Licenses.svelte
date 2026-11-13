@@ -60,7 +60,7 @@
 	<p>Yukibana Light is built from open-source software, and runs compilers and tools that are too, in your browser. Each part's licence is below, as it ships.</p>
 
 	<ul class="app">
-		<li><a href={href('licenses/app.txt')} target="_blank" rel="noopener">The app</a>: the npm packages its own code is built from (Svelte, SvelteKit, Monaco, dockview, JetBrains Mono, …).</li>
+		<li><a href={href('licenses/app.txt')} target="_blank" rel="noopener">The app</a>: the npm packages its own code is built from (Svelte, SvelteKit, Monaco, dockview, the fonts Atkinson Hyperlegible Next, Bricolage Grotesque and JetBrains Mono, …).</li>
 	</ul>
 
 	{#if !offline.manifest}

@@ -199,22 +199,22 @@
 
 		<!-- One button that is Run or Stop, as wide as the wider of the two, and Test and Mutate stay where they are while it runs: pressing a button moves nothing. -->
 		{#if workspace.runner.busy}
-			<button class="btn run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
+			<button class="btn yk-btn yk-btn--secondary run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
 				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg><span class="run-label" data-other="Run"><span>Stop</span></span>
 			</button>
 		{:else}
-			<button class="btn run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
+			<button class="btn yk-btn yk-btn--primary run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg><span class="run-label" data-other="Stop"><span>Run</span></span>
 			</button>
 		{/if}
 		{#if language.tests}
-			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+			<button class="btn yk-btn yk-btn--secondary test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
 		{/if}
 		{#if language.debugs}
-			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
+			<button class="btn yk-btn yk-btn--secondary debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
 		{/if}
 		{#if language.mutates}
-			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
+			<button class="btn yk-btn yk-btn--secondary mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
 		{/if}
 
 		{#if hasBuild}
@@ -225,7 +225,7 @@
 			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
 				{#each views as kind (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
-					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
+					<button class="btn yk-btn yk-btn--secondary view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
 						<span class="long">{KINDS[kind].title}</span><span class="short">{KINDS[kind].short}</span>
 					</button>
 				{/each}
@@ -234,16 +234,16 @@
 
 		<span class="spacer"></span>
 
-		<button class="btn share" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">
+		<button class="btn yk-btn yk-btn--secondary share" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" /></svg><span class="share-word">Share</span>
 		</button>
 		{#if applyUpdate}
-			<button class="btn update" onclick={() => applyUpdate?.()} title="A new version is installed. Reload to use it">Update</button>
+			<button class="btn yk-btn yk-btn--secondary update" onclick={() => applyUpdate?.()} title="A new version is installed. Reload to use it">Update</button>
 		{/if}
-		<button class="icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
+		<button class="icon-btn yk-icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /><path d="M12 10v6M9.5 13.5 12 16l2.5-2.5" /></svg>
 		</button>
-		<button class="icon-btn theme-button" data-fold="44" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
+		<button class="icon-btn yk-icon-btn theme-button" data-fold="44" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
 			{#if theme.current === 'dark'}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
 			{:else}
@@ -371,29 +371,35 @@
 		width: 1.75rem;
 		height: 1.75rem;
 	}
+	/* The brand in the design system's heading face, Bricolage Grotesque, at the header's 650. */
 	.name {
-		font-weight: 700;
+		font-family: var(--yk-font-family-heading);
+		font-weight: 650;
 		font-size: 1.15rem;
 		letter-spacing: -0.01em;
 	}
 	.product {
+		font-family: var(--yk-font-family-heading);
 		font-weight: 600;
 		font-size: 1.05rem;
 		color: var(--gray-2);
 	}
-	/* The language picker: a Select (Select.svelte) whose button is drawn as the bar's. */
+	/* The language picker: a Select (Select.svelte) whose button is drawn as the bar's, a secondary yk-btn. */
 	.bar :global(.lang) {
 		flex: 0 1 auto;
 		max-width: 12rem;
 		padding: 0 0.6rem 0 0.75rem;
-		border-color: var(--gray-5);
-		background: var(--gray-6);
+		border-color: var(--yk-line-strong);
+		border-radius: var(--yk-radius-sm);
+		background: var(--yk-surface);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
-		font-weight: 500;
+		font-weight: var(--yk-font-weight-semibold);
 	}
 	.bar :global(.lang:hover),
 	.bar :global(.lang[aria-expanded='true']) {
-		border-color: var(--control-border);
+		border-color: var(--yk-line-strong);
+		background: var(--yk-sunken);
 	}
 	:global(.lang-label) {
 		display: block;
@@ -405,13 +411,9 @@
 	:global(.lang-label .short) {
 		display: none;
 	}
-	.run {
-		border-color: var(--accent);
-		color: var(--white);
-		font-weight: 600;
-	}
+	/* Run is the view's one primary button (yk-btn--primary): its triangle is the label's colour. Stop is a secondary with a red square. */
 	.run svg {
-		fill: var(--accent-high);
+		fill: currentColor;
 	}
 	.run.stop svg {
 		fill: var(--red-high);
@@ -467,10 +469,6 @@
 			transition: none;
 		}
 	}
-	.update {
-		border-color: var(--accent);
-		color: var(--accent-high);
-	}
 	.view-group {
 		display: inline-flex;
 		flex: none;
@@ -481,10 +479,10 @@
 		border-radius: 0;
 	}
 	.view-group .view:first-child {
-		border-radius: 0.35rem 0 0 0.35rem;
+		border-radius: var(--yk-radius-sm) 0 0 var(--yk-radius-sm);
 	}
 	.view-group .view:last-child {
-		border-radius: 0 0.35rem 0.35rem 0;
+		border-radius: 0 var(--yk-radius-sm) var(--yk-radius-sm) 0;
 	}
 	.view-group .view + .view {
 		margin-left: -1px;

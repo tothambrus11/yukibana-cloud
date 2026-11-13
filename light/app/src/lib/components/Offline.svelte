@@ -28,7 +28,7 @@
 <dialog class="offline" bind:this={dialog} aria-labelledby="offline-title" onclick={(e) => e.target === dialog && dialog.close()}>
 	<header>
 		<h2 id="offline-title">Offline</h2>
-		<button class="icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
+		<button class="icon-btn yk-icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
 		</button>
 	</header>
@@ -65,7 +65,7 @@
 								<span class="ok">available offline</span>
 							{:else}
 								<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
-								<button class="button" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
+								<button class="button yk-btn yk-btn--secondary" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
 							{/if}
 						</td>
 					</tr>
@@ -78,12 +78,12 @@
 				<div class="progress" role="status">
 					<span>Downloading {offline.progress.label}: {mb(offline.progress.loaded)} / {mb(offline.progress.total)} MB</span>
 					<span class="meter"><span style:width="{percent}%"></span></span>
-					<button class="button" onclick={() => offline.cancel()}>Cancel</button>
+					<button class="button yk-btn yk-btn--secondary" onclick={() => offline.cancel()}>Cancel</button>
 				</div>
 			{:else if everything.missing.files === 0}
 				<span class="ok">Everything is available offline ({mb(everything.all.size)} MB stored).</span>
 			{:else}
-				<button class="button primary download-all" onclick={() => void offline.download('everything', offline.everything)}>Download everything</button>
+				<button class="button yk-btn yk-btn--primary download-all" onclick={() => void offline.download('everything', offline.everything)}>Download everything</button>
 				<span class="muted">{mb(everything.missing.transfer)} MB to download, {mb(everything.missing.size)} MB stored, every language and the editor's parts</span>
 			{/if}
 			{#if offline.error}
@@ -179,30 +179,11 @@
 		background: var(--accent-high);
 		transition: width 0.2s;
 	}
+	/* A `yk-btn` (design/base.css) draws it; this is its size. */
 	.button {
 		min-height: 1.9rem;
-		white-space: nowrap;
 		padding: 0 0.7rem;
-		border: 1px solid var(--gray-5);
-		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
-		font: inherit;
 		font-size: 0.8rem;
-		cursor: pointer;
-	}
-	.button:hover:not(:disabled) {
-		border-color: var(--gray-4);
-		color: var(--white);
-	}
-	.button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.primary {
-		border-color: var(--accent);
-		color: var(--white);
-		font-weight: 600;
 	}
 	.ok {
 		color: var(--accent-high);

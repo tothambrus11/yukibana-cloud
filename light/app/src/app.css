@@ -1,35 +1,53 @@
 /*
- * The palette follows the Hylo playground (Starlight "rapide"): warm greys
- * from oklch, a green accent, a dark and a light set keyed on data-theme.
+ * Light's colours, fonts and focus ring are the Yukibana design system's
+ * (design/tokens.css and design/base.css, copied from @yukibana/design):
+ * cool blue-grey greys, one green accent for primary buttons, links and the
+ * current tab's line, and the ink focus ring. The tokens are `light-dark()`
+ * pairs, so they follow `color-scheme`, which `<html data-theme>` sets
+ * (theme.svelte.ts): one definition below serves both themes. Light's own
+ * names (--white for text, --black for the editor's surface, --gray-1 to
+ * --gray-7 between) stay, mapped onto the tokens, so every component keeps
+ * its rules and takes the new colours.
  */
 :root {
-	--hue-base: 17;
-	--hue-accent: 164;
-	--font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', 'Noto Sans', Arial, sans-serif;
-	--font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	/*
+	 * The families as their self-hosted fonts register them (@fontsource-
+	 * variable, +layout.svelte), ahead of the names tokens.css gives, which
+	 * an installed copy of the font still matches.
+	 */
+	--yk-font-family-heading: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+	--yk-font-family-body: 'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif;
+	--yk-font-family-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--hue-base: 260;
+	--font: var(--yk-font-family-body);
+	--font-mono: var(--yk-font-family-mono);
 	--nav-height: 3.5rem;
 	--tab-bar-height: 2.35rem;
 	/* The edge of a control that must be seen against its background (WCAG's 3:1 for components). */
-	--control-border: var(--gray-4);
-	--focus-ring: 2px solid var(--accent-high);
+	--control-border: var(--yk-line-strong);
+	/* The ink ring (design/base.css): 2px of the text colour, never green. */
+	--focus-ring: var(--yk-focus-width) solid var(--yk-ink);
 
-	--white: oklch(90% 0.008 var(--hue-base));
-	--gray-1: oklch(80% 0.018 var(--hue-base));
-	--gray-2: oklch(80% 0.018 var(--hue-base));
-	--gray-3: oklch(65% 0.013 var(--hue-base));
-	--gray-4: oklch(48% 0.009 var(--hue-base));
-	--gray-5: oklch(29% 0.005 var(--hue-base));
-	--gray-6: oklch(23% 0.004 var(--hue-base));
-	--gray-7: oklch(20.5% 0.002 var(--hue-base));
-	--black: oklch(18% 0.002 var(--hue-base));
-	--accent-low: oklch(26% 0.04 var(--hue-accent));
-	--accent: oklch(50% 0.085 var(--hue-accent));
-	--accent-high: oklch(61% 0.085 var(--hue-accent));
-	--red-low: oklch(22% 0.03 13);
-	--red-high: oklch(70% 0.14 13);
-	--orange-high: oklch(80% 0.12 84);
-	--blue-high: oklch(75% 0.1 274);
-	--header-bg: oklch(18% 0.002 var(--hue-base) / 0.8);
+	--white: var(--yk-ink);
+	/* Secondary text and the buttons' labels: between the ink and the soft grey. */
+	--gray-1: color-mix(in oklch, var(--yk-ink) 55%, var(--yk-soft));
+	--gray-2: color-mix(in oklch, var(--yk-ink) 55%, var(--yk-soft));
+	--gray-3: var(--yk-soft);
+	--gray-4: var(--yk-line-strong);
+	--gray-5: var(--yk-line);
+	--gray-6: var(--yk-sunken);
+	--gray-7: var(--yk-rail);
+	/* The editor's colour: the dock's groups and the current tab are filled with it (palette.ts EDITOR has it as hex). */
+	--black: var(--yk-code-bg);
+	--accent-low: var(--yk-accent-bg);
+	--accent: var(--yk-accent);
+	--accent-high: var(--yk-accent-strong);
+	--red-low: var(--yk-danger-bg);
+	--red-high: var(--yk-danger);
+	--orange-high: var(--yk-warn);
+	--blue-high: var(--yk-info);
+	/* The top bar: the page colour, a little translucent under its blur. */
+	--header-bg: color-mix(in oklch, var(--yk-bg) 85%, transparent);
 	/*
 	 * The terminal's 16 ANSI colours (SGR 30–37, 90–97 and their
 	 * backgrounds; see lib/ansi.ts), tuned per theme so each reads on the
@@ -58,24 +76,6 @@
 }
 
 :root[data-theme='light'] {
-	--white: oklch(30% 0.015 var(--hue-base));
-	--gray-1: oklch(36% 0.018 var(--hue-base));
-	--gray-2: oklch(36% 0.018 var(--hue-base));
-	--gray-3: oklch(44% 0.013 var(--hue-base));
-	--gray-4: oklch(66% 0.013 var(--hue-base));
-	--gray-5: oklch(88% 0.009 var(--hue-base));
-	--gray-6: oklch(93% 0.004 var(--hue-base));
-	--gray-7: oklch(96% 0.003 var(--hue-base));
-	--black: oklch(98.5% 0.002 var(--hue-base));
-	--hue-accent: 160;
-	--accent-low: oklch(94% 0.03 var(--hue-accent));
-	--accent: oklch(53% 0.1197 var(--hue-accent));
-	--accent-high: oklch(46% 0.104 var(--hue-accent));
-	--red-low: oklch(95% 0.02 13);
-	--red-high: oklch(50% 0.17 13);
-	--orange-high: oklch(55% 0.13 70);
-	--blue-high: oklch(45% 0.12 274);
-	--header-bg: oklch(98% 0.002 var(--hue-base) / 0.7);
 	--ansi-0: oklch(25% 0.01 var(--hue-base));
 	--ansi-1: oklch(52% 0.18 22);
 	--ansi-2: oklch(52% 0.14 148);
@@ -92,7 +92,6 @@
 	--ansi-13: oklch(58% 0.18 330);
 	--ansi-14: oklch(58% 0.1 205);
 	--ansi-15: oklch(72% 0.008 var(--hue-base));
-	--control-border: oklch(62% 0.013 var(--hue-base));
 	color-scheme: light;
 }
 
@@ -131,14 +130,32 @@ body {
 	flex-direction: column;
 	/* The visible area: viewport.ts sets --app-height from the visual viewport, for a phone's on-screen keyboard. */
 	height: var(--app-height, 100dvh);
-	background: var(--black);
-	color: var(--white);
-	/* In rem, so a larger default font in the browser makes the app larger. */
-	font: 0.9375rem/1.5 var(--font);
+}
+/*
+ * The base gives <html> the body's 15px too; Light's sizes are in rem, so
+ * the root keeps the browser's default size (a larger default font makes
+ * the app larger, and nothing shrinks to 15/16).
+ */
+html.yk-root {
+	font-size: 100%;
+}
+/*
+ * The page colour, the ink and Atkinson Hyperlegible Next come from the
+ * design system's base (`.yk-root body`, on <html> in app.html); the size
+ * stays in rem, so a larger default font in the browser makes the app
+ * larger, and the line height stays Light's, so no panel's height moves.
+ */
+.yk-root body {
+	font-size: 0.9375rem;
+	line-height: 1.5;
 }
 
 /*
- * Shared controls. A control's text never wraps: a label that does not fit
+ * Shared controls. Their look is the design system's: every button is a
+ * `yk-btn` (design/base.css: a 6px corner, a semibold label, a secondary's
+ * line, the primary's green) or a `yk-icon-btn`, and `.btn` and `.icon-btn`
+ * below say only how big they are, so they come after it and win for that.
+ * A control's text never wraps: a label that does not fit
  * is shortened by a rule, or the control moves into a menu (the top bar's
  * folding, +page.svelte), never squeezed onto two lines. Text that can be
  * any length (a file name, a summary, a status) goes in a `.truncate`
@@ -147,66 +164,36 @@ body {
  * spilling out of it.
  */
 .btn {
-	display: inline-flex;
 	flex: none;
-	align-items: center;
 	gap: 0.4rem;
 	min-width: 0;
 	min-height: 2rem;
 	padding: 0 0.8rem;
-	border: 1px solid var(--gray-5);
-	border-radius: 0.35rem;
-	background: var(--gray-6);
-	color: var(--gray-2);
-	font: inherit;
 	font-size: 0.85rem;
-	line-height: 1.2;
-	white-space: nowrap;
-	cursor: pointer;
-}
-.btn:hover,
-.btn:focus-visible {
-	border-color: var(--control-border);
-	color: var(--white);
-}
-.btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
 }
 .btn svg {
 	flex: none;
 	width: 0.85rem;
 	height: 0.85rem;
 }
-.btn.primary {
-	border-color: var(--accent);
-	color: var(--white);
-	font-weight: 600;
-}
-/* A toggle that is on: a fill, not only a border colour, and no mark, so pressing it moves nothing. */
+/*
+ * A toggle that is on: a fill and an ink edge, not only a colour, and no
+ * mark, so pressing it moves nothing. Not green: the accent is for the one
+ * primary action, links and the current tab's line.
+ */
 .btn[aria-pressed='true'],
 .chip[aria-pressed='true'] {
-	border-color: var(--accent);
-	background: var(--accent-low);
-	color: var(--white);
+	border-color: var(--yk-ink);
+	background: var(--yk-sunken);
+	color: var(--yk-ink);
 }
+/* At least 2rem square: the design's 28px is a minimum here, so the bar keeps its targets. */
 .icon-btn {
-	display: inline-grid;
 	flex: none;
-	place-items: center;
 	min-width: 2rem;
 	min-height: 2rem;
 	padding: 0;
-	border: 0;
-	border-radius: 0.35rem;
-	background: none;
-	color: var(--gray-2);
 	font: inherit;
-	cursor: pointer;
-}
-.icon-btn:hover,
-.icon-btn:focus-visible {
-	color: var(--accent-high);
 }
 .icon-btn svg {
 	width: 1.1rem;
@@ -258,10 +245,11 @@ body {
 	white-space: nowrap;
 	border: 0;
 }
+/* The ink ring (design/base.css `.yk-root :focus-visible`), also for dockview's tabs, which turn their own outline off. */
 :where(button, select, input, a, [tabindex]):focus-visible,
 .dv-tab:focus-visible {
 	outline: var(--focus-ring);
-	outline-offset: 1px;
+	outline-offset: var(--yk-focus-offset);
 }
 
 /*
@@ -554,41 +542,88 @@ header.bar-host {
 	--dv-active-sash-transition-duration: 0.1s;
 	--dv-active-sash-transition-delay: 0.3s;
 	--dv-group-view-background-color: var(--black);
-	--dv-tabs-and-actions-container-background-color: var(--gray-7);
+	--dv-tabs-and-actions-container-background-color: var(--yk-code-bar);
 	--dv-tabs-and-actions-container-height: var(--tab-bar-height);
 	--dv-tabs-and-actions-container-font-size: 0.8rem;
-	--dv-activegroup-visiblepanel-tab-background-color: transparent;
+	--dv-activegroup-visiblepanel-tab-background-color: var(--black);
 	--dv-activegroup-hiddenpanel-tab-background-color: transparent;
-	--dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+	--dv-inactivegroup-visiblepanel-tab-background-color: var(--black);
 	--dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
-	--dv-activegroup-visiblepanel-tab-color: var(--white);
-	--dv-activegroup-hiddenpanel-tab-color: var(--gray-3);
-	--dv-inactivegroup-visiblepanel-tab-color: var(--gray-2);
-	--dv-inactivegroup-hiddenpanel-tab-color: var(--gray-3);
+	--dv-activegroup-visiblepanel-tab-color: var(--yk-ink);
+	--dv-activegroup-hiddenpanel-tab-color: var(--yk-soft);
+	--dv-inactivegroup-visiblepanel-tab-color: var(--yk-ink);
+	--dv-inactivegroup-hiddenpanel-tab-color: var(--yk-soft);
 	--dv-tab-divider-color: transparent;
 	--dv-separator-border: var(--gray-5);
 	--dv-paneview-header-border-color: var(--gray-5);
 	--dv-sash-color: transparent;
-	--dv-active-sash-color: var(--accent);
-	--dv-drag-over-background-color: color-mix(in srgb, var(--accent) 18%, transparent);
-	--dv-drag-over-border-color: var(--accent);
-	--dv-drag-over-border: 1px solid var(--accent);
+	--dv-active-sash-color: var(--yk-line-strong);
+	--dv-drag-over-background-color: color-mix(in srgb, var(--yk-info) 18%, transparent);
+	--dv-drag-over-border-color: var(--yk-info);
+	--dv-drag-over-border: 1px solid var(--yk-info);
 	--dv-icon-hover-background-color: var(--gray-5);
 	--dv-tabs-container-scrollbar-color: var(--gray-4);
 	--dv-scrollbar-background-color: var(--gray-4);
 	--dv-context-menu-background-color: var(--gray-6);
 	--dv-context-menu-color: var(--white);
-	--dv-dnd-compass-color: var(--accent);
-	--dv-edge-dock-indicator-color: var(--accent);
+	--dv-dnd-compass-color: var(--yk-info);
+	--dv-edge-dock-indicator-color: var(--yk-info);
 	height: 100%;
 }
 
+/*
+ * dockview gives its shell its default theme's class, which sets
+ * `color-scheme: dark`; the tokens' `light-dark()` follows color-scheme, so
+ * the dock would stay dark in the light theme. It inherits the page's.
+ */
+.yk-root .dv-shell,
+.yk-root .dockview-theme-yukibana {
+	color-scheme: inherit;
+}
+
+/*
+ * The tab bar, as the design system's dock (design/base.css's `.yk-dock`;
+ * Light's tabs are dockview's, so the same rules are drawn here): a bar a
+ * little darker than the editor with a hairline along its foot, short
+ * dividers between tabs, the current tab of each group filled with the
+ * editor's colour (the variables above) over the hairline, and a full 2px
+ * line under it, green in the group you are typing in and grey in the
+ * others. The hairline is a shadow inside the bar, not a border, so the
+ * current tab's fill covers it and the bar is as tall as it was.
+ */
 .dockview-theme-yukibana .dv-tabs-and-actions-container {
-	border-bottom: 1px solid var(--gray-5);
+	box-shadow: inset 0 -1px 0 var(--yk-line);
 }
 
 .dockview-theme-yukibana .dv-tab {
 	padding-block: 0.25rem 0;
+}
+
+/* The short dividers: dockview's own are off (--dv-tab-divider-color), these are a third of the bar shorter at each end. */
+.dockview-theme-yukibana .dv-tabs-container .dv-tab:not(:first-child)::before {
+	content: '';
+	position: absolute;
+	top: 0.6rem;
+	bottom: 0.6rem;
+	left: 0;
+	width: 1px;
+	background-color: var(--yk-line);
+	pointer-events: none;
+}
+.dockview-theme-yukibana .dv-tabs-container .dv-tab.dv-active-tab::before,
+.dockview-theme-yukibana .dv-tabs-container .dv-tab.dv-active-tab + .dv-tab::before {
+	background-color: transparent;
+}
+
+.dockview-theme-yukibana .dv-tab.dv-active-tab {
+	box-shadow: inset 0 -2px 0 var(--yk-line-strong);
+}
+.dockview-theme-yukibana .dv-active-group .dv-tab.dv-active-tab {
+	box-shadow: inset 0 -2px 0 var(--yk-accent);
+}
+/* The phone's bottom group, shrunk to its tab strip while typing (dock.ts collapse): no tab is current there, so none has a line. */
+.dockview-theme-yukibana [data-collapsed] .dv-tab.dv-active-tab {
+	box-shadow: none;
 }
 
 .dockview-theme-yukibana .dv-groupview {
@@ -855,19 +890,6 @@ header.bar-host {
 .dock-tab.has-icon {
 	padding-inline: 0.6rem;
 }
-/* The phone's bottom group, shrunk to its tab strip while typing (dock.ts collapse): its tabs say so. */
-[data-collapsed] .dv-active-tab .dock-tab {
-	border-bottom-color: transparent;
-}
-
-.dv-active-tab .dock-tab {
-	border-bottom-color: var(--accent-high);
-}
-
-.dv-inactive-group .dv-active-tab .dock-tab {
-	border-bottom-color: var(--gray-4);
-}
-
 .dock-tab-close {
 	display: inline-grid;
 	place-items: center;
@@ -990,26 +1012,11 @@ header.bar-host {
 	gap: 0.5rem;
 	margin-top: 1rem;
 }
+/* A `yk-btn` (workspace-edits.ts), the first one the primary. */
 .app-dialog-button {
 	height: 1.9rem;
 	padding: 0 0.7rem;
-	border: 1px solid var(--gray-5);
-	border-radius: 0.35rem;
-	background: var(--gray-6);
-	color: var(--gray-2);
-	font: inherit;
 	font-size: 0.8rem;
-	cursor: pointer;
-}
-.app-dialog-button:hover,
-.app-dialog-button:focus-visible {
-	border-color: var(--gray-4);
-	color: var(--white);
-}
-.app-dialog-button.primary {
-	border-color: var(--accent);
-	color: var(--white);
-	font-weight: 600;
 }
 
 /* The debugger in the editors (debug.svelte.ts, decorate): a breakpoint is a

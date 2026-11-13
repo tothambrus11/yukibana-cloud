@@ -87,7 +87,7 @@
 	}
 </script>
 
-<button bind:this={button} class="icon-btn more" popovertarget="more-menu" aria-haspopup="menu" aria-expanded={open} aria-label="More" title="More">
+<button bind:this={button} class="icon-btn yk-icon-btn more" popovertarget="more-menu" aria-haspopup="menu" aria-expanded={open} aria-label="More" title="More">
 	<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="19" cy="12" r="1.3" /></svg>
 </button>
 <Popover bind:this={popover} id="more-menu" label="More" role="menu" class="more-menu" ontoggle={(o) => (open = o)}>

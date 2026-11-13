@@ -338,7 +338,7 @@
 	}
 	.yk-select-button:focus-visible {
 		outline: var(--focus-ring);
-		outline-offset: 1px;
+		outline-offset: var(--yk-focus-offset);
 	}
 	.yk-select-button:disabled {
 		opacity: 0.5;

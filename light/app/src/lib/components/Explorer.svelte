@@ -354,13 +354,15 @@
 		background: var(--gray-6);
 		color: var(--white);
 	}
+	/* The ink of the design system's focus ring, inside the row. */
 	.row:focus-visible {
-		box-shadow: inset 0 0 0 1px var(--accent);
+		box-shadow: inset 0 0 0 var(--yk-focus-width) var(--yk-ink);
 	}
+	/* The open file: a fill and an edge in the greys, since green is for actions, links and the current tab's line. */
 	.row.active {
-		background: var(--accent-low);
-		color: var(--white);
-		box-shadow: inset 2px 0 0 var(--accent-high);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
+		box-shadow: inset 2px 0 0 var(--yk-line-strong);
 	}
 	.row.selected {
 		color: var(--white);

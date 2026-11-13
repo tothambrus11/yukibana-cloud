@@ -97,7 +97,7 @@
 		<!-- The sentence is what is announced and what a narrow terminal shows in its title; the compact form is only drawn. -->
 		<span class="status truncate" class:failed role="status" title={status || undefined}>{status}</span>
 		<span class="status-compact truncate" class:failed aria-hidden="true" title={status || undefined}>{compact}</span>
-		<button class="icon-btn clear" title="Clear the terminal" aria-label="Clear the terminal" onclick={() => runner.clear()}>
+		<button class="icon-btn yk-icon-btn clear" title="Clear the terminal" aria-label="Clear the terminal" onclick={() => runner.clear()}>
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
 		</button>
 	</div>
