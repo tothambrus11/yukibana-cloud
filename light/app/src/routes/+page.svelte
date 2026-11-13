@@ -30,7 +30,7 @@
 	import Popover from '../lib/components/Popover.svelte';
 	import Select, { type SelectOption } from '../lib/components/Select.svelte';
 	import Licenses from '../lib/components/Licenses.svelte';
-	import { theme } from '../lib/theme.svelte';
+	import { theme, THEME_CHOICES, THEME_NAMES } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
 	import { serverLabel } from '../lib/format';
 	import { followViewport } from '../lib/viewport';
@@ -109,7 +109,8 @@
 	const hasBuild = $derived(isCFamily(workspace.language) || workspace.optimization !== null);
 	const summary = $derived(buildSummary(workspace));
 	const cached = $derived(offline.arePacksCached(packsOf(language)));
-	const themeLabel = $derived(`Switch to ${theme.current === 'dark' ? 'light' : 'dark'} theme`);
+	/** The theme button cycles System, Light, Dark; its name says the choice and what a press moves to. */
+	const themeLabel = $derived(`Theme: ${THEME_NAMES[theme.choice]}${theme.choice === 'system' ? ` (${theme.current})` : ''}. Switch to ${THEME_NAMES[theme.next]}`);
 	/** The server's full name and version, for the status bar's title; its short form is shown. */
 	const serverFull = $derived(workspace.clientState.kind === 'running' ? workspace.clientState.server : '');
 	const mb = (bytes: number) => (bytes / 1048576).toFixed(1);
@@ -243,8 +244,11 @@
 		<button class="icon-btn yk-icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /><path d="M12 10v6M9.5 13.5 12 16l2.5-2.5" /></svg>
 		</button>
-		<button class="icon-btn yk-icon-btn theme-button" data-fold="44" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
-			{#if theme.current === 'dark'}
+		<button class="icon-btn yk-icon-btn theme-button" data-fold="44" onclick={() => theme.cycle()} aria-label={themeLabel} title={themeLabel}>
+			{#if theme.choice === 'system'}
+				<!-- A screen, half filled: the system's scheme, whichever it is. -->
+				<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 4v12" /><path class="half" d="M12 4h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7z" /><path d="M8 20h8M12 16v4" /></svg>
+			{:else if theme.choice === 'dark'}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
 			{:else}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
@@ -281,7 +285,14 @@
 			<button class="menu-item danger" role="menuitem" onclick={reset} title="Replace this language's project with the sample">Reset project…</button>
 			<div class="menu-divider" role="separator"></div>
 			<button class="menu-item" role="menuitem" onclick={() => offlineDialog?.show()}>Offline use…{#if cached}<span class="hint">{shortLabel(language)} ✓</span>{/if}</button>
-			<button class="menu-item" role="menuitem" data-fold="44" onclick={() => theme.toggle()}>{themeLabel}</button>
+			<div class="menu-divider" role="separator" data-fold="44"></div>
+			<div class="menu-heading" data-fold="44">Theme</div>
+			{#each THEME_CHOICES as choice (choice)}
+				<button class="menu-item" role="menuitemradio" aria-checked={theme.choice === choice} data-fold="44" onclick={() => (theme.choice = choice)}>
+					<span class="check" aria-hidden="true">{theme.choice === choice ? '✓' : ''}</span>{THEME_NAMES[choice]}{#if choice === 'system'}<span class="hint">{theme.current === 'dark' ? 'Dark now' : 'Light now'}</span>{/if}
+				</button>
+			{/each}
+			<div class="menu-divider" role="separator" data-fold="44"></div>
 			<button class="menu-item" role="menuitem" onclick={() => void workspace.restartServer()}>Restart language server</button>
 		</MoreMenu>
 	</div>
@@ -446,6 +457,11 @@
 		stroke: currentColor;
 		stroke-width: 2.2;
 		stroke-linecap: round;
+	}
+	/* System's icon: a screen whose right half is filled, for "light or dark, as the system says". */
+	.theme-button .half {
+		fill: currentColor;
+		stroke: none;
 	}
 	.toast {
 		position: fixed;

@@ -4,9 +4,26 @@
 		<meta charset="utf-8" />
 		<!-- resizes-content: Chrome for Android shrinks the layout with the on-screen keyboard (viewport.ts does it elsewhere). -->
 		<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
-		<!-- The window colour of the installed app, per system theme; theme.svelte.ts follows the toggle. -->
+		<!-- The window colour of the installed app, per system theme; theme.svelte.ts follows the choice. -->
 		<meta name="theme-color" content="#0b0e15" media="(prefers-color-scheme: dark)" />
 		<meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)" />
+		<!--
+			The theme, before the first paint: the choice remembered under the key theme.svelte.ts uses ('light' or 'dark'),
+			or the system's scheme when there is none (System). The page's colours follow <html data-theme>, so without this
+			the page showed one scheme until the app started and then switched. theme.svelte.ts takes over from here and must
+			resolve the same way (its `resolve`).
+		-->
+		<script>
+			(() => {
+				let saved = null;
+				try {
+					saved = localStorage.getItem('yukibana.code.theme');
+				} catch {}
+				const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+				document.documentElement.dataset.theme = theme;
+				for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = theme === 'dark' ? '#0b0e15' : '#f5f7fa';
+			})();
+		</script>
 		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
 		<link rel="icon" href="%sveltekit.assets%/favicon-32.png" type="image/png" sizes="32x32" />
 		<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />

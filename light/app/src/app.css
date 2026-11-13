@@ -47,7 +47,6 @@
 	--ansi-15: oklch(97% 0.004 var(--hue-base));
 	--ansi-default-fg: var(--yk-ink);
 	--ansi-default-bg: var(--yk-code-bg);
-	color-scheme: dark;
 }
 
 :root[data-theme='light'] {
