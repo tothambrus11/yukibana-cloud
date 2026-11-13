@@ -8,7 +8,7 @@
 //   node light/modules/build.mjs                    build every published module
 //   node light/modules/build.mjs --pack <dir>       ...and `pnpm pack` each into <dir>
 //
-// It uses the app's installed TypeScript (light: pnpm install), as the
+// It uses the app's installed TypeScript (light/app: pnpm install), as the
 // modules' type-check does, since the modules have no node_modules of their
 // own.
 //

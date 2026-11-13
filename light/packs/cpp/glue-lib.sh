@@ -4,9 +4,9 @@
 # only.
 
 # pnpm_deps <dir>: installs <dir>'s pnpm-lock.yaml into its node_modules
-# (pnpm install --frozen-lockfile) unless node_modules/.yk-lock holds that lock file's SHA-256, so a
-# changed lock (esbuild's version, say) reaches the build instead of the
-# node_modules a previous one installed. pnpm's output goes to stderr: the
+# (pnpm install --frozen-lockfile) unless node_modules/.yk-lock holds that
+# lock file's SHA-256, so a changed lock (esbuild's version, say) reaches the
+# build instead of the node_modules a previous one installed. pnpm's output goes to stderr: the
 # glue's stdout is the list of files it made.
 pnpm_deps() {
   local want
