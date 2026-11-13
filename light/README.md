@@ -36,7 +36,7 @@ one. It resolves only versions published at least 14 days ago
 
 The look is the Yukibana design system, `@yukibana/design`, a git
 dependency of the app pinned to one commit of the Yukibana repository
-(`app/package.json`: `github:tothambrus11/Yukibana#<commit>&path:packages/design`).
+(`app/package.json`: `github:Yukibana-Ed/Yukibana#<commit>&path:packages/design`).
 The app imports its `tokens.css`, its `fonts.css` (the three typefaces, whose
 OFL licences `licenses/app.txt` lists) and the parts of its base styles it
 uses (`app/src/routes/+layout.svelte`); Light's own styles come after them.
