@@ -186,7 +186,7 @@ html.yk-root {
 	gap: 0.3rem;
 	min-height: 1.5rem;
 	padding: 0 0.5rem;
-	border: 1px solid var(--yk-line);
+	border: 1px solid var(--control-border);
 	border-radius: 0.35rem;
 	background: var(--yk-sunken);
 	color: var(--yk-soft);

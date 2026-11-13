@@ -413,7 +413,7 @@
 		width: 100%;
 		min-height: 2rem;
 		padding: 0 0.6rem 0 1.85rem;
-		border: 1px solid var(--yk-line);
+		border: 1px solid var(--control-border);
 		border-radius: 0.3rem;
 		background: var(--yk-rail);
 		color: var(--yk-ink);

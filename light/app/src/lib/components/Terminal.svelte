@@ -168,9 +168,14 @@
 		gap: 0.5rem;
 		margin: 0 0.75rem 0.4rem;
 		padding: 0 0.6rem;
-		border: 1px solid var(--yk-line);
+		border: 1px solid var(--control-border);
 		border-radius: 0.35rem;
 		background: var(--yk-sunken);
+	}
+	/* The ink ring, on the whole field: the input inside it draws none of its own. */
+	.input:has(input:focus-visible) {
+		outline: var(--focus-ring);
+		outline-offset: var(--yk-focus-offset);
 	}
 	/* The program is waiting: an ink edge, and the placeholder says so in words. */
 	.input.waiting {
