@@ -493,8 +493,20 @@
 	.view-group .view:last-child {
 		border-radius: 0 var(--yk-radius-sm) var(--yk-radius-sm) 0;
 	}
-	.view-group .view + .view {
-		margin-left: -1px;
+	/* One line between two buttons, drawn once: by the later button's left border. Overlapping the
+	   borders with a negative margin instead let the later button paint over the earlier one's, which came
+	   out thinner, or vanished, wherever the bar sat on a fraction of a pixel. */
+	.view-group .view:not(:last-child) {
+		border-right-width: 0;
+	}
+	/* A pressed button is outlined in ink on all four sides; its right side is its neighbour's divider. */
+	.view-group .view[aria-pressed='true'] + .view {
+		border-left-color: var(--yk-ink);
+	}
+	/* The focus ring is drawn outside the button, so it is lifted above the neighbour that would cover it. */
+	.view-group .view:focus-visible {
+		position: relative;
+		z-index: 1;
 	}
 	:global(.view-group .short) {
 		display: none;
