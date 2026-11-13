@@ -14,8 +14,8 @@
 	},
 	"dependencies": {
 		"@hylo-lang/hylo-wasm": "0.0.9",
-		"@yukibana/protocol": "file:../../modules/protocol",
-		"@yukibana/runtime": "file:../../modules/runtime"
+		"@yukibana/protocol": "link:../../modules/protocol",
+		"@yukibana/runtime": "link:../../modules/runtime"
 	},
 	"devDependencies": {
 		"@types/node": "24.19.2",

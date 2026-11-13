@@ -1,0 +1,6 @@
+{
+	"name": "yukibana-light",
+	"private": true,
+	"description": "The root of Light's pnpm workspace (pnpm-workspace.yaml): it pins pnpm and holds no code.",
+	"packageManager": "pnpm@12.11.2"
+}
