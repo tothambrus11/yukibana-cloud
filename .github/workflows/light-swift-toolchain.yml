@@ -282,7 +282,7 @@ jobs:
       # Only the default (macros) build publishes: a release is one toolchain.
       - name: Publish release
         if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_MACROS == '1' && env.SWIFT_CROSS != '1' && inputs.publish_release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           # A workflow_dispatch run has no tag of its own, and the action refuses to
           # publish without one ("GitHub Releases requires a tag"). By default, one
@@ -319,7 +319,7 @@ jobs:
       # leaves alone (its sourcekitd, plugins and wasm sysroot serve both).
       - name: Publish the cross compiler
         if: steps.pipeline.outputs.complete == 'true' && env.SWIFT_CROSS == '1' && inputs.publish_release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: ${{ inputs.release_tag || format('swift-{0}-wasm-cross', env.SWIFT_VERSION) }}
           name: Swift ${{ env.SWIFT_VERSION }} cross compiler for WebAssembly hosts
