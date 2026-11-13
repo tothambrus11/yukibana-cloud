@@ -1,0 +1,59 @@
+In file included from tests/bits_test.cpp:3:
+./bits.h:4:30: warning: unused parameter 'x' [-Wunused-parameter]
+    4 | inline int popcount(unsigned x) {
+      |                              ^
+1 warning generated.
+Running main() from googletest/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from Bits
+[ RUN      ] Bits.ZeroHasNoBits
+[       OK ] Bits.ZeroHasNoBits (0 ms)
+[ RUN      ] Bits.CountsEveryBit
+tests/bits_test.cpp:10: Failure
+Expected equality of these values:
+  popcount(0b1011)
+    Which is: 0
+  3
+
+tests/bits_test.cpp:11: Failure
+Expected equality of these values:
+  popcount(0xFFFFFFFFu)
+    Which is: 0
+  32
+
+[  FAILED  ] Bits.CountsEveryBit (1 ms)
+[ RUN      ] Bits.PowersOfTwo
+tests/bits_test.cpp:16: Failure
+Value of: is_power_of_two(64)
+  Actual: false
+Expected: true
+
+[  FAILED  ] Bits.PowersOfTwo (0 ms)
+[ RUN      ] Bits.NextPowerOfTwo
+tests/bits_test.cpp:22: Failure
+Expected equality of these values:
+  next_power_of_two(0)
+    Which is: 0
+  1u
+    Which is: 1
+
+tests/bits_test.cpp:23: Failure
+Expected equality of these values:
+  next_power_of_two(5)
+    Which is: 5
+  8u
+    Which is: 8
+
+[  FAILED  ] Bits.NextPowerOfTwo (0 ms)
+[----------] 4 tests from Bits (2 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (4 ms total)
+[  PASSED  ] 1 test.
+[  FAILED  ] 3 tests, listed below:
+[  FAILED  ] Bits.CountsEveryBit
+[  FAILED  ] Bits.PowersOfTwo
+[  FAILED  ] Bits.NextPowerOfTwo
+
+ 3 FAILED TESTS

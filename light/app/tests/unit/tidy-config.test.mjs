@@ -1,5 +1,5 @@
 // Unit tests of clang-tidy's rules as the rule editor reads and writes them
-// (src/lib/tidy-config.ts): the Checks of .clang-tidy, read in each form
+// (modules/lang-cpp/tidy.ts): the Checks of .clang-tidy, read in each form
 // YAML and clang-tidy allow, rewritten without touching the rest of the
 // file, and changed a pattern at a time the way the editor's buttons do.
 //
@@ -7,8 +7,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { checksOf, globOfSearch, isEnabled, isTidyChecks, matches, setChecks, withChecks } from '../../src/lib/tidy-config.ts';
-import { C_TIDY, CPP_TIDY } from '../../src/lib/languages.ts';
+import { checksOf, globOfSearch, isEnabled, isTidyChecks, matches, setChecks, withChecks } from '../../../modules/lang-cpp/tidy.ts';
+import { C_TIDY, CPP_TIDY } from '../../../modules/lang-cpp/body.ts';
 
 const text = (globs) => globs.map((g) => `${g.on ? '' : '-'}${g.glob}`).join(',');
 const NAMES = [

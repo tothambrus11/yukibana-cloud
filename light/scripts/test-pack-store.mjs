@@ -1469,3 +1469,53 @@ test("a pull request reuses its own earlier build of a unit, and never another p
     assert.equal(noToken.code, 1);
     assert.match(noToken.err, /needs GH_TOKEN/);
 });
+
+test("a branch's dispatched runs reuse their own builds of a unit, and neither main nor a pull request takes them", async () => {
+    // light-toolchain-unit.yml looks with the branch's ref and name when
+    // light-packs.yml was dispatched on it, as a pull request's run does
+    // with its merge ref.
+    const file = await archived();
+    const name = path.basename(file, '.tar.zst');
+    const bytes = fs.readFileSync(file);
+    attestations = new Map();
+    attest(bytes, 'refs/heads/feature');
+    artifactDownloads.length = 0;
+    artifacts = [{ id: 11, name, zip: zipOf(`${name}.tar.zst`, bytes), branch: 'feature', created: '2026-10-05T00:00:00Z' }];
+    const out = path.join(root, 'out-branch-artifact');
+    const token = { GH_TOKEN: 'token' };
+    try {
+        const r = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', 'refs/heads/feature', '--branch', 'feature');
+        assert.equal(r.code, 0, r.err);
+        assert.deepEqual(fs.readFileSync(r.out.trim()), bytes);
+        fs.rmSync(out, { recursive: true, force: true });
+        for (const ref of ['refs/heads/main', 'refs/pull/7/merge']) {
+            const other = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', ref);
+            assert.equal(other.code, 3, `${ref}: ${other.err}`);
+            assert.equal(fs.existsSync(out), false, ref);
+        }
+    } finally {
+        artifacts = [];
+        fs.rmSync(out, { recursive: true, force: true });
+    }
+});
+
+test('setup.sh --pull reads its builds from the repository the stores are read from', async () => {
+    const r = await store('repo');
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out, 'test/repo\n');
+});
+
+test("setup.sh --pull takes a pull request's number and nothing else, and is never --latest too", () => {
+    // Refused before anything is installed, fetched or built.
+    const setup = path.resolve(SCRIPTS, '../setup.sh');
+    for (const [args, why] of [
+        [['--pull'], /--pull needs a pull request number/],
+        [['--pull', 'feature'], /--pull needs a pull request number/],
+        [['--pull', '0'], /--pull needs a pull request number/],
+        [['--pull', '12', '--latest'], /--pull and --latest/],
+    ]) {
+        const r = spawnSync('bash', [setup, ...args], { encoding: 'utf8' });
+        assert.equal(r.status, 1, args.join(' '));
+        assert.match(r.stderr, why, args.join(' '));
+    }
+});

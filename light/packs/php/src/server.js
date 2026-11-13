@@ -338,11 +338,44 @@ const report = (params) => post({ jsonrpc: '2.0', method: 'yukibana/loading', pa
 const early = [];
 let php = null;
 
+// The client sends `initialized` and then a didOpen for every file of the
+// project, in one burst (packs/CONTRACT.md, "Files"). Phpactor indexes
+// /workspace as soon as it reads `initialized`, and this worker's onmessage
+// runs only when PHP yields, so how much of the burst had been mirrored by
+// then depended on how the tasks fell: "Indexing workspace: 1 PHP files"
+// and the sample full of unknown classes, or no progress, diagnostics or
+// answers at all after the first `window/workDoneProgress/create`, so that
+// the first edit was reported nowhere. It came and went with unrelated
+// changes to the app's timing (steps 8 and 9 of light/modules made
+// tests/e2e.mjs php fail about one run in three). So `initialized` and
+// what follows it are mirrored as they arrive but reach Phpactor together,
+// HOLD_MS after `initialized`: by then the burst has been mirrored, and the
+// index is of the project.
+const HOLD_MS = 50;
+/** The client's messages from `initialized` on, mirrored and not yet forwarded; null before `initialized` and after they were. */
+let held = null;
+let released = false;
+
+function release() {
+    const messages = held ?? [];
+    held = null;
+    released = true;
+    for (const msg of messages) forward(msg);
+}
+
+function receive(msg) {
+    mirror(php, msg);
+    if (!released && held === null && msg.method === 'initialized') {
+        held = [];
+        setTimeout(release, HOLD_MS);
+    }
+    if (held === null) forward(msg);
+    else held.push(msg);
+}
+
 self.onmessage = ({ data: msg }) => {
-    if (php) {
-        mirror(php, msg);
-        forward(msg);
-    } else early.push(msg);
+    if (php) receive(msg);
+    else early.push(msg);
 };
 
 async function main() {
@@ -354,10 +387,7 @@ async function main() {
     runtime.FS.mkdirTree(ROOT);
     runtime.FS.chdir(ROOT);
     php = runtime;
-    for (const msg of early.splice(0)) {
-        mirror(php, msg);
-        forward(msg);
-    }
+    for (const msg of early.splice(0)) receive(msg);
     const code = await runCli(php, ['php', '/opt/yukibana/phpactor.php', 'language-server']);
     exited = true;
     log(code === 0 ? 3 : 1, `phpactor exited with code ${code}`);

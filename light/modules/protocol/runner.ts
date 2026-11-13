@@ -45,7 +45,7 @@ export type RunMode = 'run' | 'test' | 'mutate';
  * README: plain JSON values by name. The protocol carries them and never
  * reads them, since it names no pack; the C++ pack's emulation settings
  * and the Swift and Scala packs' optimisation level are the app's types
- * (cpp-targets.ts, optimization.ts in light/app), not this module's
+ * (light/modules/lang-cpp's targets.ts and levels.ts), not this module's
  * (finding #26 of the architecture review). A runner ignores a name it
  * has no use for.
  */
@@ -75,7 +75,77 @@ export interface RunMessage {
 	 * this channel. A runner that cannot debug ignores it and runs.
 	 */
 	debug?: DebugChannel;
+	/**
+	 * `type: 'test'` only. Present: build the tests as for every test run, and
+	 * run only this one (packs/CONTRACT.md, "Tests (optional)"). Absent: run
+	 * them all. Optional for a runner, and one that does not know it runs
+	 * them all, which looks like an answer: so a host offers one test only
+	 * for a language whose package provides std's `testCase` or
+	 * `debugTestCase`, never because the pack is new enough.
+	 */
+	test?: TestSelector;
+	/**
+	 * `type: 'test'` with `debug` only. True: the program stops at each failed
+	 * assertion, in the way the language's package says through std's
+	 * `failureStop` (the breakpoints the host's debugger sets before the
+	 * program runs), and Continue goes on with the tests. The C++ runner calls
+	 * {@link TEST_FAILED_FUNCTION}, for a function breakpoint; another runner
+	 * may stop otherwise (an exception breakpoint on a failed assert). Absent
+	 * or false: it does not. A runner that does not know it ignores it; a
+	 * host offers it only where the language provides std's `failureStop`.
+	 */
+	breakOnFailure?: boolean;
 }
+
+/**
+ * One test case as its framework names it, so that a runner can tell the
+ * framework to run it alone: GoogleTest's TEST(Suite, Name) is `{ suite:
+ * 'Suite', name: 'Name' }`, a doctest TEST_CASE("x") inside TEST_SUITE("s")
+ * is `{ suite: 's', name: 'x' }`, a Catch2 TEST_CASE("x", "[tag]") is
+ * `{ suite: null, name: 'x' }` (tags are not a suite), and a Catch2
+ * SCENARIO("x") is named as Catch2 names it, "Scenario: x".
+ *
+ * `suite` is the framework's own qualified path of what holds the test,
+ * however deep, joined with the framework's own separator, and opaque to
+ * the host: the runner of that language parses it. So pytest's
+ * `tests/test_x.py::TestOuter::TestInner::test_y` is `{ file:
+ * 'tests/test_x.py', suite: 'TestOuter::TestInner', name: 'test_y' }`,
+ * Rust's `a::b::tests::it_works` is `{ suite: 'a::b::tests', name:
+ * 'it_works' }`, and XCTest's `ModuleTests.FooTests/testBar` is `{ suite:
+ * 'ModuleTests.FooTests', name: 'testBar' }`, its module or target the
+ * path's first part.
+ *
+ * A parametrised test is selected by its name as the framework writes its
+ * declaration: every instance runs (GoogleTest's TEST_P and typed tests,
+ * every instantiation). Where the framework names one instance (pytest's
+ * `test_y[case-1]`), `name` with that instance's part selects that one
+ * alone; a runner that cannot select an instance refuses such a name.
+ *
+ * Invariant: `file` is a key of the run's `files`, the file the test is
+ * defined in; a framework whose names are unique in a program may ignore
+ * it, and one whose names are not (doctest) reads it. Sections and subcases
+ * are not selectable: a Catch2 SECTION or doctest SUBCASE runs with its
+ * whole test case.
+ */
+export interface TestSelector {
+	file: string;
+	/** The framework's qualified path of the test's suite (see above), or null for none or any. */
+	suite: string | null;
+	/** The test's own name, without its suite. Never empty. */
+	name: string;
+}
+
+/**
+ * The function the C++ runner's test program calls at each failed assertion
+ * of a run with `breakOnFailure`, with C linkage, so that the host's debugger
+ * stops there through a function breakpoint on this name (DAP
+ * `setFunctionBreakpoints`): lang-cpp's provider of std's `failureStop`
+ * names it, and a host sets what that provider says, never this constant
+ * itself. The failed test is the nearest frame of the
+ * project's code below it. The C++ pack defines it (packs/cpp/src/test-selection.js,
+ * which checks it against this constant in its tests).
+ */
+export const TEST_FAILED_FUNCTION = 'yukibana_test_failed';
 
 /**
  * Where LLDB listens for a debugged program's stub: its WebAssembly

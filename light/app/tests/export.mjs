@@ -1,5 +1,5 @@
-// Downloads each sample project as the app does (src/lib/export.ts and
-// src/lib/zip.ts), unpacks the zip, and builds, runs and tests it with the
+// Downloads each sample project as the app does (src/lib/export.ts over
+// the languages' packages' exports, tests/export-loaded.mjs, and src/lib/zip.ts), unpacks the zip, and builds, runs and tests it with the
 // language's own tools where this machine has them: CMake and a C++
 // compiler with CTest, SwiftPM, Node, Python with pytest (installed into a
 // venv), sbt. A tool that is missing is reported as skipped, not as passed.
@@ -13,11 +13,15 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { LANGUAGES } from '../src/lib/languages.ts';
-import { buildSbt, exportProject, parseCompileFlags } from '../src/lib/export.ts';
-import { zip } from '../src/lib/zip.ts';
-import { chooseTestFramework } from '../src/lib/cpp-tests.ts';
 import { PROPERTIES } from '../../packs/cpp/tests/fixtures/properties.mjs';
+import './modules-hook.mjs';
+
+const { LANGUAGES } = await import('../src/lib/languages.ts');
+const { exportProject } = await import('./export-loaded.mjs');
+const { buildSbt } = await import('../../modules/lang-scala/export.ts');
+const { parseCompileFlags } = await import('../../modules/lang-cpp/export.ts');
+const { zip } = await import('../src/lib/zip.ts');
+const { chooseTestFramework } = await import('../../modules/lang-cpp/tests.ts');
 
 const only = process.argv.slice(2);
 const work = mkdtempSync(join(tmpdir(), 'yukibana-export-'));
@@ -127,8 +131,7 @@ for (const language of LANGUAGES) {
 // ---- CI files: every service's YAML parses, and says what the jobs are
 
 {
-	const { buildSystems } = await import('../src/lib/export.ts');
-	const { CI_SERVICES, jobsFor } = await import('../src/lib/export-tooling.ts');
+	const { buildSystems, CI_SERVICES, jobsFor } = await import('./export-loaded.mjs');
 	// Each file's structure as the service reads it, checked by Python's YAML parser.
 	const checker = `
 import sys, json, yaml

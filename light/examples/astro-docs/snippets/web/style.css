@@ -1,0 +1,11 @@
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background: light-dark(#fbf7f0, #14171c);
+}

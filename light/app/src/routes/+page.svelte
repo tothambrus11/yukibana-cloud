@@ -15,15 +15,14 @@
   problems, which open the Problems panel.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { createDock } from '../lib/dock';
 	import { isCFamily, languageOf, pickerLanguages, shortLabel, type LanguageId } from '../lib/languages';
 	import { packOf, packsOf } from '../lib/packs';
-	import { KINDS, viewsOf } from '../lib/explore-views';
 	import { registerServiceWorker } from '../lib/pwa';
 	import { offline } from '../lib/offline.svelte';
 	import Offline from '../lib/components/Offline.svelte';
-	import Export from '../lib/components/Export.svelte';
+	import type Export from '../lib/components/Export.svelte';
 	import BuildSettings from '../lib/components/BuildSettings.svelte';
 	import { buildSummary, openBuildSettings } from '../lib/build-settings';
 	import MoreMenu from '../lib/components/MoreMenu.svelte';
@@ -32,6 +31,8 @@
 	import Licenses from '../lib/components/Licenses.svelte';
 	import { theme } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
+	import { subjectOf, viewsOf, yukibana } from '../lib/yukibana';
+	import { debug, debugTest, mutate, run, test } from '@yukibana/std';
 	import { serverLabel } from '../lib/format';
 	import { followViewport } from '../lib/viewport';
 	import { startEditor } from '../lib/monaco';
@@ -45,8 +46,16 @@
 	let dockElement: HTMLElement;
 	let dock: ReturnType<typeof createDock> | undefined;
 	let offlineDialog = $state<Offline>();
+	/** The Download dialog's component, imported on the first Download (it brings export.ts, which nothing else needs). */
+	let ExportDialog = $state.raw<typeof Export | null>(null);
 	let exportDialog = $state<Export>();
-	workspace.exportDialog = () => exportDialog?.show();
+	workspace.exportDialog = () => {
+		void (async () => {
+			ExportDialog ??= (await import('../lib/components/Export.svelte')).default;
+			await tick();
+			await exportDialog?.show();
+		})().catch((e: unknown) => workspace.write('error', `Could not open the Download dialog: ${e instanceof Error ? e.message : String(e)}`));
+	};
 	let serverMenu = $state<Popover>();
 	let licensesDialog = $state<Licenses>();
 	/** Set when a new build is installed and waiting: activates it and reloads. */
@@ -54,7 +63,8 @@
 
 	onMount(() => {
 		// Tests read the debugger's session through this, as they read Monaco (startEditor).
-		if (new URLSearchParams(location.search).has('trace')) Object.assign(globalThis, { yukibanaDebugger: workspace.debugger });
+		// A getter: the debugger is there from the first Debug on (Workspace.loadDebugger).
+		if (new URLSearchParams(location.search).has('trace')) Object.defineProperty(globalThis, 'yukibanaDebugger', { get: () => workspace.debugger, configurable: true });
 		dock = createDock(dockElement, workspace);
 		workspace.attach(dock);
 		registerServiceWorker({
@@ -92,6 +102,24 @@
 	const warnings = $derived(workspace.problems.filter((p) => p.severity === 'warning').length);
 	const percent = $derived(workspace.progress && workspace.progress.total > 0 ? Math.min(100, (100 * workspace.progress.loaded) / workspace.progress.total) : null);
 	const language = $derived(languageOf(workspace.language));
+	// What the top bar offers, as the language's providers say (providers/):
+	// a button is shown where the language has the token, and enabled where it is
+	// available for the project. The snapshot reads nothing until a provider asks.
+	// These re-derive when the language or the project changes (a snapshot reads
+	// the workspace's revision), so a provider whose answer reads the project is
+	// followed after each edit; none of the app's does yet.
+	const subject = $derived(subjectOf(workspace.language));
+	const runAvailable = $derived(yukibana().availability(subject, run, workspace.snapshot()));
+	const hasTest = $derived(yukibana().has(subject, test));
+	const testAvailable = $derived(yukibana().availability(subject, test, workspace.snapshot()));
+	const hasMutate = $derived(yukibana().has(subject, mutate));
+	const mutateAvailable = $derived(yukibana().availability(subject, mutate, workspace.snapshot()));
+	const hasDebug = $derived(yukibana().has(subject, debug));
+	const debugAvailable = $derived(yukibana().availability(subject, debug, workspace.snapshot()));
+	const hasDebugTest = $derived(yukibana().has(subject, debugTest));
+	const debugTestAvailable = $derived(yukibana().availability(subject, debugTest, workspace.snapshot()));
+	const DEBUG_TITLE = 'Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)';
+	const DEBUG_TESTS_TITLE = "Run the project's tests under the debugger: they stop at the breakpoints set left of the line numbers";
 	/** The language picker's choices; a language whose pack is kept for offline use says so. */
 	const languageOptions = $derived<SelectOption[]>(
 		pickerLanguages().map((l) => ({
@@ -101,8 +129,8 @@
 			...(offline.arePacksCached(packsOf(l)) ? { detail: 'offline' } : {}),
 		})),
 	);
-	/** The language's compiler output views (explore-views.ts), none for most. */
-	const views = $derived(viewsOf(workspace.language)?.views.map((v) => v.kind) ?? []);
+	/** The language's compiler output views (its provider of explore, modules/lang-<pack>), none for most. */
+	const views = $derived(viewsOf(subject)?.views ?? []);
 	/** "the active C or C++ file" and the like, for the views' buttons. */
 	const activeSource = $derived(`the active ${shortLabel(language)} ${workspace.language === 'haskell' ? 'module' : 'file'}`);
 	/** C++ (target, sanitizers, run options, tests) and the languages with optimisation levels have build settings. */
@@ -169,7 +197,7 @@
 	 */
 	function debugKeys(e: KeyboardEvent) {
 		const dbg = workspace.debugger;
-		if (e.defaultPrevented || !dbg.active || e.ctrlKey || e.metaKey || e.altKey) return;
+		if (e.defaultPrevented || !dbg?.active || e.ctrlKey || e.metaKey || e.altKey) return;
 		const act =
 			e.key === 'F5' ? (e.shiftKey ? () => dbg.end() : () => dbg.continue())
 			: e.key === 'F10' && !e.shiftKey ? () => dbg.next()
@@ -203,18 +231,18 @@
 				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg><span class="run-label" data-other="Run"><span>Stop</span></span>
 			</button>
 		{:else}
-			<button class="btn run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
+			<button class="btn run" onclick={() => workspace.run()} disabled={runAvailable.kind === 'unavailable'} title={runAvailable.kind === 'available' ? 'Run the project (Ctrl+Enter)' : runAvailable.reason}>
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg><span class="run-label" data-other="Stop"><span>Run</span></span>
 			</button>
 		{/if}
-		{#if language.tests}
-			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+		{#if hasTest}
+			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy || testAvailable.kind === 'unavailable'} title={testAvailable.kind === 'available' ? "Run the project's tests (Ctrl+Shift+Enter)" : testAvailable.reason}>Test</button>
 		{/if}
-		{#if language.debugs}
-			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
+		{#if hasDebug}
+			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugging || debugAvailable.kind === 'unavailable'} title={debugAvailable.kind === 'available' ? DEBUG_TITLE : debugAvailable.reason}>Debug</button>
 		{/if}
-		{#if language.mutates}
-			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
+		{#if hasMutate}
+			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy || mutateAvailable.kind === 'unavailable'} title={mutateAvailable.kind === 'available' ? 'Mutation testing: change the code in small ways and check that the tests notice' : mutateAvailable.reason}>Mutate</button>
 		{/if}
 
 		{#if hasBuild}
@@ -223,10 +251,10 @@
 
 		{#if views.length}
 			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
-				{#each views as kind (kind)}
+				{#each views as { kind, title, short, noun } (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
-					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
-						<span class="long">{KINDS[kind].title}</span><span class="short">{KINDS[kind].short}</span>
+					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${title} view` : `Show the ${noun} of ${activeSource}`}>
+						<span class="long">{title}</span><span class="short">{short}</span>
 					</button>
 				{/each}
 			</div>
@@ -252,13 +280,18 @@
 		</button>
 
 		<MoreMenu>
-			{#if language.debugs}
-				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || workspace.debugger.active} onclick={() => workspace.debug()}>Debug</button>
+			{#if hasDebug}
+				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || workspace.debugging || debugAvailable.kind === 'unavailable'} onclick={() => workspace.debug()} title={debugAvailable.kind === 'available' ? DEBUG_TITLE : debugAvailable.reason}>Debug</button>
 			{/if}
-			{#if language.mutates}
-				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
+			{#if hasDebugTest}
+				<button class="menu-item debug-tests" role="menuitem" disabled={workspace.runner.busy || workspace.debugging || debugTestAvailable.kind === 'unavailable'} onclick={() => workspace.debug('test')} title={debugTestAvailable.kind === 'available' ? DEBUG_TESTS_TITLE : debugTestAvailable.reason}>Debug tests</button>
 			{/if}
-			{#if language.debugs || language.mutates}
+			{#if hasMutate}
+				<button class="menu-item" role="menuitem" data-fold="70" disabled={workspace.runner.busy || mutateAvailable.kind === 'unavailable'} onclick={() => workspace.run('mutate')}>Mutation testing…</button>
+			{/if}
+			{#if hasDebugTest}
+				<div class="menu-divider" role="separator"></div>
+			{:else if hasDebug || hasMutate}
 				<div class="menu-divider" role="separator" data-fold="70"></div>
 			{/if}
 			{#if hasBuild}
@@ -268,10 +301,10 @@
 				<div class="menu-divider" role="separator" data-fold="30"></div>
 			{/if}
 			{#if views.length}
-				{#each views as kind (kind)}
+				{#each views as { kind, title } (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
 					<button class="menu-item" role="menuitemcheckbox" aria-checked={on} data-fold="44" data-view={kind} onclick={() => workspace.toggleView(kind)}>
-						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{KINDS[kind].title}
+						<span class="check" aria-hidden="true">{on ? '✓' : ''}</span>{title}
 					</button>
 				{/each}
 				<div class="menu-divider" role="separator" data-fold="44"></div>
@@ -290,7 +323,7 @@
 <main class="dock" bind:this={dockElement}></main>
 
 <Offline bind:this={offlineDialog} />
-<Export bind:this={exportDialog} {workspace} />
+{#if ExportDialog}<ExportDialog bind:this={exportDialog} {workspace} />{/if}
 <Licenses bind:this={licensesDialog} />
 
 <div class="toast" role="status" aria-live="polite" class:shown={toast !== null}>{toast ?? ''}</div>

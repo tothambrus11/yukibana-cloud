@@ -20,6 +20,12 @@
 #                        oracle (the host, qemu-user-static), and the
 #                        explorer worker
 #
+# Not here, because it needs the LLDB pack assembled beside this one, which
+# `uses` does not name (its lldb-dap.wasm is the largest file of any pack),
+# and a skip here is a failure: test-debug.mjs (a test run under lldb-dap,
+# one test selected and a stop at each failed assertion; README, "One test,
+# and stopping at a failed assertion"), run by hand.
+#
 # Not here, because it tests a unit's build rather than the pack and needs
 # that unit's build trees, which an assembly over stored units never has:
 # test-demangle.mjs (LLVM's demangler compiled natively from the source
@@ -51,10 +57,12 @@ source "$HERE/glue-lib.sh"
 
 case "${1:-}" in
   --inputs)
-    # test-run.mjs reads the app's sample and imports its test-framework
-    # chooser (which imports only a type from languages.ts);
-    # test-run-linux.mjs reads the sample too.
-    printf '%s\n' light/app/src/lib/languages.ts light/app/src/lib/cpp-tests.ts
+    # test-run.mjs imports the app's sample (lang-cpp's body.ts) and its
+    # test-framework chooser (lang-cpp's tests.ts); test-run-linux.mjs
+    # imports the sample too. Node loads them as they are, with what they
+    # import: the package's own files, and std's, core's, runtime's and
+    # protocol's.
+    (cd "$HERE/../../.." && git ls-files -- 'light/modules/lang-cpp/*.ts' 'light/modules/std/*.ts' 'light/modules/core/*.ts' 'light/modules/runtime/*.ts' 'light/modules/protocol/*.ts')
     exit 0 ;;
   --setup)
     npm_deps "$HERE"

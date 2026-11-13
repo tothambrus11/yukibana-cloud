@@ -44,29 +44,9 @@ const runnerSource = ['runner.js', 'runner-linux.js'].map((f) => path.join(OUT, 
 const skip = missing.length ? `not built yet: ${missing.join(', ')}` : !runnerSource.includes('vm.js') ? 'runner.js does not run Linux targets yet' : false;
 if (skip) console.log(`# test-run-linux: skipped (${skip})`);
 
-// The app's sample project (app/src/lib/languages.ts), as test-run.mjs reads it.
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    // A file the sample shares with another (CPP_TIDY, CLANG_FORMAT) is
-    // named by its top-level `export const NAME = \`...\`;`, given here.
-    const shared = {};
-    for (const m of source.matchAll(/^export const ([A-Z_]+) = (`(?:\\[\s\S]|[^`\\])*`);$/gm)) shared[m[1]] = new Function(`return ${m[2]};`)();
-    return new Function(...Object.keys(shared), `return (${source.slice(start, i + 1)});`)(...Object.values(shared));
-}
-const SAMPLE = sampleOf(fs.readFileSync(path.resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8'), 'cpp');
+// The app's sample project (modules/lang-cpp/body.ts), as test-run.mjs reads it.
+const { BODIES } = await import('../../modules/lang-cpp/body.ts');
+const SAMPLE = BODIES['cpp'].sample;
 const withTarget = (files, triple) => ({ ...files, 'compile_flags.txt': `--target=${triple}\n${files['compile_flags.txt'] ?? ''}` });
 
 const CIN = { 'main.cpp': `#include <iostream>

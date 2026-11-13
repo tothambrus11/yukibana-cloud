@@ -3,7 +3,11 @@
  * of lldb-dap, which runs in a worker of its own (packs/lldb, debugger.js),
  * and the state the Debug panel and the editors show of it: where the
  * program stopped, its call stack, the variables of the selected frame and
- * the project's breakpoints.
+ * the line it stopped at, which the editors show of the project's
+ * breakpoints (breakpoints.svelte.ts, which holds them).
+ *
+ * This module loads on the first Debug (Workspace.loadDebugger), with the
+ * Debug panel: a project that is never debugged downloads none of it.
  *
  * A session is one debugged run. `start` starts the debugger's worker,
  * which hands back the channel its LLDB listens on; the run goes to the
@@ -13,6 +17,8 @@
  * (DAP's configurationDone), then runs to the first one.
  */
 import type { DebugChannel, DebugProgram } from '@yukibana/protocol';
+import type { FailureStop } from '@yukibana/std';
+import type { BreakpointSession, Breakpoints } from './breakpoints.svelte';
 
 /** The workspace path of a project file in the program's debug info (packs/cpp: compiled in /workspace). */
 const ROOT = '/workspace/';
@@ -34,7 +40,7 @@ export interface Frame {
 	id: number;
 	/** The function, as LLDB names it (demangled). */
 	name: string;
-	/** The project file it is in, or null for a file of the toolchain's (libc++) or none. */
+	/** The project file it is in, or null for a file of the toolchain's (libc++) or the runner's (its failed-assertion hook), or none. */
 	path: string | null;
 	/** The file as the debug info names it, for a frame outside the project. */
 	file: string | null;
@@ -56,7 +62,7 @@ export type DebugStatus =
 	/** Loading LLDB, building, attaching. */
 	| { kind: 'starting'; text: string }
 	| { kind: 'running' }
-	/** `reason` as DAP says it: breakpoint, step, pause, exception, entry. */
+	/** `reason` as DAP says it: breakpoint, step, pause, exception, entry; `function breakpoint` for a stop in one of the host's `failureStop` functions. */
 	| { kind: 'stopped'; reason: string; description: string }
 	| { kind: 'ended'; text: string };
 
@@ -66,6 +72,19 @@ export interface DebugHost {
 	run(channel: DebugChannel): void;
 	/** Stops the run, if it is still going. */
 	stopRun(): void;
+	/**
+	 * How the run stops at a failed assertion, set with the breakpoints
+	 * before the program runs (DAP's function and exception breakpoints),
+	 * as the language's package says (std's `failureStop`); null when it is
+	 * not to stop there.
+	 */
+	readonly failureStop: FailureStop | null;
+	/**
+	 * `true` iff `path`, a path under the program's /workspace, is a file of
+	 * the project: a frame in another (the runner's own sources) is shown
+	 * as outside it, and a stop shows the innermost frame of the project's.
+	 */
+	inProject(path: string): boolean;
 	/** Shows a project file at a line: the frame the user picked, or where the program stopped. */
 	reveal(path: string, line: number): void;
 	/** A line for the Log panel: everything LLDB says, its warnings among them. */
@@ -83,7 +102,7 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 
-export class Debugger {
+export class Debugger implements BreakpointSession {
 	status = $state<DebugStatus>({ kind: 'idle' });
 	frames = $state<Frame[]>([]);
 	/** The frame whose variables are shown, an index into `frames`. */
@@ -92,8 +111,6 @@ export class Debugger {
 	scopes = $state<Variable[]>([]);
 	/** Children fetched so far, by reference. */
 	children = $state<Record<number, Variable[]>>({});
-	/** Breakpoints, by project path: 1-based lines. Kept from one session to the next. */
-	breakpoints = $state<Record<string, number[]>>({});
 
 	#worker: Worker | null = null;
 	#seq = 1;
@@ -105,7 +122,16 @@ export class Debugger {
 	/** Which session the worker's messages belong to; a replaced one's are dropped. */
 	#generation = 0;
 
-	constructor(private readonly makeWorker: () => Worker = () => new Worker(debuggerUrl(), { type: 'module' })) {}
+	/**
+	 * A debugger of `breakpoints`, which it makes the session of (its
+	 * `session`): there is one per page.
+	 */
+	constructor(
+		readonly breakpoints: Breakpoints,
+		private readonly makeWorker: () => Worker = () => new Worker(debuggerUrl(), { type: 'module' }),
+	) {
+		breakpoints.session = this;
+	}
 
 	get active(): boolean {
 		const kind = this.status.kind;
@@ -207,6 +233,9 @@ export class Debugger {
 			// when breakpoints can be set (DAP's launch sequence).
 			await Promise.race([initialized, attached]);
 			await this.#sendBreakpoints();
+			const stop = this.#host?.failureStop ?? null;
+			if (stop !== null && stop.functions.length > 0) await this.#request('setFunctionBreakpoints', { breakpoints: stop.functions.map((name) => ({ name })) });
+			if (stop !== null && stop.exceptionFilters.length > 0) await this.#request('setExceptionBreakpoints', { filters: [...stop.exceptionFilters] });
 			await this.#request('configurationDone', {});
 			await attached;
 			if (this.status.kind === 'starting') this.status = { kind: 'running' };
@@ -217,19 +246,9 @@ export class Debugger {
 		}
 	}
 
-	/** Turns the breakpoint at `line` of `path` on or off; sent at once to a running session. */
-	toggleBreakpoint(path: string, line: number): void {
-		const lines = this.breakpoints[path] ?? [];
-		const next = lines.includes(line) ? lines.filter((l) => l !== line) : [...lines, line].sort((a, b) => a - b);
-		this.breakpoints = { ...this.breakpoints, [path]: next };
+	/** The breakpoints of `path` changed (Breakpoints.toggle): sent at once to a running session. */
+	changed(path: string): void {
 		if (this.active && this.status.kind !== 'starting') void this.#sendBreakpoints([path]).catch(() => {});
-	}
-
-	/** The breakpoints of a file that was renamed or deleted (`to` null) follow it. */
-	moveBreakpoints(from: string, to: string | null): void {
-		if (!(from in this.breakpoints)) return;
-		const { [from]: lines, ...rest } = this.breakpoints;
-		this.breakpoints = to && lines ? { ...rest, [to]: lines } : rest;
 	}
 
 	continue(): void {
@@ -291,9 +310,9 @@ export class Debugger {
 		await this.#request(command, { threadId: this.#thread }).catch((e: unknown) => this.#host?.log(`${command}: ${e instanceof Error ? e.message : String(e)}`));
 	}
 
-	async #sendBreakpoints(paths: string[] = Object.keys(this.breakpoints)): Promise<void> {
+	async #sendBreakpoints(paths: string[] = Object.keys(this.breakpoints.lines)): Promise<void> {
 		for (const path of paths) {
-			const lines = this.breakpoints[path] ?? [];
+			const lines = this.breakpoints.lines[path] ?? [];
 			await this.#request('setBreakpoints', { source: { name: path.split('/').pop(), path: ROOT + path }, breakpoints: lines.map((line) => ({ line })) });
 		}
 	}
@@ -307,9 +326,13 @@ export class Debugger {
 		this.frames = frames.map((f): Frame => {
 			const source = isRecord(f['source']) ? f['source'] : {};
 			const file = str(source['path']) || null;
-			return { id: num(f['id']), name: str(f['name']), path: file?.startsWith(ROOT) ? file.slice(ROOT.length) : null, file, line: num(f['line']) };
+			const path = file?.startsWith(ROOT) ? file.slice(ROOT.length) : null;
+			return { id: num(f['id']), name: str(f['name']), path: path !== null && (this.#host?.inProject(path) ?? true) ? path : null, file, line: num(f['line']) };
 		});
-		this.status = { kind: 'stopped', reason, description };
+		// lldb-dap says "breakpoint" for a function breakpoint too: the stop is one when the innermost frame is that function.
+		const top = this.frames[0]?.name.replace(/^::/, '').replace(/\(.*$/, '') ?? '';
+		const functionStop = reason === 'breakpoint' && (this.#host?.failureStop?.functions.includes(top) ?? false);
+		this.status = { kind: 'stopped', reason: functionStop ? 'function breakpoint' : reason, description };
 		this.children = {};
 		// The innermost frame of the project's: a stop in a library shows where the project called it.
 		const first = Math.max(0, this.frames.findIndex((f) => f.path !== null));
@@ -390,69 +413,4 @@ export class Debugger {
 
 function variableOf(v: Record<string, unknown>): Variable {
 	return { name: str(v['name']), value: str(v['value']), type: str(v['type']), ref: num(v['variablesReference']) };
-}
-
-/** What `decorate` needs of Monaco: passed in, so this module loads without it (the Node-run tests). */
-interface MonacoLike {
-	editor: { MouseTargetType: { GUTTER_GLYPH_MARGIN: number; GUTTER_LINE_NUMBERS: number } };
-	Range: new (a: number, b: number, c: number, d: number) => unknown;
-}
-
-/**
- * Shows `dbg`'s breakpoints of the file `path` in `editor`'s glyph margin,
- * and the line the program is stopped at, and makes a click in the margin
- * (or F9) turn a breakpoint on or off. Kept in step with the session until
- * the returned function is called.
- */
-export function decorate(
-	editor: import('monaco-editor').editor.IStandaloneCodeEditor,
-	path: string,
-	dbg: Debugger,
-	monaco: MonacoLike,
-): () => void {
-	const decorations = editor.createDecorationsCollection();
-	const mouse = editor.onMouseDown((e) => {
-		const type = e.target.type;
-		if (type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
-		const line = e.target.position?.lineNumber;
-		if (line) dbg.toggleBreakpoint(path, line);
-	});
-	const stop = $effect.root(() => {
-		$effect(() => {
-			const lines = dbg.breakpoints[path] ?? [];
-			const stopped = dbg.stoppedLine(path);
-			const top = dbg.selected === 0;
-			const onBreakpoint = stopped !== null && lines.includes(stopped);
-			const range = (line: number) => new monaco.Range(line, 1, line, 1) as import('monaco-editor').IRange;
-			decorations.set([
-				// The stopped line's one decoration draws its breakpoint too (app.css says why).
-				...lines
-					.filter((line) => line !== stopped)
-					.map((line) => ({
-						range: range(line),
-						options: { glyphMarginClassName: 'debug-breakpoint', glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' }, stickiness: 1 },
-					})),
-				...(stopped !== null
-					? [
-							{
-								range: range(stopped),
-								options: {
-									isWholeLine: true,
-									className: top ? 'debug-stopped-line' : 'debug-frame-line',
-									glyphMarginClassName: `${top ? 'debug-stopped' : 'debug-frame'}${onBreakpoint ? ' debug-on-breakpoint' : ''}`,
-									...(onBreakpoint ? { glyphMarginHoverMessage: { value: 'Breakpoint (click to remove)' } } : {}),
-									stickiness: 1,
-								},
-							},
-						]
-					: []),
-			]);
-			if (stopped !== null) editor.revealLineInCenterIfOutsideViewport(stopped);
-		});
-	});
-	return () => {
-		stop();
-		mouse.dispose();
-		decorations.clear();
-	};
 }

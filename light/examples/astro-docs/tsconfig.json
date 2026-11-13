@@ -1,0 +1,21 @@
+{
+	// The site: Astro's strictest settings, then the modules' own
+	// (light/modules/tsconfig.base.json), so the example is held to what the
+	// @yukibana modules are. The browser's globals, nothing of Node.
+	"extends": ["astro/tsconfigs/strictest", "../../modules/tsconfig.base.json"],
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		// The modules' sources through their `file:` links, as Vite reads
+		// them (astro.config.ts).
+		"customConditions": ["@yukibana/source"],
+		// The islands are Preact components.
+		"jsx": "react-jsx",
+		"jsxImportSource": "preact",
+		// The modules' sources are checked with the site, and their own
+		// settings do not ask for these two (strictest's).
+		"noUnusedLocals": false,
+		"noUnusedParameters": false
+	},
+	"include": [".astro/types.d.ts", "src"],
+	"exclude": ["dist"]
+}

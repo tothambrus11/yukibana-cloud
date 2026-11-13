@@ -1,0 +1,33 @@
+---
+layout: ../../layouts/Docs.astro
+title: A table from a CSV
+kicker: Data · Python
+description: The page ships a small CSV file with its playground. Python reads it with the csv module, pivots it and prints a table, then a chart made of text.
+---
+import Playground from '../../components/Playground.astro';
+import snowfall from '../../../snippets/csv/snowfall.csv?raw';
+import table from '../../../snippets/csv/table.py?raw';
+import bars from '../../../snippets/csv/bars.py?raw';
+
+export const rows = snowfall.trim().split('\n').slice(1).map((line) => line.split(','));
+
+The data: monthly snowfall at three stations, in centimetres
+(illustrative figures). It is a file of the playground's project,
+`snowfall.csv`, beside `main.py`; the program opens it as it would on
+disk.
+
+<table>
+	<thead><tr><th>station</th><th>month</th><th>snowfall (cm)</th></tr></thead>
+	<tbody>{rows.map(([station, month, cm]) => <tr><td>{station}</td><td>{month}</td><td>{cm}</td></tr>)}</tbody>
+</table>
+
+<Playground id="table" lang="python" code={table} files={{ 'snowfall.csv': snowfall }} title="csv.DictReader, a pivot, f-string alignment" />
+
+## Then a chart
+
+This snippet *continues* the one above: its code runs after the table's,
+in one program, so `totals` and `ranked` are already there. Edit the
+table snippet (say, sort `ranked` by name) and run this one: it uses
+your edit.
+
+<Playground lang="python" code={bars} continues={['table']} files={{ 'snowfall.csv': snowfall }} title="bars of █, scaled to the widest" />

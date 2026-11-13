@@ -8,8 +8,8 @@
  * saved.
  */
 import { isLanguageId, languageOf, type Files, type LanguageId } from './languages';
-import type { RunOptions } from './cpp-targets';
-import type { MiriTarget } from './rust-targets';
+import type { RunOptions } from '@yukibana/std';
+import type { MiriTarget } from '@yukibana/lang-rust/targets';
 import { savedLevelOf } from './optimization';
 import { pathProblem, workspaceRoot } from '@yukibana/runtime';
 import { decodeProject, encodeProject, readDocument, type ProjectDocument } from './project-link';
@@ -24,7 +24,7 @@ export interface Project {
 	/** The file shown last. */
 	active: string | null;
 	/**
-	 * How Run runs a C++ program built for a Linux target (cpp-targets.ts):
+	 * How Run runs a C++ program built for a Linux target (lang-cpp/targets.ts):
 	 * absent until the user changes one, and then saved with the project.
 	 * Other languages and the WebAssembly target ignore it.
 	 */

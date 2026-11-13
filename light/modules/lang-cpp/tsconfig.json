@@ -1,0 +1,11 @@
+{
+	// A language package runs in the host's page, beside std's providers it
+	// makes: the DOM and worker globals, as std has, and nothing of Node.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"]
+	},
+	"include": ["."],
+	// What build.mjs would write: the module's sources are the project, not its output.
+	"exclude": ["dist"]
+}

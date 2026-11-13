@@ -2,7 +2,7 @@
 // it: app/static served over http, `new Worker('/packs/zig/server.js', {
 // type: 'module' })` in Chromium, one JSON-RPC object per postMessage, every
 // project file opened, as the app opens them. The project is the sample of
-// app/src/lib/languages.ts. Checks that it has no diagnostics, then a syntax
+// modules/lang-zig/body.ts. Checks that it has no diagnostics, then a syntax
 // error (ZLS's), a type error (the compiler's, which ZLS cannot find), an
 // error inside the standard library shown where the project leads to it,
 // completion of a method and of std, hover with its documentation,
@@ -55,7 +55,8 @@ const server = createServer(async (req, res) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-const SAMPLE = sampleOf(await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8'), 'zig');
+const { BODIES } = await import('../../modules/lang-zig/body.ts');
+const SAMPLE = BODIES['zig'].sample;
 const MAIN = SAMPLE['main.zig'];
 const GEOMETRY = SAMPLE['geometry.zig'];
 
@@ -252,22 +253,3 @@ try {
 }
 console.log(failures ? `${failures} FAILED` : 'all passed');
 process.exit(failures ? 1 : 0);
-
-/** The sample project of a language, evaluated from languages.ts's source. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    return new Function(`return (${source.slice(start, i + 1)});`)();
-}

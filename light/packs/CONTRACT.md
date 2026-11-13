@@ -265,7 +265,8 @@ ignored without a word.
 ## Debugging (optional)
 
 A runner that can run its program under the debugger (the app offers Debug
-for languages with `debugs: true` in `app/src/lib/languages.ts`) takes the
+for the languages with a debug provider in `app/src/lib/providers/debug.ts`,
+and Debug tests where that runner debugs a `type: 'test'` run too) takes the
 run message with one more field:
 
 ```ts
@@ -290,6 +291,57 @@ when it ends; LLDB's Stop (`k`) throws `Killed` out of the program, which
 the runner reports as exit 137. Everything else is a run's: output as it is
 printed, `exit` last. A run without `debug` is a run, and a runner that
 cannot debug a project (a Linux target) says so on stderr and exits 1.
+
+## Tests (optional)
+
+A `type: 'test'` message may carry two more fields:
+
+```ts
+test?: { file: string, suite: string | null, name: string },
+breakOnFailure?: boolean,
+```
+
+`test` names one test case as its framework names it (`TestSelector` in
+`@yukibana/protocol`: GoogleTest's `TEST(Suite, Name)` is `{ suite:
+'Suite', name: 'Name' }`, a doctest or Catch2 `TEST_CASE("x")` is `{ suite:
+null, name: 'x' }`, with doctest's `TEST_SUITE` as its suite; `file` is
+the project path it is defined in). `suite` is the framework's own
+qualified path of what holds the test, however many levels, joined with
+the framework's separator and parsed by the runner: pytest's
+`TestOuter::TestInner`, Rust's `a::b::tests`, XCTest's
+`ModuleTests.FooTests`. A parametrised test is selected by the name its
+declaration has, and every instance runs (GoogleTest's `TEST_P`); where the
+framework names one instance (pytest's `test_y[case-1]`), that name selects
+that instance, or is refused by a runner that cannot. The runner builds
+the tests as for any test run and runs only that one, with the same
+messages back; exit 0 only when it passed. A test that names nothing the
+framework can select is refused on stderr, exit 1, before anything is
+built; one that names no test there runs none, which the framework reports
+as it does (GoogleTest and Catch2 fail the run, doctest passes it with no
+test case).
+
+`breakOnFailure`, with `debug`: the program stops at each failed assertion,
+and Continue goes on with the tests. How it stops is the runner's, and the
+language's package tells the host what to set before the program runs
+(`@yukibana/std`'s `failureStop`: function breakpoints, or exception
+breakpoint filters, for DAP's `setFunctionBreakpoints` and
+`setExceptionBreakpoints`). The C++ runner calls a function named
+`TEST_FAILED_FUNCTION` (`'yukibana_test_failed'`, C linkage, `(const char
+*file, int line)`), compiled with debug information, so that a function
+breakpoint on it stops there with the failed test a few frames down (the
+framework's own frames, built without debug information, are not in the
+call stack). Without `debug` it does nothing.
+
+Both are optional for a runner, and a runner that does not know them runs
+every test without stopping: a host cannot tell that apart from an answer.
+So a host never offers "Run test", "Debug test" or "Stop on failed
+assertion" because a pack is new enough; it offers them where the
+language's package provides `@yukibana/std`'s `testCase` (one test, run),
+`debugTestCase` (Debug tests with `test`) or `failureStop` (Debug tests
+with `breakOnFailure`), as it offers Debug tests where it provides
+`debugTest`. A language can debug one test without stopping on failures.
+The C++ pack takes both, for GoogleTest, doctest and Catch2
+(packs/cpp/README.md, "One test, and stopping at a failed assertion").
 
 ## Output
 
@@ -452,11 +504,13 @@ kinds are `llvm-ir` and `asm` (C and C++; Swift; Haskell's is `asm` only),
 and `lowered` (Scala's trees after typer and before the back end) and
 `bytecode` (Python's, and the JVM's for Java). Which views a language has, which files they show,
 what the compiler is called and the toggles each view's header offers are
-`app/src/lib/explore-views.ts`, a table and nothing else: a language gains
+`app/src/lib/providers/explore.ts`, a table and the language's provider
+of `@yukibana/std`'s `explore` (`modules/std/explore.ts`): a language gains
 a view by an entry there and an `explorer.js` that answers for it. The app
 starts the pack's third worker, `app/static/packs/<id>/explorer.js` (a
-module worker), the first time a panel opens; it is stopped when the
-language changes or the project is reset. Nothing of it is downloaded
+module worker, one per pack on the page), the first time a panel asks; it
+is stopped when the last panel closes, the language changes or the project
+is reset. Nothing of it is downloaded
 before.
 
 App to explorer, any number of times:
@@ -469,7 +523,7 @@ App to explorer, any number of times:
   options: Record<string, boolean | string> }   // the view's toggles, and the project's level
 ```
 
-`options` holds one boolean per toggle of the view (explore-views.ts),
+`options` holds one boolean per toggle of the view (providers/explore.ts),
 by the name the pack reads, and, for a language whose optimisation level
 is the project's rather than the view's (Swift), that level as Run gets
 it (`optimization: '-O'`). The names the packs share mean the same in
@@ -487,10 +541,10 @@ source (one the views cannot show, such as a header, keeps the source
 shown before), when an option or the project's level changes, and 500 ms
 after the last edit of any project file, and only for a panel that is in
 front: a panel behind another tab asks when it comes back. Each toggle
-starts as explore-views.ts says (C++: `{demangle: true, intel: false,
+starts as providers/explore.ts says (C++: `{demangle: true, intel: false,
 directives: false, library: false}` for assembly, `demangle: false` for
-IR), and keeps its state for the session, per language. A toggle marked
-`shared` there is set in every view of the language at once: Haskell's
+IR), and keeps its state for the session, per language. A toggle that
+`sets: 'language'` there is set in every view of the language at once: Haskell's
 `optimize` and `details`, which change the one compile all four of its
 views come from.
 

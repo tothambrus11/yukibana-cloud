@@ -1,0 +1,9 @@
+{
+	// astro.config.ts, scripts/ and the end-to-end test's helpers, which run in Node.
+	"extends": "../../modules/tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024"],
+		"types": ["node"]
+	},
+	"include": ["astro.config.ts", "packs.ts"]
+}

@@ -7,13 +7,14 @@
 //
 //   node test-run.mjs        (after ./build.sh; needs playwright-core)
 //
-// Cases: the app's sample project (languages.ts), a prompt without newline
+// Cases: the app's sample project (the body.ts), a prompt without newline
 // and two lines of stdin (C++ and C), a compile error, and a program that
 // never ends, which the page stops by terminating the worker. The sample runs
 // twice: cold (empty browser cache) and warm (cached downloads and compiled
 // wasm), with timings. C++ exceptions, caught and uncaught, and the
 // sample's tests ({ type: 'test' }) in GoogleTest, doctest and Catch2,
-// passing and failing, and tests that mix two frameworks. RapidCheck
+// passing and failing, and tests that mix two frameworks. One test of two
+// selected in each framework (`test`; src/test-selection.js). RapidCheck
 // properties through each framework and from a main of their own, a holding
 // and a failing one with its shrunk counterexample. The default
 // target fetches exactly the files it fetched before the Linux targets
@@ -30,7 +31,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { chromium } from 'playwright-core';
 // The app's sample tests per framework (imports only types, so Node loads it).
-import { chooseTestFramework } from '../../app/src/lib/cpp-tests.ts';
+import { chooseTestFramework } from '../../modules/lang-cpp/tests.ts';
 // RapidCheck properties of the sample, shared with the app's export test.
 import { PROPERTIES, OWN_MAIN_PROPERTIES } from './tests/fixtures/properties.mjs';
 
@@ -81,10 +82,10 @@ const server = createServer(async (req, res) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-// The sample project of app/src/lib/languages.ts, read from there so the test
+// The sample project of modules/lang-cpp/body.ts, read from there so the test
 // runs exactly what a new project contains.
-const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
-const SAMPLE = sampleOf(languages, 'cpp');
+const { BODIES } = await import('../../modules/lang-cpp/body.ts');
+const SAMPLE = BODIES['cpp'].sample;
 
 const STDIN_CPP = {
     'main.cpp': `#include <iostream>
@@ -276,7 +277,7 @@ try {
     // line each, then end of file), optionally terminate it after the program
     // printed `stopAfter`. Resolves with what came back and when.
     await page.evaluate(() => {
-        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.cpp', failInstantiate = false, type = 'run' } = {}) =>
+        window.runProject = (files, { inputs = [], stopAfter = null, entry = 'main.cpp', failInstantiate = false, type = 'run', test = null, breakOnFailure = false } = {}) =>
             new Promise((done) => {
                 const t0 = performance.now();
                 const result = { stdout: '', stderr: '', code: null, phases: [], loading: {}, stdinRequests: 0, stdoutBeforeInput: [], terminated: false };
@@ -348,7 +349,7 @@ try {
                         }, 1000);
                     }
                 };
-                worker.postMessage({ type, files, entry, stdin: sab });
+                worker.postMessage({ type, files, entry, stdin: sab, ...(test ? { test } : {}), ...(breakOnFailure ? { breakOnFailure } : {}) });
             });
     });
 
@@ -379,7 +380,7 @@ try {
         `code=${warm.code} in ${warm.ms} ms, ${bytesSent} bytes transferred; ${timeline(warm)}`
     );
     // 2. The sample at every optimisation level the app offers (the -O line
-    //    of compile_flags.txt, app/src/lib/optimization.ts), and exceptions
+    //    of compile_flags.txt, modules/lang-cpp/levels.ts), and exceptions
     //    unoptimised: the same output at each.
     for (const level of ['-O0', '-O1', '-O3', '-Os', '-Oz']) {
         const r = await run({ ...SAMPLE, 'compile_flags.txt': `${SAMPLE['compile_flags.txt']}${level}\n` });
@@ -461,8 +462,8 @@ try {
     // report with the escapes removed, as the app's terminal shows it
     // (app/src/lib/ansi.ts); `raw` keeps them.
     const plain = (text) => text.replace(/\x1b\[[0-9;:]*[A-Za-z]/g, '');
-    const testRun = async (files) => {
-        const r = await run(files, { type: 'test' });
+    const testRun = async (files, opts = {}) => {
+        const r = await run(files, { type: 'test', ...opts });
         return { ...r, raw: r.stdout, stdout: plain(r.stdout) };
     };
     bytesSent = 0;
@@ -493,7 +494,7 @@ try {
     console.log(failing.stdout.trimEnd().replace(/^/gm, '    | '));
 
     // The same tests in doctest and in Catch2, as the app's framework choice
-    // writes them (app/src/lib/cpp-tests.ts), and a failing test in each.
+    // writes them (modules/lang-cpp/tests.ts), and a failing test in each.
     // Each run fetches its own framework's archive, and no other.
     for (const fw of ['doctest', 'catch2']) {
         const files = { ...SAMPLE, ...chooseTestFramework(SAMPLE, fw, SAMPLE).write };
@@ -615,6 +616,86 @@ TEST_CASE("throws something else") {
     );
     console.log(own.stderr.trimEnd().replace(/^/gm, '    ! '));
 
+    // One test of two (the run message's `test`; src/test-selection.js),
+    // in each framework: only the chosen one runs. Each project's other test
+    // is the one a selection that was not escaped, or not exact, would also
+    // run: a name the chosen one's starts with, and (doctest, Catch2) the
+    // part of the chosen name before its comma.
+    const PICK = {
+        gtest: {
+            'tests/pick_test.cpp': `#include <gtest/gtest.h>
+#include <cstdio>
+
+TEST(Pick, Chosen) { std::puts("chosen ran"); }
+TEST(Pick, ChosenToo) { std::puts("other ran"); }
+`,
+            test: { file: 'tests/pick_test.cpp', suite: 'Pick', name: 'Chosen' },
+            ran: /\[==========\] 1 test from 1 test suite ran\./,
+        },
+        doctest: {
+            'tests/pick_test.cpp': `#include <doctest/doctest.h>
+#include <cstdio>
+
+TEST_SUITE("pick") {
+TEST_CASE("chosen, with a comma") { std::puts("chosen ran"); }
+TEST_CASE("chosen") { std::puts("other ran"); }
+}
+`,
+            test: { file: 'tests/pick_test.cpp', suite: 'pick', name: 'chosen, with a comma' },
+            ran: /test cases: 1 \| 1 passed \| 0 failed/,
+        },
+        catch2: {
+            'tests/pick_test.cpp': `#include <catch2/catch_test_macros.hpp>
+#include <cstdio>
+
+TEST_CASE("chosen, [not a tag] \\"quoted\\" back\\\\slash 2 * 3 ~tilde") { std::puts("chosen ran"); }
+TEST_CASE("chosen") { std::puts("other ran"); }
+`,
+            test: { file: 'tests/pick_test.cpp', suite: null, name: 'chosen, [not a tag] "quoted" back\\slash 2 * 3 ~tilde' },
+            ran: /All tests passed \(\d+ assertions? in 1 test case\)|test cases: 1 \| 1 passed/,
+        },
+    };
+    for (const [fw, { test: chosen, ran, ...pick }] of Object.entries(PICK)) {
+        const project = { 'compile_flags.txt': SAMPLE['compile_flags.txt'], 'main.cpp': 'int main() {}\n', ...pick };
+        const all = await testRun(project);
+        check(`${FW_NAMES[fw]}: a project of two tests runs both`, all.code === 0 && /chosen ran/.test(all.stdout) && /other ran/.test(all.stdout), `code=${all.code} ${JSON.stringify(all.stdout.slice(-300))} ${JSON.stringify(all.stderr.slice(0, 300))}`);
+        const one = await testRun(project, { test: chosen });
+        check(
+            `${FW_NAMES[fw]}: one test selected (${JSON.stringify(chosen.name)}) runs alone, exit 0`,
+            one.code === 0 && /chosen ran/.test(one.stdout) && !/other ran/.test(one.stdout) && ran.test(one.stdout),
+            `code=${one.code} ${JSON.stringify(one.stdout.slice(-400))} ${JSON.stringify(one.stderr.slice(0, 300))}`
+        );
+        // A test that is not there: GoogleTest and Catch2 fail the run
+        // (GTEST_FAIL_IF_NO_TEST_SELECTED; Catch2's "No test cases
+        // matched"); doctest passes with none run.
+        const missing = await testRun(project, { test: { ...chosen, name: 'NotThere' } });
+        check(
+            `${FW_NAMES[fw]}: a selected test that does not exist runs nothing${fw === 'doctest' ? ' (doctest: and passes, 0 test cases)' : ', exit non-zero'}`,
+            !/chosen ran|other ran/.test(missing.stdout) && (fw === 'doctest' ? missing.code === 0 && /test cases: 0 \| 0 passed/.test(missing.stdout) : missing.code !== 0 && missing.code !== null),
+            `code=${missing.code} ${JSON.stringify(missing.stdout.slice(-300))}`
+        );
+        // Stop on failed assertion without the debugger: nothing to stop,
+        // so no hook is compiled and the run is a test run.
+        const nodebug = await testRun(project, { test: chosen, breakOnFailure: true });
+        check(
+            `${FW_NAMES[fw]}: breakOnFailure without the debugger compiles no hook`,
+            nodebug.code === 0 && !nodebug.phases.some(([t]) => t.includes('hook')) && /chosen ran/.test(nodebug.stdout) && !/other ran/.test(nodebug.stdout),
+            timeline(nodebug)
+        );
+    }
+    const badName = await testRun({ ...SAMPLE }, { test: { file: 'tests/geometry_test.cpp', suite: 'Geometry', name: 'Norm:Other' } });
+    check(
+        'a GoogleTest selection that is no identifier is refused before anything is compiled, exit 1',
+        badName.code === 1 && /^GoogleTest names a test by two identifiers/.test(badName.stderr) && !badName.phases.some(([t]) => t.startsWith('Compiling')),
+        JSON.stringify(badName.stderr)
+    );
+    const ownMainPick = await testRun({ 'main.cpp': 'int main() {}\n', 'tests/own.cpp': 'int main() { return 0; }\n' }, { test: { file: 'tests/own.cpp', suite: null, name: 'x' } });
+    check(
+        'one test asked of tests with their own main and no framework: refused, not run as the whole suite',
+        ownMainPick.code === 1 && /^One test can be run only with GoogleTest, doctest or Catch2/.test(ownMainPick.stderr),
+        JSON.stringify(ownMainPick.stderr)
+    );
+
     const none = await testRun({ 'main.cpp': 'int main() {}\n' });
     check('test mode without tests/: says so, exit 1', none.code === 1 && /No tests to run/.test(none.stderr), JSON.stringify(none.stderr.trim()));
 
@@ -695,27 +776,3 @@ TEST_CASE("throws something else") {
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
-
-/** The `sample` object literal of one language in languages.ts, evaluated:
- * template literals of plain text keyed by file name. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    // A file the sample shares with another (CPP_TIDY, CLANG_FORMAT) is
-    // named by its top-level `export const NAME = \`...\`;`, given here.
-    const shared = {};
-    for (const m of source.matchAll(/^export const ([A-Z_]+) = (`(?:\\[\s\S]|[^`\\])*`);$/gm)) shared[m[1]] = new Function(`return ${m[2]};`)();
-    return new Function(...Object.keys(shared), `return (${source.slice(start, i + 1)});`)(...Object.values(shared));
-}

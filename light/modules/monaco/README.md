@@ -23,6 +23,10 @@ files, the theme, and Monaco's editor services for a host that wants them.
 |---|---|
 | `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, code actions and their context (one the editor can make only in part is disabled, with the reason), code lenses, document links, folds, smart select, inlay hints, a refused rename's reason |
 | `internals.ts` | the one adapter over Monaco's internals, the things a host needs that Monaco has no public API for: replacing editor services (file labels, notifications, the bulk edit service, dialogs), the inline message, the quick pick, the references peek's tree, commands, undo steps across files, and the built-in themes' rules |
+| `bind.ts` | `MonacoBinding`, a runtime `LanguageSession`'s client in the host's Monaco: the client capabilities Monaco's features have (`monacoClientCapabilities`), every model's edits fed to the session as ranges by version, the documents opened, closed and moved as the host's core `Project` says its files were created, deleted and renamed, the server's diagnostics as markers, every language feature registered for the server's capabilities, Show Call Hierarchy, Go to Symbol in Workspace's quick pick, and a server's workspace edit applied through the bulk edit service (one undo step across files) |
+| `port.ts` | `monacoPort`, a Monaco editor as the core's `EditorPort` of kind `monaco` (`EditorKinds['monaco']`: its `native` is the editor; the caret its one capability) |
+| `call-hierarchy.ts` | a call hierarchy panel's rows from the server's answers, as plain data, and its labels |
+| `workspace-symbols.ts` | Go to Symbol in Workspace's rows, ranked and highlighted the same way for every server |
 | `services.ts` | what a host may turn on beside the language features, each a call returning its `dispose`: `referencesPeekKeys` (the references peek's keys as VS Code has them: the arrows preview each reference, Enter goes to it, every file's references shown), `remeasureWhenFontLoads` (the caret kept on the text when the editor's font is a web font that arrives late), `notificationsInline` (Monaco's notifications, which standalone Monaco only logs, shown in the focused editor; the callback for `startServices`) |
 
 Three things a conversion cannot make without the host's Monaco, and how
@@ -43,8 +47,10 @@ Three things a conversion cannot make without the host's Monaco, and how
   host's too, for the same reason: Light's app leaves out a `file:` link
   to a file it has no model for.
 
-The tests are `../tests/convert.test.mjs`, `../tests/internals.test.mjs`
-and `../tests/services.test.mjs`, run with the other modules'.
+The tests are `../tests/convert.test.mjs`, `../tests/internals.test.mjs`,
+`../tests/services.test.mjs`, `../tests/call-hierarchy.test.mjs` and
+`../tests/workspace-symbols.test.mjs`, run with the other modules'; the
+binding is driven by Light's e2e tests.
 
 ## Turning the editor on
 

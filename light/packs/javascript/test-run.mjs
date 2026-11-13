@@ -135,7 +135,7 @@ const page_preview = (files, entry = 'index.html') =>
 	);
 const test = async (files) => stripped(await page.evaluate((f) => window.runProgram('test', f, 'main.js'), files));
 
-// The sample project of app/src/lib/languages.ts, with its test file.
+// The sample project of modules/lang-javascript/body.ts, with its test file.
 const SAMPLE = {
 	'main.js': `// @ts-check
 import { Point, distance } from './geometry.js';

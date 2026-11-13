@@ -1,0 +1,46 @@
+{
+	"name": "@yukibana/lang-php",
+	"version": "0.1.0",
+	"private": true,
+	"description": "PHP in Yukibana Light: the language's description and its providers (cheap to import), its body (the sample project, its server's settings and its build settings) and what Monaco needs of it, each its own entry point.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tothambrus11/yukibana-cloud.git",
+		"directory": "light/modules/lang-php"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": {
+			"@yukibana/source": "./index.ts",
+			"types": "./dist/index.d.ts",
+			"default": "./dist/index.js"
+		},
+		"./body": {
+			"@yukibana/source": "./body.ts",
+			"types": "./dist/body.d.ts",
+			"default": "./dist/body.js"
+		},
+		"./download": {
+			"@yukibana/source": "./download.ts",
+			"types": "./dist/download.d.ts",
+			"default": "./dist/download.js"
+		},
+		"./monaco": {
+			"@yukibana/source": "./monaco.ts",
+			"types": "./dist/monaco.d.ts",
+			"default": "./dist/monaco.js"
+		}
+	},
+	"files": [
+		"dist",
+		"*.ts",
+		"README.md"
+	],
+	"dependencies": {
+		"@yukibana/std": "^0.1.0"
+	},
+	"peerDependencies": {
+		"@yukibana/core": "^0.1.0"
+	}
+}

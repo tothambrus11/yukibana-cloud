@@ -14,13 +14,15 @@
  * - run-session.ts: one runner of one source and the run it is doing,
  *   lazy, with named failures and a cancel that keeps a warm runner.
  * - run-pool.ts: a page's runners shared by its snippets, a handle per run.
+ * - language-session.ts: one language server and the documents it is kept
+ *   in sync with, fed by an editor's binding.
  *
- * Still to come: the language server and preview sessions, and the framed
- * transport.
+ * Still to come: the preview session, and the framed transport.
  * What it promises, and may import, is in ./README.md and is enforced by
  * ../boundaries.test.mjs.
  */
 export * from './packs.ts';
+export * from './language-session.ts';
 export * from './paths.ts';
 export * from './run-pool.ts';
 export * from './run-session.ts';

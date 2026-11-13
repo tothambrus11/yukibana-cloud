@@ -7,7 +7,10 @@ through Yukibana's runtime. It is step HY1 of the architecture plan: the
 proof that a host which bundles its own runner, as the Hylo site does, can
 use `@yukibana/protocol` and `@yukibana/runtime` as they are, and the
 sign-off that made the run API 0.x-stable (`light/modules/runtime/README.md`,
-"Stability").
+"Stability"). Since step 8 of `light/modules/DESIGN.md` the page runs its
+snippets through an instance of `@yukibana/core`, whose one provider
+(`@yukibana/std`'s `runProviderFrom`) hands each run to the same pool and
+the same runner; what the page shows is unchanged.
 
 ```sh
 npm ci
@@ -21,7 +24,8 @@ npm run build && npm run test:e2e   # the built page in Chromium, the real compi
 
 ```text
 index.html, src/main.ts   the page: snippets as a docs site renders them
-src/page.ts               one RunnerPool for the page; each snippet a handle, its panel its events
+src/page.ts               one RunnerPool and one core instance for the page (Hylo, run by
+                          std's runProviderFrom); each snippet a handle, its panel its events
 src/status.ts             the status line, a pure function of the run's state
 src/source.ts             Hylo's runner as a host-built source, its needs written beside it
 src/runner.worker.ts      the runner worker, bundled with ?worker; starts hylo-wasm's
@@ -37,7 +41,8 @@ page ── RunnerPool ── runner worker ─┬─ compiler worker (hylo-wasm
                                      └─ program worker  (hylo-wasm, ended by Stop)
 ```
 
-The page depends on `@yukibana/protocol` and `@yukibana/runtime` as
+The page depends on `@yukibana/core`, `@yukibana/protocol`,
+`@yukibana/runtime` and `@yukibana/std` as
 `file:` links to `light/modules`, and imports them by name, as the Hylo
 site will. A link is not an install: the page's Vite, TypeScript and unit
 tests set the `@yukibana/source` condition, so they read the modules'

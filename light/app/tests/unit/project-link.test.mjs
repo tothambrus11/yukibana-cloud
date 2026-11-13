@@ -6,8 +6,10 @@
 //   node --test tests/unit/project-link.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { base64url, CURRENT, decodeProject, encodeProject, fromBase64url, holdsProject, readDocument } from '../../src/lib/project-link.ts';
-import { MIRI_TARGETS } from '../../src/lib/rust-targets.ts';
+import { MIRI_TARGETS } from '../../../modules/lang-rust/targets.ts';
+import '../modules-hook.mjs';
+
+const { base64url, CURRENT, decodeProject, encodeProject, fromBase64url, holdsProject, readDocument } = await import('../../src/lib/project-link.ts');
 
 const project = {
 	v: 3,
@@ -106,7 +108,7 @@ test("Miri's target is kept in the link, and only one of Miri's targets is taken
 	await assert.rejects(decodeProject(jsonLink({ ...on, miri: 'wasm32' })), /miri must be/);
 });
 
-test("the schema's Miri targets are rust-targets.ts's", async () => {
+test("the schema's Miri targets are lang-rust/targets.ts's", async () => {
 	for (const { id } of MIRI_TARGETS) assert.equal((await decodeProject(jsonLink({ v: 3, language: 'rust', files: {}, miri: id }))).miri, id);
 });
 

@@ -714,7 +714,7 @@ all checks passed
 `Cross-Origin-Embedder-Policy: require-corp`, starts `runner.js` as a module
 worker in Chromium and drives the contract's messages and the stdin
 SharedArrayBuffer from the page. The sample project is read from
-`app/src/lib/languages.ts` as it is. The first run is cold (fresh browser
+`modules/lang-scala/body.ts` as it is. The first run is cold (fresh browser
 profile, every file downloaded raw from localhost); the last is warm (the HTTP
 disk cache, nothing fetched). Last run (output lines cut at 420 characters;
 the whole test took 58 s, load average about 5):

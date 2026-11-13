@@ -1,0 +1,5 @@
+{
+	"about": "What Light's first page load downloads, gzipped at level 9: every script the prerendered build/index.html preloads (modulepreload) and every stylesheet it links. tests/unit/bundle.test.mjs fails when a build's initial set is more than 1% above initialGzipBytes. Record a new number here only for a change that means to move it, and say why in its commit.",
+	"initialGzipBytes": 1242711,
+	"recordedAt": "main at 236a5de, before light/modules/core: the reference until a commit brings the initial set below it. Steps 2 to 7 grew the set within the 1% (1,250,316 B, 24 files, after the review of steps 6 and 7); step 6 once recorded its 1,249,399 B here, which made that growth the floor, and the review of steps 6 and 7 put main's number back. Step 9 made the download (its dialog, the app's composer, the zip and every language's export body), the debugger and the call hierarchy load when first used: 1,218,325 B in 39 files (from 1,250,360 B in 24), the number not moved here, since main's is the reference."
+}

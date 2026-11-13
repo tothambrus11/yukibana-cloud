@@ -49,7 +49,7 @@ export default defineConfig({
 		},
 	},
 	plugins: [isolateAllButTheDocsPage()],
-	// @yukibana/protocol and @yukibana/runtime are `file:` links to
+	// @yukibana/core, protocol, runtime and std are `file:` links to
 	// light/modules, so the page bundles their sources, which this condition
 	// names (their package.json); without it a link resolves to their dist/,
 	// which only light/modules/build.mjs writes. A site outside this
@@ -59,7 +59,7 @@ export default defineConfig({
 	// hylo-wasm's README: dependency optimisation would move the loader away from the compiler's files.
 	optimizeDeps: { exclude: ['@hylo-lang/hylo-wasm'] },
 	server: {
-		// @yukibana/protocol and @yukibana/runtime are links to light/modules (resolve, above).
+		// The @yukibana packages are links to light/modules (resolve, above).
 		fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../../modules', import.meta.url))] },
 	},
 });

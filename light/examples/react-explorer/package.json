@@ -1,0 +1,39 @@
+{
+	"name": "yukibana-example-react-explorer",
+	"private": true,
+	"version": "0.0.0",
+	"description": "A systems-programming article in React 19 whose code samples compile, run, explore and debug in the page: C++, Rust, Swift, Python and JavaScript through @yukibana/core instances, with reusable hooks (useInstance, useRun, useExplore, useDebug).",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "tsc -p . && tsc -p tsconfig.node.json",
+		"test": "node --test \"tests/*.test.mjs\"",
+		"test:e2e": "node test.mjs"
+	},
+	"dependencies": {
+		"@yukibana/core": "file:../../modules/core",
+		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
+		"@yukibana/lang-javascript": "file:../../modules/lang-javascript",
+		"@yukibana/lang-python": "file:../../modules/lang-python",
+		"@yukibana/lang-rust": "file:../../modules/lang-rust",
+		"@yukibana/lang-swift": "file:../../modules/lang-swift",
+		"@yukibana/monaco": "file:../../modules/monaco",
+		"@yukibana/protocol": "file:../../modules/protocol",
+		"@yukibana/runtime": "file:../../modules/runtime",
+		"@yukibana/std": "file:../../modules/std",
+		"monaco-editor": "0.57.0",
+		"react": "19.2.9",
+		"react-dom": "19.2.9"
+	},
+	"devDependencies": {
+		"@types/node": "24.19.2",
+		"@types/react": "19.2.18",
+		"@types/react-dom": "19.2.7",
+		"@vitejs/plugin-react": "6.0.5",
+		"playwright-core": "1.63.0",
+		"typescript": "6.0.3",
+		"vite": "8.3.5"
+	}
+}

@@ -3,22 +3,35 @@
   Step Into, Step Out, Stop), where the program stopped and why, its call
   stack (a row shows that frame's line and variables) and the selected
   frame's variables as a tree, each opened on demand. Breakpoints are set
-  in the editors' margin (debug.svelte.ts, decorate); this lists them.
+  in the editors' margin (breakpoints.svelte.ts, decorate); this lists them.
+  Where the language's runner stops at a failed assertion (std's
+  `failureStop`), it offers "Stop on failed assertion" for the next
+  debugged test run.
+  It loads with the debugger, on the first Debug or when the panel is
+  first opened (dock.ts).
 -->
 <script lang="ts">
-	import type { Variable } from '../debug.svelte';
+	import { debug, debugTest, debugTestCase, failureStop } from '@yukibana/std';
+	import type { Debugger, Variable } from '../debug.svelte';
 	import type { Workspace } from '../workspace.svelte';
+	import { subjectOf, yukibana } from '../yukibana';
 	import { languageOf } from '../languages';
 
-	let { workspace }: { workspace: Workspace } = $props();
+	let { workspace, dbg }: { workspace: Workspace; dbg: Debugger } = $props();
 
-	const dbg = $derived(workspace.debugger);
 	const status = $derived(dbg.status);
 	const stopped = $derived(status.kind === 'stopped');
-	const language = $derived(languageOf(workspace.language));
+	// Offered as the language's providers say (modules/lang-<pack>/index.ts), as the top bar does.
+	const subject = $derived(subjectOf(workspace.language));
+	const hasDebug = $derived(yukibana().has(subject, debug));
+	const debugAvailable = $derived(yukibana().availability(subject, debug, workspace.snapshot()));
+	const hasDebugTest = $derived(yukibana().has(subject, debugTest));
+	const debugTestAvailable = $derived(yukibana().availability(subject, debugTest, workspace.snapshot()));
+	const hasDebugTestCase = $derived(yukibana().has(subject, debugTestCase));
+	const hasFailureStop = $derived(yukibana().has(subject, failureStop));
 	/** Opened variables, by the path of names from their scope. */
 	let open = $state<Record<string, boolean>>({});
-	const breakpoints = $derived(Object.entries(dbg.breakpoints).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
+	const breakpoints = $derived(Object.entries(workspace.breakpoints.lines).flatMap(([path, lines]) => lines.map((line) => ({ path, line }))));
 
 	const REASONS: Record<string, string> = {
 		breakpoint: 'Paused at a breakpoint',
@@ -27,7 +40,8 @@
 		entry: 'Paused at the start',
 		exception: 'The program crashed',
 		signal: 'The program crashed',
-		'function breakpoint': 'Paused at a breakpoint',
+		// The only function breakpoints the app sets are a language's failure stop (std's `failureStop`, workspace.debug).
+		'function breakpoint': 'Paused at a failed assertion',
 	};
 
 	async function toggle(key: string, v: Variable) {
@@ -79,9 +93,14 @@
 			<button class="step" title="Step Out (Shift+F11)" aria-label="Step Out" disabled={!stopped} onclick={() => dbg.stepOut()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13V3" /><path d="M7.5 7.5 12 3l4.5 4.5" /><circle class="solid" cx="12" cy="18.5" r="2" /></svg></button>
 			<button class="stop" title="Stop debugging" aria-label="Stop" onclick={() => dbg.end()}><svg viewBox="0 0 24 24" aria-hidden="true"><rect class="solid" x="6" y="6" width="12" height="12" rx="2" /></svg></button>
 		{:else}
-			<button class="start" disabled={!language.debugs || workspace.runner.busy} onclick={() => workspace.debug()} title={language.debugs ? 'Run the project under the debugger (F5)' : `${language.label} has no debugger yet`}>
+			<button class="start" disabled={!hasDebug || debugAvailable.kind === 'unavailable' || workspace.runner.busy} onclick={() => workspace.debug()} title={!hasDebug ? `${languageOf(workspace.language).label} has no debugger yet` : debugAvailable.kind === 'available' ? 'Run the project under the debugger (F5)' : debugAvailable.reason}>
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M7 5.8v12.4a.8.8 0 0 0 1.2.7l9.3-6.2a.8.8 0 0 0 0-1.4L8.2 5.1a.8.8 0 0 0-1.2.7z" /></svg> Debug
 			</button>
+			{#if hasDebugTest}
+				<button class="start tests" disabled={debugTestAvailable.kind === 'unavailable' || workspace.runner.busy} onclick={() => workspace.debug('test')} title={debugTestAvailable.kind === 'available' ? "Run the project's tests under the debugger" : debugTestAvailable.reason}>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path class="solid" d="M7 5.8v12.4a.8.8 0 0 0 1.2.7l9.3-6.2a.8.8 0 0 0 0-1.4L8.2 5.1a.8.8 0 0 0-1.2.7z" /></svg> Debug tests
+				</button>
+			{/if}
 		{/if}
 		<span class="state" role="status">
 			{#if status.kind === 'starting'}
@@ -89,7 +108,7 @@
 			{:else if status.kind === 'running'}
 				Running
 			{:else if status.kind === 'stopped'}
-				{REASONS[status.reason] ?? 'Paused'}{status.description && status.reason !== 'breakpoint' && status.reason !== 'step' ? `: ${status.description}` : ''}
+				{REASONS[status.reason] ?? 'Paused'}{status.description && !['breakpoint', 'step', 'function breakpoint'].includes(status.reason) ? `: ${status.description}` : ''}
 			{:else if status.kind === 'ended'}
 				{status.text}
 			{/if}
@@ -99,12 +118,21 @@
 	<div class="body">
 		{#if !dbg.active && status.kind !== 'ended'}
 			<p class="empty">
-				{#if language.debugs}
+				{#if hasDebugTestCase}
+					Click left of a line number to set a breakpoint, then Debug, or Debug tests for a breakpoint in tests/, or Debug test above one test to run it alone: the program stops there, and its call stack and variables show here.
+				{:else if hasDebugTest}
+					Click left of a line number to set a breakpoint, then Debug, or Debug tests for a breakpoint in tests/: the program stops there, and its call stack and variables show here.
+				{:else if hasDebug}
 					Click left of a line number to set a breakpoint, then Debug: the program stops there, and its call stack and variables show here.
 				{:else}
 					The debugger runs C, C++ and Swift programs for now.
 				{/if}
 			</p>
+		{/if}
+		{#if !dbg.active && hasFailureStop}
+			<label class="option" title="Debug tests and Debug test pause where an assertion fails; Continue goes on with the tests">
+				<input type="checkbox" bind:checked={workspace.stopOnFailure} /> Stop on failed assertion
+			</label>
 		{/if}
 
 		{#if stopped}
@@ -148,7 +176,7 @@
 							<button class="bp" onclick={() => workspace.show(bp.path, { startLineNumber: bp.line, startColumn: 1, endLineNumber: bp.line, endColumn: 1 })}>
 								<span class="dot" aria-hidden="true"></span>{bp.path}:{bp.line}
 							</button>
-							<button class="remove" title="Remove this breakpoint" aria-label="Remove breakpoint {bp.path}:{bp.line}" onclick={() => dbg.toggleBreakpoint(bp.path, bp.line)}>
+							<button class="remove" title="Remove this breakpoint" aria-label="Remove breakpoint {bp.path}:{bp.line}" onclick={() => workspace.breakpoints.toggle(bp.path, bp.line)}>
 								<span class="codicon codicon-close"></span>
 							</button>
 						</li>
@@ -248,6 +276,15 @@
 	.note {
 		margin: 0.5rem 0.9rem;
 		color: var(--gray-3);
+	}
+	.option {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		min-height: 1.75rem;
+		margin: 0.4rem 0.9rem;
+		color: var(--gray-2);
+		cursor: pointer;
 	}
 	h3 {
 		margin: 0.6rem 0.8rem 0.2rem;

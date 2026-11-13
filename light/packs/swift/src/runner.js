@@ -47,7 +47,7 @@ import {
     runFrontendCommand, runWasi, textSink, usesMacroPlugins, wasiDefs, writeFile, writeProject,
 } from './toolchain.js';
 import { ENV_FILE, TARGETS, linuxTarget, settingsOf } from './target.js';
-import { dropOwnModuleImportWarnings, importsTesting, importsXCTest, isTestFile, planTestRun, projectModuleName } from './xctest.js';
+import { dropOwnModuleImportWarnings, importsTesting, importsXCTest, isTestFile, planTestRun, projectModuleName, testRuns } from './xctest.js';
 
 const post = (msg) => self.postMessage(msg);
 const phase = (text) => post({ type: 'phase', text });
@@ -229,10 +229,11 @@ async function run({ files, entry, stdin, options, debug }, testing) {
     const linked = readFile(root, '/build/main.wasm');
     remove(root, '/build');
     // Debugging: LLDB gets the program as linked; this worker runs it
-    // instrumented, stopping where LLDB asks (packs/lldb/README.md).
+    // instrumented, stopping where LLDB asks (packs/lldb/README.md). A test
+    // run is debugged the same way: its program is the test main.
     let stub = null;
     let program;
-    if (debug && !testing) {
+    if (debug) {
         phase('Preparing the debugger');
         const { debugProgram } = await import(new URL('../lldb/runtime.js', import.meta.url).href);
         try {
@@ -272,9 +273,12 @@ async function run({ files, entry, stdin, options, debug }, testing) {
     const err = textSink((text) => post({ type: 'stderr', text: testing ? relative(text) : text }));
     const input = new Stdin(stdin, flush);
     // A test run runs the program once per testing library (planTestRun),
-    // as `swift test` does; it fails if any of them fails.
+    // as `swift test` does; it fails if any of them fails. A debugged one
+    // runs one library, and says so if that left one out (testRuns).
+    const { runs, note } = testing ? testRuns(plan, !!debug) : { runs: [['main']], note: null };
+    if (note) post({ type: 'stderr', text: note });
     let status = 0;
-    for (const args of testing ? plan.runs : [['main']]) {
+    for (const args of runs) {
         try {
             code = await runWasi(program, {
                 args, env: [], root: own, stdin: input, stdout: out, stderr: err,
