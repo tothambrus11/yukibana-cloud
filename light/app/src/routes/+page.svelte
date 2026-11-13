@@ -601,7 +601,7 @@
 	.meter span {
 		display: block;
 		height: 100%;
-		background: var(--yk-accent-strong);
+		background: var(--yk-info);
 		transition: width 0.2s;
 	}
 	.spinner {
@@ -609,7 +609,7 @@
 		width: 0.75rem;
 		height: 0.75rem;
 		border: 1.5px solid var(--yk-line-strong);
-		border-top-color: var(--yk-accent-strong);
+		border-top-color: var(--yk-ink);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -626,8 +626,17 @@
 		height: 0.5rem;
 		border-radius: 50%;
 	}
+	/* Ready: a check in the ok colour, never the colour alone (and not green, which is for actions). */
 	.ok {
-		background: var(--yk-accent-strong);
+		width: auto;
+		height: auto;
+		border-radius: 0;
+		color: var(--yk-ok);
+		font-size: 0.85rem;
+		line-height: 1;
+	}
+	.ok::before {
+		content: '✓';
 	}
 	.bad {
 		background: var(--yk-danger);

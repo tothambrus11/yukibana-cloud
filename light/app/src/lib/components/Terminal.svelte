@@ -139,12 +139,14 @@
 		cursor: pointer;
 		user-select: text;
 	}
+	/* A place is a link into the editor; on hover its underline turns solid, in the text's own colour. */
 	.place:hover {
-		color: var(--yk-accent-strong);
+		color: var(--yk-ink);
 		text-decoration-style: solid;
 	}
+	/* What was typed, in info blue: told apart from the output, and not green, which is for actions. */
 	.stdin {
-		color: var(--yk-accent-strong);
+		color: var(--yk-info);
 	}
 	.info {
 		color: var(--yk-soft);
@@ -170,11 +172,12 @@
 		border-radius: 0.35rem;
 		background: var(--yk-sunken);
 	}
+	/* The program is waiting: an ink edge, and the placeholder says so in words. */
 	.input.waiting {
-		border-color: var(--yk-accent-strong);
+		border-color: var(--yk-ink);
 	}
 	.prompt {
-		color: var(--yk-accent-strong);
+		color: var(--yk-info);
 		font-family: var(--font-mono);
 	}
 	.input input {

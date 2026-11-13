@@ -62,7 +62,7 @@
 							{#if !files.length}
 								<span class="muted">not installed</span>
 							{:else if offline.arePacksCached(packs) && sizes.missing.files === 0}
-								<span class="ok">available offline</span>
+								<span class="ok"><span aria-hidden="true">✓</span> available offline</span>
 							{:else}
 								<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
 								<button class="button yk-btn yk-btn--secondary" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
@@ -81,7 +81,7 @@
 					<button class="button yk-btn yk-btn--secondary" onclick={() => offline.cancel()}>Cancel</button>
 				</div>
 			{:else if everything.missing.files === 0}
-				<span class="ok">Everything is available offline ({mb(everything.all.size)} MB stored).</span>
+				<span class="ok"><span aria-hidden="true">✓</span> Everything is available offline ({mb(everything.all.size)} MB stored).</span>
 			{:else}
 				<button class="button yk-btn yk-btn--primary download-all" onclick={() => void offline.download('everything', offline.everything)}>Download everything</button>
 				<span class="muted">{mb(everything.missing.transfer)} MB to download, {mb(everything.missing.size)} MB stored, every language and the editor's parts</span>
@@ -176,7 +176,7 @@
 	.meter span {
 		display: block;
 		height: 100%;
-		background: var(--yk-accent-strong);
+		background: var(--yk-info);
 		transition: width 0.2s;
 	}
 	/* A `yk-btn` (the package's buttons.css) draws it; this is its size. */
@@ -185,8 +185,9 @@
 		padding: 0 0.7rem;
 		font-size: 0.8rem;
 	}
+	/* Done: the ok colour and a check, never the colour alone. */
 	.ok {
-		color: var(--yk-accent-strong);
+		color: var(--yk-ok);
 	}
 	.muted {
 		color: var(--yk-soft);

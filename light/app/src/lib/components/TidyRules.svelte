@@ -296,9 +296,10 @@
 		line-height: 1.3rem;
 		white-space: nowrap;
 	}
+	/* Information about the check, so info blue: green is for actions. */
 	.badge.fix {
-		background: var(--yk-accent-bg);
-		color: var(--yk-accent-strong);
+		background: var(--yk-info-bg);
+		color: var(--yk-info);
 	}
 	.badge.slow {
 		background: var(--yk-warn-bg);

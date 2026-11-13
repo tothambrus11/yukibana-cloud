@@ -419,9 +419,10 @@
 		color: var(--yk-ink);
 		font: inherit;
 	}
-	.search input:focus {
-		border-color: var(--yk-accent);
-		outline: none;
+	/* The ink ring, as every field's focus (green is for actions); the list's padding leaves it room. */
+	.search input:focus-visible {
+		outline: var(--focus-ring);
+		outline-offset: var(--yk-focus-offset);
 	}
 	.options {
 		flex: 1 1 auto;
@@ -451,7 +452,7 @@
 	}
 	.options:focus-visible .option.active,
 	.search:focus-within + .options .option.active {
-		outline: 1px solid var(--yk-accent);
+		outline: 1px solid var(--yk-ink);
 		outline-offset: -1px;
 	}
 	.option[aria-disabled='true'] {
@@ -463,17 +464,18 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
+	/* The letters the search matched: bold ink, not a colour, since green is for actions. */
 	mark {
 		background: none;
-		color: var(--yk-accent-strong);
-		font-weight: 600;
+		color: var(--yk-ink);
+		font-weight: 700;
 	}
 	.tick {
 		flex: none;
 		width: 0.85rem;
 		height: 0.85rem;
 		fill: none;
-		stroke: var(--yk-accent-strong);
+		stroke: var(--yk-ok);
 		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;

@@ -91,10 +91,10 @@ function addStyles(): void {
 .yk-view-file { flex: 0 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; color: var(--yk-ink); font-family: var(--font-mono); }
 .yk-view-file > span { direction: ltr; unicode-bidi: isolate; }
 .yk-view-chips { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
-.yk-view-state { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; color: var(--yk-accent-strong); }
+.yk-view-state { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; color: var(--yk-ok); }
 .yk-view-state.error { color: var(--yk-danger); }
 .yk-view-state.busy { color: var(--label); }
-.yk-view-state.busy::before { content: ''; width: 0.6rem; height: 0.6rem; border: 1.5px solid var(--yk-line-strong); border-top-color: var(--yk-accent-strong); border-radius: 50%; animation: yk-view-spin 0.8s linear infinite; }
+.yk-view-state.busy::before { content: ''; width: 0.6rem; height: 0.6rem; border: 1.5px solid var(--yk-line-strong); border-top-color: var(--yk-ink); border-radius: 50%; animation: yk-view-spin 0.8s linear infinite; }
 @keyframes yk-view-spin { to { transform: rotate(360deg); } }
 .yk-view-nav { flex: none; display: inline-flex; align-items: center; gap: 0.2rem; font-family: var(--font-mono); }
 .yk-view-nav button, .yk-view-more { display: inline-flex; flex: none; align-items: center; gap: 0.25rem; min-height: 1.5rem; padding: 0 0.4rem; border: 1px solid var(--yk-line); border-radius: 0.35rem; background: var(--yk-sunken); color: var(--label); font: inherit; white-space: nowrap; cursor: pointer; }
@@ -108,9 +108,9 @@ function addStyles(): void {
 .yk-view-toggles .chip { min-height: 1.4rem; }
 /* A menu keeps its check column (its width is reserved, so nothing moves); the strip's chips show on by their fill alone. */
 .yk-view-menu .toggle::before { content: ''; display: inline-block; width: 0.7rem; text-align: center; }
-.yk-view-menu .toggle[aria-pressed='true']::before { content: '✓'; color: var(--yk-accent-strong); }
+.yk-view-menu .toggle[aria-pressed='true']::before { content: '✓'; color: var(--yk-ok); }
 .yk-view-progress { flex: none; height: 2px; overflow: hidden; border-bottom: 1px solid var(--yk-line); box-sizing: content-box; }
-.yk-view-progress > span { display: block; height: 100%; width: 100%; background: var(--yk-accent-strong); opacity: 0; transform-origin: left; transform: scaleX(0); transition: transform 0.2s, opacity 0.3s; }
+.yk-view-progress > span { display: block; height: 100%; width: 100%; background: var(--yk-info); opacity: 0; transform-origin: left; transform: scaleX(0); transition: transform 0.2s, opacity 0.3s; }
 .yk-view-progress.busy > span { opacity: 1; }
 .yk-view-progress.indeterminate > span { transform: scaleX(0.3); animation: yk-view-slide 1.2s ease-in-out infinite; }
 @keyframes yk-view-slide { from { translate: -30% 0; } to { translate: 100% 0; } }

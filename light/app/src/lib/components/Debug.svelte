@@ -199,12 +199,16 @@
 		opacity: 0.4;
 		cursor: default;
 	}
+	/* A secondary button: the bar's Run is the view's one primary action, so this is not green. */
 	.toolbar .start {
-		border-color: var(--yk-line);
+		border-color: var(--control-border);
+		background: var(--yk-surface);
+		color: var(--yk-ink);
 		padding: 0 0.6rem;
 	}
-	/* Drawn like the header's icons (stroked, round), and coloured as in
-	   VS Code so each reads at a glance: go green, steps blue, stop red. */
+	/* Drawn like the header's icons (stroked, round), and coloured so each
+	   reads at a glance: go in ink, pause amber, steps blue, stop red. Not
+	   VS Code's green go: green is for the primary action. */
 	.toolbar svg {
 		width: 1rem;
 		height: 1rem;
@@ -220,7 +224,7 @@
 	}
 	.toolbar .go,
 	.toolbar .start svg {
-		color: var(--yk-accent-strong);
+		color: var(--yk-ink);
 	}
 	.toolbar .pause {
 		color: var(--yk-warn);

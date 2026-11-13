@@ -300,7 +300,7 @@ html.yk-root {
 .menu-item .check {
 	flex: none;
 	width: 1rem;
-	color: var(--yk-accent-strong);
+	color: var(--yk-ok);
 	text-align: center;
 }
 .menu-item .hint {
