@@ -6,9 +6,9 @@
 // plan, RR2).
 //
 //   node light/modules/build.mjs                    build every published module
-//   node light/modules/build.mjs --pack <dir>       ...and `npm pack` each into <dir>
+//   node light/modules/build.mjs --pack <dir>       ...and `pnpm pack` each into <dir>
 //
-// It uses the app's installed TypeScript (light/app: npm ci), as the
+// It uses the app's installed TypeScript (light: pnpm install), as the
 // modules' type-check does, since the modules have no node_modules of their
 // own.
 //
@@ -23,7 +23,7 @@
 // compile its neighbour's sources into its own dist, and tsc never rewrites
 // a path. Every built file is then read back, and an import that is neither
 // a file of the same package nor a declared dependency fails the build.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -153,7 +153,7 @@ export function builtProblems(ts, dir, manifest) {
 		.filter((entry) => entry.isFile() && /\.(js|d\.ts)$/.test(entry.name))
 		.map((entry) => join(entry.parentPath, entry.name));
 	for (const path of files) {
-		const shown = relative(dirname(dir), path);
+		const shown = relative(dirname(dir), path).split(sep).join('/');
 		for (const specifier of specifiersOf(ts, path, readFileSync(path, 'utf8'))) {
 			if (specifier.startsWith('.')) {
 				const target = resolve(dirname(path), specifier);
@@ -284,19 +284,32 @@ export function build(name, ts = typescript()) {
 }
 
 /**
- * Packs the module `name`, built, into `into` with `npm pack`, and returns
- * the tarball's path. npm decides the file name from the manifest
+ * Runs the package manager `command` (pnpm, npm) on `args`, as
+ * execFileSync does, and returns what it returns. On Windows a package
+ * manager is a .cmd script, which Node starts only through a shell, so
+ * there the command line is cmd.exe's, each argument quoted unless it is
+ * plainly a word, a flag or a path.
+ */
+export function runTool(command, args, options) {
+	if (process.platform !== 'win32') return execFileSync(command, args, options);
+	const quoted = (arg) => (/^[\w@+=:,./\\-]+$/.test(arg) ? arg : `"${arg.replaceAll('"', '""')}"`);
+	return execSync([command, ...args].map(quoted).join(' '), options);
+}
+
+/**
+ * Packs the module `name`, built, into `into` with `pnpm pack`, and returns
+ * the tarball's path. pnpm decides the file name from the manifest
  * (yukibana-protocol-0.1.0.tgz).
  */
 export function pack(name, into) {
 	mkdirSync(into, { recursive: true });
-	const output = execFileSync('npm', ['pack', '--json', '--pack-destination', resolve(into)], {
+	const output = runTool('pnpm', ['pack', '--json', '--pack-destination', resolve(into)], {
 		cwd: join(here, name),
 		encoding: 'utf8',
 		stdio: ['ignore', 'pipe', 'inherit'],
 	});
-	const [{ filename }] = JSON.parse(output);
-	return join(resolve(into), filename);
+	const { filename } = JSON.parse(output);
+	return resolve(into, filename);
 }
 
 /** Builds every published module, after checking their manifests together. */

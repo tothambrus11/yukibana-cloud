@@ -3,16 +3,16 @@
 # glue.paths only, so an edit here rebuilds no toolchain. Defines functions
 # only.
 
-# npm_deps <dir>: installs <dir>'s package-lock.json into its node_modules
-# (npm ci) unless node_modules/.yk-lock holds that lock file's SHA-256, so a
+# pnpm_deps <dir>: installs <dir>'s pnpm-lock.yaml into its node_modules
+# (pnpm install --frozen-lockfile) unless node_modules/.yk-lock holds that lock file's SHA-256, so a
 # changed lock (esbuild's version, say) reaches the build instead of the
-# node_modules a previous one installed. npm's output goes to stderr: the
+# node_modules a previous one installed. pnpm's output goes to stderr: the
 # glue's stdout is the list of files it made.
-npm_deps() {
+pnpm_deps() {
   local want
-  want=$(sha256sum < "$1/package-lock.json" | cut -d' ' -f1)
+  want=$(sha256sum < "$1/pnpm-lock.yaml" | cut -d' ' -f1)
   [ "$(cat "$1/node_modules/.yk-lock" 2>/dev/null)" != "$want" ] || return 0
-  (cd "$1" && npm ci --no-audit --no-fund >&2)
+  (cd "$1" && pnpm install --frozen-lockfile --filter . >&2)
   echo "$want" > "$1/node_modules/.yk-lock"
 }
 

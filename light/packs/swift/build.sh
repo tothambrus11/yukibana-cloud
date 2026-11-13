@@ -45,7 +45,7 @@
 # unpacked; its 1.2 GB download is deleted once unpacked) and the SwiftPM
 # build tree. First build about 15 minutes on 3
 # cores (8 of them compiling swift-syntax, 3 in wasm-opt); afterwards a
-# change to server/ rebuilds in about 3 (mostly wasm-opt). Needs curl, tar, node 22, npm.
+# change to server/ rebuilds in about 3 (mostly wasm-opt). Needs curl, tar, node 22, pnpm.
 #
 #   JOBS=3 ./build.sh
 set -euo pipefail
@@ -137,7 +137,7 @@ fi
 
 step "node tools (binaryen, esbuild)"
 cd "$HERE"
-[ -x node_modules/.bin/wasm-opt ] && [ -d node_modules/@bjorn3/browser_wasi_shim ] || npm ci --cache "$CACHE/npm" --no-audit --no-fund
+[ -x node_modules/.bin/wasm-opt ] && [ -d node_modules/@bjorn3/browser_wasi_shim ] || pnpm install --frozen-lockfile --filter .
 
 step "swift build (swift-syntax + server/, wasm32-unknown-wasip1, release)"
 cd "$HERE/server"

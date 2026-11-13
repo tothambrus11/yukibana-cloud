@@ -15,7 +15,7 @@
 //
 // Runs after `vite build` and before offline-manifest.mjs (package.json,
 // "build"), which lists the file among the lazy ones.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,11 +24,16 @@ const app = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8'));
 const roots = [...Object.keys(pkg.dependencies ?? {}), 'svelte', '@sveltejs/kit'];
 
-/** The directory of an installed package, looked up from `from` as Node does; null if absent. */
+/**
+ * The directory of an installed package, looked up from `from` as Node does,
+ * and with its symbolic links resolved, as Node resolves them: pnpm's
+ * node_modules/<name> is a link into node_modules/.pnpm, beside which (and
+ * nowhere else) the package's own dependencies are. Null if absent.
+ */
 function locate(name, from) {
 	for (let dir = from; ; dir = dirname(dir)) {
 		const candidate = join(dir, 'node_modules', name);
-		if (existsSync(join(candidate, 'package.json'))) return candidate;
+		if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
 		if (dirname(dir) === dir) return null;
 	}
 }

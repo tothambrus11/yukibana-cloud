@@ -57,8 +57,8 @@ case "${1:-}" in
     printf '%s\n' light/app/src/lib/languages.ts light/app/src/lib/cpp-tests.ts
     exit 0 ;;
   --setup)
-    npm_deps "$HERE"
-    (cd "$HERE" && npx --no-install playwright-core install --with-deps chromium)
+    pnpm_deps "$HERE"
+    (cd "$HERE" && pnpm exec playwright-core install --with-deps chromium)
     sudo apt-get update -q
     sudo apt-get install -y -q --no-install-recommends qemu-user-static
     exit 0 ;;
@@ -68,7 +68,7 @@ esac
 
 [ -f "$HERE/../../app/static/packs/cpp/server.js" ] ||
   { echo "test.sh: no assembled pack in app/static/packs/cpp: run ./build.sh first" >&2; exit 1; }
-npm_deps "$HERE"
+pnpm_deps "$HERE"
 if [ -z "${CHROMIUM:-}" ]; then
   CHROMIUM="$(cd "$HERE" && node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")"
   [ -x "$CHROMIUM" ] || CHROMIUM=/opt/pw-browsers/chromium

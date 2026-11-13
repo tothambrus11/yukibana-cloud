@@ -8,7 +8,7 @@
 # ~/.cache/yukibana-packs)/go. Needs curl, tar, node and an x86-64 Linux
 # machine (the Go release below is that machine's). About 15 minutes from
 # nothing, most of it brotli; a minute after that. The browser tests are
-# `npm test` (test.mjs, test-run.mjs).
+# `pnpm test` (test.mjs, test-run.mjs).
 set -euo pipefail
 
 # The Go release: its binary distribution, which holds the sources too.
@@ -106,7 +106,7 @@ rm -f "$OUT"/std/*.tsv "$OUT"/std/*.list "$OUT"/std/*.all
 
 # 4. The workers, bundled with browser_wasi_shim; PACK_SIZES gives the
 #    downloads' progress bars their totals.
-[ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && npm ci --no-audit --no-fund)
+[ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && pnpm install --frozen-lockfile --filter .)
 size() { stat -c %s "$OUT/$1"; }
 SIZES="{\"gotool.wasm\":$(size gotool.wasm),\"compile.wasm\":$(size compile.wasm),\"link.wasm\":$(size link.wasm),\"std/index.json\":$(size std/index.json)}"
 # NODE_PATH: code bundled from ../kit (README.md there) imports its packages

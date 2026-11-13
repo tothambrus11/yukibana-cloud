@@ -2,7 +2,7 @@
 # Builds the Python pack (basedpyright, browser build) from upstream source
 # into ../../app/static/packs/python/. Idempotent: each step is skipped when
 # its output exists in the cache. Needs git, node 22, pnpm (the version the
-# upstream lockfile pins is fetched with npx if pnpm differs), python3 and uv.
+# upstream lockfile pins is fetched with pnpm dlx if pnpm differs), python3 and uv.
 set -euo pipefail
 
 BASEDPYRIGHT_TAG=v1.40.2
@@ -20,7 +20,7 @@ NICE="nice -n 10"
 mkdir -p "$CACHE" "$OUT"
 
 pnpm_() {
-    if [ "$(pnpm --version 2>/dev/null || true)" = "$PNPM_VERSION" ]; then $NICE pnpm "$@"; else $NICE npx -y "pnpm@$PNPM_VERSION" "$@"; fi
+    if [ "$(pnpm --version 2>/dev/null || true)" = "$PNPM_VERSION" ]; then $NICE pnpm "$@"; else $NICE pnpm dlx "pnpm@$PNPM_VERSION" "$@"; fi
 }
 
 # 1. Upstream source at a pinned commit.
