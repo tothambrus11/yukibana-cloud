@@ -30,7 +30,7 @@
 		"vite": "8.3.5"
 	},
 	"dependencies": {
-		"@yukibana/design": "github:tothambrus11/Yukibana#db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb&path:packages/design",
+		"@yukibana/design": "github:tothambrus11/Yukibana#7238f4b27983dcc3bb52b0eade17d8e61c6272c9&path:packages/design",
 		"arktype": "2.2.9",
 		"dockview": "8.6.1",
 		"monaco-editor": "0.57.0",

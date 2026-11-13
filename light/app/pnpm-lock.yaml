@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@yukibana/design':
-        specifier: github:tothambrus11/Yukibana#db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb&path:packages/design
-        version: https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb#path:packages/design
+        specifier: github:tothambrus11/Yukibana#7238f4b27983dcc3bb52b0eade17d8e61c6272c9&path:packages/design
+        version: https://codeload.github.com/tothambrus11/Yukibana/tar.gz/7238f4b27983dcc3bb52b0eade17d8e61c6272c9#path:packages/design
       arktype:
         specifier: 2.2.9
         version: 2.2.9
@@ -230,8 +230,8 @@ packages:
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
 
-  '@yukibana/design@https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb#path:packages/design':
-    resolution: {gitHosted: true, integrity: sha512-ULKTatUWef9ZMKxT4p6evmmRg4UDoC4yAj/StnXT1AP3nQbDDuLo91K6K0X7BEtTn76rRzeA7vUnrEuuX6EaKg==, path: packages/design, tarball: https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb}
+  '@yukibana/design@https://codeload.github.com/tothambrus11/Yukibana/tar.gz/7238f4b27983dcc3bb52b0eade17d8e61c6272c9#path:packages/design':
+    resolution: {gitHosted: true, integrity: sha512-IS+FxHXXUmm9twbcozOyXXvtTaWI5gfZLk90SqJ+m2uTbFpSvEydHB2zb8DlYKav5hcxPlyr6NQEC9WcHdCDPg==, path: packages/design, tarball: https://codeload.github.com/tothambrus11/Yukibana/tar.gz/7238f4b27983dcc3bb52b0eade17d8e61c6272c9}
     version: 0.0.0-dev
 
   acorn@8.19.0:
@@ -674,7 +674,7 @@ snapshots:
   '@types/trusted-types@2.0.7':
     optional: true
 
-  '@yukibana/design@https://codeload.github.com/tothambrus11/Yukibana/tar.gz/db6c1ef71ebc9fc9f1a1c307a6c1d6cc5a7c1bfb#path:packages/design': {}
+  '@yukibana/design@https://codeload.github.com/tothambrus11/Yukibana/tar.gz/7238f4b27983dcc3bb52b0eade17d8e61c6272c9#path:packages/design': {}
 
   acorn@8.19.0: {}
 
