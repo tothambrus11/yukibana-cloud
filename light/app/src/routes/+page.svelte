@@ -223,10 +223,10 @@
 		{/if}
 
 		{#if views.length}
-			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
+			<div class="view-group yk-segmented" role="group" aria-label="Compiler output" data-fold="44">
 				{#each views as kind (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
-					<button class="btn yk-btn yk-btn--secondary view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
+					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
 						<span class="long">{KINDS[kind].title}</span><span class="short">{KINDS[kind].short}</span>
 					</button>
 				{/each}
@@ -484,35 +484,21 @@
 			transition: none;
 		}
 	}
+	/*
+	 * The compiler views' toggles: the design system's segmented control
+	 * (`.yk-segmented`, segmented.css), buttons with aria-pressed. It draws
+	 * the outlined row, one divider between two buttons, a pressed one in ink
+	 * on all four sides and the focus ring above its neighbour. Light gives
+	 * it only the bar's sizes (`.btn`'s height, and these), so it lines up
+	 * with the buttons beside it.
+	 */
 	.view-group {
-		display: inline-flex;
 		flex: none;
 	}
-	.view-group .view {
+	.view-group > .view {
 		gap: 0.25rem;
 		padding: 0 0.65rem;
-		border-radius: 0;
-	}
-	.view-group .view:first-child {
-		border-radius: var(--yk-radius-sm) 0 0 var(--yk-radius-sm);
-	}
-	.view-group .view:last-child {
-		border-radius: 0 var(--yk-radius-sm) var(--yk-radius-sm) 0;
-	}
-	/* One line between two buttons, drawn once: by the later button's left border. Overlapping the
-	   borders with a negative margin instead let the later button paint over the earlier one's, which came
-	   out thinner, or vanished, wherever the bar sat on a fraction of a pixel. */
-	.view-group .view:not(:last-child) {
-		border-right-width: 0;
-	}
-	/* A pressed button is outlined in ink on all four sides; its right side is its neighbour's divider. */
-	.view-group .view[aria-pressed='true'] + .view {
-		border-left-color: var(--yk-ink);
-	}
-	/* The focus ring is drawn outside the button, so it is lifted above the neighbour that would cover it. */
-	.view-group .view:focus-visible {
-		position: relative;
-		z-index: 1;
+		font-size: 0.85rem;
 	}
 	:global(.view-group .short) {
 		display: none;

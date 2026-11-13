@@ -9,6 +9,7 @@
 	import '@yukibana/design/css/base/core.css';
 	import '@yukibana/design/css/base/buttons.css';
 	import '@yukibana/design/css/base/check.css';
+	import '@yukibana/design/css/base/segmented.css';
 	import '@yukibana/design/css/base/toast.css';
 	import '../app.css';
 
