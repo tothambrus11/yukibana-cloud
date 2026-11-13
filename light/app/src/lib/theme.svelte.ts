@@ -43,10 +43,17 @@ export const VIEW_TEXT: Record<Theme, Hex[]> = {
  * Defines the two editor themes with the page's Monaco; `theme.start()` does,
  * once. The widgets' colours are the design system's tokens
  * (design/tokens.css) as hex: `--yk-surface` and `--yk-line` for widgets,
- * `--yk-info-bg` for the chosen suggestion, `--yk-ink` for the cursor and the
- * focus border (the ink ring's colour), `--yk-info` faintly for the
- * selection. Green, the accent, is kept for actions, links and the current
- * tab's line.
+ * `--yk-ink` for the cursor, the focus border (the ink ring's colour) and the
+ * chosen suggestion's text, `--yk-info` for its matched letters and faintly
+ * for the selection. Green, the accent, is kept for actions, links and the
+ * current tab's line.
+ *
+ * The chosen suggestion's fill is `--yk-info`'s hue a step darker than
+ * `--yk-info-bg` (oklch 91% 0.04 245 light, 30% 0.05 245 dark): `--yk-info-bg`
+ * itself is 1.14:1 against the widget and the row is hard to find. The fill is
+ * 1.3:1 against the widget; on it the ink is 13:1 (light) and 11:1 (dark), the
+ * matched letters 4.6:1 and 7.4:1. Monaco's own text there is white, which
+ * on a light fill cannot be read, so both themes set it.
  */
 function defineThemes(): void {
 	monaco.editor.defineTheme('yukibana-dark', {
@@ -64,7 +71,10 @@ function defineThemes(): void {
 			'editorHoverWidget.border': '#262c34',
 			'editorSuggestWidget.background': '#12161d',
 			'editorSuggestWidget.border': '#262c34',
-			'editorSuggestWidget.selectedBackground': '#152839',
+			'editorSuggestWidget.selectedBackground': '#163045',
+			'editorSuggestWidget.selectedForeground': '#e8ebf0',
+			'editorSuggestWidget.selectedIconForeground': '#e8ebf0',
+			'editorSuggestWidget.focusHighlightForeground': '#87c6f2',
 			'list.hoverBackground': '#1d222a',
 			focusBorder: '#e8ebf0',
 			'editorCursor.foreground': '#e8ebf0',
@@ -87,7 +97,10 @@ function defineThemes(): void {
 			'editorHoverWidget.border': '#dadee4',
 			'editorSuggestWidget.background': '#ffffff',
 			'editorSuggestWidget.border': '#dadee4',
-			'editorSuggestWidget.selectedBackground': '#e6f2fd',
+			'editorSuggestWidget.selectedBackground': '#cce5fb',
+			'editorSuggestWidget.selectedForeground': '#141b25',
+			'editorSuggestWidget.selectedIconForeground': '#141b25',
+			'editorSuggestWidget.focusHighlightForeground': '#1f689d',
 			'list.hoverBackground': '#ebeef3',
 			focusBorder: '#141b25',
 			'editorCursor.foreground': '#141b25',
