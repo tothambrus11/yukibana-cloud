@@ -1,8 +1,8 @@
-// What the built app is made of (build/_app, written by `npm run build`): it
+// What the built app is made of (build/_app, written by `pnpm run build`): it
 // carries Yukibana's own language client and not Monaco's (src/lib/lsp/client.ts
 // says why), which `editor.main` would bring in as `monaco.lsp`.
 //
-//   npm run build && node --test tests/unit/bundle.test.mjs
+//   pnpm run build && node --test tests/unit/bundle.test.mjs
 //
 // Without a build there is nothing to read, so the test is skipped and says
 // so; with BUNDLE_REQUIRED=1 (CI, after its build step) a missing build fails.
@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
 
 const app = fileURLToPath(new URL('../../build/_app/', import.meta.url));
 const built = existsSync(app);
-if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${app} does not exist: run npm run build first.`);
-const skip = built ? false : `${app} does not exist: run npm run build first`;
+if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${app} does not exist: run pnpm run build first.`);
+const skip = built ? false : `${app} does not exist: run pnpm run build first`;
 
 /** Every uncompressed file under `dir`, as paths; the .br and .gz copies say the same thing. */
 function files(dir) {

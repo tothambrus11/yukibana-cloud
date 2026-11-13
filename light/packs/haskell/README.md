@@ -137,8 +137,8 @@ In memory each worker holds the unpacked file system and GHC: about
 
 ```sh
 ./build.sh          # writes app/static/packs/haskell/
-npm install && node test.mjs
-npm run test:unit   # the server's pure parts (outline, workspace symbols, inlay hints, positions), no GHC
+pnpm install && node test.mjs
+pnpm run test:unit   # the server's pure parts (outline, workspace symbols, inlay hints, positions), no GHC
 ```
 
 GHC's wasm toolchain takes some 3 GB installed, so the two heavy parts are

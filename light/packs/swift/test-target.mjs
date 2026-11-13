@@ -1,5 +1,5 @@
 // swift.env and the Linux argument vectors (src/target.js,
-// src/frontend-args.js): pure, so node runs it with no npm install, like
+// src/frontend-args.js): pure, so node runs it with no pnpm install, like
 // test-emit.mjs. test-linux.mjs runs the vectors.
 
 import { test } from 'node:test';

@@ -454,7 +454,7 @@ Every step that is skipped instead has a stamp of its inputs.
 | `eh/.built`, `testfw/.built` | the script, libs' `pins.sh` (and the compilers', whose LLVM the runtime is), `build-lib.sh`, `libs-lib.sh` (and `src/uncaught.cpp`) |
 | `sanitizers/.built` | `sanitizer_inputs`: the script, the libs, emsdk and musl units' pins, `build-lib.sh`, `libs-lib.sh`, the patch, every file of `src/sanitizer-rt/`, `src/targets.json` |
 | `testfw-linux/.built` | `linux_testfw_inputs`: the scripts, libs' `pins.sh`, `build-lib.sh`, `libs-lib.sh`, `toolchain.js`, `targets.js(on)`, `cc-cross.wasm` and `cc-cross.js`, `sysroot.tar.gz`, the three `include.tar` |
-| `node_modules` | `package-lock.json` (`npm_deps`, `glue-lib.sh`) |
+| `node_modules` | `pnpm-lock.yaml` (`pnpm_deps`, `glue-lib.sh`) |
 | `qemu-wasm/venv` | the python and the meson and setuptools pins |
 | `qemu-wasm/work/{target,src}` | the dependencies' pins, Emscripten, and the text of `build_deps` |
 | `qemu-wasm/work/build-run` | Emscripten and where it is installed (`emsdk_tree_made_by`; configured once, its build.ninja calls emcc by path) and the dependencies' record; the QEMU tree is checked by commit and patch-id |
@@ -536,7 +536,7 @@ about 55 minutes, the rest a minute; plus downloads (LLVM source 152 MB,
 emsdk about 1.7 GB unpacked) on a first run.
 
 A change to the patch's clangd parts rebuilds in about 7 minutes (two
-files and the link). `npm ci && node test.mjs` serves `app/static` over
+files and the link). `pnpm install && node test.mjs` serves `app/static` over
 http, starts the worker in headless Chromium (`/opt/pw-browsers/chromium`)
 exactly as the app does, in the two sessions above, and checks everything
 listed under "Tested above".

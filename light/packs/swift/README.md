@@ -458,7 +458,7 @@ corpus takes 6.5 s, of which 4.2 s is compiling its many generic assertions.
 
 ### The subset check
 
-`npm run test:xctest` (`node tools/xctest-subset.mjs`, after `./build.sh`)
+`pnpm run test:xctest` (`node tools/xctest-subset.mjs`, after `./build.sh`)
 needs the Swift 6.4.1 Linux toolchain that `build.sh` already downloads. That
 toolchain ships the real XCTest. The check fetches swift-corelibs-xctest at
 `swift-6.4.1-RELEASE` with git into the pack cache. It runs in about 6 s,
@@ -1211,7 +1211,7 @@ a checksum. A new release gets a new tag (`release_tag`), so the assets
 pinned here stay as they are; then put its name and the two SHA-256 values
 in `TC_ARTIFACTS`.
 
-Then `npm ci` (binaryen 132.0.0 for swift-ls.wasm's `wasm-opt`, esbuild,
+Then `pnpm install` (binaryen 132.0.0 for swift-ls.wasm's `wasm-opt`, esbuild,
 playwright-core, `@bjorn3/browser_wasi_shim` 0.4.2), `swift build` of
 `server/`, strip and `wasm-opt -Oz` of swift-ls.wasm, `llvm-objcopy
 --strip-all` of the module, the linker and the plugins,
@@ -1275,7 +1275,7 @@ swift-syntax.
   `Behaviour.expected` (the report of the real XCTest).
 * `tools/build-xctest.mjs` (builds swift-xctest.tar with
   swift-frontend-lsp.wasm), `tools/xctest-subset.mjs` (the subset check,
-  `npm run test:xctest`).
+  `pnpm run test:xctest`).
 * `tools/trim-sysroot.mjs`, `tools/bench.mjs` (timings of the language
   server, the compiler and the linker under Node).
 * `build.sh`, `compress.mjs`, `test.mjs`, `test-run.mjs`.

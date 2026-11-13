@@ -2,7 +2,7 @@
 // and what it does to its compiler and program workers, with stand-ins for
 // both.
 //
-//   node --test tests/hylo-runner.test.mjs      (npm test runs every file)
+//   node --test tests/hylo-runner.test.mjs      (pnpm test runs every file)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CANCELLED_EXIT, COMPILER_LABEL, HyloRunner, TRAPPED_EXIT, UNSUPPORTED_EXIT, inputOf, sourcesOf } from '../src/hylo-runner.ts';

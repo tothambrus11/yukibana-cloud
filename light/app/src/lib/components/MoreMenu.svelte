@@ -15,7 +15,7 @@
   checks; otherwise a ResizeObserver writes the tiers the bar is under into
   the header's `data-tier` (`"70 56 44"`). Chromium always takes the
   first; the layout test's `fallback` scenario (tests/e2e-layout.mjs,
-  `npm run test:e2e:layout`) tells a page container queries are missing
+  `pnpm run test:e2e:layout`) tells a page container queries are missing
   and checks that the second folds the bar control for control as the
   first does. No CI workflow runs that test yet, so a change to either set
   is checked only when someone runs it.

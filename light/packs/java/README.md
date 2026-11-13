@@ -307,7 +307,7 @@ inputs:
 
 ```sh
 ./build.sh            # into ../../app/static/packs/java/
-npm ci                # playwright-core, for the tests
+pnpm install          # playwright-core, for the tests
 node test.mjs         # the language server: 37 checks
 node test-run.mjs     # Run and Test: 26 checks
 ```

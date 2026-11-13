@@ -10,11 +10,11 @@ sign-off that made the run API 0.x-stable (`light/modules/runtime/README.md`,
 "Stability").
 
 ```sh
-npm ci
-npm run dev                      # http://localhost:5173
-npm run check                    # TypeScript, strict, the modules' settings
-npm test                         # the runner and the page in Node, workers stood in for
-npm run build && npm run test:e2e   # the built page in Chromium, the real compiler
+pnpm install                     # its own pnpm-lock.yaml, in Light's workspace
+pnpm run dev                     # http://localhost:5173
+pnpm run check                   # TypeScript, strict, the modules' settings
+pnpm test                        # the runner and the page in Node, workers stood in for
+pnpm run build && pnpm run test:e2e   # the built page in Chromium, the real compiler
 ```
 
 ## How it is put together
@@ -38,7 +38,7 @@ page ── RunnerPool ── runner worker ─┬─ compiler worker (hylo-wasm
 ```
 
 The page depends on `@yukibana/protocol` and `@yukibana/runtime` as
-`file:` links to `light/modules`, and imports them by name, as the Hylo
+`link:`s to `light/modules`, and imports them by name, as the Hylo
 site will. A link is not an install: the page's Vite, TypeScript and unit
 tests set the `@yukibana/source` condition, so they read the modules'
 sources and need no build, where the Hylo site installs the built tarballs
@@ -63,8 +63,8 @@ and in Chromium with the real compiler (`tests/e2e.mjs`):
 
 The docs page is served without cross-origin isolation everywhere: by
 `tests/e2e.mjs`, which serves it from an origin that sends no COOP/COEP
-headers (as GitHub Pages serves the Hylo site), and by `npm run dev` and
-`npm run preview`, which send them for every response but the docs page's.
+headers (as GitHub Pages serves the Hylo site), and by `pnpm run dev` and
+`pnpm run preview`, which send them for every response but the docs page's.
 Only `fixture.html`, whose reading program needs a SharedArrayBuffer, is
 isolated. The runner declares that it needs no isolation, so that is the
 page it is checked on: a page served isolated once hid a runner that named

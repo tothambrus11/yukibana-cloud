@@ -12,7 +12,7 @@ declares it needs from its host.
   page, a worker, the runner frame and Node, and `tsconfig.json` holds it
   to that: it checks protocol with the language alone and
   `platform.d.ts`, so a use of `document`, `window`, `fetch`, `process`
-  or `Buffer` fails `npm run check`. The two that touch the world
+  or `Buffer` fails `pnpm run check`. The two that touch the world
   touch only what they are handed: `Connection` posts to the worker its
   caller gives it (it never creates one), and the stdin functions read
   and write the buffer they are given.
@@ -37,7 +37,7 @@ declares it needs from its host.
 
 Its tests are in `../tests/` (outside the module, which may not import
 `node:test`): `node --test "light/modules/**/*.test.mjs"`, or
-`npm run test:unit` in `light/app`.
+`pnpm run test:unit` in `light/app`.
 
 ## Allowed imports
 

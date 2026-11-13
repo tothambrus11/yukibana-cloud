@@ -1,5 +1,5 @@
 // The project's target: swift.env's TARGET. Pure, no imports beyond the
-// argument vectors, so that node runs its tests without an npm install.
+// argument vectors, so that node runs its tests without a pnpm install.
 
 import { LINUX_TARGETS } from './frontend-args.js';
 
