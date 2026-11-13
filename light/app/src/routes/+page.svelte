@@ -115,13 +115,13 @@
 	const serverFull = $derived(workspace.clientState.kind === 'running' ? workspace.clientState.server : '');
 	const mb = (bytes: number) => (bytes / 1048576).toFixed(1);
 
-	/** What the toast above the status bar says, briefly; null: nothing. */
+	/** What the toast above the status bar says, for the design system's three seconds (--yk-motion-toast); null: nothing. */
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout> | undefined;
 	function say(message: string) {
 		toast = message;
 		clearTimeout(toastTimer);
-		toastTimer = setTimeout(() => (toast = null), 3500);
+		toastTimer = setTimeout(() => (toast = null), 3000);
 	}
 
 	/**
@@ -304,7 +304,7 @@
 <Export bind:this={exportDialog} {workspace} />
 <Licenses bind:this={licensesDialog} />
 
-<div class="toast" role="status" aria-live="polite" class:shown={toast !== null}>{toast ?? ''}</div>
+<div class="toast yk-toast" role="status" aria-live="polite" class:shown={toast !== null}><span>{toast ?? ''}</span></div>
 
 <footer class="status-bar">
 	<button class="server" popovertarget="server-menu" aria-haspopup="menu" title={serverFull || 'Language server'}>
@@ -463,31 +463,21 @@
 		fill: currentColor;
 		stroke: none;
 	}
+	/*
+	 * The design system's toast (`.yk-toast`, toast.css): the dark pill, one
+	 * line, bottom centre. Light lifts it above the status bar and fades it
+	 * in and out in 120ms, without moving it; with reduced motion it simply
+	 * appears and goes.
+	 */
 	.toast {
-		position: fixed;
-		/* Above the status bar, centred, and never wider than the window less its margins. */
 		bottom: 2.75rem;
-		left: 50%;
 		z-index: 20;
-		max-width: calc(100vw - 2rem);
-		padding: 0.55rem 0.9rem;
-		border: 1px solid var(--yk-accent);
-		border-radius: 0.5rem;
-		background: var(--yk-sunken);
-		box-shadow: 0 0.5rem 1.5rem oklch(0% 0 0 / 0.3);
-		color: var(--yk-ink);
-		font-size: 0.85rem;
-		text-align: center;
 		opacity: 0;
 		pointer-events: none;
-		transform: translate(-50%, 0.5rem);
-		transition:
-			opacity 0.2s,
-			transform 0.2s;
+		transition: opacity var(--yk-motion-fast) var(--yk-motion-ease);
 	}
 	.toast.shown {
 		opacity: 1;
-		transform: translate(-50%, 0);
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.toast {
