@@ -174,7 +174,8 @@ html.yk-root {
 	height: 1.1rem;
 	fill: none;
 	stroke: currentColor;
-	stroke-width: 2;
+	/* The design system's thin outline icons (1.5, Lucide's style). */
+	stroke-width: var(--yk-icon-stroke);
 	stroke-linecap: round;
 	stroke-linejoin: round;
 }
