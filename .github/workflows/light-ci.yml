@@ -63,9 +63,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  PACK_CACHE: /home/runner/.cache/yukibana-packs
-
 jobs:
   # Which jobs already passed on exactly these inputs. The app's tests also
   # read the C++ pack's sources (its toolchain flags, target table and test
@@ -95,6 +92,9 @@ jobs:
           name: light-app
           paths: |
             light/app
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             light/packs/cpp/src
             light/packs/cpp/tests/fixtures
@@ -105,6 +105,9 @@ jobs:
           name: light-javascript
           paths: |
             light/app
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             light/packs/javascript
             .github/workflows/light-ci.yml
@@ -172,6 +175,9 @@ jobs:
           name: light-hylo-example
           paths: |
             light/examples/hylo
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
       # What a download is made of: the generators, the samples, and what
@@ -203,20 +209,25 @@ jobs:
         with:
           persist-credentials: false
 
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: light/app/package-lock.json
+          cache: pnpm
+          cache-dependency-path: light/app/pnpm-lock.yaml
 
       - name: Install
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile --filter .
 
       - name: Type-check
-        run: npm run check
+        run: pnpm run check
 
       - name: Unit tests
-        run: npm run test:unit
+        run: pnpm run test:unit
 
       - name: Download test (Node languages)
         run: node tests/export.mjs javascript typescript web p5 p5-global
@@ -239,30 +250,31 @@ jobs:
         with:
           persist-credentials: false
 
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
       # Node 22: the runner's test report is Node 22's, and test-run.mjs
       # compares it line for line with this machine's `node --test` (Node 24
-      # reports a failing todo differently). No npm cache from setup-node:
-      # it asks npm at the repository root, whose package.json (the IDE)
-      # refuses Node 22; the pack caches its own npm downloads below.
+      # reports a failing todo differently). The pnpm store it caches holds
+      # the app's packages and the pack's, which the pack's build.sh installs.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: |
+            light/app/pnpm-lock.yaml
+            light/packs/javascript/pnpm-lock.yaml
 
       # The app's playwright-core installs the Chromium that the pack's tests
       # and the e2e both launch (as $CHROMIUM).
       - name: Install the app and Chromium
         working-directory: light/app
         run: |
-          npm ci --no-audit --no-fund
-          npx playwright-core install --with-deps chromium
+          pnpm install --frozen-lockfile --filter .
+          pnpm exec playwright-core install --with-deps chromium
           echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
-
-      # The pack's npm cache: its build.sh installs from it.
-      - uses: actions/cache@v6
-        with:
-          path: ${{ env.PACK_CACHE }}/javascript
-          key: ci-javascript-${{ hashFiles('light/packs/javascript/package-lock.json') }}
-          restore-keys: ci-javascript-
 
       - name: Build the pack
         working-directory: light/packs/javascript
@@ -270,15 +282,15 @@ jobs:
 
       - name: Type-check the pack
         working-directory: light/packs/javascript
-        run: npm run typecheck
+        run: pnpm run typecheck
 
       - name: Pack tests
         working-directory: light/packs/javascript
-        run: npm test
+        run: pnpm test
 
       - name: Build the app
         working-directory: light/app
-        run: npm run build
+        run: pnpm run build
 
       # The unit job has no build, so this one test is skipped there; here it
       # runs on the build just made, and a missing build fails it.
@@ -313,7 +325,7 @@ jobs:
           persist-credentials: false
 
       # Node 22, the version these tests are run with locally. They import
-      # only the packs' own sources and node's built-ins: no npm install.
+      # only the packs' own sources and node's built-ins: no pnpm install.
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -376,30 +388,35 @@ jobs:
         with:
           persist-credentials: false
 
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: light/examples/hylo/package-lock.json
+          cache: pnpm
+          cache-dependency-path: light/examples/hylo/pnpm-lock.yaml
 
       # Its own playwright-core installs the Chromium the end-to-end test launches.
       - name: Install the example and Chromium
         run: |
-          npm ci --no-audit --no-fund
-          npx playwright-core install --with-deps chromium
+          pnpm install --frozen-lockfile --filter .
+          pnpm exec playwright-core install --with-deps chromium
           echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
 
       - name: Type-check
-        run: npm run check
+        run: pnpm run check
 
       - name: Unit tests (the runner and the page, workers stood in for)
-        run: npm test
+        run: pnpm test
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
       - name: End-to-end (Chromium, the real Hylo compiler)
-        run: npm run test:e2e
+        run: pnpm run test:e2e
 
       - uses: ./.github/actions/once
         with:

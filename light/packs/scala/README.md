@@ -645,7 +645,7 @@ Scala.js runtime, and this pack's own files.
 
 ## Test
 
-`npm install && node test.mjs` (after `./build.sh`) serves `app/static` over
+`pnpm install && node test.mjs` (after `./build.sh`) serves `app/static` over
 http, starts `server.js` as a module worker in Chromium
 (`/opt/pw-browsers/chromium`), and drives it as the app's client does. Last run (lines cut at 400 characters):
 

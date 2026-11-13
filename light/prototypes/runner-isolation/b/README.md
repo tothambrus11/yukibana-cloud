@@ -27,7 +27,7 @@ keeps the in-page worker, because it holds no credentials.
 
 ```sh
 node measure.mjs --packs ../../../app/static/packs   # javascript pack built; starts serve.py itself
-npx tsc -p .                                       # strict check of the JSDoc-typed transport
+pnpm dlx --package=typescript tsc -p .             # strict check of the JSDoc-typed transport
 ```
 
 ## The API shape this forces

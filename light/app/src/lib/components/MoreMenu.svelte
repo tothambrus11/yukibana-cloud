@@ -15,7 +15,7 @@
   checks; otherwise a ResizeObserver writes the tiers the bar is under into
   the header's `data-tier` (`"70 56 44"`). Chromium always takes the
   first; the layout test's `fallback` scenario (tests/e2e-layout.mjs,
-  `npm run test:e2e:layout`) tells a page container queries are missing
+  `pnpm run test:e2e:layout`) tells a page container queries are missing
   and checks that the second folds the bar control for control as the
   first does. No CI workflow runs that test yet, so a change to either set
   is checked only when someone runs it.
@@ -87,7 +87,7 @@
 	}
 </script>
 
-<button bind:this={button} class="icon-btn more" popovertarget="more-menu" aria-haspopup="menu" aria-expanded={open} aria-label="More" title="More">
+<button bind:this={button} class="icon-btn yk-icon-btn more" popovertarget="more-menu" aria-haspopup="menu" aria-expanded={open} aria-label="More" title="More">
 	<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle cx="19" cy="12" r="1.3" /></svg>
 </button>
 <Popover bind:this={popover} id="more-menu" label="More" role="menu" class="more-menu" ontoggle={(o) => (open = o)}>

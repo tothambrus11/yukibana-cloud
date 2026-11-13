@@ -1,7 +1,7 @@
 # Packs @yukibana/protocol and @yukibana/runtime (light/modules) into the
 # tarballs a host outside this repository installs, a documentation site's
 # playground above all (step MP1 of the architecture plan): each built to
-# dist/*.js and .d.ts by light/modules/build.mjs, then `npm pack`.
+# dist/*.js and .d.ts by light/modules/build.mjs, then `pnpm pack`.
 #
 # Pushing a light-modules-v<version> tag publishes them as the GitHub
 # release of that tag, with the two .tgz files as its assets, once the tag
@@ -47,19 +47,22 @@ jobs:
         with:
           persist-credentials: false
 
-      # 24: setup-node's npm cache runs npm at the repository root, whose
-      # package.json (the IDE's) requires Node 24 (devEngines).
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: light/app/package-lock.json
+          cache: pnpm
+          cache-dependency-path: light/app/pnpm-lock.yaml
 
       - name: Install the app's dependencies
-        run: npm ci --no-audit --no-fund
+        run: pnpm install --frozen-lockfile --filter .
 
       - name: Type-check the modules
-        run: npx tsc -p ../modules/protocol && npx tsc -p ../modules/runtime
+        run: pnpm exec tsc -p ../modules/protocol && pnpm exec tsc -p ../modules/runtime
 
       - name: The modules' tests, the installed packages' among them
         run: node --test "../modules/**/*.test.mjs"

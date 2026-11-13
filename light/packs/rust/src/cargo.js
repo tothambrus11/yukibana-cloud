@@ -1,7 +1,7 @@
 // The project as Cargo sees it, and the archives the Rust pack ships: pure
 // functions shared by the runner and the compiler output worker (runner.js,
 // explorer.js). No I/O and no imports, so node runs their tests (test-mir.mjs)
-// with no npm install.
+// with no pnpm install.
 
 const decoder = new TextDecoder();
 

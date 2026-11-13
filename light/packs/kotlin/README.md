@@ -268,7 +268,7 @@ lists every one of these files in its Licences dialog.
 
 ```sh
 ./build.sh            # into ../../app/static/packs/kotlin/
-node test.mjs         # the language server (playwright-core: npm install)
+node test.mjs         # the language server (playwright-core: pnpm install)
 node test-run.mjs     # the runner: Run, stdin, errors, Test, Stop
 ```
 

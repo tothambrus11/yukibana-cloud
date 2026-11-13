@@ -27,19 +27,19 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="$HERE/../../app/static/packs/linux"
-npm_deps() {
+pnpm_deps() {
   local want
-  want=$(sha256sum < "$HERE/package-lock.json" | cut -d' ' -f1)
+  want=$(sha256sum < "$HERE/pnpm-lock.yaml" | cut -d' ' -f1)
   [ "$(cat "$HERE/node_modules/.yk-lock" 2>/dev/null)" != "$want" ] || return 0
-  (cd "$HERE" && npm ci --no-audit --no-fund >&2)
+  (cd "$HERE" && pnpm install --frozen-lockfile --filter . >&2)
   echo "$want" > "$HERE/node_modules/.yk-lock"
 }
 
 case "${1:-}" in
   --inputs) exit 0 ;;
   --setup)
-    npm_deps
-    (cd "$HERE" && npx --no-install playwright-core install --with-deps chromium)
+    pnpm_deps
+    (cd "$HERE" && pnpm exec playwright-core install --with-deps chromium)
     sudo apt-get update -q
     sudo apt-get install -y -q --no-install-recommends cpio
     exit 0 ;;
@@ -48,7 +48,7 @@ case "${1:-}" in
 esac
 
 [ -f "$OUT/vm.js" ] || { echo "test.sh: no assembled pack at $OUT: run ./build.sh first" >&2; exit 1; }
-npm_deps
+pnpm_deps
 if [ -z "${CHROMIUM:-}" ]; then
   CHROMIUM="$(cd "$HERE" && node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")"
   [ -x "$CHROMIUM" ] || CHROMIUM=/opt/pw-browsers/chromium

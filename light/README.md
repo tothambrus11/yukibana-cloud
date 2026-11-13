@@ -20,13 +20,34 @@ serve.py              a static server that sends the headers the app wants
 
 ## Trying it
 
-On Linux (Ubuntu 24.04 is what CI runs), with git, curl, zstd and Node 22
-or later:
+On Linux (Ubuntu 24.04 is what CI runs), with git, curl, zstd, Node 22
+or later and pnpm (`package.json` names its version):
 
 ```sh
 ./setup.sh --latest              # the app's dependencies and every pack, prebuilt
-cd app && npm run dev            # http://localhost:5173
+cd app && pnpm run dev           # http://localhost:5173
 ```
+
+Light is a pnpm workspace (`pnpm-workspace.yaml`): the app, the examples and
+the packs, each with its own `pnpm-lock.yaml`. `pnpm install` here installs
+them all; `pnpm install --filter ./app` (or `--filter .` inside one) installs
+one. It resolves only versions published at least 14 days ago
+(`minimumReleaseAge`), and refuses a lockfile that holds a younger one.
+
+The look is the Yukibana design system, `@yukibana/design`, a git
+dependency of the app pinned to one commit of the Yukibana repository
+(`app/package.json`: `github:Yukibana-Ed/Yukibana#<commit>&path:packages/design`).
+The app imports its `tokens.css`, its `fonts.css` (the three typefaces, whose
+OFL licences `licenses/app.txt` lists) and the parts of its base styles it
+uses (`app/src/routes/+layout.svelte`); Light's own styles come after them.
+A git dependency has no publish date, so `minimumReleaseAge` does not apply
+to it. To move to a newer commit of the design system, once it is merged:
+
+1. change the commit in `app/package.json`, the full 40-character hash;
+2. `pnpm install --filter .` in `app/`, which updates `app/pnpm-lock.yaml`;
+3. check: `pnpm run check`, `pnpm run build`, and look at the app in both
+   themes (the package's README says what changed and why);
+4. commit `package.json` and `pnpm-lock.yaml` together.
 
 `--latest` is what makes this minutes on any branch: CI stores pack builds
 from `main` only, so on another branch (or a local commit) a pack's exact
@@ -52,7 +73,7 @@ reported in the app as not installed, and the rest still work.
 For the built site, as it is deployed:
 
 ```sh
-cd app && npm run build
+cd app && pnpm run build
 python3 ../serve.py build        # http://localhost:8000
 ```
 
@@ -332,13 +353,13 @@ language to make it so, and **Download everything**, with its size shown
 before it starts and progress in megabytes while it runs. A build lists
 every file it can serve, with sizes and the sha256 of each, in
 `offline.json`, written by `app/scripts/offline-manifest.mjs` at the end of
-`npm run build`. The page downloads into the same caches the service worker
+`pnpm run build`. The page downloads into the same caches the service worker
 serves from, checking each file against its sha256, and asks the browser
 for persistent storage first.
 
 **Licences**, in the status bar, opens the Licences dialog: the licences
 of the npm packages the app is built from (`licenses/app.txt`, written by
-`app/scripts/licenses.mjs` during `npm run build`), and each installed
+`app/scripts/licenses.mjs` during `pnpm run build`), and each installed
 pack's `LICENSE*`, `NOTICE*` and `SOURCES*` files, found in `offline.json`.
 A pack that ships GPL code says in `SOURCES.txt` where its corresponding
 source is (the Kotlin pack's GraalVM: `packs/kotlin/graalvm/`).
@@ -481,7 +502,7 @@ and that Auto reload off waits for Reload;
 that the HTML and CSS workers load only when needed; that Chromium finds
 the app installable; and that, once Python is made available offline, a
 reload without a network starts the app and runs an edited program.
-`app/tests/e2e-targets.mjs` (`npm run test:e2e:targets [target ...]`)
+`app/tests/e2e-targets.mjs` (`pnpm run test:e2e:targets [target ...]`)
 measures the C++ targets: for WebAssembly and each Linux target, in a fresh
 session with service workers blocked, it runs a hello world and a
 four-thread pthreads program (system mode on 4 CPUs, then user mode, then
@@ -492,7 +513,7 @@ exit codes, opens, edits, closes and
 reopens the LLVM IR and assembly views, checks that a WebAssembly session
 fetches exactly the files it did before targets existed, and prints the
 bytes each use case downloads and the runner's timing marks (`--json` saves
-them). `app/tests/e2e-links.mjs` (`npm run test:e2e:links`, no pack needed)
+them). `app/tests/e2e-links.mjs` (`pnpm run test:e2e:links`, no pack needed)
 checks projects in links: two tabs with their own projects, both brought
 back from their URLs in a fresh browser, an edited copy that leaves the
 original alone, an edit kept across an immediate reload, Share, a link

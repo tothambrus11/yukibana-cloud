@@ -1,6 +1,6 @@
 // The Swift frontend's argument vector for wasm32-unknown-wasip1 and the
 // paths it names in the toolchain's file system: pure, no imports, so that
-// views.js and its tests (test-emit.mjs, run by node with no npm install)
+// views.js and its tests (test-emit.mjs, run by node with no pnpm install)
 // can build the vectors explorer.js runs. toolchain.js re-exports all of it.
 
 export const SYSROOT = '/sysroot';

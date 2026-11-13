@@ -9,7 +9,7 @@
 // each. An open popover must fit the window and hold all its text: a phone's
 // bottom sheet once ran 90 px off the screen and nothing here looked inside it.
 //
-//   npm run build && npm run test:e2e:layout -- [--ci] [--all] [--out <dir>] [--state <name> ...]
+//   pnpm run build && pnpm run test:e2e:layout [--ci] [--all] [--out <dir>] [--state <name> ...]
 //
 // --out    where the screenshots and report.json go (default
 //          /mnt/project-files/light-ux/after; with --ci, none unless given).
@@ -76,7 +76,7 @@ const CONTROLS = [
 	{ name: 'Reset project', bar: null, menu: '#more-menu [role=menuitem]:has-text("Reset project")' },
 	{ name: 'Restart language server', bar: null, menu: '#more-menu [role=menuitem]:has-text("Restart language server")' },
 	{ name: 'Offline', bar: 'header .offline-button', menu: '#more-menu [role=menuitem]:has-text("Offline use")' },
-	{ name: 'Theme', bar: 'header .theme-button', menu: '#more-menu [role=menuitem][data-fold="44"]' },
+	{ name: 'Theme', bar: 'header .theme-button', menu: '#more-menu [role=menuitemradio][data-fold="44"]' },
 ];
 
 /**

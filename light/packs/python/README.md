@@ -144,12 +144,12 @@ as the app starts the worker.
 
 ```sh
 ./build.sh      # ~60 s from an empty cache, ~25 s after (most of it rspack + ts type-check)
-npm install     # playwright-core, for the test only
+pnpm install    # playwright-core, for the test only
 node test.mjs
 ```
 
 `build.sh` needs git, Node 22, pnpm (the lockfile's 11.21.0 is fetched with
-`npx` if the installed one differs), python3 and `uv`. It caches in
+`pnpm dlx` if the installed one differs), python3 and `uv`. It caches in
 `$PACK_CACHE/python` (default `~/.cache/yukibana-packs/python`, ~470 MB:
 the checkout and the node_modules of `pyright-internal` and
 `browser-pyright`). Dependencies come from upstream's frozen lockfile. The

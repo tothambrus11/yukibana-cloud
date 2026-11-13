@@ -6,7 +6,7 @@
 // there, and a damaged link is reported without losing the app. Needs no
 // pack: nothing here asks a language server.
 //
-//   npm run build && npm run test:e2e:links
+//   pnpm run build && pnpm run test:e2e:links
 //
 // Serves app/build with ../serve.py on a free port, as e2e.mjs does, or
 // uses BASE_URL (a dev server) when it is set. Exits non-zero, naming every

@@ -93,7 +93,7 @@
 <dialog class="export" bind:this={dialog} aria-labelledby="export-title" onclick={(e) => e.target === dialog && dialog.close()}>
 	<header>
 		<h2 id="export-title">Download project</h2>
-		<button class="icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
+		<button class="icon-btn yk-icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
 		</button>
 	</header>
@@ -124,8 +124,8 @@
 
 	<fieldset>
 		<legend>Repository</legend>
-		<label class="check"><input type="checkbox" checked={choices.devcontainer} onchange={(e) => set({ devcontainer: e.currentTarget.checked })} /><span>Dev container <span class="hint">(VS Code, Codespaces: the tools in a container)</span></span></label>
-		<label class="check"><input type="checkbox" checked={choices.gitattributes} onchange={(e) => set({ gitattributes: e.currentTarget.checked })} /><span>.gitattributes <span class="hint">(LF line endings on every system, whatever core.autocrlf says)</span></span></label>
+		<label class="check"><input class="yk-check" type="checkbox" checked={choices.devcontainer} onchange={(e) => set({ devcontainer: e.currentTarget.checked })} /><span>Dev container <span class="hint">(VS Code, Codespaces: the tools in a container)</span></span></label>
+		<label class="check"><input class="yk-check" type="checkbox" checked={choices.gitattributes} onchange={(e) => set({ gitattributes: e.currentTarget.checked })} /><span>.gitattributes <span class="hint">(LF line endings on every system, whatever core.autocrlf says)</span></span></label>
 	</fieldset>
 
 	<details class="files">
@@ -138,8 +138,8 @@
 	</details>
 
 	<footer>
-		<button class="button" onclick={() => dialog.close()}>Cancel</button>
-		<button class="button primary" onclick={() => void download()}>Download .zip</button>
+		<button class="button yk-btn yk-btn--secondary" onclick={() => dialog.close()}>Cancel</button>
+		<button class="button yk-btn yk-btn--primary" onclick={() => void download()}>Download .zip</button>
 	</footer>
 </dialog>
 
@@ -148,10 +148,10 @@
 		width: min(34rem, calc(100vw - 2rem));
 		max-height: calc(var(--app-height, 100dvh) - 2rem);
 		padding: 0;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.5rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
 	}
 	.export::backdrop {
@@ -170,29 +170,29 @@
 	.close {
 		min-width: 2.5rem;
 		min-height: 2.5rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	p {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 		line-height: 1.4;
 	}
 	fieldset {
 		margin: 0.5rem 1rem;
 		padding: 0.4rem 0.75rem 0.6rem;
-		border: 1px solid var(--gray-6);
+		border: 1px solid var(--yk-sunken);
 		border-radius: 0.4rem;
 	}
 	legend {
 		padding: 0 0.3rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-weight: 500;
 	}
 	fieldset p {
 		margin: 0 0 0.4rem;
 	}
 	.hint {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.8rem;
 	}
 	.choices {
@@ -216,12 +216,17 @@
 	.check input {
 		margin-top: 0.15rem;
 	}
-	input {
-		accent-color: var(--accent);
+	/*
+	 * The checkboxes are the design system's drawn `.yk-check`. It draws no
+	 * radio buttons of their own, so these stay native, in ink: a choice is
+	 * a state, not an action, and green is for actions.
+	 */
+	input[type='radio'] {
+		accent-color: var(--yk-ink);
 	}
 	.files {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	.files summary {
 		cursor: pointer;
@@ -233,7 +238,7 @@
 		overflow: auto;
 	}
 	code {
-		font-family: var(--mono, 'JetBrains Mono Variable', monospace);
+		font-family: var(--mono, 'JetBrains Mono', monospace);
 		font-size: 0.8rem;
 	}
 	footer {
@@ -242,25 +247,10 @@
 		gap: 0.5rem;
 		padding: 0.5rem 1rem 1rem;
 	}
+	/* A `yk-btn` (the package's buttons.css) draws it; this is its size. */
 	.button {
 		min-height: 2rem;
-		white-space: nowrap;
 		padding: 0 0.8rem;
-		border: 1px solid var(--gray-5);
-		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
-		font: inherit;
 		font-size: 0.85rem;
-		cursor: pointer;
-	}
-	.button:hover {
-		border-color: var(--gray-4);
-		color: var(--white);
-	}
-	.primary {
-		border-color: var(--accent);
-		color: var(--white);
-		font-weight: 600;
 	}
 </style>

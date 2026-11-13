@@ -8,7 +8,7 @@
 // marks. A WebAssembly session must download exactly what it did before the
 // targets existed.
 //
-//   npm run build && node tests/e2e-targets.mjs [target ...] [--json out.json]
+//   pnpm run build && node tests/e2e-targets.mjs [target ...] [--json out.json]
 //
 // Targets are the ids of cpp-targets.ts (wasm32-wasi, x86_64-linux,
 // aarch64-linux, riscv64-linux); all four by default. Serves app/build with
@@ -117,7 +117,7 @@ const jsonAt = argv.indexOf('--json');
 const jsonOut = jsonAt >= 0 ? argv.splice(jsonAt, 2)[1] : null;
 const chosen = argv.length ? argv : Object.keys(TARGETS);
 for (const t of chosen) if (!TARGETS[t]) throw new Error(`unknown target ${t}; known: ${Object.keys(TARGETS).join(', ')}`);
-if (!existsSync(join(build, 'packs', 'cpp', 'runner.js'))) throw new Error('app/build has no C++ pack: run npm run build after packs/cpp/build.sh');
+if (!existsSync(join(build, 'packs', 'cpp', 'runner.js'))) throw new Error('app/build has no C++ pack: run pnpm run build after packs/cpp/build.sh');
 
 const failures = [];
 const report = { targets: {} };

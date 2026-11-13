@@ -471,7 +471,7 @@ The glue (`glue.sh`) bundles the workers over them, in seconds; an edit to
 
 ```sh
 cd packs/rust
-npm install
+pnpm install
 ./build.sh        # the units, then the pack, into ../../app/static/packs/rust/
 ./test.sh         # test-mir.mjs, test.mjs, test-run.mjs over the pack as assembled
 ```

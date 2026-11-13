@@ -87,20 +87,20 @@ function addStyles(): void {
 	style.id = STYLE_ID;
 	style.textContent = `
 .yk-view { display: flex; flex-direction: column; height: 100%; container: view / inline-size; }
-.yk-view-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; block-size: 1.75rem; flex: none; padding: 0 0.4rem 0 0.75rem; color: var(--gray-3); font-size: 0.75rem; white-space: nowrap; }
-.yk-view-file { flex: 0 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; color: var(--white); font-family: var(--font-mono); }
+.yk-view-head { display: flex; flex-wrap: nowrap; align-items: center; gap: 0.5rem; block-size: 1.75rem; flex: none; padding: 0 0.4rem 0 0.75rem; color: var(--yk-soft); font-size: 0.75rem; white-space: nowrap; }
+.yk-view-file { flex: 0 1 auto; min-width: 4ch; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; color: var(--yk-ink); font-family: var(--font-mono); }
 .yk-view-file > span { direction: ltr; unicode-bidi: isolate; }
 .yk-view-chips { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
-.yk-view-state { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; color: var(--accent-high); }
-.yk-view-state.error { color: var(--red-high); }
-.yk-view-state.busy { color: var(--gray-2); }
-.yk-view-state.busy::before { content: ''; width: 0.6rem; height: 0.6rem; border: 1.5px solid var(--gray-4); border-top-color: var(--accent-high); border-radius: 50%; animation: yk-view-spin 0.8s linear infinite; }
+.yk-view-state { flex: none; display: inline-flex; align-items: center; gap: 0.3rem; color: var(--yk-ok); }
+.yk-view-state.error { color: var(--yk-danger); }
+.yk-view-state.busy { color: var(--label); }
+.yk-view-state.busy::before { content: ''; width: 0.6rem; height: 0.6rem; border: 1.5px solid var(--yk-line-strong); border-top-color: var(--yk-ink); border-radius: 50%; animation: yk-view-spin 0.8s linear infinite; }
 @keyframes yk-view-spin { to { transform: rotate(360deg); } }
 .yk-view-nav { flex: none; display: inline-flex; align-items: center; gap: 0.2rem; font-family: var(--font-mono); }
-.yk-view-nav button, .yk-view-more { display: inline-flex; flex: none; align-items: center; gap: 0.25rem; min-height: 1.5rem; padding: 0 0.4rem; border: 1px solid var(--gray-5); border-radius: 0.35rem; background: var(--gray-6); color: var(--gray-2); font: inherit; white-space: nowrap; cursor: pointer; }
-.yk-view-nav button:hover, .yk-view-more:hover, .yk-view-more[aria-expanded='true'] { color: var(--white); border-color: var(--control-border); }
+.yk-view-nav button, .yk-view-more { display: inline-flex; flex: none; align-items: center; gap: 0.25rem; min-height: 1.5rem; padding: 0 0.4rem; border: 1px solid var(--yk-line); border-radius: 0.35rem; background: var(--yk-sunken); color: var(--label); font: inherit; white-space: nowrap; cursor: pointer; }
+.yk-view-nav button:hover, .yk-view-more:hover, .yk-view-more[aria-expanded='true'] { color: var(--yk-ink); border-color: var(--control-border); }
 .yk-view-more svg { width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-.yk-view-toggles { display: flex; flex-wrap: nowrap; flex: none; align-items: center; gap: 0.3rem; block-size: 1.7rem; padding: 0 0.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-top: 1px solid var(--gray-6); color: var(--gray-3); font-size: 0.75rem; }
+.yk-view-toggles { display: flex; flex-wrap: nowrap; flex: none; align-items: center; gap: 0.3rem; block-size: 1.7rem; padding: 0 0.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-top: 1px solid var(--yk-sunken); color: var(--yk-soft); font-size: 0.75rem; }
 .yk-view-toggles::-webkit-scrollbar { display: none; }
 .yk-view-toggles[data-overflow~='end'] { mask-image: linear-gradient(to right, black calc(100% - 1.5rem), transparent); }
 .yk-view-toggles[data-overflow~='start'] { mask-image: linear-gradient(to right, transparent, black 1.5rem); }
@@ -108,24 +108,24 @@ function addStyles(): void {
 .yk-view-toggles .chip { min-height: 1.4rem; }
 /* A menu keeps its check column (its width is reserved, so nothing moves); the strip's chips show on by their fill alone. */
 .yk-view-menu .toggle::before { content: ''; display: inline-block; width: 0.7rem; text-align: center; }
-.yk-view-menu .toggle[aria-pressed='true']::before { content: '✓'; color: var(--accent-high); }
-.yk-view-progress { flex: none; height: 2px; overflow: hidden; border-bottom: 1px solid var(--gray-5); box-sizing: content-box; }
-.yk-view-progress > span { display: block; height: 100%; width: 100%; background: var(--accent-high); opacity: 0; transform-origin: left; transform: scaleX(0); transition: transform 0.2s, opacity 0.3s; }
+.yk-view-menu .toggle[aria-pressed='true']::before { content: '✓'; color: var(--yk-ok); }
+.yk-view-progress { flex: none; height: 2px; overflow: hidden; border-bottom: 1px solid var(--yk-line); box-sizing: content-box; }
+.yk-view-progress > span { display: block; height: 100%; width: 100%; background: var(--yk-info); opacity: 0; transform-origin: left; transform: scaleX(0); transition: transform 0.2s, opacity 0.3s; }
 .yk-view-progress.busy > span { opacity: 1; }
 .yk-view-progress.indeterminate > span { transform: scaleX(0.3); animation: yk-view-slide 1.2s ease-in-out infinite; }
 @keyframes yk-view-slide { from { translate: -30% 0; } to { translate: 100% 0; } }
 .yk-view-body { position: relative; flex: 1; min-height: 0; }
 .yk-view-editor { position: absolute; inset: 0; }
-.yk-view-note { position: absolute; inset: 0; padding: 0.75rem 1rem; color: var(--gray-3); font-size: 0.8125rem; pointer-events: none; }
+.yk-view-note { position: absolute; inset: 0; padding: 0.75rem 1rem; color: var(--yk-soft); font-size: 0.8125rem; pointer-events: none; }
 .yk-view-menu { --popover-width: 24rem; padding: 0.5rem !important; white-space: normal; font-size: 0.85rem; }
 .yk-view-menu .toggles { display: grid; gap: 0.15rem; }
-.yk-view-menu .toggle-row small { display: block; padding: 0 0.6rem 0.3rem 1.9rem; color: var(--gray-3); font-size: 0.72rem; line-height: 1.3; }
+.yk-view-menu .toggle-row small { display: block; padding: 0 0.6rem 0.3rem 1.9rem; color: var(--yk-soft); font-size: 0.72rem; line-height: 1.3; }
 .yk-view-details { display: grid; gap: 0.35rem; padding: 0.2rem 0.6rem 0.4rem; }
 .yk-view-details dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.25rem 0.75rem; margin: 0; font-size: 0.78rem; }
-.yk-view-details dt { color: var(--gray-3); }
+.yk-view-details dt { color: var(--yk-soft); }
 .yk-view-details dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .yk-view-details code { font-family: var(--font-mono); font-size: 0.72rem; }
-.yk-view-flags { display: block; max-height: 6rem; overflow: auto; padding: 0.3rem 0.4rem; border-radius: 0.3rem; background: var(--gray-7); font-family: var(--font-mono); font-size: 0.7rem; overflow-wrap: anywhere; }
+.yk-view-flags { display: block; max-height: 6rem; overflow: auto; padding: 0.3rem 0.4rem; border-radius: 0.3rem; background: var(--yk-rail); font-family: var(--font-mono); font-size: 0.7rem; overflow-wrap: anywhere; }
 .yk-view-details .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .yk-view-details .actions button { min-height: 1.8rem; font-size: 0.78rem; }
 @container view (width < 26rem) {
@@ -284,7 +284,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 	dl.append(el('dt', '', 'Target'), targetDd, el('dt', '', 'Flags you set'), chosenDd);
 	const command = el('code', 'yk-view-flags');
 	const actions = el('div', 'actions');
-	const copy = el('button', 'btn', 'Copy command');
+	const copy = el('button', 'btn yk-btn yk-btn--secondary', 'Copy command');
 	copy.type = 'button';
 	copy.addEventListener('click', () => {
 		void navigator.clipboard?.writeText(command.textContent ?? '').then(
@@ -293,7 +293,7 @@ export function createCompilerView(element: HTMLElement, kind: ExploreKind, host
 		);
 		setTimeout(() => (copy.textContent = 'Copy command'), 1500);
 	});
-	const change = el('button', 'btn', 'Change build settings…');
+	const change = el('button', 'btn yk-btn yk-btn--secondary', 'Change build settings…');
 	change.type = 'button';
 	change.addEventListener('click', () => {
 		menu.hidePopover();

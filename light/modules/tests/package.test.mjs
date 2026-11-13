@@ -1,24 +1,27 @@
 // @yukibana/protocol and @yukibana/runtime as a host outside this
 // repository gets them (step MP1, RR2): built by build.mjs, packed with
-// `npm pack`, installed from the two tarballs into a project of their own,
+// `pnpm pack`, installed from the two tarballs into a project of their own,
 // then imported by Node, type-checked by TypeScript as a Node and as a
 // bundler project, and bundled by Vite for SSR, whose output Node runs with
 // the packages left external, as Astro's prerender does.
 //
-//   node --test light/modules/tests/package.test.mjs   (light/app: npm ci first)
+//   node --test light/modules/tests/package.test.mjs   (light: pnpm install first)
 //
 // It builds into the modules' own dist/ (ignored by git, and by every
 // other check here), and needs no network: npm installs from the tarballs
-// alone.
+// alone. The host installs with npm, as light-modules.yml's release notes
+// tell a host to: npm meets the runtime's dependency on the protocol with
+// the protocol's tarball beside it, where pnpm would ask the registry for
+// it, which does not have it.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { before, after, test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildAll, builtProblems, manifestOf, manifestProblems, pack, PUBLISHED, typescript } from '../build.mjs';
+import { buildAll, builtProblems, manifestOf, manifestProblems, pack, PUBLISHED, runTool, typescript } from '../build.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = createRequire(join(here, '../../app/package.json'));
@@ -36,7 +39,7 @@ before(() => {
 	host = join(scratch, 'host');
 	mkdirSync(host);
 	writeFileSync(join(host, 'package.json'), JSON.stringify({ name: 'a-docs-site', private: true, type: 'module', dependencies: tarballs }));
-	execFileSync('npm', ['install', '--offline', '--no-audit', '--no-fund', '--ignore-scripts', '--no-package-lock'], {
+	runTool('npm', ['install', '--offline', '--no-audit', '--no-fund', '--ignore-scripts', '--no-package-lock'], {
 		cwd: host,
 		stdio: ['ignore', 'ignore', 'inherit'],
 	});
@@ -149,7 +152,9 @@ test("a host's TypeScript refuses a wrong use of the packages, so their types ar
 
 test('the tarballs carry the build, the sources its maps name and the README, and none of the tests', () => {
 	for (const name of PUBLISHED) {
-		const files = execFileSync('tar', ['-tzf', pack(name, join(scratch, 'listing'))], { encoding: 'utf8' }).trim().split('\n');
+		// By its name, from its directory: GNU tar takes the `C:` of a Windows path for a remote host.
+		const tarball = pack(name, join(scratch, 'listing'));
+		const files = execFileSync('tar', ['-tzf', basename(tarball)], { cwd: dirname(tarball), encoding: 'utf8' }).trim().split('\n');
 		for (const want of ['package/package.json', 'package/README.md', 'package/index.ts', 'package/dist/index.js', 'package/dist/index.d.ts', 'package/dist/index.js.map']) {
 			assert.ok(files.includes(want), `${name}'s tarball lacks ${want}`);
 		}

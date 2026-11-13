@@ -30,7 +30,7 @@ Three things a conversion cannot make without the host's Monaco, and how
 
 * **Monaco's enums** are written out as numbers, in tables typed as the
   installed Monaco's own enums, so a Monaco upgrade that renumbers, adds or
-  removes a member fails `npm run check` (and `tests/convert.test.mjs`
+  removes a member fails `pnpm run check` (and `tests/convert.test.mjs`
   proves that the check fires).
 * **A server's command** runs through a Monaco command the host registers,
   so code actions and code lenses take the host's `CommandOf`.

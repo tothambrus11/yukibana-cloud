@@ -4,7 +4,7 @@
 // A module that broke this would still type-check and build; it would only
 // fail later, in a host that does not have what it took for granted.
 //
-//   node --test boundaries.test.mjs       (from light/app: npm run test:unit)
+//   node --test boundaries.test.mjs       (from light/app: pnpm run test:unit)
 //
 // Imports are read with the TypeScript compiler's parser (the app's
 // installed copy), so a type-only import is told from a value import and an

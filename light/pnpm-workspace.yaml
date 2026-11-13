@@ -1,0 +1,34 @@
+# Light's pnpm workspace: the app, the examples and the language packs, each
+# with its own pnpm-lock.yaml. `pnpm install` here installs them all; inside
+# one of them, `pnpm install --frozen-lockfile --filter .` installs only that
+# one, which is what a pack's scripts and the CI jobs run.
+#
+# light/modules is not a package of the workspace: the modules have no
+# dependencies to install (the app's TypeScript checks and builds them,
+# modules/build.mjs), and the Hylo example takes them as `link:`s.
+packages:
+  - app
+  - examples/*
+  - packs/*
+
+# One lockfile per package, as each had a package-lock.json before: a pack's
+# toolchain and glue are keyed on the files its glue.paths names, its own
+# lockfile among them, so a change to the app's dependencies (or another
+# pack's) rebuilds and retests no pack.
+sharedWorkspaceLockfile: false
+
+# Resolves only versions at least 14 days old (in minutes), the same window as
+# the Yukibana monorepo's. It also applies to what a lockfile already holds:
+# `pnpm install --frozen-lockfile` refuses an entry younger than this. An
+# exclusion (minimumReleaseAgeExclude) names each exact version, including the
+# too-young dependencies it pulls in, and is removed once they have aged. A
+# git dependency (github:owner/repo#<sha>) has no publish date and is not
+# checked: its commit is what is pinned.
+minimumReleaseAge: 20160
+
+allowBuilds:
+  # Checks, after install, that its platform binary is there and runs.
+  esbuild: true
+  # macOS only, and its package ships the binary prebuilt; its install script
+  # would only rebuild it with node-gyp.
+  fsevents: false

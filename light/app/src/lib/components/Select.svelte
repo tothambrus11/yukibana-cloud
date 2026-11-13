@@ -326,19 +326,19 @@
 		padding: 0 0.55rem 0 0.65rem;
 		border: 1px solid var(--control-border);
 		border-radius: 0.35rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font: inherit;
 		text-align: start;
 		cursor: pointer;
 	}
 	.yk-select-button:hover:not(:disabled),
 	.yk-select-button[aria-expanded='true'] {
-		border-color: var(--gray-3);
+		border-color: var(--yk-soft);
 	}
 	.yk-select-button:focus-visible {
 		outline: var(--focus-ring);
-		outline-offset: 1px;
+		outline-offset: var(--yk-focus-offset);
 	}
 	.yk-select-button:disabled {
 		opacity: 0.5;
@@ -356,7 +356,7 @@
 		height: 0.8rem;
 		margin-left: auto;
 		fill: none;
-		stroke: var(--gray-2);
+		stroke: var(--label);
 		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
@@ -367,7 +367,7 @@
 	}
 	.detail {
 		flex: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 	}
 
@@ -387,7 +387,7 @@
 	}
 	.sheet-title {
 		padding: 0.5rem 0.6rem 0.6rem;
-		color: var(--gray-2);
+		color: var(--label);
 		font-weight: 600;
 	}
 	.search {
@@ -403,7 +403,7 @@
 		height: 0.85rem;
 		transform: translateY(-50%);
 		fill: none;
-		stroke: var(--gray-3);
+		stroke: var(--yk-soft);
 		stroke-width: 1.6;
 		stroke-linecap: round;
 		pointer-events: none;
@@ -413,21 +413,26 @@
 		width: 100%;
 		min-height: 2rem;
 		padding: 0 0.6rem 0 1.85rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--control-border);
 		border-radius: 0.3rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font: inherit;
 	}
-	.search input:focus {
-		border-color: var(--accent);
-		outline: none;
+	/* The ink ring, as every field's focus (green is for actions); the list's padding leaves it room. */
+	.search input:focus-visible {
+		outline: var(--focus-ring);
+		outline-offset: var(--yk-focus-offset);
 	}
 	.options {
 		flex: 1 1 auto;
 		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
+	}
+	/* The list's focus is drawn on its active option (below), not around the list. Turned off on `:focus-visible` so
+	   that it outranks app.css's ring on `:focus-visible`. */
+	.options:focus-visible {
 		outline: none;
 	}
 	.option {
@@ -437,21 +442,21 @@
 		min-height: 2rem;
 		padding: 0.25rem 0.6rem 0.25rem 0.4rem;
 		border-radius: 0.3rem;
-		color: var(--white);
+		color: var(--yk-ink);
 		line-height: 1.3;
 		cursor: pointer;
 		user-select: none;
 	}
 	.option.active {
-		background: var(--gray-5);
+		background: var(--yk-line);
 	}
 	.options:focus-visible .option.active,
 	.search:focus-within + .options .option.active {
-		outline: 1px solid var(--accent);
+		outline: 1px solid var(--yk-ink);
 		outline-offset: -1px;
 	}
 	.option[aria-disabled='true'] {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		cursor: default;
 	}
 	.label {
@@ -459,17 +464,18 @@
 		min-width: 0;
 		overflow-wrap: anywhere;
 	}
+	/* The letters the search matched: bold ink, not a colour, since green is for actions. */
 	mark {
 		background: none;
-		color: var(--accent-high);
-		font-weight: 600;
+		color: var(--yk-ink);
+		font-weight: 700;
 	}
 	.tick {
 		flex: none;
 		width: 0.85rem;
 		height: 0.85rem;
 		fill: none;
-		stroke: var(--accent-high);
+		stroke: var(--yk-ok);
 		stroke-width: 2;
 		stroke-linecap: round;
 		stroke-linejoin: round;
@@ -483,7 +489,7 @@
 	}
 	.none {
 		padding: 0.5rem 0.6rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	@media (pointer: coarse) {
 		.option,

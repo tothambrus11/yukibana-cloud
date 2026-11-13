@@ -150,7 +150,7 @@ export type FontSet = Pick<FontFaceSet, 'load'> & ListenerTarget;
 export interface FontOptions {
 	/**
 	 * The font the editors use, as CSS `font` takes it with a size
-	 * (`13.5px 'JetBrains Mono Variable'`): the one whose arrival is waited
+	 * (`13.5px 'JetBrains Mono'`): the one whose arrival is waited
 	 * for. Its size matters only to which face loads, not to Monaco.
 	 */
 	font: string;

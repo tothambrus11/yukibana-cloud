@@ -28,7 +28,7 @@
 <dialog class="offline" bind:this={dialog} aria-labelledby="offline-title" onclick={(e) => e.target === dialog && dialog.close()}>
 	<header>
 		<h2 id="offline-title">Offline</h2>
-		<button class="icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
+		<button class="icon-btn yk-icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
 		</button>
 	</header>
@@ -62,10 +62,10 @@
 							{#if !files.length}
 								<span class="muted">not installed</span>
 							{:else if offline.arePacksCached(packs) && sizes.missing.files === 0}
-								<span class="ok">available offline</span>
+								<span class="ok"><span aria-hidden="true">✓</span> available offline</span>
 							{:else}
 								<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
-								<button class="button" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
+								<button class="button yk-btn yk-btn--secondary" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
 							{/if}
 						</td>
 					</tr>
@@ -78,12 +78,12 @@
 				<div class="progress" role="status">
 					<span>Downloading {offline.progress.label}: {mb(offline.progress.loaded)} / {mb(offline.progress.total)} MB</span>
 					<span class="meter"><span style:width="{percent}%"></span></span>
-					<button class="button" onclick={() => offline.cancel()}>Cancel</button>
+					<button class="button yk-btn yk-btn--secondary" onclick={() => offline.cancel()}>Cancel</button>
 				</div>
 			{:else if everything.missing.files === 0}
-				<span class="ok">Everything is available offline ({mb(everything.all.size)} MB stored).</span>
+				<span class="ok"><span aria-hidden="true">✓</span> Everything is available offline ({mb(everything.all.size)} MB stored).</span>
 			{:else}
-				<button class="button primary download-all" onclick={() => void offline.download('everything', offline.everything)}>Download everything</button>
+				<button class="button yk-btn yk-btn--primary download-all" onclick={() => void offline.download('everything', offline.everything)}>Download everything</button>
 				<span class="muted">{mb(everything.missing.transfer)} MB to download, {mb(everything.missing.size)} MB stored, every language and the editor's parts</span>
 			{/if}
 			{#if offline.error}
@@ -99,10 +99,10 @@
 		width: min(40rem, calc(100vw - 2rem));
 		max-height: calc(var(--app-height, 100dvh) - 2rem);
 		padding: 0;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.5rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
 	}
 	.offline::backdrop {
@@ -121,11 +121,11 @@
 	.close {
 		min-width: 2.5rem;
 		min-height: 2.5rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	p {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 		line-height: 1.4;
 	}
 	table {
@@ -134,14 +134,14 @@
 		border-collapse: collapse;
 	}
 	th {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-weight: 500;
 		text-align: left;
 	}
 	th,
 	td {
 		padding: 0.3rem 0.4rem;
-		border-bottom: 1px solid var(--gray-6);
+		border-bottom: 1px solid var(--yk-sunken);
 	}
 	.size {
 		text-align: right;
@@ -170,50 +170,32 @@
 		min-width: 6rem;
 		height: 0.4rem;
 		border-radius: 1rem;
-		background: var(--gray-5);
+		background: var(--yk-line);
 		overflow: hidden;
 	}
 	.meter span {
 		display: block;
 		height: 100%;
-		background: var(--accent-high);
+		background: var(--yk-info);
 		transition: width 0.2s;
 	}
+	/* A `yk-btn` (the package's buttons.css) draws it; this is its size. */
 	.button {
 		min-height: 1.9rem;
-		white-space: nowrap;
 		padding: 0 0.7rem;
-		border: 1px solid var(--gray-5);
-		border-radius: 0.35rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
-		font: inherit;
 		font-size: 0.8rem;
-		cursor: pointer;
 	}
-	.button:hover:not(:disabled) {
-		border-color: var(--gray-4);
-		color: var(--white);
-	}
-	.button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.primary {
-		border-color: var(--accent);
-		color: var(--white);
-		font-weight: 600;
-	}
+	/* Done: the ok colour and a check, never the colour alone. */
 	.ok {
-		color: var(--accent-high);
+		color: var(--yk-ok);
 	}
 	.muted {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.error {
 		width: 100%;
 		margin: 0;
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	/* A phone: the header row goes, and each language is a name over its size and button. */
 	@container offline (width < 26rem) {
@@ -230,7 +212,7 @@
 			align-items: center;
 			gap: 0 0.5rem;
 			padding: 0.4rem 0;
-			border-bottom: 1px solid var(--gray-6);
+			border-bottom: 1px solid var(--yk-sunken);
 		}
 		td {
 			padding: 0;
@@ -242,7 +224,7 @@
 		}
 		.size {
 			text-align: left;
-			color: var(--gray-3);
+			color: var(--yk-soft);
 		}
 		footer .button {
 			width: 100%;

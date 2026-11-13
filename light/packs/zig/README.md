@@ -147,7 +147,7 @@ it downloading and compiling the two modules); a check after an edit takes
 ZLS's wasm32-wasi release (each checked by SHA-256), builds `zig.wasm` with
 the native Zig (about 6 minutes, cached in `$PACK_CACHE`), builds
 compiler_rt for each target, archives the standard library, bundles the
-workers with esbuild, and writes brotli and gzip siblings. `npm test` runs
+workers with esbuild, and writes brotli and gzip siblings. `pnpm test` runs
 the browser tests: `test.mjs` (the server) and `test-run.mjs` (the runner;
 the Linux cases need the C/C++ pack's VM in `app/static/packs/cpp`, or
 `ALLOW_SKIP=1`).

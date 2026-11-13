@@ -30,7 +30,7 @@
 	import Popover from '../lib/components/Popover.svelte';
 	import Select, { type SelectOption } from '../lib/components/Select.svelte';
 	import Licenses from '../lib/components/Licenses.svelte';
-	import { theme } from '../lib/theme.svelte';
+	import { theme, THEME_CHOICES, THEME_NAMES } from '../lib/theme.svelte';
 	import { Workspace } from '../lib/workspace.svelte';
 	import { serverLabel } from '../lib/format';
 	import { followViewport } from '../lib/viewport';
@@ -109,18 +109,19 @@
 	const hasBuild = $derived(isCFamily(workspace.language) || workspace.optimization !== null);
 	const summary = $derived(buildSummary(workspace));
 	const cached = $derived(offline.arePacksCached(packsOf(language)));
-	const themeLabel = $derived(`Switch to ${theme.current === 'dark' ? 'light' : 'dark'} theme`);
+	/** The theme button cycles System, Light, Dark; its name says the choice and what a press moves to. */
+	const themeLabel = $derived(`Theme: ${THEME_NAMES[theme.choice]}${theme.choice === 'system' ? ` (${theme.current})` : ''}. Switch to ${THEME_NAMES[theme.next]}`);
 	/** The server's full name and version, for the status bar's title; its short form is shown. */
 	const serverFull = $derived(workspace.clientState.kind === 'running' ? workspace.clientState.server : '');
 	const mb = (bytes: number) => (bytes / 1048576).toFixed(1);
 
-	/** What the toast above the status bar says, briefly; null: nothing. */
+	/** What the toast above the status bar says, for the design system's three seconds (--yk-motion-toast); null: nothing. */
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout> | undefined;
 	function say(message: string) {
 		toast = message;
 		clearTimeout(toastTimer);
-		toastTimer = setTimeout(() => (toast = null), 3500);
+		toastTimer = setTimeout(() => (toast = null), 3000);
 	}
 
 	/**
@@ -187,7 +188,7 @@
 	<div class="bar">
 		<a class="brand" href="./" aria-label="Yukibana Light" title="Yukibana Light">
 			<img src="logo-64.png" alt="" width="28" height="28" />
-			<span class="name">Yukibana</span><span class="product">Light</span>
+			<span class="wordmark"><span class="name">Yukibana</span><span class="product">Light</span></span>
 		</a>
 
 		<!-- The chosen language is shown by .lang-label: its full or short name, by the bar's width. -->
@@ -199,22 +200,22 @@
 
 		<!-- One button that is Run or Stop, as wide as the wider of the two, and Test and Mutate stay where they are while it runs: pressing a button moves nothing. -->
 		{#if workspace.runner.busy}
-			<button class="btn run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
+			<button class="btn yk-btn yk-btn--secondary run stop" onclick={() => workspace.runner.stop()} title="Stop the program">
 				<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" /></svg><span class="run-label" data-other="Run"><span>Stop</span></span>
 			</button>
 		{:else}
-			<button class="btn run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
+			<button class="btn yk-btn yk-btn--primary run" onclick={() => workspace.run()} disabled={!language.runs} title={language.runs ? 'Run the project (Ctrl+Enter)' : language.cannotRun}>
 				<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg><span class="run-label" data-other="Stop"><span>Run</span></span>
 			</button>
 		{/if}
 		{#if language.tests}
-			<button class="btn test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
+			<button class="btn yk-btn yk-btn--secondary test" onclick={() => workspace.run('test')} disabled={workspace.runner.busy} title="Run the project's tests (Ctrl+Shift+Enter)">Test</button>
 		{/if}
 		{#if language.debugs}
-			<button class="btn debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
+			<button class="btn yk-btn yk-btn--secondary debug" data-fold="70" onclick={() => workspace.debug()} disabled={workspace.runner.busy || workspace.debugger.active} title="Run the project under the debugger: it stops at the breakpoints set left of the line numbers (F5)">Debug</button>
 		{/if}
 		{#if language.mutates}
-			<button class="btn mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
+			<button class="btn yk-btn yk-btn--secondary mutate" data-fold="70" onclick={() => workspace.run('mutate')} disabled={workspace.runner.busy} title="Mutation testing: change the code in small ways and check that the tests notice">Mutate</button>
 		{/if}
 
 		{#if hasBuild}
@@ -222,7 +223,7 @@
 		{/if}
 
 		{#if views.length}
-			<div class="view-group" role="group" aria-label="Compiler output" data-fold="44">
+			<div class="view-group yk-segmented" role="group" aria-label="Compiler output" data-fold="44">
 				{#each views as kind (kind)}
 					{@const on = workspace.viewsOpen.includes(kind)}
 					<button class="btn view" data-view={kind} aria-pressed={on} onclick={() => workspace.toggleView(kind)} title={on ? `Close the ${KINDS[kind].title} view` : `Show the ${KINDS[kind].noun} of ${activeSource}`}>
@@ -234,17 +235,20 @@
 
 		<span class="spacer"></span>
 
-		<button class="btn share" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">
+		<button class="btn yk-btn yk-btn--secondary share" data-fold="30" onclick={() => void share()} title="Copy a link to this project: whoever opens it gets a copy of their own to edit">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3.2-3.2a4.5 4.5 0 0 0-6.4-6.4L12 5.6" /><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3.2 3.2a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2" /></svg><span class="share-word">Share</span>
 		</button>
 		{#if applyUpdate}
-			<button class="btn update" onclick={() => applyUpdate?.()} title="A new version is installed. Reload to use it">Update</button>
+			<button class="btn yk-btn yk-btn--secondary update" onclick={() => applyUpdate?.()} title="A new version is installed. Reload to use it">Update</button>
 		{/if}
-		<button class="icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
+		<button class="icon-btn yk-icon-btn offline-button" data-fold="44" onclick={() => offlineDialog?.show()} aria-label="Offline use" title="Offline use">
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9H7z" /><path d="M12 10v6M9.5 13.5 12 16l2.5-2.5" /></svg>
 		</button>
-		<button class="icon-btn theme-button" data-fold="44" onclick={() => theme.toggle()} aria-label={themeLabel} title={themeLabel}>
-			{#if theme.current === 'dark'}
+		<button class="icon-btn yk-icon-btn theme-button" data-fold="44" onclick={() => theme.cycle()} aria-label={themeLabel} title={themeLabel}>
+			{#if theme.choice === 'system'}
+				<!-- A screen, half filled: the system's scheme, whichever it is. -->
+				<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 4v12" /><path class="half" d="M12 4h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7z" /><path d="M8 20h8M12 16v4" /></svg>
+			{:else if theme.choice === 'dark'}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>
 			{:else}
 				<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
@@ -281,7 +285,14 @@
 			<button class="menu-item danger" role="menuitem" onclick={reset} title="Replace this language's project with the sample">Reset project…</button>
 			<div class="menu-divider" role="separator"></div>
 			<button class="menu-item" role="menuitem" onclick={() => offlineDialog?.show()}>Offline use…{#if cached}<span class="hint">{shortLabel(language)} ✓</span>{/if}</button>
-			<button class="menu-item" role="menuitem" data-fold="44" onclick={() => theme.toggle()}>{themeLabel}</button>
+			<div class="menu-divider" role="separator" data-fold="44"></div>
+			<div class="menu-heading" data-fold="44">Theme</div>
+			{#each THEME_CHOICES as choice (choice)}
+				<button class="menu-item" role="menuitemradio" aria-checked={theme.choice === choice} data-fold="44" onclick={() => (theme.choice = choice)}>
+					<span class="check" aria-hidden="true">{theme.choice === choice ? '✓' : ''}</span>{THEME_NAMES[choice]}{#if choice === 'system'}<span class="hint">{theme.current === 'dark' ? 'Dark now' : 'Light now'}</span>{/if}
+				</button>
+			{/each}
+			<div class="menu-divider" role="separator" data-fold="44"></div>
 			<button class="menu-item" role="menuitem" onclick={() => void workspace.restartServer()}>Restart language server</button>
 		</MoreMenu>
 	</div>
@@ -293,7 +304,7 @@
 <Export bind:this={exportDialog} {workspace} />
 <Licenses bind:this={licensesDialog} />
 
-<div class="toast" role="status" aria-live="polite" class:shown={toast !== null}>{toast ?? ''}</div>
+<div class="toast yk-toast" role="status" aria-live="polite" class:shown={toast !== null}><span>{toast ?? ''}</span></div>
 
 <footer class="status-bar">
 	<button class="server" popovertarget="server-menu" aria-haspopup="menu" title={serverFull || 'Language server'}>
@@ -342,7 +353,7 @@
 		position: relative;
 		z-index: 10;
 		flex: none;
-		border-bottom: 1px solid var(--gray-5);
+		border-bottom: 1px solid var(--yk-line);
 		background: var(--header-bg);
 		backdrop-filter: blur(0.5rem);
 	}
@@ -363,7 +374,7 @@
 		align-items: center;
 		gap: 0.5rem;
 		margin-right: 0.4rem;
-		color: var(--white);
+		color: var(--yk-ink);
 		text-decoration: none;
 		white-space: nowrap;
 	}
@@ -371,29 +382,44 @@
 		width: 1.75rem;
 		height: 1.75rem;
 	}
+	/* The two words sit on one baseline, a little closer than a space, and nudged down so the capitals sit
+	   centred on the icon (centring the line box leaves the letters high: it reserves room for descenders,
+	   which the wordmark has only in "g"). "Light" is the light weight, 300. */
+	.wordmark {
+		display: flex;
+		align-items: baseline;
+		gap: 0.2rem;
+		transform: translateY(0.1rem);
+	}
+	/* The brand in the design system's heading face, Bricolage Grotesque, at the header's 650. */
 	.name {
-		font-weight: 700;
+		font-family: var(--yk-font-family-heading);
+		font-weight: 650;
 		font-size: 1.15rem;
 		letter-spacing: -0.01em;
 	}
 	.product {
-		font-weight: 600;
+		font-family: var(--yk-font-family-heading);
+		font-weight: 300;
 		font-size: 1.05rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
-	/* The language picker: a Select (Select.svelte) whose button is drawn as the bar's. */
+	/* The language picker: a Select (Select.svelte) whose button is drawn as the bar's, a secondary yk-btn. */
 	.bar :global(.lang) {
 		flex: 0 1 auto;
 		max-width: 12rem;
 		padding: 0 0.6rem 0 0.75rem;
-		border-color: var(--gray-5);
-		background: var(--gray-6);
+		border-color: var(--yk-line-strong);
+		border-radius: var(--yk-radius-sm);
+		background: var(--yk-surface);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
-		font-weight: 500;
+		font-weight: var(--yk-font-weight-semibold);
 	}
 	.bar :global(.lang:hover),
 	.bar :global(.lang[aria-expanded='true']) {
-		border-color: var(--control-border);
+		border-color: var(--yk-line-strong);
+		background: var(--yk-sunken);
 	}
 	:global(.lang-label) {
 		display: block;
@@ -405,16 +431,12 @@
 	:global(.lang-label .short) {
 		display: none;
 	}
-	.run {
-		border-color: var(--accent);
-		color: var(--white);
-		font-weight: 600;
-	}
+	/* Run is the view's one primary button (yk-btn--primary): its triangle is the label's colour. Stop is a secondary with a red square. */
 	.run svg {
-		fill: var(--accent-high);
+		fill: currentColor;
 	}
 	.run.stop svg {
-		fill: var(--red-high);
+		fill: var(--yk-danger);
 	}
 	/* The other word, unseen, in the same cell: the button is as wide as "Run" or "Stop", whichever is wider, in either state. */
 	.run-label {
@@ -436,58 +458,47 @@
 		stroke-width: 2.2;
 		stroke-linecap: round;
 	}
+	/* System's icon: a screen whose right half is filled, for "light or dark, as the system says". */
+	.theme-button .half {
+		fill: currentColor;
+		stroke: none;
+	}
+	/*
+	 * The design system's toast (`.yk-toast`, toast.css): the dark pill, one
+	 * line, bottom centre. Light lifts it above the status bar and fades it
+	 * in and out in 120ms, without moving it; with reduced motion it simply
+	 * appears and goes.
+	 */
 	.toast {
-		position: fixed;
-		/* Above the status bar, centred, and never wider than the window less its margins. */
 		bottom: 2.75rem;
-		left: 50%;
 		z-index: 20;
-		max-width: calc(100vw - 2rem);
-		padding: 0.55rem 0.9rem;
-		border: 1px solid var(--accent);
-		border-radius: 0.5rem;
-		background: var(--gray-6);
-		box-shadow: 0 0.5rem 1.5rem oklch(0% 0 0 / 0.3);
-		color: var(--white);
-		font-size: 0.85rem;
-		text-align: center;
 		opacity: 0;
 		pointer-events: none;
-		transform: translate(-50%, 0.5rem);
-		transition:
-			opacity 0.2s,
-			transform 0.2s;
+		transition: opacity var(--yk-motion-fast) var(--yk-motion-ease);
 	}
 	.toast.shown {
 		opacity: 1;
-		transform: translate(-50%, 0);
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.toast {
 			transition: none;
 		}
 	}
-	.update {
-		border-color: var(--accent);
-		color: var(--accent-high);
-	}
+	/*
+	 * The compiler views' toggles: the design system's segmented control
+	 * (`.yk-segmented`, segmented.css), buttons with aria-pressed. It draws
+	 * the outlined row, one divider between two buttons, a pressed one in ink
+	 * on all four sides and the focus ring above its neighbour. Light gives
+	 * it only the bar's sizes (`.btn`'s height, and these), so it lines up
+	 * with the buttons beside it.
+	 */
 	.view-group {
-		display: inline-flex;
 		flex: none;
 	}
-	.view-group .view {
+	.view-group > .view {
 		gap: 0.25rem;
 		padding: 0 0.65rem;
-		border-radius: 0;
-	}
-	.view-group .view:first-child {
-		border-radius: 0.35rem 0 0 0.35rem;
-	}
-	.view-group .view:last-child {
-		border-radius: 0 0.35rem 0.35rem 0;
-	}
-	.view-group .view + .view {
-		margin-left: -1px;
+		font-size: 0.85rem;
 	}
 	:global(.view-group .short) {
 		display: none;
@@ -510,7 +521,7 @@
 		cursor: pointer;
 	}
 	.licenses-link:hover {
-		color: var(--white);
+		color: var(--yk-ink);
 		text-decoration: underline;
 	}
 	.status-bar {
@@ -520,8 +531,8 @@
 		gap: 0.75rem;
 		min-height: 1.75rem;
 		padding: 0 0.6rem;
-		border-top: 1px solid var(--gray-5);
-		color: var(--gray-3);
+		border-top: 1px solid var(--yk-line);
+		color: var(--yk-soft);
 		font-size: 0.8rem;
 		white-space: nowrap;
 	}
@@ -546,8 +557,8 @@
 		cursor: pointer;
 	}
 	.status-bar > button:hover {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 	}
 	/* What gives way first as the bar narrows: the server's name, then the build summary. */
 	.server {
@@ -576,21 +587,21 @@
 		width: 6rem;
 		height: 0.35rem;
 		border-radius: 1rem;
-		background: var(--gray-5);
+		background: var(--yk-line);
 		overflow: hidden;
 	}
 	.meter span {
 		display: block;
 		height: 100%;
-		background: var(--accent-high);
+		background: var(--yk-info);
 		transition: width 0.2s;
 	}
 	.spinner {
 		flex: none;
 		width: 0.75rem;
 		height: 0.75rem;
-		border: 1.5px solid var(--gray-4);
-		border-top-color: var(--accent-high);
+		border: 1.5px solid var(--yk-line-strong);
+		border-top-color: var(--yk-ink);
 		border-radius: 50%;
 		animation: spin 0.8s linear infinite;
 	}
@@ -607,11 +618,20 @@
 		height: 0.5rem;
 		border-radius: 50%;
 	}
+	/* Ready: a check in the ok colour, never the colour alone (and not green, which is for actions). */
 	.ok {
-		background: var(--accent-high);
+		width: auto;
+		height: auto;
+		border-radius: 0;
+		color: var(--yk-ok);
+		font-size: 0.85rem;
+		line-height: 1;
+	}
+	.ok::before {
+		content: '✓';
 	}
 	.bad {
-		background: var(--red-high);
+		background: var(--yk-danger);
 	}
 	.dot {
 		font-size: 0.85rem;
@@ -619,13 +639,13 @@
 	}
 	/* The marks are drawn, not written, so each count's text is its number alone (what the e2e suites read). */
 	.dot.error {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.dot.error::before {
 		content: '⊗';
 	}
 	.dot.warning {
-		color: var(--orange-high);
+		color: var(--yk-warn);
 	}
 	.dot.warning::before {
 		content: '⚠';

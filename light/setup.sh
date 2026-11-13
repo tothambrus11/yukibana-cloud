@@ -35,8 +35,8 @@
 # (scripts/pack-store.sh, Provenance); without it, each one is said to be
 # unverified.
 #
-# Then: `cd app && npm run dev` (http://localhost:5173), or
-# `npm run build && python3 ../serve.py build` for the built site.
+# Then: `cd app && pnpm run dev` (http://localhost:5173), or
+# `pnpm run build && python3 ../serve.py build` for the built site.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,14 +71,14 @@ for p in "${build[@]}"; do in_list "$p" "${packs[@]}" || packs+=("$p"); done
 # What every path below needs.
 say "Checking the tools"
 missing=()
-for t in git curl tar zstd node npm python3; do command -v "$t" >/dev/null || missing+=("$t"); done
-[ ${#missing[@]} -eq 0 ] || die "missing: ${missing[*]} (on Ubuntu: sudo apt-get install git curl tar zstd python3, and Node from https://nodejs.org or nvm)"
+for t in git curl tar zstd node pnpm python3; do command -v "$t" >/dev/null || missing+=("$t"); done
+[ ${#missing[@]} -eq 0 ] || die "missing: ${missing[*]} (on Ubuntu: sudo apt-get install git curl tar zstd python3, Node from https://nodejs.org or nvm, and pnpm from https://pnpm.io/installation)"
 node_major="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$node_major" -ge 22 ] || die "Node $(node --version) is too old: Light needs Node 22 or later"
-echo "git, curl, tar, zstd, python3 and Node $(node --version): fine"
+echo "git, curl, tar, zstd, python3, pnpm $(pnpm --version) and Node $(node --version): fine"
 
 say "Installing the app's dependencies (app/)"
-(cd "$HERE/app" && npm ci --no-audit --no-fund)
+(cd "$HERE/app" && pnpm install --frozen-lockfile --filter .)
 
 # Packages for the packs that will be built, from their deps.apt.
 is_split() { [ -d "$HERE/packs/$1/toolchains" ]; }
@@ -192,7 +192,7 @@ say "Done"
 [ ${#skipped[@]} -eq 0 ] || echo "skipped: ${skipped[*]} (see above: --latest or --build)"
 cat <<'EOF'
 
-Run it:   cd app && npm run dev            (http://localhost:5173, reloads on edits)
-Built:    cd app && npm run build && python3 ../serve.py build   (http://localhost:8000)
-Checks:   cd app && npm run check && npm run test:unit
+Run it:   cd app && pnpm run dev           (http://localhost:5173, reloads on edits)
+Built:    cd app && pnpm run build && python3 ../serve.py build   (http://localhost:8000)
+Checks:   cd app && pnpm run check && pnpm run test:unit
 EOF

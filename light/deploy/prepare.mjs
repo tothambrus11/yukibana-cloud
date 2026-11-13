@@ -32,7 +32,7 @@ const LIMIT = 25 * 1024 * 1024;
 const MAX_FILES = Number(process.env.MAX_FILES ?? 20_000);
 
 const root = process.argv[2] ?? fileURLToPath(new URL('../app/build/', import.meta.url));
-if (!existsSync(root)) throw new Error(`${root} does not exist: build the app first (cd app && npm run build)`);
+if (!existsSync(root)) throw new Error(`${root} does not exist: build the app first (cd app && pnpm run build)`);
 const url = (path) => `/${relative(root, path).split('\\').join('/')}`;
 const size = (path) => (existsSync(path) ? statSync(path).size : Infinity);
 

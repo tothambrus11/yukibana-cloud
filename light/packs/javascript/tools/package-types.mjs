@@ -18,7 +18,7 @@
 // output already holds, for an entry that is always loaded with that one
 // (`p5/global`'s declarations import `p5`'s, which instance mode loads alone).
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, sep } from 'node:path';
 import ts from 'typescript';
 
 const args = process.argv.slice(2);
@@ -31,8 +31,9 @@ if (!out || packages.length === 0) {
   process.exit(2);
 }
 
-const root = resolve('.');
-const entry = resolve(root, '__package_types_entry__.ts');
+// With forward slashes, as TypeScript writes the paths it reads.
+const root = resolve('.').split(sep).join('/');
+const entry = `${root}/__package_types_entry__.ts`;
 const source = packages.map((p, i) => `import * as p${i} from ${JSON.stringify(p)};\nexport { p${i} };\n`).join('');
 const options = {
   target: ts.ScriptTarget.ES2023,
@@ -66,16 +67,23 @@ if (errors.length) {
 }
 
 const prefix = `${root}/node_modules/`;
+/**
+ * Where `p`, a file under node_modules, is in the server's flat
+ * `/node_modules/`: TypeScript reads a package where its link leads, and
+ * pnpm links node_modules/<name> to node_modules/.pnpm/<id>/node_modules/<name>,
+ * beside the packages it depends on, so that part of the path goes.
+ */
+const virtual = (p) => `/node_modules/${p.slice(prefix.length).replace(/^\.pnpm\/[^/]+\/node_modules\//, '')}`;
 const files = {};
 // TypeScript's own package (its default libs, its package.json) is the
 // server's business (libs-*.json), not a package's.
 const kept = [...program.getSourceFiles().map((f) => f.fileName), ...read].filter(
-  (p) => p.startsWith(prefix) && !p.startsWith(`${prefix}typescript/`) && (p.endsWith('/package.json') || /\.d\.[cm]?ts$/.test(p)),
+  (p) => p.startsWith(prefix) && !virtual(p).startsWith('/node_modules/typescript/') && (p.endsWith('/package.json') || /\.d\.[cm]?ts$/.test(p)),
 );
-for (const p of [...new Set(kept)].sort()) {
-  if (Object.hasOwn(except, `/node_modules/${p.slice(prefix.length)}`)) continue;
+for (const p of [...new Set(kept)].sort((a, b) => (virtual(a) < virtual(b) ? -1 : virtual(a) > virtual(b) ? 1 : 0))) {
+  if (Object.hasOwn(except, virtual(p))) continue;
   try {
-    files[`/node_modules/${p.slice(prefix.length)}`] = readFileSync(p, 'utf8');
+    files[virtual(p)] = readFileSync(p, 'utf8');
   } catch {
     // A package.json TypeScript only looked for (a scope directory) is not a file.
   }
