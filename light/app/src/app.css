@@ -245,11 +245,15 @@ html.yk-root {
 	white-space: nowrap;
 	border: 0;
 }
-/* The ink ring (design/base.css `.yk-root :focus-visible`), also for dockview's tabs, which turn their own outline off. */
-:where(button, select, input, a, [tabindex]):focus-visible,
-.dv-tab:focus-visible {
+/* The ink ring (design/base.css `.yk-root :focus-visible`). */
+:where(button, select, input, a, [tabindex]):focus-visible {
 	outline: var(--focus-ring);
 	outline-offset: var(--yk-focus-offset);
+}
+/* Also for dockview's tabs, which turn their own outline off; drawn inside the tab, since the tab strip clips anything outside it. */
+.dv-tab:focus-visible {
+	outline: var(--focus-ring);
+	outline-offset: calc(-1 * var(--yk-focus-width));
 }
 
 /*
