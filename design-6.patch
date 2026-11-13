@@ -1,0 +1,29 @@
+From 351ec9f9d6a4d344f97bc20d252e7f09a6885c69 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 13 Nov 2026 12:41:37 +0000
+Subject: [PATCH] design: the docs use the landing page's lifted header
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011CH6tKeE4iJ874reAvf4rR
+---
+ packages/design/README.md | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/packages/design/README.md b/packages/design/README.md
+index b681ddb..9e84b3a 100644
+--- a/packages/design/README.md
++++ b/packages/design/README.md
+@@ -42,8 +42,8 @@ empty list's patch. Never behind text, never in a header, and no colour stripe a
+ 
+ **Header.** One row of three columns: the logo and "Yukibana" (Bricolage 650, 16px) on the left, the sections (Docs,
+ Playground, Embed) centred, and search (a field-like button with Ctrl K), the filled GitHub mark and Sign in on the right.
+-Docs and cloud: a full-width square bar, sticky, with blur and a hairline, the sections as plain links. The landing page:
+-the same bar lifted off the edge, rounded (16px), at most 1000px wide, with a soft shadow, the sections in a grey tray.
++The landing page and the docs: the bar lifted off the edge, rounded (16px), exactly as wide as the content, with a soft
++shadow, the sections in a grey tray. The cloud: a full-width square bar, sticky, with blur and a hairline.
+ No section is ever drawn as selected, because some lead to other sites. Below 760px there is no room around it: it
+ becomes the full-width bar with the brand, the GitHub mark and Sign in. No "Get started" and no Docs call to action in
+ any header: the landing hero carries the one call to action (Download). The cloud's bar holds only the course switcher
+-- 
+2.43.0
+
