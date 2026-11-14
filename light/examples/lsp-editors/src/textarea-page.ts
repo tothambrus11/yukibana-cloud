@@ -23,7 +23,7 @@ import { textareaEditor } from '@yukibana/editors/textarea';
 import type { CompletionItem, CompletionList, Diagnostic, DocumentUri, Hover, Location, LocationLink, ServerCapabilities } from '@yukibana/protocol';
 import type { SessionClient } from '@yukibana/runtime';
 import { chosenLanguage, languagePicker, part, sessionView } from './page.ts';
-import { documentUri, languageSession, pathOfUri, whyNotStarted } from './session.ts';
+import { languageSession, whyNotStarted, WORKSPACE } from './session.ts';
 import { completionItems, hoverText, insertionOf, offsetOf, positionOf, wholeRange } from './text.ts';
 
 const language = chosenLanguage();
@@ -43,7 +43,7 @@ textarea.disabled = false;
 
 const editor = textareaEditor(textarea, entry, hidden);
 const session = languageSession(language, body, view);
-const entryUri = documentUri(entry);
+const entryUri = WORKSPACE.uriOf(entry);
 /** The LSP language id of the entry file, and of the hidden files of the same language. */
 const languageId = language.monacoLanguages[0] ?? language.key;
 
@@ -70,7 +70,7 @@ const client: SessionClient = {
 		// Every file of the project is open, so a server that resolves
 		// imports from open documents (the hidden files) finds them.
 		for (const [path, text] of Object.entries(editor.project.snapshot().files())) {
-			session.open({ uri: documentUri(path), languageId: path === entry ? languageId : languageOf(path), version: 1, text }, 'existing');
+			session.open({ uri: WORKSPACE.uriOf(path), languageId: path === entry ? languageId : languageOf(path), version: 1, text }, 'existing');
 		}
 		sent = textarea.value;
 	},
@@ -111,7 +111,7 @@ function showProblems(): void {
 			const item = document.createElement('li');
 			const severity = SEVERITY[diagnostic.severity ?? 1];
 			item.className = `problem ${severity}`;
-			const where = `${pathOfUri(uri) ?? uri}:${diagnostic.range.start.line + 1}:${diagnostic.range.start.character + 1}`;
+			const where = `${WORKSPACE.pathOf(uri) ?? uri}:${diagnostic.range.start.line + 1}:${diagnostic.range.start.character + 1}`;
 			const button = document.createElement('button');
 			button.type = 'button';
 			button.textContent = `${where} ${severity}: ${diagnostic.message}${diagnostic.source ? ` (${diagnostic.source})` : ''}`;
@@ -272,7 +272,7 @@ async function goToDefinition(): Promise<void> {
 		select(offsetOf(textarea.value, range.start), offsetOf(textarea.value, range.end));
 		return;
 	}
-	const path = pathOfUri(uri);
+	const path = WORKSPACE.pathOf(uri);
 	const text = path === null ? undefined : hidden[path];
 	const line = text?.split('\n')[range.start.line]?.trim();
 	hoverPanel.textContent = `Defined in ${path ?? uri}, line ${range.start.line + 1}${line ? `:\n\n${line}` : '.'}`;

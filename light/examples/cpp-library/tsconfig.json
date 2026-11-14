@@ -6,7 +6,7 @@
 	"compilerOptions": {
 		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
 		"types": ["vite/client"],
-		// The modules' sources through their `file:` links, as Vite reads
+		// The modules' sources through their `link:` links, as Vite reads
 		// them (vite.config.ts).
 		"customConditions": ["@yukibana/source"],
 		// monaco's sources `import type` from the bare name, whose package

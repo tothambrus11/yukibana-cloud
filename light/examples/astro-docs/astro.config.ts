@@ -28,7 +28,7 @@ export default defineConfig({
 		shikiConfig: { themes: { light: 'github-light', dark: 'github-dark-dimmed' }, defaultColor: false },
 	},
 	vite: {
-		// The @yukibana packages are `file:` links to light/modules, so the
+		// The @yukibana packages are `link:` links to light/modules, so the
 		// site bundles their sources, which this condition names (their
 		// package.json); without it a link resolves to their dist/, which
 		// only light/modules/build.mjs writes.

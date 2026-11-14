@@ -33,7 +33,7 @@ const monacoWorkers: Plugin = {
 
 /**
  * The shared modules (light/modules) are this package's dependencies, as
- * `file:` links (package.json), and are read from their sources: the
+ * `link:` links (package.json), and are read from their sources: the
  * `@yukibana/source` condition of each module's `exports` names its .ts
  * files, where the default condition names the dist/ that only
  * light/modules/build.mjs writes. So the app imports them as any host

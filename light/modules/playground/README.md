@@ -46,6 +46,11 @@ body, so the package's samples are never loaded.
   so its editor features (hover, suggest, peek) are there to show the
   server's answers; this module only takes it (H1).
 * **`MonacoEnvironment`**, the editor worker: the host's alone (H1).
+* **A language Monaco has no grammar for** (Haskell, Zig) is registered
+  with Monaco by the host first, through its language package's `/monaco`
+  entry; an entry file Monaco has no language for is refused with a
+  `RangeError`. Monaco imported whole also brings its own TypeScript and
+  JavaScript service, which answers next to a JavaScript pack's server.
 * **The packs**, served at `packs/` beside the page (or `options.packs`),
   the page cross-origin isolated for a program that reads input.
 
@@ -63,7 +68,8 @@ body, so the package's samples are never loaded.
 * A run resolves exactly once, with how it ended: a final state,
   `refused`, or `cancelled` when a newer run replaced it or the playground
   was disposed.
-* Without Monaco's internals the binding does three things less
+* Without Monaco's internals the binding does two things less
   (`MonacoBindingOptions.internals`): a server's own workspace edit is
-  applied a file at a time, Show Call Hierarchy's "nothing here" is
-  logged, and Go to Symbol in Workspace is not offered.
+  applied a file at a time, and Go to Symbol in Workspace is not offered.
+  Show Call Hierarchy is not offered either: a playground has no view for
+  it.

@@ -195,6 +195,14 @@ test('a registry written by a newer tool is not written by this one', async (t) 
 	assert.match((await initRegistry(registry)).problems[0], /is a registry of format 2/);
 });
 
+test('a damaged registry.json is not answered with init, which would refuse it again', async (t) => {
+	const { registry } = await stamped(t);
+	await writeFile(path.join(registry, 'registry.json'), '{bad');
+	const [problem] = (await initRegistry(registry)).problems;
+	assert.match(problem, /cannot be read/);
+	assert.doesNotMatch(problem, /"yukibana-registry init"/);
+});
+
 test('only an empty directory becomes a registry', async (t) => {
 	const root = await scratch(t);
 	const full = await write(path.join(root, 'full'), { 'index.html': '' });

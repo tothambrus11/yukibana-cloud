@@ -8,9 +8,10 @@
  * answers Monaco's language features (completion, hover, rename, code
  * actions and the rest), the call hierarchy's action and Go to Symbol in
  * Workspace's quick pick by asking the session. An edit the server asks
- * for is applied through Monaco's bulk edit service (the internals'
- * `applyWorkspaceEdit`), so it is undone as a rename is: one undo step
- * across its files, which the host's bulk edit service makes so.
+ * for is applied, when the host gave internals, through Monaco's bulk edit
+ * service (the internals' `applyWorkspaceEdit`), so it is undone as a
+ * rename is: one undo step across its files, which the host's bulk edit
+ * service makes so; else model by model, one undo step per file.
  *
  * The host's Monaco and its internals are passed in (H1): nothing here
  * imports Monaco as a value, and nothing exists until `start`.
@@ -37,8 +38,13 @@ export interface BindingEvents {
 	readonly log: (level: 'error' | 'warning', text: string) => void;
 	/** A server asked to show a document, or a symbol was chosen: the host switches the editor to `uri`, selecting `selection` (null: none). */
 	readonly open: (uri: monaco.Uri, selection: monaco.IRange | null) => void;
-	/** Show Call Hierarchy found a function at the caret: the host shows its calls (asked of the session with `calls`). */
-	readonly callHierarchy: (item: lsp.CallHierarchyItem) => void;
+	/**
+	 * Show Call Hierarchy found a function at the caret: the host shows its
+	 * calls (asked of the session with `calls`). A host with no view for them
+	 * leaves it out, and Show Call Hierarchy is then not offered at all, so
+	 * no menu entry or key does nothing.
+	 */
+	readonly callHierarchy?: (item: lsp.CallHierarchyItem) => void;
 }
 
 /** How a binding is set up; all of it fixed for the binding's life. */
@@ -334,10 +340,12 @@ export class MonacoBinding implements SessionClient {
 	};
 
 	/**
-	 * Applies an edit the server asks for, as Monaco applies a rename's:
-	 * through the bulk edit service, one undo step across every file it
-	 * touches. Resolves `true` iff all of it was applied; what was not is
-	 * logged.
+	 * Applies an edit the server asks for: through Monaco's bulk edit service
+	 * when the host gave internals, as Monaco applies a rename's (one undo
+	 * step across every file it touches), else model by model
+	 * (`#applyModelByModel`: one undo step per file, and an edit that
+	 * creates, renames or deletes a file is refused whole). Resolves `true`
+	 * iff all of it was applied; what was not is logged.
 	 */
 	readonly applyEdit = async (edit: lsp.WorkspaceEdit, label: string | null): Promise<boolean> => {
 		const { edit: converted, unsupported } = c.toWorkspaceEdit(edit, this.#uriOf);
@@ -455,7 +463,7 @@ export class MonacoBinding implements SessionClient {
 			this.#never(),
 		);
 		const item = items?.[0];
-		if (item) this.#options.events.callHierarchy(item);
+		if (item) this.#options.events.callHierarchy?.(item);
 		else if (!this.#session.stopping) {
 			const message = 'No function to show the call hierarchy of here.';
 			if (this.#options.internals) this.#options.internals.showMessage(editor, message, position);
@@ -777,8 +785,9 @@ export class MonacoBinding implements SessionClient {
 
 		// Monaco has no call hierarchy view: the action asks the server and
 		// the host's Call Hierarchy panel shows the tree. VS Code's key and
-		// place in the context menu (after Go to References).
-		if (caps.callHierarchyProvider) {
+		// place in the context menu (after Go to References). Only for a host
+		// that has that panel: without one the action would do nothing.
+		if (caps.callHierarchyProvider && this.#options.events.callHierarchy !== undefined) {
 			add(
 				m.editor.addEditorAction({
 					id: 'yukibana.showCallHierarchy',

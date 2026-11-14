@@ -46,7 +46,7 @@ the app:
   `.ts` file, so Node's type stripping, Vite and esbuild load the source
   without a build step. Another module is imported by its relative path
   (`../protocol/index.ts`) or its name (`@yukibana/protocol`); the app has
-  the modules as `file:` dependencies, read from source through their
+  the modules as `link:` dependencies, read from source through their
   `@yukibana/source` export condition.
 
 Each module is its own TypeScript project, so each is checked with only

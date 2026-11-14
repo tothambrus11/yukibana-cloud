@@ -5,7 +5,7 @@
 // test's arrows, build.mjs's PUBLISHED, the app's type-check, the tests'
 // resolve hook, the import tripwires) is made from this, so adding a module
 // is adding a directory, and an arrow is a dependency a host installs too.
-// The one list kept by hand is the app's own: a `file:` dependency per
+// The one list kept by hand is the app's own: a `link:` dependency per
 // module in app/package.json, as any host has.
 //
 // Plain JavaScript that only reads, so Node, Vite's config and the tests

@@ -18,7 +18,7 @@ import { pathOf, snapshotOf, type Disposable, type Path, type Project, type Proj
 import { MonacoBinding } from '@yukibana/monaco';
 import { internals } from './monaco-internals.ts';
 import { chosenLanguage, languagePicker, part, sessionView } from './page.ts';
-import { documentUri, languageSession, pathOfUri, ROOT_URI, whyNotStarted } from './session.ts';
+import { languageSession, ROOT_URI, whyNotStarted, WORKSPACE } from './session.ts';
 
 /** What the page made, for the end-to-end test. */
 interface LspMonaco {
@@ -53,7 +53,7 @@ const body = await language.body();
 
 /** One model per file of the sample project, under the workspace folder, each in the language its extension says. */
 const models = new Map<Path, monaco.editor.ITextModel>();
-for (const [path, text] of Object.entries(body.sample)) models.set(pathOf(path), monaco.editor.createModel(text, undefined, monaco.Uri.parse(documentUri(path))));
+for (const [path, text] of Object.entries(body.sample)) models.set(pathOf(path), monaco.editor.createModel(text, undefined, monaco.Uri.parse(WORKSPACE.uriOf(path))));
 
 let revision = 0;
 /**
@@ -103,7 +103,7 @@ if (first !== undefined) show(first);
 // come here, and the page switches the editor to that file's model.
 monaco.editor.registerEditorOpener({
 	openCodeEditor: (_source, resource, selection) => {
-		const path = pathOfUri(resource.toString());
+		const path = WORKSPACE.pathOf(resource.toString());
 		if (path === null || !models.has(pathOf(path))) return false;
 		show(pathOf(path), selection === undefined ? null : 'startLineNumber' in selection ? selection : monaco.Range.fromPositions(selection));
 		return true;
@@ -116,17 +116,16 @@ const binding = new MonacoBinding({
 	internals,
 	session,
 	project,
-	documentUri,
+	documentUri: WORKSPACE.uriOf,
 	languages: language.monacoLanguages,
 	rootUri: ROOT_URI,
 	events: {
 		log: (level, text) => view.log(level, text),
 		// Go to definition into another file, or a symbol chosen from Go to Symbol in Workspace.
 		open: (uri, selection) => {
-			const path = pathOfUri(uri.toString());
+			const path = WORKSPACE.pathOf(uri.toString());
 			if (path !== null) show(pathOf(path), selection);
 		},
-		callHierarchy: (item) => view.log('info', `Show Call Hierarchy found ${item.name}; this page has no call hierarchy panel.`),
 	},
 });
 view.log('info', `Starting the ${language.label} language server (packs/${language.pack}/server.js).`);

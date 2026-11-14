@@ -7,7 +7,7 @@
 		"noUncheckedIndexedAccess": true,
 		"exactOptionalPropertyTypes": true,
 		"skipLibCheck": true,
-		// The modules' sources through their `file:` links, as Vite reads
+		// The modules' sources through their `link:` links, as Vite reads
 		// them (vite.config.ts).
 		"customConditions": ["@yukibana/source"],
 		// The modules' `import type … from 'monaco-editor'` names the

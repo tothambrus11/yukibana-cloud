@@ -56,8 +56,10 @@ export default {
 
 		const headers = new Headers(rule.headers);
 		headers.set('ETag', object.httpEtag);
-		// Whatever is stored, the edge may encode or decode it for the client that asked.
-		headers.set('Vary', 'Accept-Encoding');
+		// Whatever is stored, the edge may encode or decode it for the client that asked. And a cached
+		// copy must not answer a service worker's script fetch, which `refusal` has to see: an
+		// immutable build file would otherwise register from the browser's cache without asking here.
+		headers.set('Vary', 'Accept-Encoding, Service-Worker');
 		const encoding = object.httpMetadata?.contentEncoding;
 		if (encoding) headers.set('Content-Encoding', encoding);
 		// A get whose precondition did not hold comes back without a body: the client's copy is current.

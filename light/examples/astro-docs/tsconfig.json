@@ -5,7 +5,7 @@
 	"extends": ["astro/tsconfigs/strictest", "../../modules/tsconfig.base.json"],
 	"compilerOptions": {
 		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
-		// The modules' sources through their `file:` links, as Vite reads
+		// The modules' sources through their `link:` links, as Vite reads
 		// them (astro.config.ts).
 		"customConditions": ["@yukibana/source"],
 		// The islands are Preact components.

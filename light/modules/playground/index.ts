@@ -276,6 +276,13 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 	}
 	const models = new Map<Path, monaco.editor.ITextModel>();
 	for (const [path, text] of Object.entries({ ...options.files, ...hidden })) models.set(pathOf(path), m.editor.createModel(text, undefined, uriOf(path)));
+	// Monaco names a model's language from its extension, and only for the
+	// languages it has a grammar for; the server would otherwise be bound to
+	// no language at all, and answer nothing without saying why.
+	if (models.get(entry)?.getLanguageId() === 'plaintext') {
+		for (const model of models.values()) model.dispose();
+		throw new RangeError(`Monaco has no language for "${entry}": register it with Monaco first (a language package's \`/monaco\` entry does).`);
+	}
 	let revision = 0;
 	let current: ReturnType<typeof snapshotOf> | null = null;
 	const project: Project = {
@@ -368,7 +375,6 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 				const path = WORKSPACE.pathOf(uri);
 				if (path !== null) show(path, selection);
 			},
-			callHierarchy: (item) => log('info', `Show Call Hierarchy found ${item.name}; a playground has no call hierarchy view.`),
 		},
 	});
 	const ready = binding.start().catch(async (error: unknown) => {

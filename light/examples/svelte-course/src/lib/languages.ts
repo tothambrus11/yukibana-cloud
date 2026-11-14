@@ -5,7 +5,7 @@
  * grammar its editor highlights with, and the framework its test reports
  * come from.
  *
- * Adding a language is a row here and a `file:` link in package.json.
+ * Adding a language is a row here and a `link:` link in package.json.
  */
 import type { AnyProvider } from '@yukibana/core';
 import { LANGUAGES as CPP } from '@yukibana/lang-cpp';

@@ -32,7 +32,7 @@ const servePacks = (): Plugin => {
 	return { name: 'serve-packs', configureServer: (s) => void s.middlewares.use(middleware), configurePreviewServer: (s) => void s.middlewares.use(middleware) };
 };
 
-/** The @yukibana packages are `file:` links to light/modules, read from their sources, in the browser and in the prerender alike. */
+/** The @yukibana packages are `link:` links to light/modules, read from their sources, in the browser and in the prerender alike. */
 const SOURCE = '@yukibana/source';
 
 export default defineConfig({

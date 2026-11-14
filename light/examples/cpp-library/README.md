@@ -44,6 +44,7 @@ same: its files as strings under `hidden`.
 ## Running it
 
 ```sh
+(cd ../.. && pnpm install --filter ./setup)   # the setup tool's own dependencies, once
 node ../../setup/cli.mjs cpp --latest   # the C++ pack, in light/app/static/packs (once)
 pnpm install
 pnpm run dev                            # http://localhost:5173

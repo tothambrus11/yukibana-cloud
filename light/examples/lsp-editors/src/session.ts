@@ -6,22 +6,19 @@
  * or the textarea page's own client.
  */
 import type { LoadingProgress } from '@yukibana/protocol';
-import { LanguageSession, PackLocator, type LogLevel, type ServerState } from '@yukibana/runtime';
+import { LanguageSession, PackLocator, workspaceRoot, type LogLevel, type ServerState } from '@yukibana/runtime';
 import type { PackLanguageBody } from '@yukibana/std';
 import type { DemoLanguage } from './languages.ts';
 
 /** The workspace folder every document is under, with its slash: `initialize`'s root. */
 export const ROOT_URI = 'file:///workspace/';
 
-/** Returns the URI of project file `path` (a project path: relative, `/`-separated, never `..`). */
-export function documentUri(path: string): string {
-	return new URL(path, ROOT_URI).href;
-}
-
-/** Returns the project path of `uri`, or null for a URI outside the workspace. */
-export function pathOfUri(uri: string): string | null {
-	return uri.startsWith(ROOT_URI) ? decodeURIComponent(uri.slice(ROOT_URI.length)) : null;
-}
+/**
+ * The workspace under {@link ROOT_URI}: `uriOf(path)` is project file
+ * `path`'s URI, each segment encoded (so a name with `#` or `%` works), and
+ * `pathOf(uri)` the project path of a URI, or null for one outside it.
+ */
+export const WORKSPACE = workspaceRoot(ROOT_URI);
 
 /** Where the packs are: /packs/ beside the page, as vite.config.ts and test.mjs serve them. */
 export const PACKS = PackLocator.unpinned(new URL('packs/', document.baseURI));

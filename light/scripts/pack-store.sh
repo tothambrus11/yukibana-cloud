@@ -99,9 +99,6 @@
 #       <b> narrows the candidates to runs of that head branch before any is
 #       downloaded; only the attestation decides. Exit 3 when none is
 #       acceptable. Needs GH_TOKEN with actions: read.
-#   pack-store.sh repo                    the GitHub repository the stores
-#       and artifacts are read from, owner/name (Environment, below), for
-#       light/setup --pull's own gh calls.
 #   pack-store.sh ensure-stores           creates the light-packs and
 #       light-toolchains prereleases unless they exist (protect-releases.sh,
 #       before release immutability is turned on).
@@ -927,7 +924,6 @@ case "${1:-}" in
   toolchain-archive) toolchain_archive "${2:?unit}" "${3:?toolchain directory}" "${4:?output directory}" ;;
   toolchain-publish) toolchain_publish "${2:?unit}" "${3:?toolchain archive}" ;;
   toolchain-artifact) toolchain_artifact "${2:?unit}" "${3:?output directory}" "${@:4}" ;;
-  repo) repo ;;
   ensure-stores) ensure_stores ;;
   *) sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -241,6 +241,9 @@ jobs:
           name: light-two-up-example
           paths: |
             light/examples/two-up
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
       - id: lsp-editors-example
@@ -249,6 +252,9 @@ jobs:
           name: light-lsp-editors-example
           paths: |
             light/examples/lsp-editors
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
       - id: cpp-library-example
@@ -257,6 +263,9 @@ jobs:
           name: light-cpp-library-example
           paths: |
             light/examples/cpp-library
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
       - id: cpp-library-sveltekit-example
@@ -265,6 +274,9 @@ jobs:
           name: light-cpp-library-sveltekit-example
           paths: |
             light/examples/cpp-library-sveltekit
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
       # Its end-to-end test runs on the JavaScript pack, the one pack built
@@ -275,6 +287,9 @@ jobs:
           name: light-svelte-course-example
           paths: |
             light/examples/svelte-course
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             light/packs/javascript
             .github/workflows/light-ci.yml
@@ -284,6 +299,9 @@ jobs:
           name: light-react-explorer-example
           paths: |
             light/examples/react-explorer
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
       - id: astro-docs-example
@@ -292,6 +310,9 @@ jobs:
           name: light-astro-docs-example
           paths: |
             light/examples/astro-docs
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
             light/modules
             light/packs/javascript
             .github/workflows/light-ci.yml
@@ -747,11 +768,6 @@ jobs:
         with:
           record: ${{ needs.plan.outputs.react-explorer-example-key }}
 
-  # One job per build system, each with a language whose sample it builds
-  # (tests/unit/export-options.test.mjs checks that every build system is
-  # here). Every job the download's CI has: build and test, and the format
-  # and lint checks, whose tools the build files now pin (Spotless in pom.xml
-  # and build.gradle.kts, Prettier in package.json, and so on).
   astro-docs-example:
     name: Astro docs example
     needs: plan
@@ -819,7 +835,6 @@ jobs:
         with:
           record: ${{ needs.plan.outputs.astro-docs-example-key }}
 
-
   svelte-course-example:
     name: Svelte course example
     needs: plan
@@ -865,6 +880,8 @@ jobs:
 
       - name: Unit tests and bundle fixtures (the initial scripts' budget, Monaco and the languages lazy)
         run: pnpm test
+        env:
+          BUNDLE_REQUIRED: '1'
 
       - name: Build the JavaScript pack
         working-directory: light/packs/javascript
@@ -878,6 +895,11 @@ jobs:
         with:
           record: ${{ needs.plan.outputs.svelte-course-example-key }}
 
+  # One job per build system, each with a language whose sample it builds
+  # (tests/unit/export-options.test.mjs checks that every build system is
+  # here). Every job the download's CI has: build and test, and the format
+  # and lint checks, whose tools the build files now pin (Spotless in pom.xml
+  # and build.gradle.kts, Prettier in package.json, and so on).
   exports:
     name: Download builds with ${{ matrix.target }}
     needs: plan

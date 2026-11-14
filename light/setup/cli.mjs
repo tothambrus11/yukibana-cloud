@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Sets up Yukibana Light for development, on Linux, macOS or Windows: the
-// app's npm dependencies, and every language pack, downloaded already built
+// app's dependencies, and every language pack, downloaded already built
 // from the pack store for exactly the sources checked out, so nothing needs
 // compiling. Run it again after a pull: a pack whose sources did not change
 // is left as it is.
@@ -21,6 +21,8 @@ import { dirty, fetchPack, installedTree, LIGHT, repo, tree, TREES } from './sto
 import { bashProblem, canSymlink, findBash, onPath, runBash } from './shell.mjs';
 
 const WINDOWS = process.platform === 'win32';
+/** Building a pack from source is Linux's alone: its build.sh installs Debian packages. */
+const LINUX = process.platform === 'linux';
 const SCRIPTS = path.join(LIGHT, 'scripts');
 /** The directories of light/ whose files bash runs or reads, which .gitattributes keeps LF. */
 const LF_DIRS = ['scripts', 'packs', 'toolchains'];
@@ -85,12 +87,11 @@ async function main(packs, opts) {
 	if (packs.length === 0) packs = [...ALL];
 	for (const p of [...packs, ...build]) if (!ALL.includes(p)) die(`no pack ${p} (one of: ${ALL.join(', ')})`);
 	for (const p of build) if (!packs.includes(p)) packs.push(p);
-	if (build.length > 0 && WINDOWS) die(`building packs from source (--build ${build.join(',')}) needs Linux: run light-setup in WSL, or drop --build for the stored builds`);
+	if (build.length > 0 && !LINUX) die(`building packs from source (--build ${build.join(',')}) needs Linux: run light-setup in WSL, or drop --build for the stored builds`);
 	if (pull && WINDOWS) die(`a pull request's toolchains (--pull ${pull}) need Linux: the scripts that unpack them give tar the cache's path, which it cannot take as Windows writes it. Run light-setup in WSL, or take --latest`);
 
 	say('Checking the tools');
 	if (onPath('git') === null) die('missing: git');
-	if (onPath('pnpm') === null) die('missing: pnpm (https://pnpm.io/installation; light/package.json names its version)');
 	const [major = 0, minor = 0] = process.versions.node.split('.').map(Number);
 	if (major < 22 || (major === 22 && minor < 15)) die(`Node ${process.version} is too old: Light needs Node 22.15 or later`);
 	// What runs the split packs' scripts and the builds, and why it cannot
@@ -105,7 +106,8 @@ async function main(packs, opts) {
 	// then as one command line: the arguments are constants.
 	const install = 'pnpm install --frozen-lockfile --filter .';
 	const pnpm = WINDOWS ? spawnSync(install, { cwd: path.join(LIGHT, 'app'), stdio: 'inherit', shell: true }) : spawnSync('pnpm', install.split(' ').slice(1), { cwd: path.join(LIGHT, 'app'), stdio: 'inherit' });
-	if (pnpm.status !== 0) die(`${install} in app/ failed`);
+	// A pnpm that is not there is named by the shell, or by the spawn's error.
+	if (pnpm.status !== 0) die(`${install} in app/ failed${pnpm.error ? `: ${pnpm.error.message}` : ''}`);
 
 	/** @param {string} script @param {string[]} args @param {Parameters<typeof runBash>[4]} [o] */
 	const store = (script, args, o) => runBash(/** @type {string} */ (bash), SCRIPTS, script, args, o);
@@ -229,7 +231,7 @@ async function main(packs, opts) {
 		if (dirty(p)) note(`packs/${p} has changes not committed; the store has builds of committed sources only (--build ${p} builds yours)`);
 		say(`Fetching the ${p} pack`);
 		if (await fetchPack(p, { any: latest, log: note })) done.fetched.push(p);
-		else if (WINDOWS) {
+		else if (!LINUX) {
 			note(`no build of packs/${p} as checked out, and building one needs Linux: rerun with --latest for the newest build; skipping ${p}`);
 			done.skipped.push(p);
 		} else {

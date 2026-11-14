@@ -49,7 +49,7 @@ export default defineConfig({
 		},
 	},
 	plugins: [isolateAllButTheDocsPage()],
-	// @yukibana/core, protocol, runtime and std are `file:` links to
+	// @yukibana/core, protocol, runtime and std are `link:` links to
 	// light/modules, so the page bundles their sources, which this condition
 	// names (their package.json); without it a link resolves to their dist/,
 	// which only light/modules/build.mjs writes. A site outside this

@@ -275,7 +275,9 @@ async function openRegistry(registry) {
 	try {
 		value = JSON.parse(await readFile(path.join(registry, REGISTRY_JSON), 'utf8'));
 	} catch (error) {
-		return { ok: false, problems: [`${registry} is not a registry: its ${REGISTRY_JSON} cannot be read (${reasonOf(error)}). Make one with "yukibana-registry init".`] };
+		// Only a missing one is init's to make: init refuses to write over one that is there.
+		const hint = /** @type {NodeJS.ErrnoException} */ (error).code === 'ENOENT' ? ' Make one with "yukibana-registry init".' : '';
+		return { ok: false, problems: [`${registry} is not a registry: its ${REGISTRY_JSON} cannot be read (${reasonOf(error)}).${hint}`] };
 	}
 	if (typeof value !== 'object' || value === null || value.format !== FORMAT) {
 		return { ok: false, problems: [`${registry} is a registry of format ${JSON.stringify(value?.format)}, and this tool writes format ${FORMAT}`] };

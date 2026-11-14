@@ -59,7 +59,7 @@ test('a compressed file is sent as it is stored, saying how it is encoded', asyn
 	assert.equal(response.status, 200);
 	assert.equal(response.headers.get('content-type'), 'application/wasm');
 	assert.equal(response.headers.get('content-encoding'), 'br');
-	assert.equal(response.headers.get('vary'), 'Accept-Encoding');
+	assert.equal(response.headers.get('vary'), 'Accept-Encoding, Service-Worker');
 	assert.equal(response.headers.get('content-length'), String('brotli bytes'.length));
 	assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
 	assert.ok(response.headers.get('etag'));
@@ -69,7 +69,7 @@ test('an uncompressed file names no encoding, and still says its answer depends 
 	const { response } = await ask('/packs/cpp/server.js');
 	assert.equal(response.headers.get('content-encoding'), null);
 	// The edge may compress it for a client that asks, so a cache must keep the two apart.
-	assert.equal(response.headers.get('vary'), 'Accept-Encoding');
+	assert.equal(response.headers.get('vary'), 'Accept-Encoding, Service-Worker');
 	assert.equal(response.headers.get('cache-control'), 'no-cache');
 });
 

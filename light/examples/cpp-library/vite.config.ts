@@ -31,7 +31,7 @@ const servePacks = (): Plugin => {
 
 export default defineConfig({
 	plugins: [servePacks()],
-	// The @yukibana packages are `file:` links to light/modules, read from their sources.
+	// The @yukibana packages are `link:` links to light/modules, read from their sources.
 	resolve: { conditions: ['@yukibana/source', ...defaultClientConditions] },
 	worker: { format: 'es' },
 	server: { fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../../modules', import.meta.url))] } },

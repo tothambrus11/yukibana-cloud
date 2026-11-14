@@ -47,7 +47,7 @@ const page = (name: string): string => fileURLToPath(new URL(name, import.meta.u
 
 export default defineConfig({
 	plugins: [isolatedWithPacks()],
-	// The @yukibana packages are `file:` links to light/modules, so the
+	// The @yukibana packages are `link:` links to light/modules, so the
 	// pages bundle their sources, which this condition names (their
 	// package.json); without it a link resolves to their dist/, which only
 	// light/modules/build.mjs writes.
