@@ -39,7 +39,7 @@
 # HOME, TMPDIR, OUT, PACK_CACHE), how hard to work (JOBS, NICE), whether this
 # is CI and how to reach GitHub (CI, GH_TOKEN), never what to build: a build
 # script must give the same bytes whatever they are, and PATH is the
-# caller's so a build finds the tools deps.apt and light/setup installed.
+# caller's so a build finds the tools deps.apt and setup.sh installed.
 # LANG is fixed so no tool's output depends on the caller's locale.
 # Read-only: a knob of the same name is refused by toolchain_knobs.
 TOOLCHAIN_ENV_FIXED=(PATH HOME TMPDIR CI GH_TOKEN OUT PACK_CACHE JOBS NICE LANG=C.UTF-8)

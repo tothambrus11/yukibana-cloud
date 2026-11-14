@@ -1,5 +1,5 @@
 # Debian/Ubuntu packages the vm unit builds with, beyond git, curl, python3,
-# make and Node (CI installs them for this unit's job; light/setup (node setup/cli.mjs) for a
+# make and Node (CI installs them for this unit's job; light/setup.sh for a
 # local build). clang-18, lld, llvm-strip and clang-tidy-18 build the
 # kernels, init and strace; flex, bison, bc and libelf (objtool) the x86-64
 # kernel; cpio the initramfs; autoconf, automake, libtool, libltdl-dev
