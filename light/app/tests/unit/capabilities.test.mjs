@@ -4,7 +4,7 @@
 // said it with `runs`, `tests`, `mutates`, `cannotRun` and `debugs`, a
 // runner is kept warm where `warmRunner` said, and a web project's Run
 // previews its page where `preview` said. That table is gone; TODAY below
-// is what it said. Debug tests is new: C++'s alone.
+// is what it said. Debug tests is new: C++'s and Swift's.
 //
 //   node --test tests/unit/capabilities.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
@@ -111,7 +111,7 @@ test('a runner is kept warm for the languages that kept one, and only where Run 
 	}
 });
 
-test('Debug and Debug tests are offered and enabled for each language as the Language table said, Debug tests for C++ alone', () => {
+test('Debug and Debug tests are offered and enabled for each language as the Language table said, Debug tests for C++ and Swift', () => {
 	const instance = yukibana();
 	for (const language of LANGUAGES) {
 		const was = TODAY[language.id];
