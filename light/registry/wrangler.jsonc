@@ -1,0 +1,23 @@
+{
+  // The official Yukibana registry at https://yukibana.run: worker.js in
+  // front of one R2 bucket that holds every file (README.md). Deployed by
+  // deploy.sh, by hand or from the workflow.
+  "name": "yukibana-run",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-01",
+  // Every file of the registry, by its path. Created by deploy.sh on the
+  // first deploy.
+  "r2_buckets": [{ "binding": "REGISTRY", "bucket_name": "yukibana-run" }],
+  // The domain itself, as a custom domain: Cloudflare makes and keeps the
+  // DNS record and the certificate, so the zone needs no record of its own
+  // (README.md, "The domain").
+  "routes": [{ "pattern": "yukibana.run", "custom_domain": true }],
+  // No second address: a workers.dev one shares its site with the
+  // account's other Workers, and a registry is on a site of its own.
+  "workers_dev": false,
+  "preview_urls": false,
+  // Off until the registry's privacy statement says what is kept
+  // (PLAN.md, O9): a request's log names the visitor's address and the
+  // page that embedded the frame.
+  "observability": { "enabled": false }
+}
