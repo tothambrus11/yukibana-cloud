@@ -216,6 +216,17 @@ Two tracks run side by side: **the platform** (stages 1 to 4) and **the layout v
   (`id`, `name`, `protocol`, `requires`) and adds `version`, `uses` and `files`; it has
   no `build` field, since a build's name is the hash of that file. All 14 installed
   packs describe without a problem. `registry/README.md` lists what is not there yet.
+- **Stage 2's second piece** (2026-11-14): archives, the registry's own compressed
+  copies, and the sync into the bucket, still without a browser. `yukibana-registry
+  pack` writes a build as a `.pack.tar.zst` (`registry/tar.mjs`, `archive.mjs`), and
+  `add` takes one, from any source, refusing it by its first file when it is not the
+  wanted build and refusing any file before a byte is written when it is not listed at
+  its size; archives GNU tar wrote are taken too. `add` makes each file's `.br` from the
+  checked bytes, and `verify` decodes every copy. `sync` (`registry/s3.mjs`, `sync.mjs`)
+  puts a directory registry into an S3 bucket, compressed copies in their files' place,
+  each build's `pack.json` last; it is tested against a fake that checks signatures and
+  against RustFS in CI, not yet against R2, and no workflow runs it: that needs an R2
+  key pair as two secrets (0.5, step 8) and builds to sync.
 
 | | What | Done when |
 |---|---|---|

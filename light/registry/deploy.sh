@@ -9,9 +9,10 @@
 # outside right after the deploy (README.md, "Checking a deploy").
 #
 # site/ holds what this repository itself puts on the registry: the runner
-# frame. Packs are not here: the registry tool (cli.mjs) makes builds, and
-# what puts them into the bucket is still to come (PLAN.md, stage 2).
-# Nothing is ever deleted from the bucket by a deploy.
+# frame. Packs are not here: the registry tool makes builds and puts a
+# registry of them into the bucket with `cli.mjs sync`, over the S3 API with
+# an R2 key (README.md, "The tool"). Nothing is ever deleted from the bucket
+# by a deploy.
 #
 # The frame's files are small and are not named by content, so each is
 # uploaded on every deploy; the Worker serves them revalidated (rules.mjs).
