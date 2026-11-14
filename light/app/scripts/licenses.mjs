@@ -6,6 +6,10 @@
 // (src/lib/components/Licenses.svelte) links it, beside each pack's own
 // LICENSE-*.txt files.
 //
+// The shared modules (@yukibana/*, `file:` links to light/modules) are this
+// repository's own code, under its licence, like the app's: they are not
+// listed, but what they depend on is.
+//
 // It is a superset: a package the bundle tree-shakes away entirely is still
 // listed. A package that ships no licence file but names MIT or ISC in its
 // package.json gets that licence's standard text under its author's name,
@@ -34,6 +38,7 @@ function locate(name, from) {
 }
 
 const seen = new Map();
+const own = new Set();
 const missing = [];
 const visit = (name, from) => {
 	const dir = locate(name, from);
@@ -41,9 +46,10 @@ const visit = (name, from) => {
 		missing.push(`${name} (not installed)`);
 		return;
 	}
-	if (seen.has(dir)) return;
+	if (seen.has(dir) || own.has(dir)) return;
 	const meta = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-	seen.set(dir, meta);
+	if (name.startsWith('@yukibana/')) own.add(dir);
+	else seen.set(dir, meta);
 	for (const dep of Object.keys(meta.dependencies ?? {})) visit(dep, dir);
 };
 for (const name of roots) visit(name, app);

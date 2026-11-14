@@ -1,5 +1,5 @@
-// Tells Node the shared modules' package names, as vite.config.ts's aliases
-// tell Vite (both from ../../modules/list.mjs): `@yukibana/core`,
+// Tells Node the shared modules' package names, as their `@yukibana/source`
+// export condition tells Vite and tsc (from ../../modules/list.mjs): `@yukibana/core`,
 // `@yukibana/lang-cpp/body` and every other entry point a package.json
 // exports resolve to their sources. Importing this file registers the hook
 // and does nothing else.

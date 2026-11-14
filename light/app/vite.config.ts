@@ -1,8 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig, type Plugin } from 'vite';
-import { MODULES_DIR, moduleSources } from '../modules/list.mjs';
+import { defaultClientConditions, defaultServerConditions, defineConfig, type Plugin } from 'vite';
+import { MODULES_DIR } from '../modules/list.mjs';
 
 // Language servers that block on stdin need SharedArrayBuffer, which needs a
 // cross-origin isolated page. The dev and preview servers send the headers;
@@ -32,38 +32,19 @@ const monacoWorkers: Plugin = {
 };
 
 /**
- * The shared modules (light/modules), each imported by its package name
- * from its index.ts, and by a subpath its package.json exports
- * (`@yukibana/lang-cpp/body`) from that subpath's file: the files a module
- * promises. A subpath is listed before its module's name, since Vite
- * takes the first alias that matches and a name matches its subpaths too. kit.alias, which
- * SvelteKit 3 deprecates (and says so on every run) in favour of
- * package.json `imports`: those may only point inside this package and must
- * be `#` names, and the modules live beside the app and are called
- * `@yukibana/<name>` by every host. kit.alias also writes the TypeScript
- * paths, so svelte-check resolves the same names Vite does. The modules
- * are read from their directories (modules/list.mjs), so a new one needs
- * no edit here.
+ * The shared modules (light/modules) are this package's dependencies, as
+ * `file:` links (package.json), and are read from their sources: the
+ * `@yukibana/source` condition of each module's `exports` names its .ts
+ * files, where the default condition names the dist/ that only
+ * light/modules/build.mjs writes. So the app imports them as any host
+ * does (the examples are built the same way), and a subpath is exactly
+ * one the module exports. The server conditions are prerendering's.
+ *
+ * This replaced kit.alias, which SvelteKit 3 deprecates and warned about
+ * on every run, and kit.typescript.config, which wrote Monaco's path into
+ * the generated tsconfig: tsconfig.json says both now.
  */
-const moduleAliases = Object.fromEntries(moduleSources().map(({ specifier, path }) => [specifier, path]));
-
-/**
- * Where svelte-check finds `monaco-editor` for the modules' sources: their
- * `import type … from 'monaco-editor'` is resolved from their own folder,
- * beside the app rather than in it, where no node_modules has Monaco. It
- * names the declarations of `editor.api`, the very ones the app's
- * `monaco-editor/editor/editor.api` imports have, so a value the app hands
- * `@yukibana/monaco` is of the type the module names (modules/monaco's own
- * tsconfig.json says the same for `tsc -p ../modules/monaco`). Only the
- * bare name is mapped, so the app's own subpath imports resolve as before;
- * it is a type-only import, so Vite never sees it. A host that installs
- * the module resolves Monaco from its own node_modules and needs none of
- * this. Relative to the generated tsconfig, node_modules/$app/tsconfig.json.
- */
-function monacoTypes(config: Record<string, unknown>): void {
-	const options = config['compilerOptions'] as { paths?: Record<string, string[]> };
-	options.paths = { ...options.paths, 'monaco-editor': ['../monaco-editor/esm/vs/editor/editor.api.d.ts'] };
-}
+const SOURCE = '@yukibana/source';
 
 export default defineConfig({
 	plugins: [
@@ -75,10 +56,10 @@ export default defineConfig({
 			// Registered by hand (src/lib/pwa.ts), so the page can reload once
 			// to become cross-origin isolated.
 			serviceWorker: { register: false },
-			alias: moduleAliases,
-			typescript: { config: monacoTypes },
 		}),
 	],
+	resolve: { conditions: [SOURCE, ...defaultClientConditions] },
+	ssr: { resolve: { conditions: [SOURCE, ...defaultServerConditions] } },
 	// The dev server serves files only from the directories it allows; the
 	// modules live beside the app, not in it.
 	server: { headers: isolation, fs: { allow: [MODULES_DIR] } },

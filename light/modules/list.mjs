@@ -2,9 +2,11 @@
 // module is a directory with a package.json, and the modules it may import
 // are the ones its package.json names under `dependencies` and
 // `peerDependencies`. Every list that names the modules (the boundary
-// test's arrows, build.mjs's PUBLISHED, the app's type-check, its Vite
-// aliases, the import tripwires) is made from this, so adding a module is
-// adding a directory, and an arrow is a dependency a host installs too.
+// test's arrows, build.mjs's PUBLISHED, the app's type-check, the tests'
+// resolve hook, the import tripwires) is made from this, so adding a module
+// is adding a directory, and an arrow is a dependency a host installs too.
+// The one list kept by hand is the app's own: a `file:` dependency per
+// module in app/package.json, as any host has.
 //
 // Plain JavaScript that only reads, so Node, Vite's config and the tests
 // load it as it is; nothing happens on import but reading these files.
@@ -113,9 +115,8 @@ export function modules() {
 /**
  * Returns every entry point of every shared module by the specifier a host
  * imports it with (`@yukibana/core`, `@yukibana/lang-cpp/body`) and the
- * absolute path of its source, subpaths before their module's root: the
- * app's Vite aliases, which take the first that matches, and a Node resolve
- * hook alike.
+ * absolute path of its source, subpaths before their module's root: for a
+ * Node resolve hook (the app's tests'), which takes the first that matches.
  *
  * @returns {{ specifier: string; path: string }[]}
  */
@@ -133,7 +134,8 @@ export function moduleSources() {
  * `specifier` when it is an entry point of a shared module
  * (`@yukibana/core`: its index.ts; `@yukibana/lang-cpp/body`: what its
  * package.json exports as `./body`), or null for any other specifier: what
- * the app's Vite aliases say, for a Node resolve hook to say the same.
+ * the module's `@yukibana/source` export condition says to Vite and tsc,
+ * for a Node resolve hook to say the same.
  *
  * @param {string} specifier
  * @returns {string | null}
