@@ -97,6 +97,13 @@ test("a deleted branch's caches all go, an existing one's keep their newest, and
 });
 
 /**
+ * Why the tests that run cache-prune.mjs cannot run here, or false. Without
+ * a shell, Windows looks a bare `gh` up as gh.exe or gh.com only, so the
+ * stand-in is never found and the real, signed-in gh would answer instead.
+ */
+const STAND_IN_UNREACHABLE = process.platform === 'win32' && 'Windows finds the real gh.exe before the extensionless stand-in';
+
+/**
  * Runs cache-prune.mjs with `args` against a stand-in gh that answers
  * `cache list` with `caches`, `pr list` with `open`, `api .../branches`
  * with `branches`, and fails deleting `failing`; returns the run and every
@@ -147,7 +154,7 @@ if (args[0] === 'cache' && args[1] === 'list') {
     }
 }
 
-test('every cache deleted is deleted on its own ref, and a failed delete fails the run after the rest are tried', () => {
+test('every cache deleted is deleted on its own ref, and a failed delete fails the run after the rest are tried', { skip: STAND_IN_UNREACHABLE }, () => {
     const caches = [
         cache('light/stub/vm/a/1-1', 'refs/pull/5/merge', '2026-10-01T00:00:00Z'),
         cache('light/stub/vm/b/1-1', 'refs/pull/5/merge', '2026-10-02T00:00:00Z'),
@@ -177,7 +184,7 @@ test('every cache deleted is deleted on its own ref, and a failed delete fails t
     assert.deepEqual(usage.calls, []);
 });
 
-test("branches' caches are pruned with the pull requests' in one run, each on its own ref, and a branch listing without main deletes nothing", () => {
+test("branches' caches are pruned with the pull requests' in one run, each on its own ref, and a branch listing without main deletes nothing", { skip: STAND_IN_UNREACHABLE }, () => {
     const caches = [
         cache('light/rust/compilers/a/1-1', 'refs/heads/feature', '2026-10-01T00:00:00Z'),
         cache('light/rust/compilers/b/1-1', 'refs/heads/feature', '2026-10-02T00:00:00Z'),

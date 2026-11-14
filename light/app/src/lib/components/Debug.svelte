@@ -287,7 +287,7 @@
 		gap: 0.45rem;
 		min-height: 1.75rem;
 		margin: 0.4rem 0.9rem;
-		color: var(--gray-2);
+		color: var(--label);
 		cursor: pointer;
 	}
 	h3 {

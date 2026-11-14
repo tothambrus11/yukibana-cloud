@@ -1,6 +1,6 @@
 // Drives the built SvelteKit site in Chromium with the installed C++ pack:
 // the prerendered page, then what the playground promises, each against the
-// library (the same checks as ../cpp-library/test.mjs).
+// library (the positive checks of ../cpp-library/test.mjs).
 //
 //   pnpm run build && node test.mjs
 //

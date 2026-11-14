@@ -59,7 +59,7 @@ export function findBash() {
  */
 export function bashProblem(bash) {
 	if (bash === null) return WINDOWS ? 'no bash: install Git for Windows (https://git-scm.com), or run setup in WSL' : 'no bash on PATH';
-	const r = spawnSync(bash, ['-c', 'for t in git curl tar sha256sum awk find node; do command -v "$t" >/dev/null || printf "%s " "$t"; done'], { encoding: 'utf8' });
+	const r = spawnSync(bash, ['-c', 'for t in git curl tar sha256sum awk find node; do command -v "$t" >/dev/null || printf "%s " "$t"; done; [ "${BASH_VERSINFO[0]}${BASH_VERSINFO[1]}" -ge 44 ] || printf "bash-4.4 "; find / -maxdepth 0 -printf "" >/dev/null 2>&1 || printf "GNU-find "'], { encoding: 'utf8' });
 	if (r.error || r.status !== 0) return `${bash} cannot be run: ${r.error?.message ?? r.stderr}`;
 	const missing = r.stdout.trim();
 	return missing ? `bash (${bash}) has no ${missing.split(' ').join(', ')}` : null;

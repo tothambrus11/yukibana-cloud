@@ -276,6 +276,9 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 	const isHidden = (path: string): boolean => Object.hasOwn(hidden, path);
 	const log = options.log ?? ((level: LogLevel, text: string) => (level === 'error' ? console.error : level === 'warning' ? console.warn : console.info)(text));
 	const disposables: { dispose(): void }[] = [];
+	// A second dispose does nothing (core's Disposable): run again, it would
+	// take back the claim of a playground made on this Monaco since.
+	let disposed = false;
 
 	// ---- The project: a model per file -----------------------------------
 
@@ -470,6 +473,8 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		input: (line) => handle?.input(line),
 		stop: () => handle?.stop(),
 		dispose: () => {
+			if (disposed) return;
+			disposed = true;
 			runs.dispose();
 			handle?.stop();
 			handle = null;
