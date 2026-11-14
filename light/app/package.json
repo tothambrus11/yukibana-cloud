@@ -50,7 +50,6 @@
 		"@yukibana/std": "link:../modules/std",
 		"arktype": "2.2.9",
 		"dockview": "8.6.1",
-		"monaco-editor": "0.57.0",
-		"vscode-languageserver-protocol": "3.17.5"
+		"monaco-editor": "0.57.0"
 	}
 }

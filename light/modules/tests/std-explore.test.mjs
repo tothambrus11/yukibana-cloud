@@ -318,3 +318,16 @@ test('a language’s views say which toggles start on, and a provider refuses a 
 	assert.throws(() => explorerProvider(languageOf('cpp'), { ...VIEWS, views: [VIEWS.views[0], VIEWS.views[0]] }), RangeError);
 	assert.throws(() => viewKind('Asm'), RangeError);
 });
+
+test('a disposed page’s explorer workers stop, whoever holds them, their waiting requests are dropped, and none starts after', async () => {
+	const { platform, workers } = fakePlatform();
+	const cpp = languageOf('cpp');
+	const { instance, explorers } = instanceOf([cpp], platform);
+	const answer = ask(instance, cpp, inputOf());
+	await settle();
+	explorers.dispose();
+	assert.deepEqual(await answer, { kind: 'dropped' });
+	assert.equal(workers[0].terminated, true);
+	assert.deepEqual(await ask(instance, cpp, inputOf()), { kind: 'dropped' });
+	assert.equal(workers.length, 1, 'no worker was started after dispose');
+});

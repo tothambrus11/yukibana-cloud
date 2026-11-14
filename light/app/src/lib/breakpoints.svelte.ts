@@ -20,6 +20,11 @@ export interface BreakpointSession {
 	changed(path: string): void;
 }
 
+/**
+ * The project's breakpoints, kept while no session runs, and the session
+ * the editors show the stopped line of: one per page, shared by the
+ * workspace and the debugger, whose constructor alone sets `session`.
+ */
 export class Breakpoints {
 	/**
 	 * The breakpoints, by project path: 1-based lines, ascending, no line

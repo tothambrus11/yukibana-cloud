@@ -85,6 +85,8 @@ export function sessionOf(language: PackLanguage, entry: Path, host: RunHost, re
 		made.onerror = (e) => {
 			if (worker !== made) return;
 			e.preventDefault();
+			// An uncaught error leaves the worker running: end it, or the next build starts a second beside it.
+			made.terminate();
 			worker = null;
 			report(`The preview could not be built: ${e.message || `the runner (${at.pathname}) did not load`}\n`);
 			settle({ kind: 'unanswered' });

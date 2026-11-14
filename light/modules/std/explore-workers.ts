@@ -188,14 +188,16 @@ export function resultOf(m: Readonly<Record<string, unknown>>): EmitResult {
  * its own.
  *
  * Invariant: at most one worker per pack is started; every request is
- * settled exactly once, by its answer, its signal, its holder's `release`
- * or the worker's failure.
+ * settled exactly once, by its answer, its signal, its holder's `release`,
+ * `dispose` or the worker's failure.
  */
 export class ExplorerWorkers {
 	readonly #platform: ExplorerPlatform;
 	readonly #started = new Map<PackId, Started>();
 	/** The id of the last request posted, on any worker: ids only increase. */
 	#lastId = 0;
+	/** Whether `dispose` was called: no worker is started after it. */
+	#disposed = false;
 
 	/** Makes the page's workers, started (when a request needs one) by `platform`; starts nothing. */
 	constructor(platform: ExplorerPlatform) {
@@ -210,10 +212,10 @@ export class ExplorerWorkers {
 	 * if it comes; or `broken` when the worker fails first, or answers what
 	 * the app cannot read. Every download the worker reports meanwhile goes
 	 * to `input.onProgress`. `input.holder` holds the worker from now on.
-	 * Never rejects.
+	 * After `dispose`, `dropped` at once. Never rejects.
 	 */
 	emit(pack: PackId, url: URL, input: EmitInput, signal: AbortSignal): Promise<EmitResult> {
-		if (signal.aborted) return Promise.resolve({ kind: 'dropped' });
+		if (signal.aborted || this.#disposed) return Promise.resolve({ kind: 'dropped' });
 		const started = this.#startedFor(pack, url);
 		started.holders.add(input.holder);
 		const { promise, resolve } = Promise.withResolvers<EmitResult>();
@@ -249,6 +251,20 @@ export class ExplorerWorkers {
 		if (started.holders.size > 0) return;
 		this.#started.delete(pack);
 		started.worker.terminate();
+	}
+
+	/**
+	 * Stops every worker, whoever holds it, settling every request waiting
+	 * as `dropped`, and starts none after: the page that made these workers
+	 * is going away (a disposed playground). Calling it again does nothing.
+	 */
+	dispose(): void {
+		this.#disposed = true;
+		for (const started of this.#started.values()) {
+			for (const waiting of [...started.waiting.values()]) waiting.settle({ kind: 'dropped' });
+			started.worker.terminate();
+		}
+		this.#started.clear();
 	}
 
 	/** Posts `waiting`'s message to `started`'s worker under a new id, filing it there. */

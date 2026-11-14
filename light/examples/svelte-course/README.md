@@ -112,8 +112,8 @@ from storage that throws or holds an older shape, and the lesson's data
 instructions' code spans pair up). And from the build
 (`tests/bundle.test.mjs`): a first load runs at most 1% more script than
 `bundle-budget.json` records and none of Monaco, `@yukibana/monaco`, a
-language's body or a compiler; no module is in two chunks (five
-languages, one core, std and runtime); Monaco is one chunk, imported
+language's body or a compiler; no module comes from a second copy of
+its package (five languages, one core, std and runtime); Monaco is one chunk, imported
 lazily.
 
 `pnpm run test:e2e` (`test.mjs`), in Chromium, for every exercise whose pack

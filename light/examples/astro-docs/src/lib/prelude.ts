@@ -10,7 +10,7 @@
  * hydrated and edited, and the code the page was built with otherwise
  * (`<template data-snippet>`, written by Playground.astro). The cost is
  * line numbers: an error in the playground's own code is reported at its
- * line in the joined file, which `ownFirstLine` lets the island say.
+ * line in the joined file.
  */
 
 /** One earlier snippet, by the id the page gave it, and its text now. */
@@ -19,29 +19,22 @@ export interface PreludePart {
 	readonly code: string;
 }
 
-/** The file a chained playground runs, and where its own code starts. */
-export interface Joined {
-	/** The earlier snippets in the order given, then the playground's own code, each under a separator comment. */
-	readonly text: string;
-	/** The line (from 1) of `text` on which the playground's own code starts. */
-	readonly ownFirstLine: number;
-}
-
 /**
- * Returns the file a playground whose code is `own` runs after `parts`,
- * with `comment` starting the separator lines. With no parts it is `own`
- * unchanged, starting at line 1. Each part ends in a newline in the
+ * Returns the file a playground whose code is `own` runs after `parts`:
+ * the earlier snippets in the order given, then `own`, each under a
+ * separator line that `comment` starts. With no parts it is `own`
+ * unchanged. Each part ends in a newline in the
  * result, whether its text did or not.
  */
-export function joinPrelude(parts: readonly PreludePart[], own: string, comment: string): Joined {
-	if (parts.length === 0) return { text: own, ownFirstLine: 1 };
+export function joinPrelude(parts: readonly PreludePart[], own: string, comment: string): string {
+	if (parts.length === 0) return own;
 	const lines: string[] = [];
 	for (const part of parts) {
 		lines.push(`${comment} ── from “${part.id}” ──`);
 		lines.push(...withoutFinalNewline(part.code).split('\n'));
 	}
 	lines.push(`${comment} ── this snippet ──`);
-	return { text: `${lines.join('\n')}\n${own}`, ownFirstLine: lines.length + 1 };
+	return `${lines.join('\n')}\n${own}`;
 }
 
 /** `text` without one final "\n", if it has one. */

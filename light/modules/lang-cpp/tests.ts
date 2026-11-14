@@ -8,13 +8,16 @@
  * has the same rules), the generated CMakeLists.txt (export.ts) and the
  * header's framework choice all read the same files the same way.
  *
- * Imports only types, so `node` can load this file directly (tests/export.mjs).
+ * Imports only types, so `node` can load this file directly (app/tests/export.mjs).
  */
 import type { Files } from '../core/index.ts';
 
+/** A C++ test framework a project's tests can use. */
 export type TestFramework = 'gtest' | 'doctest' | 'catch2';
 
+/** What is said of a test framework. */
 export interface TestFrameworkInfo {
+	/** Which framework. */
 	id: TestFramework;
 	/** Its name, as the header's choice shows it. */
 	label: string;
@@ -22,6 +25,7 @@ export interface TestFrameworkInfo {
 	header: string;
 }
 
+/** Every test framework, once each, in the order the header's choice lists them. */
 export const TEST_FRAMEWORKS: readonly TestFrameworkInfo[] = [
 	{ id: 'gtest', label: 'GoogleTest', header: '<gtest/gtest.h>' },
 	{ id: 'doctest', label: 'doctest', header: '<doctest/doctest.h>' },
@@ -57,6 +61,7 @@ export function frameworksIncluded(text: string): TestFramework[] {
  */
 export type Detected = { framework: TestFramework | null; mixed: false } | { framework: null; mixed: true; files: Partial<Record<TestFramework, string>> };
 
+/** Returns what the C/C++ files under `TESTS_DIR` in `files` include, each file read without its comments. */
 export function detectTestFramework(files: Files): Detected {
 	const found: Partial<Record<TestFramework, string>> = {};
 	for (const path of Object.keys(files).sort()) {
@@ -68,6 +73,7 @@ export function detectTestFramework(files: Files): Detected {
 	return { framework: ids[0] ?? null, mixed: false };
 }
 
+/** Returns what is said of `id`; every framework is in `TEST_FRAMEWORKS`. */
 export function frameworkInfo(id: TestFramework): TestFrameworkInfo {
 	return TEST_FRAMEWORKS.find((f) => f.id === id)!;
 }

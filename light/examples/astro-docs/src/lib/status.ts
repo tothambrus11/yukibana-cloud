@@ -26,8 +26,3 @@ export function statusOf(state: RunState): string {
 			return state.failure.reason;
 	}
 }
-
-/** Whether a run in `state` is over: nothing more will happen to it. */
-export function isOver(state: RunState): boolean {
-	return state.kind === 'ended' || state.kind === 'stopped' || state.kind === 'unavailable' || state.kind === 'failed';
-}

@@ -173,7 +173,8 @@ export function newestBuild(pack, list) {
  * when the store has no build of these sources (and, with `any`, none at
  * all). With `any` a missing build is replaced by the pack's newest, which
  * is said; for a split pack `any` is the only way, as the store holds only
- * its builds from before it was split.
+ * its builds from before it was split. A build whose tree is the one
+ * recorded for the installed copy is not downloaded again.
  * @param {string} pack
  * @param {{ any?: boolean, log?: (line: string) => void }} [options]
  * @returns {Promise<boolean>}
@@ -192,6 +193,12 @@ export async function fetchPack(pack, { any = false, log = (line) => console.err
 		log(`${pack}: no ${want ?? `${pack}-*.tar.zst`} in ${repo()}'s ${TAG} release`);
 		return false;
 	}
+	const id = path.basename(asset.name, '.tar.zst').slice(pack.length + 1);
+	// The newest build taken by an earlier run is in place already: --latest again leaves it.
+	if ((await installedTree(pack)) === id) {
+		log(`${pack}: ${asset.name} is installed already`);
+		return true;
+	}
 	const tmp = await mkdtemp(path.join(tmpdir(), 'light-setup-'));
 	// Extracted beside its destination, so the swap is a rename on one disk.
 	const part = path.join(PACKS, `.${pack}.part`);
@@ -209,7 +216,6 @@ export async function fetchPack(pack, { any = false, log = (line) => console.err
 		await rm(path.join(PACKS, pack), { recursive: true, force: true });
 		await rename(path.join(part, pack), path.join(PACKS, pack));
 		await mkdir(TREES, { recursive: true });
-		const id = path.basename(asset.name, '.tar.zst').slice(pack.length + 1);
 		await writeFile(path.join(TREES, pack), `${id}\n`);
 		return true;
 	} finally {

@@ -603,7 +603,8 @@ export class Workspace implements CoreProject {
 	async testsIn(path: string): Promise<readonly FoundTest[]> {
 		const subject = subjectOf(this.language);
 		if (!yukibana().has(subject, findTests)) return [];
-		const snapshot = this.snapshot();
+		// Frozen: the finder's body loads first, and a keystroke or a tab change meanwhile would make a live snapshot stale.
+		const snapshot = this.frozen(this.snapshot().files());
 		if (yukibana().availability(subject, findTests, snapshot).kind !== 'available') return [];
 		try {
 			const outcome = await yukibana().perform(subject, findTests, { path: pathOf(path) }, snapshot, new AbortController().signal);
@@ -642,11 +643,15 @@ export class Workspace implements CoreProject {
 			show(shown);
 			return;
 		}
+		const generation = this.generation;
 		yukibana()
 			.perform(subject, preview, { report: (text) => this.runner.print('stderr', text) }, snapshot, new AbortController().signal)
 			.then(
 				(outcome) => {
-					if (outcome.kind === 'done') show(outcome.value);
+					// The session's code loads first: a project or language switch meanwhile leaves it unshown.
+					if (generation !== this.generation) {
+						if (outcome.kind === 'done') outcome.value.stop();
+					} else if (outcome.kind === 'done') show(outcome.value);
 					else this.write('warning', outcome.reason);
 				},
 				(e: unknown) => this.write('error', `Could not preview the project: ${e instanceof Error ? e.message : String(e)}`),
