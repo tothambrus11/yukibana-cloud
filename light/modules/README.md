@@ -2,8 +2,8 @@
 
 The code that the app (`light/app`), the packs' glue (`light/packs/*`), the
 runner frame and other hosts (a documentation site's playground, the course
-platform) share, as packages that point one way: five shared ones, and
-one language package per pack:
+platform) share, as packages that point one way: the shared ones in the
+table below, and one language package per pack:
 
 ```text
 app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol  <-  packs' glue, runner frame
@@ -25,6 +25,7 @@ into which package, and the order.
 | `std/` | the tokens any language may provide (run, test, mutate, warm, debug, preview, explore) and the helpers that make a language's providers of them from its pack, and what languages share (levels, a Linux target's run options); it names no language | itself, runtime, core, protocol |
 | `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme; a Monaco editor as the core's `EditorPort` (`monacoPort`) | itself, protocol, and `import type` from `monaco-editor` |
 | `editors/` | editors other than Monaco, each an entry point (`editors/textarea`: a `<textarea>` as the core's `EditorPort` over a one-document project); it names no language | itself, core |
+| `playground/` | one call (`createPlayground`) from a language package and some files to a playground in the host's Monaco: the project with hidden files, the language server bound without Monaco's internals, an instance and a page host, and Run; it names no language | itself, core, std, runtime, monaco, protocol, and `import type` from `monaco-editor` |
 | `lang-<pack>/` | one pack's languages (`lang-cpp`: C and C++; `lang-javascript`: JavaScript, TypeScript, web, p5 and p5-global; one each for the others): `index.ts`, each language's spec and providers (cheap: no body, no message sent on import); `body.ts`, the samples, the server's settings and the build settings; `monaco.ts`, the Monaco languages (and Haskell's and Zig's grammars, whose tokenizers load with their language); and what the app's own pickers import by subpath (`lang-cpp/targets`, …) | itself, std, core; never another `lang-*`; `lang-javascript` protocol too; `lang-haskell` and `lang-zig` `import type` from `monaco-editor` |
 
 Rules every module keeps, so that a host can import one without taking on
@@ -45,7 +46,8 @@ the app:
   `.ts` file, so Node's type stripping, Vite and esbuild load the source
   without a build step. Another module is imported by its relative path
   (`../protocol/index.ts`) or its name (`@yukibana/protocol`); the app has
-  the names as `kit.alias`.
+  the modules as `file:` dependencies, read from source through their
+  `@yukibana/source` export condition.
 
 Each module is its own TypeScript project, so each is checked with only
 the globals it may use: `protocol/tsconfig.json` and `core/tsconfig.json`
@@ -59,8 +61,9 @@ The modules are the directories here with a `package.json` (`list.mjs`),
 and what a module may import is what its `package.json` names under
 `dependencies` and `peerDependencies`: the table above is those manifests.
 Every list of the modules (the boundary test's arrows, `build.mjs`'s
-`PUBLISHED`, the type-check, the app's aliases, the import tripwires) is
-read from there, so adding a module is adding a directory, and an arrow is
+`PUBLISHED`, the type-check, the tests' resolve hook, the import tripwires)
+is read from there, so adding a module is adding a directory (and, for the
+app to import it, a `file:` line in `app/package.json`), and an arrow is
 a dependency a host installs too. `boundaries.test.mjs` fails on any
 import or mention that breaks the table or the rules above, and on a
 protocol project that would compile a source reaching for a page or Node

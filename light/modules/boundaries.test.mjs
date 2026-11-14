@@ -50,7 +50,7 @@ const FORBIDDEN_NAMES = {
  * to say (DESIGN.md, rule 3), so a language id in one of their string
  * literals is a decision about that language made in the wrong place.
  */
-const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco', 'editors']);
+const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco', 'editors', 'playground']);
 
 /** `true` iff `module` is a language package (`lang-<pack>`, DESIGN.md section 3). */
 const isLanguagePackage = (module) => module.startsWith('lang-');

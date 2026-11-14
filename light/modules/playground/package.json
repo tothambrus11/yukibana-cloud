@@ -1,0 +1,21 @@
+{
+	"name": "@yukibana/playground",
+	"private": true,
+	"version": "0.0.0",
+	"description": "One call from a language package and some files to a working playground in the host's Monaco: the language server bound to the editor, the files in a project with hidden ones beside them, and Run through the pack's runner.",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./index.ts"
+	},
+	"dependencies": {
+		"@yukibana/core": "^0.1.0",
+		"@yukibana/monaco": "^0.0.0",
+		"@yukibana/protocol": "^0.1.0",
+		"@yukibana/runtime": "^0.1.0",
+		"@yukibana/std": "^0.1.0"
+	},
+	"peerDependencies": {
+		"monaco-editor": "0.57.0"
+	}
+}

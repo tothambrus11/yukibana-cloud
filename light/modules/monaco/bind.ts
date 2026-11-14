@@ -45,8 +45,19 @@ export interface BindingEvents {
 export interface MonacoBindingOptions {
 	/** The host's Monaco, whose models, markers and features the binding uses. */
 	readonly monaco: typeof monaco;
-	/** The host's Monaco internals (`monacoInternals`), for the inline message, the quick pick and the bulk edit service. */
-	readonly internals: MonacoInternals;
+	/**
+	 * The host's Monaco internals (`monacoInternals`), for the inline
+	 * message, the quick pick and the bulk edit service; or null for a host
+	 * that imports Monaco whole and nothing of its internals (the
+	 * playground module). Without them every language feature still works,
+	 * through Monaco's own UI, and three things do less: an edit the server
+	 * applies itself (`workspace/applyEdit`, from a code action's command) is
+	 * applied model by model, one undo step per file, not as one step across
+	 * files; Show Call Hierarchy's "nothing here" is logged rather than shown
+	 * in the editor; and Go to Symbol in Workspace (Ctrl+T, a quick pick of
+	 * the binding's) is not offered.
+	 */
+	readonly internals: MonacoInternals | null;
 	/** The session the binding is the client of. */
 	readonly session: LanguageSession;
 	/**
@@ -334,13 +345,39 @@ export class MonacoBinding implements SessionClient {
 		for (const u of unsupported) events.log('warning', `not applied: ${u}`);
 		const text = label ?? 'Workspace edit';
 		try {
-			await this.#options.internals.applyWorkspaceEdit(converted, { label: text, quotableLabel: text, code: WORKSPACE_EDIT_CODE });
+			const internals = this.#options.internals;
+			if (internals) await internals.applyWorkspaceEdit(converted, { label: text, quotableLabel: text, code: WORKSPACE_EDIT_CODE });
+			else this.#applyModelByModel(converted);
 		} catch (e) {
 			events.log('warning', `not applied: ${messageOf(e)}`);
 			return false;
 		}
 		return unsupported.length === 0;
 	};
+
+	/**
+	 * Applies `edit`'s text edits to their models through Monaco's public
+	 * API, one undo step of its own per model: what `applyEdit` does without
+	 * the host's internals. Throws, naming it, for an edit of a file with no
+	 * model, before changing anything.
+	 */
+	#applyModelByModel(edit: monaco.languages.WorkspaceEdit): void {
+		const byModel = new Map<monaco.editor.ITextModel, monaco.editor.IIdentifiedSingleEditOperation[]>();
+		for (const one of edit.edits) {
+			if (!('textEdit' in one)) throw new Error('an edit that creates, renames or deletes a file');
+			const model = this.#monaco.editor.getModel(one.resource);
+			if (!model) throw new Error(`an edit of ${one.resource.toString()}, which has no model`);
+			const list = byModel.get(model) ?? [];
+			list.push({ range: one.textEdit.range, text: one.textEdit.text });
+			byModel.set(model, list);
+		}
+		for (const [model, edits] of byModel) {
+			// Closed on both sides, or the edit would join the reader's last typing as one undo step.
+			model.pushStackElement();
+			model.pushEditOperations([], edits, () => null);
+			model.pushStackElement();
+		}
+	}
 
 	/** Tells Monaco to ask again for every answer of `kind`. */
 	readonly refreshed = (kind: RefreshKind): void => {
@@ -419,7 +456,11 @@ export class MonacoBinding implements SessionClient {
 		);
 		const item = items?.[0];
 		if (item) this.#options.events.callHierarchy(item);
-		else if (!this.#session.stopping) this.#options.internals.showMessage(editor, 'No function to show the call hierarchy of here.', position);
+		else if (!this.#session.stopping) {
+			const message = 'No function to show the call hierarchy of here.';
+			if (this.#options.internals) this.#options.internals.showMessage(editor, message, position);
+			else this.#options.events.log('warning', message);
+		}
 	}
 
 	#registerFeatures(caps: lsp.ServerCapabilities): void {
@@ -788,7 +829,7 @@ export class MonacoBinding implements SessionClient {
 		// it, so it is a quick pick of the binding's, ranked the same way for
 		// every language (workspace-symbols.ts). In every editor, since the
 		// symbols are the whole project's.
-		if (caps.workspaceSymbolProvider) {
+		if (caps.workspaceSymbolProvider && this.#options.internals) {
 			const resolve = typeof caps.workspaceSymbolProvider === 'object' && !!caps.workspaceSymbolProvider.resolveProvider;
 			add(
 				m.editor.addEditorAction({
@@ -812,7 +853,9 @@ export class MonacoBinding implements SessionClient {
 		const model = this.#anyModel();
 		if (!model) return;
 		type Item = QuickPickItem & { row: SymbolRow };
-		const picker = this.#options.internals.createQuickPick<Item>();
+		const internals = this.#options.internals;
+		if (!internals) return;
+		const picker = internals.createQuickPick<Item>();
 		picker.placeholder = 'Type the name of a symbol to go to';
 		// The rows come ranked and highlighted (workspace-symbols.ts).
 		picker.matchOnLabel = false;
