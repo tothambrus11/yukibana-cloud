@@ -158,6 +158,8 @@ class PageHost implements PackHost {
 	#pool: RunnerPool | null = null;
 	#explorers: Promise<ExplorerWorkers> | null = null;
 	#madeExplorers: ExplorerWorkers | null = null;
+	/** Whether `dispose` was called: no explorer workers are made after it. */
+	#disposed = false;
 	readonly packs: UnpinnedPackLocator;
 	readonly requires: Requires = RUNNER_NEEDS;
 
@@ -171,6 +173,8 @@ class PageHost implements PackHost {
 	}
 
 	explorers(): Promise<ExplorerWorkers> {
+		// A view asked for before dispose may get here after it, once its code has loaded.
+		if (this.#disposed) return Promise.reject(new Error('the playground was disposed'));
 		if (this.#explorers === null) {
 			const made = pageExplorers();
 			this.#explorers = made;
@@ -199,6 +203,7 @@ class PageHost implements PackHost {
 	 * starts nothing.
 	 */
 	dispose(): void {
+		this.#disposed = true;
 		this.pool.dispose();
 		// Made or still being made: either way they stop, and start no worker after.
 		void this.#explorers?.then(

@@ -206,6 +206,8 @@ async function main(packs, opts) {
 					splitFailed(p);
 					continue;
 				}
+				// Assembled from units, not a stored build: no build's record is true of it now.
+				await rm(path.join(TREES, p), { force: true });
 				done.fetched.push(p);
 				if (took) done.pulled.push(p);
 			} else if (ensure === 3 || ensure === 4) {
