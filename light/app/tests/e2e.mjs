@@ -1135,7 +1135,7 @@ async function undoRename(page, check, { file, needle, from, name, declarationFi
 
 	await focusFile(page, file, `${name}(`);
 	await page.keyboard.press('Control+z');
-	const dialog = page.locator('dialog.app-dialog');
+	const dialog = page.locator('dialog.app-dialog:has(.app-dialog-message)');
 	const asked = await dialog.waitFor({ timeout: 5_000 }).then(() => true, () => false);
 	const question = asked ? ((await dialog.locator('.app-dialog-message').textContent()) ?? '') : '';
 	const buttons = asked ? await dialog.locator('button').allTextContents() : [];
