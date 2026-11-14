@@ -101,7 +101,7 @@
 # Trust. A toolchain is used only if its provenance says main built it
 # (D40): each unit's archive is attested by light-toolchain-unit.yml with its
 # run's OIDC token, and every consumer of the store (ensure in a unit job,
-# the assemble job, a release's run of it, setup.sh when gh is signed in)
+# the assemble job, a release's run of it, light/setup when gh is signed in)
 # runs `gh attestation verify --signer-workflow
 # <repo>/.github/workflows/light-toolchain-unit.yml --source-ref
 # refs/heads/main` before it unpacks one, and fails by name otherwise
@@ -129,7 +129,7 @@
 # Runs on pushes to main and on pull requests that touch a pack or the scripts
 # that make one, and by hand on any branch (workflow_dispatch, below). Only
 # main's runs write the stores; a pull request's or a branch's builds serve
-# that pull request or branch, and `setup.sh --pull <n>` on a machine. Without `upload`, a pack the store has is not even
+# that pull request or branch, and `light/setup --pull <n>` on a machine. Without `upload`, a pack the store has is not even
 # downloaded, and a split pack whose inputs already passed (once, below) is
 # not assembled again.
 name: Yukibana Light packs
@@ -161,7 +161,7 @@ on:
       - light/scripts/test-cache-prune.mjs
       - light/scripts/protect-releases.sh
       - light/scripts/test-protect-releases.mjs
-      - light/setup.sh
+      - light/setup/**
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
       - .github/workflows/light-caches.yml
@@ -193,7 +193,7 @@ on:
       - light/scripts/test-cache-prune.mjs
       - light/scripts/protect-releases.sh
       - light/scripts/test-protect-releases.mjs
-      - light/setup.sh
+      - light/setup/**
       - .github/workflows/light-packs.yml
       - .github/workflows/light-toolchain-unit.yml
       - .github/workflows/light-caches.yml
@@ -289,7 +289,7 @@ jobs:
             # checked in that pack's assemble job instead, whose key is the
             # whole pack (code review of Q1a).
             light/packs/*/toolchains/*/toolchain.sh
-            light/setup.sh
+            light/setup
             .github/workflows
 
       # wave-<n>: the matrix of wave n's job, a JSON list of {unit, key,
@@ -402,7 +402,7 @@ jobs:
             echo "::warning title=$unit toolchain rebuild::${paths:-its variant settings changed}"
           done
 
-  # The stores' reading side, which every pack job below and setup.sh rely on,
+  # The stores' reading side, which every pack job below and light/setup rely on,
   # tested against a stand-in for GitHub's API, and this workflow's own
   # release rule, before anything uses them.
   store:
@@ -419,7 +419,7 @@ jobs:
       - name: Lint the store and setup scripts
         run: |
           shellcheck -x -S style scripts/pack-store.sh scripts/toolchain-key.sh scripts/toolchain-build-env.sh \
-            scripts/pack-lib.sh scripts/pack-toolchain.sh scripts/protect-releases.sh setup.sh \
+            scripts/pack-lib.sh scripts/pack-toolchain.sh scripts/protect-releases.sh \
             packs/stub/glue.sh packs/stub/lib.sh packs/stub/compiler/cc.sh packs/stub/toolchains/*/toolchain.sh
       # As the runner's own user, never root: the read-only toolchain checks
       # are meant to be stopped by a file's mode, which root ignores. These
@@ -440,6 +440,14 @@ jobs:
         run: node --test scripts/test-workflows.mjs
       - name: Test the cache pruning and the release protection
         run: node --test scripts/test-cache-prune.mjs scripts/test-protect-releases.mjs
+      # light/setup, the store's reader on developers' machines, Windows
+      # included: its ids must be pack-store.sh's, and its zstd stand-in
+      # needs Node 22.15's zlib.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Test the setup tool
+        run: npm ci --prefix setup --no-audit --no-fund && npm --prefix setup test
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.store-key }}

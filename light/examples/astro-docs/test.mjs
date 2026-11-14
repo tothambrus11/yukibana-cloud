@@ -22,10 +22,12 @@ import { chromium } from 'playwright-core';
 import { installed, linkPacks, PACKS } from './packs.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const astro = join(here, 'node_modules/.bin/astro');
+// Astro's own entry, run by this Node: node_modules/.bin/astro is a shell
+// script, which Windows cannot spawn (it has astro.cmd beside it instead).
+const astro = [join(here, 'node_modules/astro/astro.js')];
 
 if (process.env.SKIP_BUILD !== '1') {
-	const built = spawnSync(astro, ['build'], { cwd: here, stdio: ['ignore', 'ignore', 'inherit'] });
+	const built = spawnSync(process.execPath, [...astro, 'build'], { cwd: here, stdio: ['ignore', 'ignore', 'inherit'] });
 	if (built.status !== 0) {
 		console.error('astro build failed');
 		process.exit(1);
@@ -51,7 +53,7 @@ const freePort = () =>
 		});
 	});
 const port = await freePort();
-const preview = spawn(astro, ['preview', '--host', '127.0.0.1', '--port', String(port)], { cwd: here, stdio: ['ignore', 'pipe', 'inherit'] });
+const preview = spawn(process.execPath, [...astro, 'preview', '--host', '127.0.0.1', '--port', String(port)], { cwd: here, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((resolve, reject) => {
 	const timer = setTimeout(() => reject(new Error('astro preview did not start in 30 s')), 30_000);
 	preview.stdout.on('data', (chunk) => {

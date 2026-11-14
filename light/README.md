@@ -15,34 +15,49 @@ modules/              @yukibana/protocol, runtime and monaco: what the app, pack
 examples/             other hosts built on the modules, as another site would (hylo/: Hylo's compiler, many snippets)
 packs/CONTRACT.md     what a language pack is: a language server worker and a runner worker
 packs/<language>/     one pack per language, each with build.sh, test.mjs and a README
+setup/                the setup tool: the app's dependencies and every pack, prebuilt
 serve.py              a static server that sends the headers the app wants
 ```
 
 ## Trying it
 
-On Linux (Ubuntu 24.04 is what CI runs), with git, curl, zstd and Node 22
-or later:
+On Linux, macOS or Windows, with git and Node 22.15 or later (on Windows,
+Git for Windows, whose bash runs the split packs' scripts):
 
 ```sh
-./setup.sh --latest              # the app's dependencies and every pack, prebuilt
+npm --prefix setup ci            # the setup tool's own dependencies, once
+node setup/cli.mjs --latest      # the app's dependencies and every pack, prebuilt
 cd app && npm run dev            # http://localhost:5173
 ```
 
 `--latest` is what makes this minutes on any branch: CI stores pack builds
 from `main` only, so on another branch (or a local commit) a pack's exact
 sources often have no stored build, and without `--latest` such a pack is
-built here instead, which for C++ and Swift takes hours (C++ is then
-skipped with a note rather than built unasked).
+built here instead (on Linux; elsewhere it is skipped with a note), which
+for C++ and Swift takes hours (C++ is then skipped with a note rather than
+built unasked).
 
-`setup.sh` downloads each language pack already built from exactly the
+`setup` downloads each language pack already built from exactly the
 sources checked out, from the pack store (below), so a working setup takes
 minutes and compiles nothing. Run it again after a pull: only packs whose
-sources changed are downloaded again. `./setup.sh python cpp` sets up just
-those packs; `./setup.sh --build cpp` builds that pack from source with its
-`build.sh`, installing the Debian/Ubuntu packages its `deps.apt` lists first
-(`--no-install` only names them); `--latest` takes the newest build of a pack
-whose exact sources CI has not built yet (a local commit) instead of
-building it. `./setup.sh --help` says the rest.
+sources changed are downloaded again. `node setup/cli.mjs python cpp` sets
+up just those packs; `--build cpp` builds that pack from source with its
+`build.sh`, on Linux only, installing the Debian/Ubuntu packages its
+`deps.apt` lists first (`--no-install` only names them); `--latest` takes
+the newest build of a pack whose exact sources CI has not built yet (a
+local commit) instead of building it. `--help` says the rest.
+
+A whole pack is fetched by `setup` itself, in Node. A split pack (cpp,
+rust, linux, lldb: below) is fetched and assembled by its bash scripts,
+whose toolchain keys must stay CI's; on Windows that is Git for Windows'
+bash, which has everything they read but zstd, and `setup/zstd.mjs` stands
+in for that. Their toolchains hold symbolic links, which Windows lets an
+administrator create, or anyone with Developer Mode on (Settings, System,
+For developers); without either, `setup` says so. The scripts need LF line
+endings, as `.gitattributes` asks: a checkout made before it asked has
+CRLF, and `setup` gives every file of `scripts/`, `packs/` and
+`toolchains/` that git reports unmodified its LF back, naming any it
+leaves because it has changes of your own.
 
 Each `build.sh` caches what it downloads and compiles in
 `~/.cache/yukibana-packs`. The C++ and Swift builds compile LLVM and take
@@ -53,7 +68,7 @@ For the built site, as it is deployed:
 
 ```sh
 cd app && npm run build
-python3 ../serve.py build        # http://localhost:8000
+python3 ../serve.py build        # http://localhost:8080 (py, not python3, on Windows)
 ```
 
 ### The pack store, CI and releases
@@ -118,10 +133,10 @@ never linked into the pack. Its header has the glossary and the pin rule.
 * Only main writes the stores, and a toolchain is used only if its
   provenance says main built it. Each unit's archive is attested by
   `light-toolchain-unit.yml` with its run's OIDC token, and every fetch from
-  `light-toolchains` (in CI, in a release, and in `setup.sh` when `gh` is
+  `light-toolchains` (in CI, in a release, and in `setup` when `gh` is
   signed in) runs `gh attestation verify` for that workflow and
   `refs/heads/main` first, failing by name otherwise; without a signed-in
-  `gh`, `setup.sh` says the toolchain is unverified. A pull request's run
+  `gh`, `setup` says the toolchain is unverified. A pull request's run
   has read-only permissions, keeps its units as artifacts, and reuses them
   on its own later pushes when their attestation names its ref; it never
   writes a store or deletes a cache. Main's run prunes main's older build
@@ -139,11 +154,11 @@ never linked into the pack. Its header has the glossary and the pin rule.
   assembles and tests the packs over them, keeps the units as artifacts
   for 14 days, and reuses them on that branch's later dispatches; it stores
   nothing. To use a pull request's units on your machine, run
-  `./setup.sh --pull <n>` on a checkout whose units have the keys of its
+  `node setup/cli.mjs --pull <n>` on a checkout whose units have the keys of its
   merge with main: each unit the store lacks is taken from that pull
   request's artifacts, once `gh attestation verify` says its own CI built
   it, into a toolchain cache of its own. That is the pull request's trust,
-  not main's, which `setup.sh` says when it is done. The LLVM builds
+  not main's, which `setup` says when it is done. The LLVM builds
   (`rust/compilers`, `cpp/compilers`, `cpp/tidy`) compile through ccache
   kept in the unit's Actions cache, so a branch, which starts from main's
   cache, recompiles only the LLVM its change touched.

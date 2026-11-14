@@ -88,6 +88,21 @@ export function mtimeOf(s) {
 }
 
 /**
+ * The target of the symbolic link `file`, with `/` separators, as an
+ * archive and toolchain.json carry it. On Windows a link made by Git for
+ * Windows' tar or cp (light/setup runs the scripts there) is a native one,
+ * whose target MSYS wrote with `\`: `../lib/x.js` reads back as
+ * `..\lib\x.js`, the same link, which a comparison of strings would
+ * refuse. Elsewhere the target is returned as it is.
+ * @param {string} file
+ * @returns {string}
+ */
+function linkTarget(file) {
+    const target = fs.readlinkSync(file);
+    return process.platform === 'win32' ? target.split(path.win32.sep).join(path.posix.sep) : target;
+}
+
+/**
  * Every entry under `dir` but its top-level toolchain.json, sorted by path
  * (byte order): regular files with size and mtime, and symbolic links with
  * their target. Anything else (a device, a socket, a fifo) is refused, as is
@@ -105,7 +120,7 @@ export function walk(dir) {
             const p = rel ? `${rel}/${e.name}` : e.name;
             if (p.includes('\n')) refuse(`${JSON.stringify(p)}: a toolchain file's name may not hold a newline`);
             if (e.isDirectory()) visit(p);
-            else if (e.isSymbolicLink()) links.push({ path: p, target: fs.readlinkSync(path.join(dir, p)) });
+            else if (e.isSymbolicLink()) links.push({ path: p, target: linkTarget(path.join(dir, p)) });
             else if (e.isFile()) {
                 if (p === MANIFEST) continue;
                 const s = fs.lstatSync(path.join(dir, p), { bigint: true });

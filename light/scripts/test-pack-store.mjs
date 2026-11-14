@@ -1,4 +1,4 @@
-// Tests of pack-store.sh, which light/setup.sh and every light-packs.yml job
+// Tests of pack-store.sh, which light/setup and every light-packs.yml job
 // rely on, against a server of its own that answers like GitHub's releases
 // API: a throwaway git repository laid out like this one (light/scripts,
 // light/packs/demo, the split packs light/packs/tool and light/packs/other
@@ -1499,23 +1499,8 @@ test("a branch's dispatched runs reuse their own builds of a unit, and neither m
     }
 });
 
-test('setup.sh --pull reads its builds from the repository the stores are read from', async () => {
+test('light/setup --pull reads its builds from the repository the stores are read from', async () => {
     const r = await store('repo');
     assert.equal(r.code, 0, r.err);
     assert.equal(r.out, 'test/repo\n');
-});
-
-test("setup.sh --pull takes a pull request's number and nothing else, and is never --latest too", () => {
-    // Refused before anything is installed, fetched or built.
-    const setup = path.resolve(SCRIPTS, '../setup.sh');
-    for (const [args, why] of [
-        [['--pull'], /--pull needs a pull request number/],
-        [['--pull', 'feature'], /--pull needs a pull request number/],
-        [['--pull', '0'], /--pull needs a pull request number/],
-        [['--pull', '12', '--latest'], /--pull and --latest/],
-    ]) {
-        const r = spawnSync('bash', [setup, ...args], { encoding: 'utf8' });
-        assert.equal(r.status, 1, args.join(' '));
-        assert.match(r.stderr, why, args.join(' '));
-    }
 });

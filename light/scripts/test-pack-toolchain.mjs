@@ -398,7 +398,7 @@ test('a toolchain built with an output-changing setting has its own key and is n
     const before = downloads;
     const refused = await toolchain({ OPT: '2' }, 'ensure', 'tool/cc');
     assert.equal(refused.code, 4, refused.err);
-    assert.match(refused.err, /not built without being asked:\n {2}OPT=2 \(a variant knob of tool\/cc\)\nbuild it anyway with: setup\.sh --build-toolchain tool\/cc/);
+    assert.match(refused.err, /not built without being asked:\n {2}OPT=2 \(a variant knob of tool\/cc\)\nbuild it anyway with: node setup\/cli\.mjs --build tool/);
     const { dir } = await ensure({ OPT: '2' }, '--build-dirty');
     assert.equal(path.basename(dir), k);
     assert.equal(downloads, before);
@@ -550,7 +550,7 @@ test('dirty inputs are not built without being asked', async () => {
     const before = downloads;
     const r = await toolchain({}, 'ensure', 'tool/cc');
     assert.equal(r.code, 4, r.err);
-    assert.match(r.err, /not built without being asked:\n {2}light\/packs\/tool\/src\/compiler\.c\n {2}light\/packs\/tool\/toolchains\/cc\/new\.c\nbuild it anyway with: setup\.sh --build-toolchain tool\/cc/);
+    assert.match(r.err, /not built without being asked:\n {2}light\/packs\/tool\/src\/compiler\.c\n {2}light\/packs\/tool\/toolchains\/cc\/new\.c\nbuild it anyway with: node setup\/cli\.mjs --build tool/);
     assert.equal(r.out, '');
     assert.equal(downloads, before);
     assert.equal(fs.existsSync(path.join(cache, 'built/tool/cc', k)), false);
