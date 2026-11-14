@@ -10,13 +10,13 @@
 // playwright-core's own. Exits non-zero naming every check that failed.
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname, extname, join, normalize, sep } from 'node:path';
+import { dirname, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'build');
-const packs = normalize(process.env.PACKS ?? join(here, '../../app/static/packs'));
+const packs = resolve(process.env.PACKS ?? join(here, '../../app/static/packs'));
 if (!existsSync(join(dist, 'index.html'))) {
 	console.error(`No build in ${dist}: run pnpm run build first.`);
 	process.exit(1);

@@ -1,5 +1,5 @@
 // Tests of light/setup: that it stores and finds packs under the ids CI
-// does, refuses what setup.sh refused, and that the zstd stand-in is zstd
+// does, refuses what it must before anything is installed, and that the zstd stand-in is zstd
 // for what tar asks of it. `pnpm test` here; CI's store job runs it.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';

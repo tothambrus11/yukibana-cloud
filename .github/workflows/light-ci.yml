@@ -334,6 +334,7 @@ jobs:
             light/modules
             light/app/tests/export-ci.mjs
             light/app/tests/export-loaded.mjs
+            light/app/tests/modules-hook.mjs
             .github/workflows/light-ci.yml
 
   app:

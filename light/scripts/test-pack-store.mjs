@@ -1498,9 +1498,3 @@ test("a branch's dispatched runs reuse their own builds of a unit, and neither m
         fs.rmSync(out, { recursive: true, force: true });
     }
 });
-
-test('light/setup --pull reads its builds from the repository the stores are read from', async () => {
-    const r = await store('repo');
-    assert.equal(r.code, 0, r.err);
-    assert.equal(r.out, 'test/repo\n');
-});

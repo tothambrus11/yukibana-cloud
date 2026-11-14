@@ -1,5 +1,5 @@
 # Debian/Ubuntu packages build.sh needs beyond git, curl, python3, make and
-# Node (light/setup.sh installs them, and so does CI): what the Swift
+# Node (light/setup (node setup/cli.mjs) installs them, and so does CI): what the Swift
 # toolchain for Ubuntu 24.04, which build.sh downloads, links against.
 binutils
 libc6-dev

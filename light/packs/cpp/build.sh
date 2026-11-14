@@ -24,7 +24,7 @@
 # Uncommitted changes are built (--build-dirty), for this machine only.
 # A unit's build caches its trees in $PACK_CACHE/cpp (default
 # ~/.cache/yukibana-packs/cpp); its system packages are its deps.apt
-# (light/setup.sh installs them). From nothing, the compilers take hours
+# (light/setup (node setup/cli.mjs) installs them). From nothing, the compilers take hours
 # (clangd about an hour at -j3 on this machine; README, "Build").
 #
 #   JOBS=3 ./build.sh

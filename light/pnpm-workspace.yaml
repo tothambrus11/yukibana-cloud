@@ -5,7 +5,9 @@
 #
 # light/modules is not a package of the workspace: the modules have no
 # dependencies to install (the app's TypeScript checks and builds them,
-# modules/build.mjs), and the Hylo example takes them as `link:`s.
+# modules/build.mjs). The app, the examples and the benchmarks take them as
+# `link:`s, and pnpm installs nothing for a link, so each lists every module
+# it reaches, the ones those modules import included.
 packages:
   - app
   - bench/*

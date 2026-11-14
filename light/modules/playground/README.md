@@ -51,8 +51,9 @@ body, so the package's samples are never loaded.
   entry; an entry file Monaco has no language for is refused with a
   `RangeError`. Monaco imported whole also brings its own TypeScript and
   JavaScript service, which answers next to a JavaScript pack's server.
-* **The packs**, served at `packs/` beside the page (or `options.packs`),
-  the page cross-origin isolated for a program that reads input.
+* **The packs**, served on the page's origin at `packs/` beside the page
+  (or `options.packs`, ending in `/`), the page cross-origin isolated for
+  a program that reads input.
 
 ## Contract
 

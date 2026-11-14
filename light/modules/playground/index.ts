@@ -74,7 +74,7 @@ export interface PlaygroundOptions {
 	readonly hidden?: Files;
 	/** The file a run starts from and the editor shows first: the language's entry (`main.cpp`) when `files` has it, else the first of `files`. */
 	readonly entry?: string;
-	/** Where the packs are served, `<packs><pack>/server.js`: a URL, or a path resolved against the page; `packs/` beside the page by default. */
+	/** Where the packs are served, `<packs><pack>/server.js`, on the page's origin and ending in `/`: a URL, or a path resolved against the page; `packs/` beside the page by default. */
 	readonly packs?: string | URL;
 	/** The settings the language server is configured with, by section; none by default. */
 	readonly serverSettings?: Readonly<Record<string, JsonValue>>;
@@ -252,7 +252,8 @@ const inUse = new WeakSet<typeof monaco>();
  *
  * - Requires: `files` has at least one file; no path is in both `files`
  *   and `hidden`; every path is a project path (relative, `/`-separated);
- *   and no other playground of this Monaco is alive: one playground per
+ *   `packs` ends in `/` and is on the page's origin; and no other
+ *   playground of this Monaco is alive: one playground per
  *   Monaco at a time, since every playground's files are under one
  *   workspace folder and a binding's providers answer for its language
  *   ids alone, so a second one's formatting would answer for the first's
@@ -279,6 +280,13 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 	// ---- The project: a model per file -----------------------------------
 
 	const uriOf = (path: string): monaco.Uri => m.Uri.parse(WORKSPACE.uriOf(path));
+	// Before anything is made: a packs base without its "/" throws here, and a
+	// worker on another origin would throw at `new Worker`, after the editor
+	// was made and this Monaco marked as in use, with nothing to dispose them.
+	const host = new PageHost(new URL(options.packs ?? 'packs/', document.baseURI));
+	const language: PackLanguage = packLanguage(spec, () => Promise.resolve({ sample: { ...options.files, ...hidden }, properties: NO_PROPERTIES, serverSettings: options.serverSettings ?? {}, configFiles: [] }));
+	const serverUrl = host.packs.url(language.pack, WORKER_FILES.lsp);
+	if (serverUrl.origin !== location.origin) throw new RangeError(`The packs must be served from the page's origin, not ${serverUrl.origin}.`);
 	if (inUse.has(m)) throw new RangeError('This Monaco already has a playground: dispose that one first (one playground per Monaco at a time).');
 	const models = new Map<Path, monaco.editor.ITextModel>();
 	for (const [path, text] of Object.entries({ ...options.files, ...hidden })) models.set(pathOf(path), m.editor.createModel(text, undefined, uriOf(path)));
@@ -346,9 +354,6 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 
 	// ---- The language server -----------------------------------------------
 
-	const host = new PageHost(new URL(options.packs ?? 'packs/', document.baseURI));
-	const language: PackLanguage = packLanguage(spec, () => Promise.resolve({ sample: { ...options.files, ...hidden }, properties: NO_PROPERTIES, serverSettings: options.serverSettings ?? {}, configFiles: [] }));
-	const serverUrl = host.packs.url(language.pack, WORKER_FILES.lsp);
 	const session = new LanguageSession(new Worker(serverUrl, { type: 'module', name: serverUrl.pathname }), {
 		rootUri: WORKSPACE.uri,
 		settings: options.serverSettings ?? {},
@@ -415,21 +420,28 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		const snapshot = project.snapshot();
 		const onEvent = (event: RunEvent): void => {
 			if (!mine.current()) return;
-			switch (event.type) {
-				case 'state':
-					// Settled before the host hears: a listener that throws, or runs again, cannot leave this run unsettled or cancel it.
-					if (isFinal(event.state)) mine.settle(event.state);
-					listener.status?.(describeRun(event.state), event.state);
-					return;
-				case 'output':
-					listener.output?.(event.pieces.join(''), event.stream);
-					return;
-				case 'notice':
-				case 'problem':
-					listener.output?.(`${event.text}\n`, 'stderr');
-					return;
-				default:
-					return;
+			// Settled before the host hears: a listener that runs again cannot cancel it.
+			if (event.type === 'state' && isFinal(event.state)) mine.settle(event.state);
+			// A listener that throws is logged here: it once threw into the
+			// runner's batch, which lost the rest of it, `exit` included, and
+			// left the run unsettled.
+			try {
+				switch (event.type) {
+					case 'state':
+						listener.status?.(describeRun(event.state), event.state);
+						return;
+					case 'output':
+						listener.output?.(event.pieces.join(''), event.stream);
+						return;
+					case 'notice':
+					case 'problem':
+						listener.output?.(`${event.text}\n`, 'stderr');
+						return;
+					default:
+						return;
+				}
+			} catch (error) {
+				log('error', `The run's listener threw: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		};
 		instance.perform(subject, run, { files: snapshot.files(), entry, options: null, snippet, onEvent }, snapshot, mine.signal).then(

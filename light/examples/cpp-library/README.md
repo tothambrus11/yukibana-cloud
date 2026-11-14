@@ -36,7 +36,9 @@ hidden: {
   (outside `tests/`) and links them into one program, so the library's
   source is in the build because it is in the project.
 * **Read-only.** `hidden` files are in the project but not offered for
-  editing: go to definition into the library shows them read-only.
+  editing: go to definition into the library shows them read-only in the
+  playground's editor, though Monaco's peek view can still edit one (see
+  [the playground's README](../../modules/playground/README.md)).
 
 A library from elsewhere (a fetched archive, a generated header) is the
 same: its files as strings under `hidden`.
@@ -55,4 +57,6 @@ pnpm run dev                            # http://localhost:5173
 server starts; hovering a library function shows its header comment;
 completion offers the class's members; go to definition opens the
 library's source and go to declaration its header, both read-only; Run
-prints the library's results; an error typed into `main.cpp` is marked.
+prints the library's results; an error typed into `main.cpp` is marked;
+without the pack, the page names it and raises no error; a playground
+disposed as a run starts leaves no worker.
