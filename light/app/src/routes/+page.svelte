@@ -289,7 +289,7 @@
 			<div class="menu-heading" data-fold="44">Theme</div>
 			{#each THEME_CHOICES as choice (choice)}
 				<button class="menu-item" role="menuitemradio" aria-checked={theme.choice === choice} data-fold="44" onclick={() => (theme.choice = choice)}>
-					<span class="check" aria-hidden="true">{theme.choice === choice ? '✓' : ''}</span>{THEME_NAMES[choice]}{#if choice === 'system'}<span class="hint">{theme.current === 'dark' ? 'Dark now' : 'Light now'}</span>{/if}
+					<span class="check" aria-hidden="true">{theme.choice === choice ? '✓' : ''}</span>{THEME_NAMES[choice]}{#if choice === 'system'}<span class="hint">{THEME_NAMES[theme.current]} now</span>{/if}
 				</button>
 			{/each}
 			<div class="menu-divider" role="separator" data-fold="44"></div>

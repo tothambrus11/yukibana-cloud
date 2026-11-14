@@ -193,7 +193,7 @@ function ask(message: string, detail: unknown, labels: string[]): Promise<number
 		labels.forEach((label, i) => {
 			const button = document.createElement('button');
 			button.type = 'button';
-			button.className = i === 0 ? 'app-dialog-button yk-btn yk-btn--primary' : 'app-dialog-button yk-btn yk-btn--secondary';
+			button.className = i === 0 ? 'btn small yk-btn yk-btn--primary' : 'btn small yk-btn yk-btn--secondary';
 			button.textContent = buttonLabel(label);
 			button.addEventListener('click', () => {
 				chosen = i;

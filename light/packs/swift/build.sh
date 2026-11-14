@@ -137,7 +137,9 @@ fi
 
 step "node tools (binaryen, esbuild)"
 cd "$HERE"
-[ -x node_modules/.bin/wasm-opt ] && [ -d node_modules/@bjorn3/browser_wasi_shim ] || pnpm install --frozen-lockfile --filter .
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
+pnpm_deps "$HERE"
 
 step "swift build (swift-syntax + server/, wasm32-unknown-wasip1, release)"
 cd "$HERE/server"

@@ -90,7 +90,7 @@
 	}
 </script>
 
-<dialog class="export" bind:this={dialog} aria-labelledby="export-title" onclick={(e) => e.target === dialog && dialog.close()}>
+<dialog class="app-dialog export" bind:this={dialog} aria-labelledby="export-title" onclick={(e) => e.target === dialog && dialog.close()}>
 	<header>
 		<h2 id="export-title">Download project</h2>
 		<button class="icon-btn yk-icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
@@ -138,8 +138,8 @@
 	</details>
 
 	<footer>
-		<button class="button yk-btn yk-btn--secondary" onclick={() => dialog.close()}>Cancel</button>
-		<button class="button yk-btn yk-btn--primary" onclick={() => void download()}>Download .zip</button>
+		<button class="btn yk-btn yk-btn--secondary" onclick={() => dialog.close()}>Cancel</button>
+		<button class="btn yk-btn yk-btn--primary" onclick={() => void download()}>Download .zip</button>
 	</footer>
 </dialog>
 
@@ -147,30 +147,6 @@
 	.export {
 		width: min(34rem, calc(100vw - 2rem));
 		max-height: calc(var(--app-height, 100dvh) - 2rem);
-		padding: 0;
-		border: 1px solid var(--yk-line);
-		border-radius: 0.5rem;
-		background: var(--yk-rail);
-		color: var(--yk-ink);
-		font-size: 0.9rem;
-	}
-	.export::backdrop {
-		background: rgb(0 0 0 / 0.45);
-	}
-	header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.5rem 0.5rem 0 1rem;
-	}
-	h2 {
-		margin: 0;
-		font-size: 1.05rem;
-	}
-	.close {
-		min-width: 2.5rem;
-		min-height: 2.5rem;
-		color: var(--label);
 	}
 	p {
 		margin: 0.5rem 1rem;
@@ -238,7 +214,7 @@
 		overflow: auto;
 	}
 	code {
-		font-family: var(--mono, 'JetBrains Mono', monospace);
+		font-family: var(--font-mono);
 		font-size: 0.8rem;
 	}
 	footer {
@@ -246,11 +222,5 @@
 		justify-content: flex-end;
 		gap: 0.5rem;
 		padding: 0.5rem 1rem 1rem;
-	}
-	/* A `yk-btn` (the package's buttons.css) draws it; this is its size. */
-	.button {
-		min-height: 2rem;
-		padding: 0 0.8rem;
-		font-size: 0.85rem;
 	}
 </style>

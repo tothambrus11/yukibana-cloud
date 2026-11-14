@@ -51,10 +51,12 @@
 	});
 </script>
 
-<dialog class="licenses" bind:this={dialog} aria-labelledby="licenses-title" onclick={(e) => e.target === dialog && dialog.close()}>
+<dialog class="app-dialog licenses" bind:this={dialog} aria-labelledby="licenses-title" onclick={(e) => e.target === dialog && dialog.close()}>
 	<header>
 		<h2 id="licenses-title">Licences</h2>
-		<button class="close" onclick={() => dialog.close()} aria-label="Close">×</button>
+		<button class="icon-btn yk-icon-btn close" onclick={() => dialog.close()} aria-label="Close" title="Close">
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+		</button>
 	</header>
 
 	<p>Yukibana Light is built from open-source software, and runs compilers and tools that are too, in your browser. Each part's licence is below, as it ships.</p>
@@ -92,31 +94,6 @@
 		width: min(44rem, calc(100vw - 2rem));
 		max-height: calc(100vh - 4rem);
 		padding: 0 0 0.75rem;
-		border: 1px solid var(--yk-line);
-		border-radius: 0.5rem;
-		background: var(--yk-rail);
-		color: var(--yk-ink);
-		font-size: 0.9rem;
-	}
-	.licenses::backdrop {
-		background: rgb(0 0 0 / 0.45);
-	}
-	header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0.75rem 1rem 0;
-	}
-	h2 {
-		margin: 0;
-		font-size: 1.05rem;
-	}
-	.close {
-		border: 0;
-		background: none;
-		color: var(--label);
-		font-size: 1.4rem;
-		cursor: pointer;
 	}
 	p,
 	ul {

@@ -868,6 +868,9 @@ jobs:
     env:
       PACK: ${{ matrix.pack }}
       TIMINGS: ${{ github.workspace }}/../timings
+      # pnpm's store, under PACK_CACHE so the pack's build cache keeps it:
+      # build.sh's pnpm_deps then fetches only what the lock changed.
+      npm_config_store_dir: /home/runner/.cache/yukibana-packs/pnpm-store
     defaults:
       run:
         working-directory: light/packs/${{ matrix.pack }}

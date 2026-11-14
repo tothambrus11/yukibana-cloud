@@ -37,11 +37,9 @@ if [ "${1:-}" = --check-versions ]; then
 fi
 
 : "${OUT:?OUT is the pack being assembled, every unit already linked into it}"
-want=$(sha256sum < "$HERE/pnpm-lock.yaml" | cut -d' ' -f1)
-if [ "$(cat "$HERE/node_modules/.yk-lock" 2>/dev/null)" != "$want" ]; then
-  (cd "$HERE" && pnpm install --frozen-lockfile --filter . >&2)
-  echo "$want" > "$HERE/node_modules/.yk-lock"
-fi
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
+pnpm_deps "$HERE"
 for f in rustc.wasm rustc-cross.wasm miri.wasm rust-analyzer.wasm std-src.tar versions-sysroots.json; do
   [ -f "$OUT/$f" ] || { echo "glue.sh: $OUT/$f is missing: a unit did not build it" >&2; exit 1; }
 done

@@ -193,7 +193,7 @@ The alternative named in the task, `@typescript/vfs`, was not needed: the
     **1 min 50 s** on the shared 4-core machine; a rebuild that touches only
     the adapter takes about 2 s.
 * `src/server.ts`: the adapter, written in TypeScript with strict settings
-  (`pnpm exec tsc -p tsconfig.json`).
+  (`node_modules/.bin/tsc -p tsconfig.json`).
 * `tools/libs.mjs`: collects and minifies the lib bundle and checks it.
 * `tools/compress.mjs`: writes the compressed siblings and prints the size
   table.

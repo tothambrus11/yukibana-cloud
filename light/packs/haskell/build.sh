@@ -153,7 +153,9 @@ if [ "$(git -C "$SHIM" rev-parse HEAD 2>/dev/null)" != "$SHIM_COMMIT" ]; then
     git -C "$SHIM" checkout -q "$SHIM_COMMIT"
 fi
 cd "$HERE"
-[ -x node_modules/.bin/esbuild ] || pnpm install --frozen-lockfile --filter .
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
+pnpm_deps "$HERE"
 node_modules/.bin/esbuild "$SHIM/src/index.ts" --bundle --format=esm --target=es2022 --minify --legal-comments=none --log-level=warning --outfile="$OUT/wasi.js"
 
 step "pack files"

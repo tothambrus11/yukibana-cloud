@@ -20,18 +20,13 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="$HERE/../../app/static/packs/lldb"
-pnpm_deps() {
-  local want
-  want=$(sha256sum < "$HERE/pnpm-lock.yaml" | cut -d' ' -f1)
-  [ "$(cat "$HERE/node_modules/.yk-lock" 2>/dev/null)" != "$want" ] || return 0
-  (cd "$HERE" && pnpm install --frozen-lockfile --filter . >&2)
-  echo "$want" > "$HERE/node_modules/.yk-lock"
-}
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
 
 case "${1:-}" in
   --inputs) exit 0 ;;
   --setup)
-    pnpm_deps
+    pnpm_deps "$HERE"
     (cd "$HERE" && pnpm exec playwright-core install --with-deps chromium)
     exit 0 ;;
   '') ;;
@@ -39,7 +34,7 @@ case "${1:-}" in
 esac
 
 [ -f "$OUT/debugger.js" ] || { echo "test.sh: no assembled pack at $OUT" >&2; exit 1; }
-pnpm_deps
+pnpm_deps "$HERE"
 if [ -z "${CHROMIUM:-}" ]; then
   CHROMIUM="$(cd "$HERE" && node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")"
   [ -x "$CHROMIUM" ] || CHROMIUM=/opt/pw-browsers/chromium

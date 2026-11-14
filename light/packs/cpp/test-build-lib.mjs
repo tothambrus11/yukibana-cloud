@@ -1,6 +1,6 @@
 // Tests of what decides whether the C/C++ pack's build reuses a cached tree
 // or a skipped step (build-lib.sh's keep_tree, follow_patch, llvm-lib.sh's
-// llvm_lld_sources, glue-lib.sh's pnpm_deps, the emsdk unit's emsdk_install,
+// llvm_lld_sources, light/scripts/pack-lib.sh's pnpm_deps, the emsdk unit's emsdk_install,
 // the stamps' input lists, and the Linux pack's vm/build-qemu-user.sh's
 // stamp, which builds with this pack's emsdk and musl units), of how a
 // unit's scripts reach the units it needs (need_unit, emsdk_use, apk_of),
@@ -324,7 +324,8 @@ test("the pack's build tools are installed again when pnpm-lock.yaml changes, an
     write(path.join(bin, 'pnpm'), `#!/bin/sh\necho "$*" >> "${log}"\nmkdir -p node_modules\n`);
     fs.chmodSync(path.join(bin, 'pnpm'), 0o755);
     write(path.join(dir, 'pnpm-lock.yaml'), 'esbuild: 0.25.10\n');
-    const run = () => ok(`pnpm_deps "${dir}"`, { env: { PATH: `${bin}:${process.env.PATH}` } });
+    const lib = path.join(HERE, '../../scripts/pack-lib.sh');
+    const run = () => ok(`source "${lib}"; pnpm_deps "${dir}"`, { env: { PATH: `${bin}:${process.env.PATH}` } });
     const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').length : 0);
     run();
     run();

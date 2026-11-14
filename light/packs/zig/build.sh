@@ -98,7 +98,9 @@ rm -f "$OUT/lib.tar"
 
 # 5. The workers, bundled with browser_wasi_shim; PACK_SIZES gives the
 #    downloads' progress bars their totals.
-[ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && pnpm install --frozen-lockfile --filter .)
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
+pnpm_deps "$HERE"
 size() { stat -c %s "$OUT/$1"; }
 SIZES="{\"zig.wasm\":$(size zig.wasm),\"zls.wasm\":$(size zls.wasm),\"lib.tar\":$(size lib.tar)"
 for target in "${TARGETS[@]}"; do SIZES+=",\"rt/compiler_rt-$target.a\":$(size "rt/compiler_rt-$target.a")"; done

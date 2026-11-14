@@ -74,16 +74,20 @@ const prefix = `${root}/node_modules/`;
  * beside the packages it depends on, so that part of the path goes.
  */
 const virtual = (p) => `/node_modules/${p.slice(prefix.length).replace(/^\.pnpm\/[^/]+\/node_modules\//, '')}`;
+// Each kept file by its path in the server's tree, computed once: two links
+// to one package are one file there. TypeScript's own package (its default
+// libs, its package.json) is the server's business (libs-*.json), not a
+// package's.
+const kept = new Map();
+for (const p of [...program.getSourceFiles().map((f) => f.fileName), ...read]) {
+  if (!p.startsWith(prefix) || !(p.endsWith('/package.json') || /\.d\.[cm]?ts$/.test(p))) continue;
+  const v = virtual(p);
+  if (!v.startsWith('/node_modules/typescript/') && !Object.hasOwn(except, v)) kept.set(v, p);
+}
 const files = {};
-// TypeScript's own package (its default libs, its package.json) is the
-// server's business (libs-*.json), not a package's.
-const kept = [...program.getSourceFiles().map((f) => f.fileName), ...read].filter(
-  (p) => p.startsWith(prefix) && !virtual(p).startsWith('/node_modules/typescript/') && (p.endsWith('/package.json') || /\.d\.[cm]?ts$/.test(p)),
-);
-for (const p of [...new Set(kept)].sort((a, b) => (virtual(a) < virtual(b) ? -1 : virtual(a) > virtual(b) ? 1 : 0))) {
-  if (Object.hasOwn(except, virtual(p))) continue;
+for (const [v, p] of [...kept].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
   try {
-    files[virtual(p)] = readFileSync(p, 'utf8');
+    files[v] = readFileSync(p, 'utf8');
   } catch {
     // A package.json TypeScript only looked for (a scope directory) is not a file.
   }

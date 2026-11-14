@@ -144,7 +144,7 @@ function remembered(): ThemeChoice {
 const SYSTEM_LIGHT = '(prefers-color-scheme: light)';
 
 /** The theme a choice shows while the system's scheme is light (`systemLight`) or not. Dark when the system says neither. */
-export const resolve = (choice: ThemeChoice, systemLight: boolean): Theme => (choice === 'system' ? (systemLight ? 'light' : 'dark') : choice);
+const resolve = (choice: ThemeChoice, systemLight: boolean): Theme => (choice === 'system' ? (systemLight ? 'light' : 'dark') : choice);
 
 /** The theme; set `choice` to change it everywhere. `current` is the theme shown. */
 class ThemeState {

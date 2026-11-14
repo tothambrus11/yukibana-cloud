@@ -196,7 +196,9 @@ rm -rf "$CACHE/sjsir-qc"
 # 7. Output. esbuild only removes whitespace and renames locals (no property
 #    mangling), which is all Scala.js's ES-module output leaves to do.
 #    Its only warnings are about Scala.js comparing with -0 on purpose.
-[ -x "$HERE/node_modules/.bin/esbuild" ] || (cd "$HERE" && pnpm install --frozen-lockfile --filter .)
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
+pnpm_deps "$HERE"
 rm -rf "$OUT" && mkdir -p "$OUT"
 "$HERE/node_modules/.bin/esbuild" "$LINKED" --minify --format=esm --log-level=error --outfile="$OUT/scalac.js"
 "$HERE/node_modules/.bin/esbuild" "$LINKER_LINKED" --minify --format=esm --log-level=error --outfile="$OUT/sjslinker.js"

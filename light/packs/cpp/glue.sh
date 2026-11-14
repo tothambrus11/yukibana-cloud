@@ -32,6 +32,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source-path=SCRIPTDIR source=glue-lib.sh
 source "$HERE/glue-lib.sh"
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
 UNITS=(emsdk musl compilers libs tidy)
 
 if [ "${1:-}" = --check-versions ]; then

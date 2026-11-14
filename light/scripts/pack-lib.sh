@@ -1,7 +1,8 @@
 # shellcheck shell=bash
 # Helpers shared by the pack and toolchain store scripts (pack-store.sh,
-# pack-toolchain.sh), so each is written once and behaves the same in both.
-# Sourced, never run.
+# pack-toolchain.sh) and by the packs' build.sh, glue.sh and test.sh, so each
+# is written once and behaves the same everywhere. Sourced, never run;
+# defines functions only.
 #
 # Part of no key: no toolchain build reads this file (it is never staged),
 # so a change here rebuilds nothing. That is why shared helpers live here and
@@ -9,6 +10,23 @@
 # toolchain's key, nor in toolchain-key.sh, whose changes of meaning bump
 # the key's format. A helper that a toolchain.sh would need belongs in
 # toolchain-build-env.sh instead, and costs a rebuild of everything.
+
+# pnpm_deps <dir> [pnpm install options...]: installs <dir>'s pnpm-lock.yaml
+# into its node_modules (pnpm install --frozen-lockfile --filter .) unless
+# node_modules/.yk-lock holds that lock file's SHA-256, so a changed lock
+# (esbuild's version, say) reaches the build instead of the node_modules a
+# previous one installed; a pack that only checked that esbuild existed never
+# saw a bump. The stamp is written only by an install, so its mtime says when
+# node_modules last changed. pnpm's output goes to stderr: a glue's stdout is
+# the list of files it made.
+pnpm_deps() {
+  local dir="$1" want
+  shift
+  want=$(sha256sum < "$dir/pnpm-lock.yaml" | cut -d' ' -f1)
+  [ "$(cat "$dir/node_modules/.yk-lock" 2>/dev/null)" != "$want" ] || return 0
+  (cd "$dir" && pnpm install --frozen-lockfile --filter . "$@" >&2)
+  echo "$want" > "$dir/node_modules/.yk-lock"
+}
 
 # Removes the tree $1 (nothing when there is none, a dangling symlink
 # included), which may hold read-only files and directories: a toolchain's

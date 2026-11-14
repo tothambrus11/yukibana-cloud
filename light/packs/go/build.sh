@@ -106,7 +106,9 @@ rm -f "$OUT"/std/*.tsv "$OUT"/std/*.list "$OUT"/std/*.all
 
 # 4. The workers, bundled with browser_wasi_shim; PACK_SIZES gives the
 #    downloads' progress bars their totals.
-[ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && pnpm install --frozen-lockfile --filter .)
+# shellcheck source=../../scripts/pack-lib.sh
+source "$HERE/../../scripts/pack-lib.sh"
+pnpm_deps "$HERE"
 size() { stat -c %s "$OUT/$1"; }
 SIZES="{\"gotool.wasm\":$(size gotool.wasm),\"compile.wasm\":$(size compile.wasm),\"link.wasm\":$(size link.wasm),\"std/index.json\":$(size std/index.json)}"
 # NODE_PATH: code bundled from ../kit (README.md there) imports its packages
