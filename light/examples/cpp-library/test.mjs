@@ -157,18 +157,23 @@ await check('without the pack, the page says which pack is not served and raises
 	if (raised.length > 0) throw new Error(raised.join('\n'));
 });
 
-// Last of the checks that use the playground: it is gone afterwards.
+// On a fresh page, so that the run is what would make the runner pool, one step after dispose.
 await check('a playground disposed as a run starts resolves the run as cancelled and leaves no worker of the pack', async () => {
-	const ended = await page.evaluate(() => {
+	const fresh = await browser.newPage();
+	await fresh.goto(`http://127.0.0.1:${port}/`);
+	await fresh.waitForFunction(() => globalThis.playground, null, { timeout: ANSWER });
+	const ended = await fresh.evaluate(() => {
 		const running = globalThis.playground.run();
 		globalThis.playground.dispose();
 		return running;
 	});
 	if (ended.kind !== 'cancelled' || ended.why !== 'disposed') throw new Error(`the run ended as ${JSON.stringify(ended)}`);
 	// The language server is given a moment to answer its shutdown; a runner is ended at once.
-	const ofThePack = () => page.workers().filter((worker) => new URL(worker.url()).pathname.startsWith('/packs/'));
+	const ofThePack = () => fresh.workers().filter((worker) => new URL(worker.url()).pathname.startsWith('/packs/'));
 	for (let waited = 0; ofThePack().length > 0 && waited < 5000; waited += 250) await new Promise((resolve) => setTimeout(resolve, 250));
-	if (ofThePack().length > 0) throw new Error(`still running: ${ofThePack().map((worker) => worker.url()).join(', ')}`);
+	const left = ofThePack().map((worker) => worker.url());
+	await fresh.close();
+	if (left.length > 0) throw new Error(`still running: ${left.join(', ')}`);
 });
 
 await check('the page raised no error', async () => {

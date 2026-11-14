@@ -821,10 +821,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for pack in javascript python cpp rust swift; do
+          for pack in python cpp rust swift; do
             scripts/pack-store.sh fetch "$pack" --any || echo "::warning title=$pack::the pack store has no build of $pack; the astro-docs playgrounds in $pack are skipped"
           done
-          [ -f app/static/packs/javascript/runner.js ] || (cd packs/javascript && ./build.sh)
+          scripts/pack-store.sh fetch javascript || (cd packs/javascript && ./build.sh)
 
       - name: End-to-end (Chromium, astro preview, the packs above)
         env:

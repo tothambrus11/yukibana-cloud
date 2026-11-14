@@ -204,7 +204,9 @@ Two tracks run side by side: **the platform** (stages 1 to 4) and **the layout v
 - **0.5 is done as far as it can be before stages 1 and 2.** `registry/` holds the
   Worker, its rules and their tests, and https://yukibana.run answers with the frame's
   greeting under the registry's headers, checked from outside. The checks that need a
-  pack wait for stage 2. The staging copy at a workers.dev address is deleted. Left
+  pack wait for stage 2. The check that a page on another site embeds the frame and is
+  told whether it is isolated needs a browser and is still open; it is the first of
+  0.3's checks. The staging copy at a workers.dev address is deleted. Left
   for Ambrus: steps 6 to 8 below.
 - **0.2, 0.3 and 0.4 are not started.** 0.2 and 0.3 need a browser; 0.4 is Ambrus's.
 - **Stage 2 has its first piece**, the part that needs no browser: `registry/format.mjs`

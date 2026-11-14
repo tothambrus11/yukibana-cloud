@@ -34,8 +34,9 @@ node setup/cli.mjs --latest      # the app's dependencies and every pack, prebui
 cd app && pnpm run dev           # http://localhost:5173
 ```
 
-Light is a pnpm workspace (`pnpm-workspace.yaml`): the app, the examples and
-the packs, each with its own `pnpm-lock.yaml`. `pnpm install` here installs
+Light is a pnpm workspace (`pnpm-workspace.yaml`): the app, the examples, the
+language packs, the setup tool and the benchmarks, each with its own
+`pnpm-lock.yaml`. `pnpm install` here installs
 them all; `pnpm install --filter ./app` (or `--filter .` inside one) installs
 one. It resolves only versions published at least 14 days ago
 (`minimumReleaseAge`), and refuses a lockfile that holds a younger one.

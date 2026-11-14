@@ -258,9 +258,9 @@ try {
 		});
 	}
 
-	await check('two exercises of different packs check at once through the one pool, and both pass', async () => {
+	if (installed.length < 2) console.log('# SKIP two exercises of different packs: fewer than two packs are installed');
+	else await check('two exercises of different packs check at once through the one pool, and both pass', async () => {
 		const pair = installed.slice(0, 2);
-		if (pair.length < 2) return;
 		const cards = pair.map((exercise) => exerciseOf(page, exercise.id));
 		await Promise.all(cards.map((card) => card.click('check')));
 		await Promise.all(cards.map((card) => card.checked('passed')));

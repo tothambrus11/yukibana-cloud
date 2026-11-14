@@ -80,7 +80,7 @@ export interface PlaygroundOptions {
 	readonly serverSettings?: Readonly<Record<string, JsonValue>>;
 	/** Monaco's options for the editor, over the playground's (no minimap, semantic highlighting on). */
 	readonly editorOptions?: monaco.editor.IStandaloneEditorConstructionOptions;
-	/** What the language server is doing, in words, each time it changes (starting, downloading, running, failed). */
+	/** What the language server is doing, in words, each time its state changes (starting, running, stopped, failed). */
 	readonly status?: (text: string, state: ServerState) => void;
 	/** A line of the server's log; by default `console`. */
 	readonly log?: (level: LogLevel, text: string) => void;
@@ -365,7 +365,9 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		locale: navigator.language,
 		trace: null,
 		events: {
-			state: (state) => options.status?.(describeServer(state), state),
+			state: (state) => {
+				if (!disposed) options.status?.(describeServer(state), state);
+			},
 			loading: () => {},
 			log,
 			status: (part) => log('info', `${part.label}: ${part.state}`),

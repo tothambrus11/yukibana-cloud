@@ -115,6 +115,7 @@ export async function run(argv, io) {
 	}
 }
 
+if (import.meta.main === undefined) throw new Error(`yukibana-registry needs Node 22.18 or later (this is ${process.version})`);
 if (import.meta.main) {
 	process.exitCode = await run(process.argv.slice(2), { out: (line) => console.log(line), err: (line) => console.error(line) });
 }
