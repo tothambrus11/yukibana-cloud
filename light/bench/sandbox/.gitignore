@@ -1,0 +1,5 @@
+node_modules/
+dist/
+# One machine's numbers: README.md records the ones that were kept.
+results.json
+run.log

@@ -1,0 +1,23 @@
+{
+	"name": "yukibana-bench-sandbox",
+	"private": true,
+	"version": "0.0.0",
+	"description": "What running the packs' workers in a cross-site frame costs, against workers in the page: clangd's startup and answers, a GoogleTest run, output throughput, and memory.",
+	"type": "module",
+	"scripts": {
+		"build": "vite build",
+		"bench": "node bench.mjs"
+	},
+	"dependencies": {
+		"@yukibana/core": "file:../../modules/core",
+		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
+		"@yukibana/protocol": "file:../../modules/protocol",
+		"@yukibana/runtime": "file:../../modules/runtime",
+		"@yukibana/std": "file:../../modules/std"
+	},
+	"devDependencies": {
+		"playwright-core": "1.56.1",
+		"typescript": "6.0.3",
+		"vite": "8.3.5"
+	}
+}
