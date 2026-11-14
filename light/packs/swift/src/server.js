@@ -19,10 +19,10 @@
 
 import { Lite, isFatal } from './lite.js';
 import {
-    FRONTEND_WASM, loadMacroPlugins, loadSwiftTesting, loadSysroot, loadTool, loadXCTest, mkdirp, remove, sourceKitArgs,
+    FRONTEND_WASM, loadFoundationEssentials, loadMacroPlugins, loadSwiftTesting, loadSysroot, loadTool, loadXCTest, mkdirp, remove, sourceKitArgs,
     usesMacroPlugins, writeFile,
 } from './toolchain.js';
-import { importsTesting, importsXCTest, isOwnModuleImportWarning } from './xctest.js';
+import { importsTesting, importsXCTest, isOwnModuleImportWarning, needsFoundationEssentials } from './xctest.js';
 
 const NAME = 'sourcekit-lsp-lite (sourcekitd 6.3.3) + swift-syntax formatting';
 const VERSION = 'sourcekitd and swift-frontend 6.3.3 from swift-toolchain-wasm (swift-frontend-lsp.wasm); formatting and semantic tokens from swift-syntax 604.0.0';
@@ -433,12 +433,15 @@ function open(uri, text, version) {
 /**
  * The optional downloads, added to sourcekitd's file system before the
  * first file that needs one reaches it: XCTest and swift-testing for a file
- * that imports them, the macro plugins for one that can use their macros.
+ * that imports them, FoundationEssentials for one that imports it or
+ * Testing (which links it), the macro plugins for one that can use their
+ * macros.
  * A failed download is tried again for the next such file.
  */
 const extras = [
     { needed: importsXCTest, load: loadXCTest, loading: null },
     { needed: importsTesting, load: loadSwiftTesting, loading: null },
+    { needed: (text) => needsFoundationEssentials([text]), load: loadFoundationEssentials, loading: null },
     { needed: usesMacroPlugins, load: loadMacroPlugins, loading: null },
 ];
 async function ensureExtras(text) {

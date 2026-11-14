@@ -174,6 +174,26 @@ const SWIFT_TESTING = {
 }
 `,
 };
+const FOUNDATION_ESSENTIALS = {
+    'main.swift': `import FoundationEssentials
+
+struct Person: Codable, Equatable {
+    var name: String
+    var age: Int
+}
+
+let encoder = JSONEncoder()
+encoder.outputFormatting = [.sortedKeys]
+let json = try encoder.encode(Person(name: "Ada", age: 36))
+print(String(decoding: json, as: UTF8.self))
+print(try JSONDecoder().decode(Person.self, from: json) == Person(name: "Ada", age: 36))
+print(Date(timeIntervalSince1970: 0))
+print(UUID(uuidString: "E621E1F8-C36C-495A-93FC-0C247A3E6E5F")!)
+print(URL(string: "https://example.com/a?q=1")!.host() ?? "no host")
+print(Calendar(identifier: .gregorian).component(.year, from: Date(timeIntervalSince1970: 1_000_000_000)))
+`,
+};
+const FOUNDATION_ESSENTIALS_OUT = '{"age":36,"name":"Ada"}\ntrue\n1970-01-01 00:00:00 +0000\nE621E1F8-C36C-495A-93FC-0C247A3E6E5F\nexample.com\n2001\n';
 
 const browser = await chromium.launch({ executablePath: CHROMIUM });
 let failed = 0;
@@ -558,6 +578,34 @@ final class ListedTests: XCTestCase {
     check("swift-testing: 'run' leaves the test files out, as SwiftPM leaves out the test target",
         runOfTested.code === 0 && runOfTested.stdout === 'counter at 0\n' && !('swift-testing.tar' in runOfTested.loading),
         `code=${runOfTested.code} ${JSON.stringify(runOfTested.stdout)}\n${runOfTested.stderr}`);
+
+    // 8b. FoundationEssentials: a separate download, fetched by a project
+    //     that imports it (and by swift-testing, which links it), and by
+    //     nothing else.
+    bytesSent = 0;
+    const essentials = await run(FOUNDATION_ESSENTIALS);
+    check('FoundationEssentials: JSON coding, Date, UUID, URL and Calendar compile, link and run',
+        essentials.code === 0 && essentials.stdout === FOUNDATION_ESSENTIALS_OUT && essentials.stderr === '' &&
+            essentials.loading['swift-foundation-essentials.tar']?.[0] > 0 && !('swift-testing.tar' in essentials.loading),
+        `code=${essentials.code} in ${essentials.ms} ms, ${(bytesSent / 1e6).toFixed(1)} MB transferred; ${timeline(essentials)}\n${essentials.stdout}${essentials.stderr}`);
+    check('FoundationEssentials: swift-testing, which links it, downloads it too; a project importing neither does not',
+        'swift-foundation-essentials.tar' in swiftTesting.loading && !('swift-foundation-essentials.tar' in cold.loading) &&
+            !('swift-foundation-essentials.tar' in macros.loading),
+        `testing: ${Object.keys(swiftTesting.loading).join(', ')}; sample: ${Object.keys(cold.loading).join(', ')}`);
+    // In the worker the app keeps, the second run has the module and
+    // _FoundationCShims in its module cache: the first compile's cost is once.
+    const keptFirst = await run(FOUNDATION_ESSENTIALS, { keep: true });
+    const keptAgain = await run(FOUNDATION_ESSENTIALS, { keep: true });
+    // (Before -fmodules-prune-interval=0, frontend-args.js MODULE_CACHE_ARGS,
+    // Clang pruned its cache on every compile and each run took as long as the first.)
+    check('FoundationEssentials: the next run in a kept worker loads nothing, builds no C module again, and gives the same output',
+        keptFirst.stdout === FOUNDATION_ESSENTIALS_OUT && keptAgain.code === 0 && keptAgain.stdout === FOUNDATION_ESSENTIALS_OUT &&
+            Object.keys(keptAgain.loading).length === 0 && keptAgain.ms < keptFirst.ms / 2,
+        `first ${keptFirst.ms} ms (${timeline(keptFirst)}), again ${keptAgain.ms} ms (${timeline(keptAgain)})`);
+    const noFoundation = await run({ 'main.swift': 'import Foundation\nprint(Date())\n' });
+    check('FoundationEssentials: `import Foundation` is still no such module (only the essentials are offered)',
+        noFoundation.code !== 0 && /no such module 'Foundation'/.test(noFoundation.stderr),
+        `code=${noFoundation.code}\n${noFoundation.stderr.split('\n')[0]}`);
 
     // 9. Optimisation levels (README, "Optimization"): -Onone named is the
     //    default; a level the frontend does not have is refused before any

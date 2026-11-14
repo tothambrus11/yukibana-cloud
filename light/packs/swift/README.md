@@ -208,7 +208,8 @@ Not on Linux yet:
   that is missing.
 * **The editor** checks every project as WebAssembly, so `#if os(Linux)`
   code is greyed out and `import Musl` is an error there while Run builds it.
-* **Foundation** is not in the sysroot, as it is not in the WebAssembly one.
+* **Foundation**, and FoundationEssentials, are not in the Linux sysroot;
+  a project importing FoundationEssentials or Testing is refused there.
 * The compiler output views show WebAssembly.
 
 ## Macros
@@ -288,18 +289,81 @@ It needs `swift-testing.tar`, fetched only by projects that import
 module from the Swift 6.3.3 Wasm SDK (its `.swiftinterface`; the SDK ships
 no binary module, so the compiler builds it into the module cache on first
 use, about 2.5 s once per worker) and the archives a test program links.
-**What it costs**: 21.9 MB raw, **3.3 MB brotli** (5.3 MB gzip), and a test
-program of about 19 MB. The toolchain's own smoke test links 62 MB (20.5 MB
+**What it costs**: swift-testing.tar itself is 4.3 MB raw, under 1 MB
+brotli, plus swift-foundation-essentials.tar (below, 4.4 MB brotli), which
+it links and which a project importing FoundationEssentials shares; a test
+program is about 19 MB. The toolchain's own smoke test links 62 MB (20.5 MB
 gzipped) because it follows `libTesting.a`'s autolink entries to Foundation,
 FoundationInternationalization, CoreFoundation and ICU (`lib_FoundationICU.a`
 alone is 41.7 MB). None of their symbols is reached without `import
 Foundation`, which this sysroot does not offer, so the pack ships only
-`libTesting.a`, `_TestDiscovery`, `_TestingInternals`, `_TestingInterop`,
-`FoundationEssentials` (JSON coding), `_FoundationCShims` and
-`_FoundationCollections`, and links what the sysroot has (`linkLibraries`);
+`libTesting.a`, `_TestDiscovery`, `_TestingInternals` and `_TestingInterop`
+(and loads FoundationEssentials, for its JSON coding), and links what the
+sysroot has (`linkLibraries`);
 a library that were really needed and missing would fail the link with its
 symbols named. That made running swift-testing worth shipping as a lazy
 download rather than type-checking only.
+
+### FoundationEssentials
+
+`import FoundationEssentials` works: `Data`, `Date` (with
+`.formatted(.iso8601)`), `Calendar` (Gregorian), `UUID`, `URL`,
+`JSONEncoder`/`JSONDecoder`, `PropertyListEncoder`/`Decoder`,
+`AttributedString`, `FileManager` and `ProcessInfo` (over WASI),
+`String.components(separatedBy:)`, `data(using:)`, and the rest of
+swift-foundation's FoundationEssentials, the same library a native `swift
+build` links. Run, Test, the compiler output views and the language server
+(completion, hover with doc comments, diagnostics) all have it.
+
+What students reach for that is *not* in the essentials, and says "no
+member" here as it would natively with only FoundationEssentials imported:
+`String(format:)` and `replacingOccurrences(of:with:)` (Foundation's
+NSString bridge), `1234.5.formatted()` and other localised formatting
+(FoundationInternationalization). `#Predicate` type-checks but does not
+expand: its macro lives in a `FoundationMacros` plugin, which
+`SwiftMacroPlugins.wasm` does not include yet.
+
+It is the Swift 6.3.3 Wasm SDK's own build, unchanged: the binary
+`FoundationEssentials` and `_FoundationCollections` modules (the SDK ships no
+`.swiftinterface` for them; they load because the compiler here is the same
+6.3.3 release that wrote them), the `_FoundationCShims` C module, and their
+three archives. `build.sh` cuts them out of the SDK into
+`swift-foundation-essentials.tar`, which is fetched only by a project whose
+compiled sources import FoundationEssentials or Testing (swift-testing links
+it), the way XCTest and swift-testing are, and unpacked over the sysroot.
+The language server fetches it the first time an open document imports
+either.
+
+**What it costs** (`-Onone`; Chromium is test-run.mjs, headless, Node is the
+same compiler and linker under Node):
+
+| | without | with FoundationEssentials |
+|---|---|---|
+| download, once (Cache Storage afterwards) | — | **4.4 MB brotli** (6.8 MB gzip, 28.2 MB raw) |
+| first Run in a worker, after the compiler is loaded | 0.6 s | 7.6 s in Chromium (3.7 s compile under Node): Clang builds `_FoundationCShims` (a 2.8 MB Unicode table header) into the module cache |
+| every later Run in that worker | 0.6 s | 1.0 s (test-run.mjs, "kept worker") |
+| program, `import` only | 7.3 MB | 7.3 MB: nothing is linked that is not used |
+| program, one `JSONEncoder().encode` | — | 17.1 MB (16.9 MB at `-O`) |
+
+The second row was every Run until the module cache was kept
+(`MODULE_CACHE_ARGS` in `src/frontend-args.js`: Clang pruned the whole cache
+on every compile, because the in-memory file system says every file is from
+1970).
+
+Of the 4.4 MB, 2.0 MB is `libFoundationEssentials.a` and 1.2 MB its module;
+the rest is `_FoundationCollections` (1.2 MB) and the module's doc comments
+for hover (0.1 MB). The archives have no debug info to strip. The program
+grows by 10 MB as soon as one Codable or formatting entry point is used,
+because Swift's conformance and metadata records keep most of the library
+alive through the linker's garbage collection; it is built and run in the
+tab, so this costs memory and link time (0.6 s), not download.
+
+Not here: **`import Foundation`** (still "no such module"). Foundation
+proper, on top of the essentials, needs FoundationInternationalization,
+CoreFoundation and ICU: 41.7 MB of `lib_FoundationICU.a` alone, some 15 MB
+brotli more, and a 50 MB program. And not on **Linux targets**, whose
+sysroot is cut from the Static Linux SDK without Foundation (the
+toolchain's Stage 41): Run with `TARGET` set says so and stops.
 
 ## Tests with XCTest (xctest/, src/xctest.js)
 
@@ -540,7 +604,8 @@ and starts one instance of the module (`src/lite.js`):
   `main`, or by a test file's `@testable import`, as the runner names it.
 * **XCTest.** The first time a document imports XCTest, `swift-xctest.tar`
   is fetched and unpacked over sourcekitd's sysroot before that document
-  reaches it.
+  reaches it; Testing and FoundationEssentials likewise
+  (`swift-testing.tar`, `swift-foundation-essentials.tar`).
 * **Crashes.** A trap in sourcekitd (an assertion, the browser's native
   stack running out in deeply recursive code) kills the instance. The
   document changed last is blamed: it is left out of `/workspace` and of the
@@ -642,8 +707,9 @@ never downloaded.
   swift-testing's and `StringifyMacros`. A project cannot build a macro of
   its own (that needs a plugin compiled from its source), and SwiftUI's
   `#Preview` and the like have no module here.
-* **No Foundation**: the core sysroot has no Foundation module, so `import
-  Foundation` is an error ("no such module"). The standard library,
+* **No Foundation, only FoundationEssentials**: `import Foundation` is an
+  error ("no such module"); `import FoundationEssentials` works and is a
+  4.4 MB download the first time (see "FoundationEssentials"). The standard library,
   `_Concurrency`, `_StringProcessing` (Regex), `Synchronization`,
   `RegexBuilder` and `WASILibc` work.
 * **4 GiB address space** (wasm32), no threads (`Task`s run on the

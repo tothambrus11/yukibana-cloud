@@ -19,7 +19,7 @@
 // Clang's module cache, so only the first compile builds SwiftShims. Only
 // the newest request of each kind is answered, as in the C++ pack.
 
-import { FRONTEND_WASM, OPTIMIZATION_LEVELS, loadMacroPlugins, loadSwiftTesting, loadSysroot, loadTool, loadXCTest, mkdirp, readFile, remove, runFrontend, textSink, usesMacroPlugins, writeProject } from './toolchain.js';
+import { FRONTEND_WASM, OPTIMIZATION_LEVELS, loadFoundationEssentials, loadMacroPlugins, loadSwiftTesting, loadSysroot, loadTool, loadXCTest, mkdirp, readFile, remove, runFrontend, textSink, usesMacroPlugins, writeProject } from './toolchain.js';
 import { OUTPUT, VIEWS, demangleSwift, emitArgs, extrasFor, filterSil, moduleNameFor, shownFlags, sourcesFor, swiftNames } from './views.js';
 import { filterAsm, filterIr, linesWithCode } from '../../kit/emit-filter.js';
 import { dropOwnModuleImportWarnings } from './xctest.js';
@@ -98,7 +98,11 @@ async function emit({ id, emit: kind, files, path, options = {} }) {
     const compiled = Object.fromEntries(sources.map((p) => [p, files[p]]));
     const extras = extrasFor(files, sources);
     const t = toolchain();
-    await Promise.all([extras.xctest && t.extra('xctest', loadXCTest), extras.testing && t.extra('testing', loadSwiftTesting)]);
+    await Promise.all([
+        extras.xctest && t.extra('xctest', loadXCTest),
+        extras.testing && t.extra('testing', loadSwiftTesting),
+        extras.foundation && t.extra('foundation', loadFoundationEssentials),
+    ]);
     const moduleName = moduleNameFor(files, path);
     const view = kind === 'sil' && options.raw ? 'sil-raw' : kind;
     const args = emitArgs({ emit: view, files, path, optimization });
