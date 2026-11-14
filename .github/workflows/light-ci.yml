@@ -27,6 +27,19 @@
 #   one page (C++ in Monaco, Python in a textarea): type-check, a Vite
 #   build and its bundle fixtures. Its end-to-end test needs the C++ and
 #   Python packs built and is run where they are (node test.mjs).
+# - lsp-editors-example: light/examples/lsp-editors, the packs' language
+#   servers in Monaco (MonacoBinding) and in a textarea whose page is the
+#   session's client: type-check, its unit tables and a Vite build. Its
+#   end-to-end test needs the language packs installed, which this workflow
+#   never does, and is run where they are (node test.mjs).
+# - cpp-library-example: light/examples/cpp-library, C++ in Monaco against
+#   a library of one's own through one createPlayground call
+#   (light/modules/playground): type-check and a Vite build. Its end-to-end
+#   test needs the C++ pack installed, which this workflow never does, and
+#   is run where it is (node test.mjs).
+# - cpp-library-sveltekit-example: light/examples/cpp-library-sveltekit,
+#   the same as a SvelteKit app: svelte-check and a prerendering build.
+#   Its end-to-end test needs the C++ pack and is run where it is.
 # - svelte-course-example: light/examples/svelte-course, a Svelte 5 lesson
 #   page of graded exercises over one instance and one pool: type-check,
 #   its unit tests, a Vite build with its bundle fixtures, and the page in
@@ -108,6 +121,12 @@ jobs:
       hylo-example-key: ${{ steps.hylo-example.outputs.key }}
       two-up-example-done: ${{ steps.two-up-example.outputs.done }}
       two-up-example-key: ${{ steps.two-up-example.outputs.key }}
+      lsp-editors-example-done: ${{ steps.lsp-editors-example.outputs.done }}
+      lsp-editors-example-key: ${{ steps.lsp-editors-example.outputs.key }}
+      cpp-library-example-done: ${{ steps.cpp-library-example.outputs.done }}
+      cpp-library-example-key: ${{ steps.cpp-library-example.outputs.key }}
+      cpp-library-sveltekit-example-done: ${{ steps.cpp-library-sveltekit-example.outputs.done }}
+      cpp-library-sveltekit-example-key: ${{ steps.cpp-library-sveltekit-example.outputs.key }}
       svelte-course-example-done: ${{ steps.svelte-course-example.outputs.done }}
       svelte-course-example-key: ${{ steps.svelte-course-example.outputs.key }}
       react-explorer-example-done: ${{ steps.react-explorer-example.outputs.done }}
@@ -127,6 +146,8 @@ jobs:
           paths: |
             light/app
             light/modules
+            light/examples/*/src
+            light/examples/*/package.json
             light/packs/cpp/src
             light/packs/cpp/tests/fixtures
             .github/workflows/light-ci.yml
@@ -214,6 +235,30 @@ jobs:
           name: light-two-up-example
           paths: |
             light/examples/two-up
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: lsp-editors-example
+        uses: ./.github/actions/once
+        with:
+          name: light-lsp-editors-example
+          paths: |
+            light/examples/lsp-editors
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: cpp-library-example
+        uses: ./.github/actions/once
+        with:
+          name: light-cpp-library-example
+          paths: |
+            light/examples/cpp-library
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: cpp-library-sveltekit-example
+        uses: ./.github/actions/once
+        with:
+          name: light-cpp-library-sveltekit-example
+          paths: |
+            light/examples/cpp-library-sveltekit
             light/modules
             .github/workflows/light-ci.yml
       # Its end-to-end test runs on the JavaScript pack, the one pack built
@@ -517,6 +562,108 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.two-up-example-key }}
+
+  lsp-editors-example:
+    name: LSP editors example
+    needs: plan
+    if: needs.plan.outputs.lsp-editors-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/lsp-editors
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/examples/lsp-editors/package-lock.json
+
+      - name: Install the example
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tables (LSP positions, hovers and completions as a textarea takes them)
+        run: npm test
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.lsp-editors-example-key }}
+
+  cpp-library-example:
+    name: C++ library example
+    needs: plan
+    if: needs.plan.outputs.cpp-library-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/cpp-library
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/examples/cpp-library/package-lock.json
+
+      - name: Install the example
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.cpp-library-example-key }}
+
+  cpp-library-sveltekit-example:
+    name: C++ library in SvelteKit example
+    needs: plan
+    if: needs.plan.outputs.cpp-library-sveltekit-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/cpp-library-sveltekit
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: light/examples/cpp-library-sveltekit/package-lock.json
+
+      - name: Install the example
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.cpp-library-sveltekit-example-key }}
 
   react-explorer-example:
     name: React explorer example

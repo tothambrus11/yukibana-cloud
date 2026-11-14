@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>C++ with my library</title>
+		<style>
+			body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; }
+			#editor { height: 55vh; border: 1px solid #c8ccd2; }
+			#output { min-height: 6em; padding: 8px; background: #f6f7f9; border: 1px solid #c8ccd2; white-space: pre-wrap; }
+			.line { display: flex; gap: 12px; align-items: baseline; margin: 8px 0; color: #5b6370; }
+		</style>
+	</head>
+	<body>
+		<h1>C++ with my library</h1>
+		<p>
+			<code>main.cpp</code> uses the <code>geometry</code> library (<code>lib/</code>, not editable here). Hover over a name, Ctrl+Space,
+			F12 into the library, break something to see the errors, then Run: the library is compiled and linked with it.
+		</p>
+		<div class="line"><span id="server" role="status">Starting…</span></div>
+		<div id="editor"></div>
+		<div class="line"><button id="run" type="button">Run</button> <span id="run-status" role="status"></span></div>
+		<pre id="output" aria-live="polite"></pre>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

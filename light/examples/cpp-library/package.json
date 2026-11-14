@@ -1,0 +1,30 @@
+{
+	"name": "yukibana-example-cpp-library",
+	"private": true,
+	"version": "0.0.0",
+	"description": "C++ in Monaco against a library of one's own, with the language server's answers in the editor and Run compiling and linking the library: one createPlayground call (@yukibana/playground).",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
+		"check": "tsc -p . && tsc -p tsconfig.node.json",
+		"test:e2e": "node test.mjs"
+	},
+	"dependencies": {
+		"@yukibana/core": "file:../../modules/core",
+		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
+		"@yukibana/monaco": "file:../../modules/monaco",
+		"@yukibana/playground": "file:../../modules/playground",
+		"@yukibana/protocol": "file:../../modules/protocol",
+		"@yukibana/runtime": "file:../../modules/runtime",
+		"@yukibana/std": "file:../../modules/std",
+		"monaco-editor": "0.57.0"
+	},
+	"devDependencies": {
+		"@types/node": "24.19.2",
+		"playwright-core": "1.56.1",
+		"typescript": "6.0.3",
+		"vite": "8.3.5"
+	}
+}
