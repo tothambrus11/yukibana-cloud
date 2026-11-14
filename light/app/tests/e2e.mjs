@@ -3,7 +3,7 @@
 // checks the sample has no errors, then types an error, a member access and
 // asks for hover and go-to-definition across files.
 //
-//   npm run build && node tests/e2e.mjs [language ...]
+//   pnpm run build && node tests/e2e.mjs [language ...]
 //
 // Serves app/build with ../serve.py on a free port. Exits non-zero naming
 // every check that failed.

@@ -1,4 +1,4 @@
-// What the built course page is made of (dist/, written by `npm run
+// What the built course page is made of (dist/, written by `pnpm run
 // build`, and the chunk list its vite.config.ts writes beside the
 // manifest): the scripts a first load runs stay within 1% of
 // bundle-budget.json and hold neither Monaco nor any language's body nor
@@ -6,7 +6,7 @@
 // module is in one chunk, so five exercises in five languages share one
 // core, std and runtime; and Monaco is one chunk, the editors' lazy one.
 //
-//   npm run build && node --test tests/bundle.test.mjs
+//   pnpm run build && node --test tests/bundle.test.mjs
 //
 // Without a build there is nothing to read, so the test is skipped and says
 // so; with BUNDLE_REQUIRED=1 (CI, after its build step) a missing build fails.
@@ -20,8 +20,8 @@ import { gzipSync } from 'node:zlib';
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const listPath = join(dist, '.vite', 'chunks.json');
 const built = existsSync(listPath);
-if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${listPath} does not exist: run npm run build first.`);
-const skip = built ? false : `${listPath} does not exist: run npm run build first`;
+if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${listPath} does not exist: run pnpm run build first.`);
+const skip = built ? false : `${listPath} does not exist: run pnpm run build first`;
 
 /** @typedef {{ file: string; entry: boolean; imports: string[]; dynamicImports: string[]; modules: string[] }} Chunk */
 /** @type {Chunk[]} */
@@ -61,7 +61,7 @@ test("a first load of the page runs no more script than the recorded budget, and
 	assert.deepEqual(modules.filter((id) => id.includes('node_modules/monaco-editor/')), [], 'Monaco is in the initial scripts');
 	assert.deepEqual(modules.filter((id) => /\/modules\/(monaco|lang-[^/]+\/body)/.test(id) || id.endsWith('/body.ts')), [], "the Monaco integration or a language's body is in the initial scripts");
 	assert.ok(modules.includes('../../modules/editors/textarea.ts'), 'every exercise works before Monaco arrives: the textarea editor is initial');
-	assert.ok(modules.some((id) => id.startsWith('node_modules/svelte/')), 'the page is Svelte, which a first load runs');
+	assert.ok(modules.some((id) => id.includes('node_modules/svelte/')), 'the page is Svelte, which a first load runs');
 });
 
 test("every exercise shares one copy of every module: no module is in two chunks, and Monaco is in one, the editors' lazy chunk", { skip }, () => {

@@ -115,7 +115,7 @@
 	});
 </script>
 
-<button class="btn build-chip" data-fold="30" popovertarget="build-settings" aria-expanded={open} aria-label="Build settings: {summary}" title="Build settings: {summary}">
+<button class="btn yk-btn yk-btn--secondary build-chip" data-fold="30" popovertarget="build-settings" aria-expanded={open} aria-label="Build settings: {summary}" title="Build settings: {summary}">
 	<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" /><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" /></svg>
 	<span class="build-word">Build</span>
 	<span class="build-summary truncate">{summary}</span>
@@ -152,6 +152,7 @@
 							/>
 							<label class="check" title="The GNU dialect (-std=gnu++20 rather than -std=c++20): GNU's extensions to the language, on by default in clang">
 								<input
+									class="yk-check"
 									type="checkbox"
 									checked={gnu}
 									disabled={workspace.standard.kind !== 'standard'}
@@ -234,11 +235,11 @@
 				<span class="name">clang-tidy</span>
 				<span class="field">
 					<label class="check">
-						<input type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
+						<input class="yk-check" type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
 						Check the code as you type
 					</label>
 					<small>{describeTidy(workspace.clangTidy, workspace.tidyStatus)} Its rules are the project's .clang-tidy.</small>
-					<button class="btn rules-button" onclick={() => void openRules()}>Edit rules…</button>
+					<button class="btn yk-btn yk-btn--secondary rules-button" onclick={() => void openRules()}>Edit rules…</button>
 				</span>
 			</div>
 		{/if}
@@ -285,7 +286,7 @@
 		display: none;
 	}
 	.build-summary {
-		color: var(--white);
+		color: var(--yk-ink);
 		font-family: var(--font-mono);
 		font-size: 0.78rem;
 	}
@@ -309,7 +310,7 @@
 	}
 	.name {
 		padding-top: 0.3rem;
-		color: var(--gray-2);
+		color: var(--label);
 		font-weight: 600;
 	}
 	.field {
@@ -336,7 +337,7 @@
 		justify-self: start;
 	}
 	small {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		line-height: 1.35;
 	}
@@ -348,7 +349,7 @@
 		width: 100%;
 		margin: 0;
 		border: 0;
-		border-top: 1px solid var(--gray-5);
+		border-top: 1px solid var(--yk-line);
 	}
 	/* A phone: the label above its control. */
 	@media (width < 30rem) {

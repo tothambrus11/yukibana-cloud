@@ -442,12 +442,15 @@ jobs:
         run: node --test scripts/test-cache-prune.mjs scripts/test-protect-releases.mjs
       # light/setup, the store's reader on developers' machines, Windows
       # included: its ids must be pack-store.sh's, and its zstd stand-in
-      # needs Node 22.15's zlib.
+      # needs Node 22.15's zlib. pnpm, the version light/package.json names, first.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - name: Test the setup tool
-        run: npm ci --prefix setup --no-audit --no-fund && npm --prefix setup test
+        run: pnpm install --frozen-lockfile --filter ./setup && pnpm --dir setup test
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.store-key }}
@@ -560,6 +563,12 @@ jobs:
       TIMINGS: ${{ github.workspace }}/../timings
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # pnpm, the version light/package.json names: glue.sh and test.sh
+      # install the pack's own tools (esbuild, playwright-core) with it.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -915,6 +924,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # pnpm, the version light/package.json names: build.sh installs the
+      # pack's own tools (esbuild, playwright-core) with it.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
@@ -993,7 +1008,7 @@ jobs:
           sudo apt-get update -q
           grep -v '^#' deps.apt | xargs sudo apt-get install -y -q --no-install-recommends
 
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: steps.need.outputs.build == 'true' && matrix.java
         with:
           distribution: temurin

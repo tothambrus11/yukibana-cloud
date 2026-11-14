@@ -1,7 +1,7 @@
 // What the sandbox costs: the bench page (dist/) in each mode, in a fresh
 // Chrome each time, with the installed C++ pack.
 //
-//   npm run build && node bench.mjs [rounds]
+//   pnpm run build && node bench.mjs [rounds]
 //
 // One server answers on every interface; the page is loaded from
 // http://localhost:<port> and the frame from http://127.0.0.1:<port>, which
@@ -25,7 +25,7 @@ const chrome = process.env.CHROMIUM ?? 'C:/Program Files/Google/Chrome/Applicati
 const rounds = Number(process.argv[2] ?? 5);
 const MODES = ['inpage', 'relay', 'direct', 'direct-batched'];
 
-if (!existsSync(join(dist, 'index.html'))) throw new Error('No build: npm run build first.');
+if (!existsSync(join(dist, 'index.html'))) throw new Error('No build: pnpm run build first.');
 if (!existsSync(join(packs, 'cpp', 'server.js'))) throw new Error(`The cpp pack is not in ${packs}.`);
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' };

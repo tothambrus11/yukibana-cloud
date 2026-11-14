@@ -7,11 +7,11 @@ both borrowing one host, so one runner pool for the page. It is step 8 of
 without Light's app, imported by name as another site would import them.
 
 ```sh
-npm ci
-npm run dev                        # http://localhost:5173, packs from light/app/static/packs
-npm run check                      # TypeScript, strict, the modules' settings
-npm run build && npm test          # the bundle fixtures (tests/bundle.test.mjs)
-npm run build && npm run test:e2e  # the page in Chromium with the C++ and Python packs
+pnpm install
+pnpm run dev                       # http://localhost:5173, packs from light/app/static/packs
+pnpm run check                     # TypeScript, strict, the modules' settings
+pnpm run build && pnpm test        # the bundle fixtures (tests/bundle.test.mjs)
+pnpm run build && pnpm run test:e2e  # the page in Chromium with the C++ and Python packs
 ```
 
 The end-to-end test (`test.mjs`) serves `dist/` cross-origin isolated and

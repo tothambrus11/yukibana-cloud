@@ -37,11 +37,11 @@ checks, saying why, and checks that message instead.
 ## Run it
 
 ```sh
-npm ci
-PACKS=/path/to/light/app/static/packs npm run dev   # http://localhost:5173
-npm run check                                       # TypeScript, strict, the modules' settings
-npm run build && npm test                           # unit tables and bundle fixtures
-npm run build && PACKS=… npm run test:e2e           # every widget in Chromium, with the packs
+pnpm install
+PACKS=/path/to/light/app/static/packs pnpm run dev  # http://localhost:5173
+pnpm run check                                      # TypeScript, strict, the modules' settings
+pnpm run build && pnpm test                         # unit tables and bundle fixtures
+pnpm run build && PACKS=… pnpm run test:e2e         # every widget in Chromium, with the packs
 ```
 
 `PACKS` defaults to `../../app/static/packs`, where Light's app installs
@@ -49,7 +49,7 @@ them. The e2e test needs the cpp, rust, python, javascript and lldb packs;
 swift is optional.
 
 CI (`.github/workflows/light-ci.yml`, job `react-explorer-example`) runs
-`npm ci`, `npm run check`, `npm run build` and `npm test` with
+`pnpm install`, `pnpm run check`, `pnpm run build` and `pnpm test` with
 `BUNDLE_REQUIRED=1` whenever this example or `light/modules` changes. It
 does not run `test:e2e`: that workflow builds no C++, Rust, Python or LLDB
 pack (they take from twenty minutes to hours cold), so the end-to-end test

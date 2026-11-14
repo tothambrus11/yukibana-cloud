@@ -4,7 +4,7 @@
 // workers stood in for; this is where the compiler, Vite's `?worker`
 // bundling and the browser's workers are real.
 //
-//   npm run build && npm run test:e2e
+//   pnpm run build && pnpm run test:e2e
 //
 // Serves dist/ itself with `no-store`, so that every compiler the page
 // loads is a request the server counts: a second compiler worker would
@@ -26,7 +26,7 @@ import { chromium } from 'playwright-core';
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, '..', 'dist');
 if (!existsSync(join(dist, 'index.html'))) {
-	console.error(`No build in ${dist}: run npm run build first.`);
+	console.error(`No build in ${dist}: run pnpm run build first.`);
 	process.exit(1);
 }
 

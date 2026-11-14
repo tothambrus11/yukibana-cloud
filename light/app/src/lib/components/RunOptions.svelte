@@ -35,7 +35,7 @@
 	</div>
 	<label class="row">
 		<span>strace<small>Show the program's system calls in the terminal, dimmed.</small></span>
-		<input type="checkbox" checked={options.strace} onchange={(e) => workspace.setRunOptions({ strace: e.currentTarget.checked })} />
+		<input class="yk-check" type="checkbox" checked={options.strace} onchange={(e) => workspace.setRunOptions({ strace: e.currentTarget.checked })} />
 	</label>
 </div>
 
@@ -53,7 +53,7 @@
 	}
 	legend {
 		margin-bottom: 0.4rem;
-		color: var(--white);
+		color: var(--yk-ink);
 		font-weight: 600;
 	}
 	fieldset label {
@@ -68,7 +68,7 @@
 	}
 	small {
 		display: block;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		line-height: 1.35;
 	}
@@ -77,6 +77,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 0.75rem;
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 </style>

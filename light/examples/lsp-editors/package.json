@@ -13,17 +13,17 @@
 		"test:e2e": "node test.mjs"
 	},
 	"dependencies": {
-		"@yukibana/core": "file:../../modules/core",
-		"@yukibana/editors": "file:../../modules/editors",
-		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
-		"@yukibana/lang-go": "file:../../modules/lang-go",
-		"@yukibana/lang-javascript": "file:../../modules/lang-javascript",
-		"@yukibana/lang-python": "file:../../modules/lang-python",
-		"@yukibana/lang-rust": "file:../../modules/lang-rust",
-		"@yukibana/monaco": "file:../../modules/monaco",
-		"@yukibana/protocol": "file:../../modules/protocol",
-		"@yukibana/runtime": "file:../../modules/runtime",
-		"@yukibana/std": "file:../../modules/std",
+		"@yukibana/core": "link:../../modules/core",
+		"@yukibana/editors": "link:../../modules/editors",
+		"@yukibana/lang-cpp": "link:../../modules/lang-cpp",
+		"@yukibana/lang-go": "link:../../modules/lang-go",
+		"@yukibana/lang-javascript": "link:../../modules/lang-javascript",
+		"@yukibana/lang-python": "link:../../modules/lang-python",
+		"@yukibana/lang-rust": "link:../../modules/lang-rust",
+		"@yukibana/monaco": "link:../../modules/monaco",
+		"@yukibana/protocol": "link:../../modules/protocol",
+		"@yukibana/runtime": "link:../../modules/runtime",
+		"@yukibana/std": "link:../../modules/std",
 		"monaco-editor": "0.57.0"
 	},
 	"devDependencies": {

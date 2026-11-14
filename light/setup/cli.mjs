@@ -67,7 +67,7 @@ With gh signed in (gh auth login), every toolchain fetched is first
 verified to have been built on main by CI; without it, each is said to be
 unverified.
 
-Then: cd app && npm run dev (http://localhost:5173)`,
+Then: cd app && pnpm run dev (http://localhost:5173)`,
 	)
 	.action(main);
 
@@ -90,6 +90,7 @@ async function main(packs, opts) {
 
 	say('Checking the tools');
 	if (onPath('git') === null) die('missing: git');
+	if (onPath('pnpm') === null) die('missing: pnpm (https://pnpm.io/installation; light/package.json names its version)');
 	const [major = 0, minor = 0] = process.versions.node.split('.').map(Number);
 	if (major < 22 || (major === 22 && minor < 15)) die(`Node ${process.version} is too old: Light needs Node 22.15 or later`);
 	// What runs the split packs' scripts and the builds, and why it cannot
@@ -100,11 +101,11 @@ async function main(packs, opts) {
 	console.log(noBash ? `no bash for the split packs (${packs.filter(isSplit).join(', ') || 'none asked for'}): ${noBash}` : `bash for the split packs: ${bash}`);
 
 	say("Installing the app's dependencies (app/)");
-	// npm is npm.cmd on Windows, which Node runs only through a shell, and
+	// pnpm is pnpm.cmd on Windows, which Node runs only through a shell, and
 	// then as one command line: the arguments are constants.
-	const npmCi = 'npm ci --no-audit --no-fund';
-	const npm = WINDOWS ? spawnSync(npmCi, { cwd: path.join(LIGHT, 'app'), stdio: 'inherit', shell: true }) : spawnSync('npm', npmCi.split(' ').slice(1), { cwd: path.join(LIGHT, 'app'), stdio: 'inherit' });
-	if (npm.status !== 0) die('npm ci in app/ failed');
+	const install = 'pnpm install --frozen-lockfile --filter .';
+	const pnpm = WINDOWS ? spawnSync(install, { cwd: path.join(LIGHT, 'app'), stdio: 'inherit', shell: true }) : spawnSync('pnpm', install.split(' ').slice(1), { cwd: path.join(LIGHT, 'app'), stdio: 'inherit' });
+	if (pnpm.status !== 0) die(`${install} in app/ failed`);
 
 	/** @param {string} script @param {string[]} args @param {Parameters<typeof runBash>[4]} [o] */
 	const store = (script, args, o) => runBash(/** @type {string} */ (bash), SCRIPTS, script, args, o);
@@ -267,9 +268,9 @@ async function main(packs, opts) {
 	if (done.pulled.length) console.log(`WARNING: ${done.pulled.join(' ')}: units the store lacks are pull request #${pull}'s builds, made by its CI, not main's`);
 	if (done.failed.length) console.log(`FAILED: ${done.failed.join(' ')} (see above)`);
 	console.log(`
-Run it:   cd app && npm run dev            (http://localhost:5173, reloads on edits)
-Built:    cd app && npm run build && ${WINDOWS ? 'py' : 'python3'} ../serve.py build   (http://localhost:8080)
-Checks:   cd app && npm run check && npm run test:unit`);
+Run it:   cd app && pnpm run dev           (http://localhost:5173, reloads on edits)
+Built:    cd app && pnpm run build && ${WINDOWS ? 'py' : 'python3'} ../serve.py build   (http://localhost:8080)
+Checks:   cd app && pnpm run check && pnpm run test:unit`);
 	if (done.failed.length) process.exit(1);
 }
 

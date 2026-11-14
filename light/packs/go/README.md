@@ -157,7 +157,7 @@ the native compiler and linker, and the server is tested against each
 target's standard library), builds `compile.wasm`, `link.wasm` and
 `gotool.wasm`, lists and copies the standard library's archives for each
 target, bundles the workers with esbuild, and writes brotli and gzip
-siblings. `npm test` runs the browser tests: `test.mjs` (the server) and
+siblings. `pnpm test` runs the browser tests: `test.mjs` (the server) and
 `test-run.mjs` (the runner, every target; the Linux ones need the C/C++
 pack's VM in `app/static/packs/cpp`, or `ALLOW_SKIP=1`).
 

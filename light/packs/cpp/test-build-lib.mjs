@@ -1,11 +1,11 @@
 // Tests of what decides whether the C/C++ pack's build reuses a cached tree
 // or a skipped step (build-lib.sh's keep_tree, follow_patch, llvm-lib.sh's
-// llvm_lld_sources, glue-lib.sh's npm_deps, the emsdk unit's emsdk_install,
+// llvm_lld_sources, glue-lib.sh's pnpm_deps, the emsdk unit's emsdk_install,
 // the stamps' input lists, and the Linux pack's vm/build-qemu-user.sh's
 // stamp, which builds with this pack's emsdk and musl units), of how a
 // unit's scripts reach the units it needs (need_unit, emsdk_use, apk_of),
 // and of where the pack's pins live, with throwaway directories and fakes
-// in place of LLVM, npm, emsdk, musl and QEMU: no compiler is built, so it
+// in place of LLVM, pnpm, emsdk, musl and QEMU: no compiler is built, so it
 // takes a second.
 //
 //   node --test test-build-lib.mjs   (from light/packs/cpp; needs bash, git, tar, xz, patch)
@@ -317,19 +317,19 @@ test('the sanitizer runtimes are built again when any file of their runtime sour
     assert.match(r.err, /the emsdk unit/);
 });
 
-test("the pack's build tools are installed again when package-lock.json changes, and only then", () => {
+test("the pack's build tools are installed again when pnpm-lock.yaml changes, and only then", () => {
     const dir = fresh();
     const bin = fresh();
-    const log = path.join(dir, 'npm.log');
-    write(path.join(bin, 'npm'), `#!/bin/sh\necho "$*" >> "${log}"\nmkdir -p node_modules\n`);
-    fs.chmodSync(path.join(bin, 'npm'), 0o755);
-    write(path.join(dir, 'package-lock.json'), '{"esbuild":"0.25.10"}');
-    const run = () => ok(`npm_deps "${dir}"`, { env: { PATH: `${bin}:${process.env.PATH}` } });
+    const log = path.join(dir, 'pnpm.log');
+    write(path.join(bin, 'pnpm'), `#!/bin/sh\necho "$*" >> "${log}"\nmkdir -p node_modules\n`);
+    fs.chmodSync(path.join(bin, 'pnpm'), 0o755);
+    write(path.join(dir, 'pnpm-lock.yaml'), 'esbuild: 0.25.10\n');
+    const run = () => ok(`pnpm_deps "${dir}"`, { env: { PATH: `${bin}:${process.env.PATH}` } });
     const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').length : 0);
     run();
     run();
     assert.equal(calls(), 1, 'an unchanged lock installs nothing');
-    write(path.join(dir, 'package-lock.json'), '{"esbuild":"0.26.0"}');
+    write(path.join(dir, 'pnpm-lock.yaml'), 'esbuild: 0.26.0\n');
     run();
     assert.equal(calls(), 2, 'a changed lock reaches node_modules');
 });

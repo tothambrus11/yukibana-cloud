@@ -17,12 +17,12 @@ It shows what a docs or cookbook site needs from Yukibana:
 | `/` | An overview with one TypeScript playground. |
 
 ```sh
-npm ci
-npm run dev                  # http://localhost:4321, packs served under /packs/
-npm run check                # astro check (strict TS in .astro/.tsx/.ts), tsc, tsc for the Node files
-npm run build                # static site in dist/
-npm run preview              # links dist/packs to the packs, then astro preview
-npm run test:e2e             # builds, astro preview, every playground in Chromium
+pnpm install
+pnpm run dev                 # http://localhost:4321, packs served under /packs/
+pnpm run check               # astro check (strict TS in .astro/.tsx/.ts), tsc, tsc for the Node files
+pnpm run build               # static site in dist/
+pnpm run preview             # links dist/packs to the packs, then astro preview
+pnpm run test:e2e            # builds, astro preview, every playground in Chromium
 ```
 
 The packs are Light's installed ones (`light/app/static/packs`). Set
@@ -151,7 +151,7 @@ COEP and fetches nothing.
 
 In dev, `/packs/` is served by a middleware (`packs.ts` `servePacks`,
 installed through the `astro:server:setup` hook). `astro preview` takes no
-plugin of the site's, so `npm run preview` and `test.mjs` make `dist/packs`
+plugin of the site's, so `pnpm run preview` and `test.mjs` make `dist/packs`
 a symbolic link to the packs first (`node packs.ts link`). Neither the
 packs nor the link are committed (`dist/` is ignored); do not deploy the
 link.

@@ -3,7 +3,7 @@
 // app's TypeScript: `tsc -p <module>` for each directory list.mjs finds, so a
 // new module is checked without anyone adding it here.
 //
-//   node light/modules/typecheck.mjs        (light/app: part of npm run check)
+//   node light/modules/typecheck.mjs        (light/app: part of pnpm run check)
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';

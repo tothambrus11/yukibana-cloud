@@ -3,7 +3,7 @@
 // every public declaration of ours exists there with the same signature, so
 // a test that compiles in the browser compiles on a grading server.
 //
-//   node tools/xctest-subset.mjs        (after ./build.sh; npm run test:xctest)
+//   node tools/xctest-subset.mjs        (after ./build.sh; pnpm run test:xctest)
 //
 // Five checks, each able to fail on its own:
 //

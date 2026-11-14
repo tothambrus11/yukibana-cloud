@@ -221,12 +221,12 @@ const installed = (path) => {
 };
 
 test('every internal of Monaco the adapter uses is still where it was, with the members the adapter calls', () => {
-	assert.ok(existsSync(MONACO), 'light/app is installed (npm ci), so its Monaco can be read');
+	assert.ok(existsSync(MONACO), 'light/app is installed (pnpm install), so its Monaco can be read');
 	assert.deepEqual(canaryProblems(installed, INTERNALS), []);
 });
 
 test("the references peek's classes are still the ones Monaco puts on it, and Enter's command is still registered", () => {
-	assert.ok(existsSync(MONACO), 'light/app is installed (npm ci), so its Monaco can be read');
+	assert.ok(existsSync(MONACO), 'light/app is installed (pnpm install), so its Monaco can be read');
 	assert.deepEqual(peekProblems(installed, REFERENCES_PEEK), []);
 	assert.equal(REFERENCES_TREE_SELECTOR, '.reference-zone-widget .ref-tree');
 });

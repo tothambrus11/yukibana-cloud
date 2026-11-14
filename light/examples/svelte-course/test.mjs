@@ -8,7 +8,7 @@
 // and the page never has two runners of one pack at once, though every
 // exercise runs through one instance and one pool.
 //
-//   npm run build && node test.mjs
+//   pnpm run build && node test.mjs
 //
 // Serves dist/ cross-origin isolated, as the runners' needs ask
 // (src/lib/host.ts), and /packs/ from $PACKS or Light's installed packs
@@ -26,7 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
 const packs = normalize(process.env.PACKS ?? join(here, '../../app/static/packs'));
 if (!existsSync(join(dist, 'index.html'))) {
-	console.error(`No build in ${dist}: run npm run build first.`);
+	console.error(`No build in ${dist}: run pnpm run build first.`);
 	process.exit(1);
 }
 

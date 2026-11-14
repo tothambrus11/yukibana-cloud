@@ -8,7 +8,7 @@
 # ~/.cache/yukibana-packs)/zig. Needs curl, tar, xz, node and an x86-64
 # Linux machine (the Zig that builds the compiler is that machine's). About
 # 6 minutes from nothing, most of it the compiler; seconds after that. The
-# browser tests are `npm test` (test.mjs, test-run.mjs).
+# browser tests are `pnpm test` (test.mjs, test-run.mjs).
 set -euo pipefail
 
 ZIG_VERSION=0.17.0
@@ -98,7 +98,7 @@ rm -f "$OUT/lib.tar"
 
 # 5. The workers, bundled with browser_wasi_shim; PACK_SIZES gives the
 #    downloads' progress bars their totals.
-[ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && npm ci --no-audit --no-fund)
+[ -d "$HERE/node_modules/esbuild" ] || (cd "$HERE" && pnpm install --frozen-lockfile --filter .)
 size() { stat -c %s "$OUT/$1"; }
 SIZES="{\"zig.wasm\":$(size zig.wasm),\"zls.wasm\":$(size zls.wasm),\"lib.tar\":$(size lib.tar)"
 for target in "${TARGETS[@]}"; do SIZES+=",\"rt/compiler_rt-$target.a\":$(size "rt/compiler_rt-$target.a")"; done

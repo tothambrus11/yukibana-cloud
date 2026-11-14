@@ -60,7 +60,7 @@
 	<p>Yukibana Light is built from open-source software, and runs compilers and tools that are too, in your browser. Each part's licence is below, as it ships.</p>
 
 	<ul class="app">
-		<li><a href={href('licenses/app.txt')} target="_blank" rel="noopener">The app</a>: the npm packages its own code is built from (Svelte, SvelteKit, Monaco, dockview, JetBrains Mono, …).</li>
+		<li><a href={href('licenses/app.txt')} target="_blank" rel="noopener">The app</a>: the npm packages its own code is built from (Svelte, SvelteKit, Monaco, dockview, the fonts Atkinson Hyperlegible Next, Bricolage Grotesque and JetBrains Mono, …).</li>
 	</ul>
 
 	{#if !offline.manifest}
@@ -92,10 +92,10 @@
 		width: min(44rem, calc(100vw - 2rem));
 		max-height: calc(100vh - 4rem);
 		padding: 0 0 0.75rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.5rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font-size: 0.9rem;
 	}
 	.licenses::backdrop {
@@ -114,14 +114,14 @@
 	.close {
 		border: 0;
 		background: none;
-		color: var(--gray-2);
+		color: var(--label);
 		font-size: 1.4rem;
 		cursor: pointer;
 	}
 	p,
 	ul {
 		margin: 0.5rem 1rem;
-		color: var(--gray-2);
+		color: var(--label);
 		line-height: 1.4;
 	}
 	ul {
@@ -133,14 +133,14 @@
 		border-collapse: collapse;
 	}
 	th {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-weight: 500;
 		text-align: left;
 	}
 	th,
 	td {
 		padding: 0.3rem 0.4rem;
-		border-bottom: 1px solid var(--gray-6);
+		border-bottom: 1px solid var(--yk-sunken);
 		vertical-align: top;
 	}
 	td:first-child {
@@ -152,9 +152,9 @@
 		gap: 0.2rem 0.75rem;
 	}
 	a {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 	}
 	.muted {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 </style>

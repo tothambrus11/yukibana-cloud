@@ -1,7 +1,7 @@
 {
 	// What the three modules' own projects (protocol/, runtime/ and
 	// monaco/tsconfig.json) share. It names no lib, no types and no files:
-	// each module says which globals it may use, and `npm run check` in
+	// each module says which globals it may use, and `pnpm run check` in
 	// light/app checks each project on its own (`tsc -p ../modules/<name>`),
 	// with the app's TypeScript and type packages, since the modules have no
 	// node_modules of their own.

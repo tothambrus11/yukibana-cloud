@@ -11,7 +11,7 @@
 // assertion" a failing assertion pauses the test there. Needs the lldb pack
 // and each language's.
 //
-//   npm run build && node tests/e2e-debug.mjs [language ...]
+//   pnpm run build && node tests/e2e-debug.mjs [language ...]
 //
 // Serves app/build (or BUILD_DIR) with ../serve.py on a free port. Exits
 // non-zero naming every check that failed.

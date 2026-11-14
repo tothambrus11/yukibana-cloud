@@ -80,6 +80,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # pnpm, the version light/package.json names: deploy.sh runs wrangler through pnpm dlx.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24

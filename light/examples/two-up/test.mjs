@@ -8,7 +8,7 @@
 // one; a pack whose runner is reusable keeps it, which the pool's own tests
 // check.)
 //
-//   npm run build && node test.mjs
+//   pnpm run build && node test.mjs
 //
 // Serves dist/ cross-origin isolated, as the runners' needs ask
 // (src/host.ts), and /packs/ from $PACKS or Light's installed packs
@@ -25,7 +25,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
 const packs = normalize(process.env.PACKS ?? join(here, '../../app/static/packs'));
 if (!existsSync(join(dist, 'index.html'))) {
-	console.error(`No build in ${dist}: run npm run build first.`);
+	console.error(`No build in ${dist}: run pnpm run build first.`);
 	process.exit(1);
 }
 for (const pack of ['cpp', 'python']) {

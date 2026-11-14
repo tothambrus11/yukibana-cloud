@@ -217,7 +217,7 @@ Two tracks run side by side: **the platform** (stages 1 to 4) and **the layout v
 
 | | What | Done when |
 |---|---|---|
-| 0.1 | **Repair the playground module** found in the first review: the SvelteKit example's `on:click` fails its own check; `ready` rejects with nobody listening; `dispose` leaves the runner pool and explorer workers running; a replaced or disposed run never settles and cannot be aborted. | The example's `npm run check` passes; negatives for each: a missing pack logs no unhandled rejection, a disposed playground has no worker, a replaced run resolves as cancelled |
+| 0.1 | **Repair the playground module** found in the first review: the SvelteKit example's `on:click` fails its own check; `ready` rejects with nobody listening; `dispose` leaves the runner pool and explorer workers running; a replaced or disposed run never settles and cannot be aborted. | The example's `pnpm run check` passes; negatives for each: a missing pack logs no unhandled rejection, a disposed playground has no worker, a replaced run resolves as cancelled |
 | 0.2 | **The editor parses the way Run compiles** (L0). The C++ pack's server script gives clangd Run's arguments from the same function and unpacks the WASI headers it already downloads. | On the default project `static_assert(sizeof(void*) == 4)` gives no error; a `__linux__` block is inactive; for every target the editor's arguments equal Run's |
 | 0.3 | **Three checks in real browsers**: frame isolation and process in Firefox and Safari; relay with batching and blocking input, in `bench/sandbox`; `Document-Isolation-Policy` on the frame. | Each has a yes or no, written into `REGISTRY-DESIGN.md` 5 and 6.6 |
 | 0.4 | **O1 and O2 decided.** | A licence file; a statement of what a mirror owes |

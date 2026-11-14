@@ -34,11 +34,11 @@ the embeddable packages of `light/modules`, imported by name as another
 site would import them.
 
 ```sh
-npm ci
-PACKS=/path/to/packs npm run dev   # http://localhost:5173 (default PACKS: light/app/static/packs)
-npm run check                      # svelte-check (components and .ts, strict), and vite.config.ts
-npm run build && npm test          # unit tests (reports, diff, progress, the lesson) and the bundle fixtures
-npm run build && npm run test:e2e  # the page in Chromium with the installed packs (PACKS too)
+pnpm install
+PACKS=/path/to/packs pnpm run dev  # http://localhost:5173 (default PACKS: light/app/static/packs)
+pnpm run check                     # svelte-check (components and .ts, strict), and vite.config.ts
+pnpm run build && pnpm test        # unit tests (reports, diff, progress, the lesson) and the bundle fixtures
+pnpm run build && pnpm run test:e2e  # the page in Chromium with the installed packs (PACKS too)
 ```
 
 ## What of Yukibana it uses
@@ -105,7 +105,7 @@ Swift's written from the Swift pack's XCTest format.
 
 ## What it checks
 
-`npm test`: the five report readers over real reports, the checklist's
+`pnpm test`: the five report readers over real reports, the checklist's
 matching and verdict, the diff and its hunks, progress kept and read back
 from storage that throws or holds an older shape, and the lesson's data
 (every check names a hidden test, Run's entry is in the project, the
@@ -116,7 +116,7 @@ language's body or a compiler; no module is in two chunks (five
 languages, one core, std and runtime); Monaco is one chunk, imported
 lazily.
 
-`npm run test:e2e` (`test.mjs`), in Chromium, for every exercise whose pack
+`pnpm run test:e2e` (`test.mjs`), in Chromium, for every exercise whose pack
 is installed: the page is cross-origin isolated; it has one instance of all
 five languages and one pool; nothing starts a runner before the first Run
 or Check; the first editor turns into Monaco once on screen; the

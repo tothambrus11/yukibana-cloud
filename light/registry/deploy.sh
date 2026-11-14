@@ -17,7 +17,8 @@
 # uploaded on every deploy; the Worker serves them revalidated (rules.mjs).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
-WRANGLER=(npx --yes wrangler@4.151.2)
+# esbuild and workerd check their platform binaries after install, as npx let them.
+WRANGLER=(pnpm dlx --allow-build=esbuild --allow-build=workerd wrangler@4.151.2)
 BUCKET=yukibana-run
 [ $# -eq 0 ] || { echo "deploy.sh: takes no argument" >&2; exit 2; }
 

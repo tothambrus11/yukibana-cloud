@@ -1,11 +1,11 @@
-// What the built article is made of (dist/, written by `npm run build`, and
+// What the built article is made of (dist/, written by `pnpm run build`, and
 // the chunk list its vite.config.ts writes beside the manifest): the
 // scripts a first load runs stay within 1% of bundle-budget.json and hold
 // no Monaco, no language's body, no DAP client and no explorer workers'
 // code, all of which load when a widget first needs them; and the four
 // widgets' instances share one copy of every module.
 //
-//   npm run build && node --test tests/bundle.test.mjs
+//   pnpm run build && node --test tests/bundle.test.mjs
 //
 // Without a build there is nothing to read, so the test is skipped and says
 // so; with BUNDLE_REQUIRED=1 a missing build fails.
@@ -19,8 +19,8 @@ import { gzipSync } from 'node:zlib';
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const listPath = join(dist, '.vite', 'chunks.json');
 const built = existsSync(listPath);
-if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${listPath} does not exist: run npm run build first.`);
-const skip = built ? false : `${listPath} does not exist: run npm run build first`;
+if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${listPath} does not exist: run pnpm run build first.`);
+const skip = built ? false : `${listPath} does not exist: run pnpm run build first`;
 
 /** @typedef {{ file: string; entry: boolean; imports: string[]; dynamicImports: string[]; modules: string[] }} Chunk */
 /** @type {Chunk[]} */

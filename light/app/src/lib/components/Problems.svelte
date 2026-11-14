@@ -43,16 +43,16 @@
 	}
 	.empty {
 		margin: 0.6rem 1rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.file {
 		padding: 0.35rem 1rem 0.2rem;
-		color: var(--white);
+		color: var(--yk-ink);
 		font-weight: 600;
 	}
 	.count {
 		margin-left: 0.3rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-weight: 400;
 	}
 	.problem {
@@ -63,15 +63,15 @@
 		padding: 0.2rem 1rem 0.2rem 1.6rem;
 		border: 0;
 		background: none;
-		color: var(--gray-2);
+		color: var(--label);
 		font: inherit;
 		text-align: start;
 		cursor: pointer;
 	}
 	.problem:hover,
 	.problem:focus-visible {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 		outline: none;
 	}
 	.sev {
@@ -82,13 +82,13 @@
 		transform: translateY(-0.05rem);
 	}
 	.sev.error {
-		background: var(--red-high);
+		background: var(--yk-danger);
 	}
 	.sev.warning {
-		background: var(--orange-high);
+		background: var(--yk-warn);
 	}
 	.sev.info {
-		background: var(--blue-high);
+		background: var(--yk-info);
 	}
 	.message {
 		flex: 1;
@@ -98,7 +98,7 @@
 	}
 	.where {
 		flex: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 	}
 </style>

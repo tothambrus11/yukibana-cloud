@@ -2,7 +2,7 @@
  * Where this example's packs come from, in Node: the dev server serves
  * them under /packs/ (astro.config.ts), and `astro preview`, which serves
  * dist/ as it is and takes no plugin of the site's, finds them through a
- * link dist/packs that `npm run preview` and test.mjs make (`node
+ * link dist/packs that `pnpm run preview` and test.mjs make (`node
  * packs.ts link`). A site in production copies or uploads the packs it
  * uses to /packs/ beside its pages instead (README.md, "Hosting the
  * packs"): they are static files, never bundled.
@@ -67,7 +67,7 @@ export function servePacks(request: IncomingMessage, response: ServerResponse, n
  * this never makes, and does not delete).
  */
 export function linkPacks(dist: string): void {
-	if (!existsSync(join(dist, 'index.html'))) throw new Error(`No build in ${dist}: run npm run build first.`);
+	if (!existsSync(join(dist, 'index.html'))) throw new Error(`No build in ${dist}: run pnpm run build first.`);
 	const link = join(dist, 'packs');
 	if (existsSync(link) || lstatExists(link)) {
 		if (!lstatSync(link).isSymbolicLink()) throw new Error(`${link} is not a link this script made; leaving it.`);

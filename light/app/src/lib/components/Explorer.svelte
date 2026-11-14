@@ -287,7 +287,7 @@
 		align-items: center;
 		gap: 0.15rem;
 		padding: 0.4rem 0.5rem 0.3rem 0.85rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.spacer {
 		flex: 1;
@@ -306,8 +306,8 @@
 	}
 	button:hover,
 	button:focus-visible {
-		background: var(--gray-5);
-		color: var(--white);
+		background: var(--yk-line);
+		color: var(--yk-ink);
 	}
 	svg {
 		width: 0.95rem;
@@ -319,7 +319,7 @@
 		stroke-linejoin: round;
 	}
 	.pressed {
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 	.hidden-note {
 		display: block;
@@ -327,7 +327,7 @@
 		height: auto;
 		margin: 0.15rem 0.6rem 0;
 		padding: 0.2rem 0.35rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font: inherit;
 		font-size: 0.75rem;
 		text-align: left;
@@ -346,31 +346,38 @@
 		height: 1.65rem;
 		padding-left: calc(0.6rem + var(--depth) * 0.9rem);
 		padding-right: 0.35rem;
-		color: var(--gray-2);
+		color: var(--label);
 		cursor: pointer;
 		outline: none;
 	}
 	.row:hover {
-		background: var(--gray-6);
-		color: var(--white);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
 	}
+	/*
+	 * The ink of the design system's focus ring, inside the row. The outline
+	 * is turned off here too, so that no ring is drawn around the row as
+	 * well as inside it.
+	 */
 	.row:focus-visible {
-		box-shadow: inset 0 0 0 1px var(--accent);
+		outline: none;
+		box-shadow: inset 0 0 0 var(--yk-focus-width) var(--yk-ink);
 	}
+	/* The open file: a fill and an edge in the greys, since green is for actions, links and the current tab's line. */
 	.row.active {
-		background: var(--accent-low);
-		color: var(--white);
-		box-shadow: inset 2px 0 0 var(--accent-high);
+		background: var(--yk-sunken);
+		color: var(--yk-ink);
+		box-shadow: inset 2px 0 0 var(--yk-line-strong);
 	}
 	.row.selected {
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 	.icon {
 		display: inline-grid;
 		place-items: center;
 		width: 1rem;
 		flex: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.icon svg {
 		width: 0.75rem;
@@ -384,7 +391,7 @@
 		width: 0.45rem;
 		height: 0.45rem;
 		border-radius: 50%;
-		background: var(--gray-4);
+		background: var(--yk-line-strong);
 	}
 	.ext-py { background: #4b8bbe; }
 	.ext-js, .ext-mjs { background: #e8c547; }
@@ -401,10 +408,10 @@
 		white-space: nowrap;
 	}
 	.name.error {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.name.warning {
-		color: var(--orange-high);
+		color: var(--yk-warn);
 	}
 	.dot {
 		width: 0.4rem;
@@ -413,10 +420,10 @@
 		flex: none;
 	}
 	.dot.error {
-		background: var(--red-high);
+		background: var(--yk-danger);
 	}
 	.dot.warning {
-		background: var(--orange-high);
+		background: var(--yk-warn);
 	}
 	.actions {
 		display: none;
@@ -449,27 +456,35 @@
 	.editing:hover {
 		background: none;
 	}
+	/*
+	 * The name being typed. Its focus is the design system's ink ring
+	 * (app.css), not a border of its own: a green border under the
+	 * ring drew two. The ring sits 1px out rather than 2px so that it stays
+	 * inside the row and is not cut off at the top of the tree.
+	 */
 	input {
 		flex: 1;
 		min-width: 0;
-		height: 1.3rem;
+		height: 1.25rem;
 		padding: 0 0.3rem;
-		border: 1px solid var(--accent);
+		border: 1px solid var(--control-border);
 		border-radius: 0.25rem;
-		background: var(--black);
-		color: var(--white);
+		background: var(--yk-code-bg);
+		color: var(--yk-ink);
 		font: inherit;
-		outline: none;
+	}
+	input:focus-visible {
+		outline-offset: 1px;
 	}
 	input[aria-invalid] {
-		border-color: var(--red-high);
+		border-color: var(--yk-danger);
 	}
 	.error-hint {
 		margin: 0.1rem 0.4rem 0.3rem calc(1.9rem + var(--depth) * 0.9rem);
 		padding: 0.25rem 0.4rem;
 		border-radius: 0.25rem;
-		background: var(--red-low);
-		color: var(--red-high);
+		background: var(--yk-danger-bg);
+		color: var(--yk-danger);
 		font-size: 0.75rem;
 	}
 </style>

@@ -97,7 +97,7 @@
 		<!-- The sentence is what is announced and what a narrow terminal shows in its title; the compact form is only drawn. -->
 		<span class="status truncate" class:failed role="status" title={status || undefined}>{status}</span>
 		<span class="status-compact truncate" class:failed aria-hidden="true" title={status || undefined}>{compact}</span>
-		<button class="icon-btn clear" title="Clear the terminal" aria-label="Clear the terminal" onclick={() => runner.clear()}>
+		<button class="icon-btn yk-icon-btn clear" title="Clear the terminal" aria-label="Clear the terminal" onclick={() => runner.clear()}>
 			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" /></svg>
 		</button>
 	</div>
@@ -122,10 +122,10 @@
 		line-height: 1.55;
 		white-space: pre-wrap;
 		word-break: break-word;
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 	.stderr {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.place {
 		display: inline;
@@ -139,25 +139,27 @@
 		cursor: pointer;
 		user-select: text;
 	}
+	/* A place is a link into the editor; on hover its underline turns solid, in the text's own colour. */
 	.place:hover {
-		color: var(--accent-high);
+		color: var(--yk-ink);
 		text-decoration-style: solid;
 	}
+	/* What was typed, in info blue: told apart from the output, and not green, which is for actions. */
 	.stdin {
-		color: var(--accent-high);
+		color: var(--yk-info);
 	}
 	.info {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-style: italic;
 	}
 	/* System calls (strace on a Linux target): there to read when wanted, not to compete with the output. */
 	.trace {
-		color: var(--gray-4);
+		color: var(--yk-line-strong);
 		font-style: italic;
 	}
 	.empty {
 		margin: 0.2rem 0;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.8125rem;
 	}
 	.input {
@@ -166,15 +168,21 @@
 		gap: 0.5rem;
 		margin: 0 0.75rem 0.4rem;
 		padding: 0 0.6rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--control-border);
 		border-radius: 0.35rem;
-		background: var(--gray-6);
+		background: var(--yk-sunken);
 	}
+	/* The ink ring, on the whole field: the input inside it draws none of its own. */
+	.input:has(input:focus-visible) {
+		outline: var(--focus-ring);
+		outline-offset: var(--yk-focus-offset);
+	}
+	/* The program is waiting: an ink edge, and the placeholder says so in words. */
 	.input.waiting {
-		border-color: var(--accent-high);
+		border-color: var(--yk-ink);
 	}
 	.prompt {
-		color: var(--accent-high);
+		color: var(--yk-info);
 		font-family: var(--font-mono);
 	}
 	.input input {
@@ -184,7 +192,7 @@
 		border: 0;
 		outline: 0;
 		background: none;
-		color: var(--white);
+		color: var(--yk-ink);
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
 	}
@@ -195,8 +203,8 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0 0.25rem 0 1rem;
-		border-top: 1px solid var(--gray-5);
-		color: var(--gray-3);
+		border-top: 1px solid var(--yk-line);
+		color: var(--yk-soft);
 		font-size: 0.75rem;
 		min-height: 2rem;
 	}
@@ -208,10 +216,10 @@
 		display: none;
 	}
 	.failed {
-		color: var(--red-high);
+		color: var(--yk-danger);
 	}
 	.clear {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.clear svg {
 		width: 1rem;

@@ -12,13 +12,13 @@
 		"test:e2e": "node test.mjs"
 	},
 	"dependencies": {
-		"@yukibana/core": "file:../../modules/core",
-		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
-		"@yukibana/monaco": "file:../../modules/monaco",
-		"@yukibana/playground": "file:../../modules/playground",
-		"@yukibana/protocol": "file:../../modules/protocol",
-		"@yukibana/runtime": "file:../../modules/runtime",
-		"@yukibana/std": "file:../../modules/std",
+		"@yukibana/core": "link:../../modules/core",
+		"@yukibana/lang-cpp": "link:../../modules/lang-cpp",
+		"@yukibana/monaco": "link:../../modules/monaco",
+		"@yukibana/playground": "link:../../modules/playground",
+		"@yukibana/protocol": "link:../../modules/protocol",
+		"@yukibana/runtime": "link:../../modules/runtime",
+		"@yukibana/std": "link:../../modules/std",
 		"monaco-editor": "0.57.0"
 	},
 	"devDependencies": {

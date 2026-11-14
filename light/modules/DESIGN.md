@@ -267,7 +267,7 @@ Where this table says `languages/<pack>`, step 6 made it `lang-<pack>` (decision
 
 ## 5. Incremental rewrite plan
 
-Each step must pass `npm run check`, `npm run test:unit` and `npm run build`. Behaviour must be unchanged: `tests/e2e*.mjs` and `ui.mjs` are the oracle. The riskiest abstractions come first: run providers with snapshot-dependent availability, then file-backed properties, then rich handles.
+Each step must pass `pnpm run check`, `pnpm run test:unit` and `pnpm run build`. Behaviour must be unchanged: `tests/e2e*.mjs` and `ui.mjs` are the oracle. The riskiest abstractions come first: run providers with snapshot-dependent availability, then file-backed properties, then rich handles.
 
 1. **Guards and an empty core.**
    - Add `modules/core` (brand, paths moved and re-exported from runtime, token, provider, instance, slot), with no consumers yet.

@@ -2,37 +2,53 @@
 // own code is built from (package.json's dependencies, Svelte and
 // SvelteKit's client runtime, and everything those depend on), each under
 // its name and version, with the third-party notices a package ships beside
-// its licence (Monaco's ThirdPartyNotices.txt). The Licences dialog
+// its licence (Monaco's ThirdPartyNotices.txt), and the licence of each font
+// a package carries in fonts/<family>/ (@yukibana/design's OFL.txt files).
+// The Licences dialog
 // (src/lib/components/Licenses.svelte) links it, beside each pack's own
 // LICENSE-*.txt files.
 //
-// The shared modules (@yukibana/*, `file:` links to light/modules) are this
-// repository's own code, under its licence, like the app's: they are not
-// listed, but what they depend on is.
+// The shared modules (`link:`s to light/modules) are this repository's own
+// code, under its licence, like the app's: they are not listed, but what
+// they depend on is. @yukibana/design is another project's, and is (OWN).
 //
 // It is a superset: a package the bundle tree-shakes away entirely is still
 // listed. A package that ships no licence file but names MIT or ISC in its
 // package.json gets that licence's standard text under its author's name,
 // which is what those licences ask to be kept; any other package without a
 // licence file fails the build by name, since shipping it would leave its
-// licence undisclosed.
+// licence undisclosed. The exception is OWN: Yukibana's own packages, from
+// the same project as this app, which need no licence file to be listed (the
+// fonts @yukibana/design carries are third-party, and their licences are).
 //
 // Runs after `vite build` and before offline-manifest.mjs (package.json,
 // "build"), which lists the file among the lazy ones.
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const app = fileURLToPath(new URL('..', import.meta.url));
+/** light/modules, resolved: a package installed from there is one of the shared modules. */
+const modules = realpathSync(join(app, '..', 'modules'));
+/** Whether directory `dir` (resolved) is under light/modules. */
+const isShared = (dir) => {
+	for (let d = dirname(dir); d !== dirname(d); d = dirname(d)) if (d === modules) return true;
+	return false;
+};
 const pkg = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8'));
 const roots = [...Object.keys(pkg.dependencies ?? {}), 'svelte', '@sveltejs/kit'];
 
-/** The directory of an installed package, looked up from `from` as Node does; null if absent. */
+/**
+ * The directory of an installed package, looked up from `from` as Node does,
+ * and with its symbolic links resolved, as Node resolves them: pnpm's
+ * node_modules/<name> is a link into node_modules/.pnpm, beside which (and
+ * nowhere else) the package's own dependencies are. Null if absent.
+ */
 function locate(name, from) {
 	for (let dir = from; ; dir = dirname(dir)) {
 		const candidate = join(dir, 'node_modules', name);
-		if (existsSync(join(candidate, 'package.json'))) return candidate;
+		if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
 		if (dirname(dir) === dir) return null;
 	}
 }
@@ -48,9 +64,12 @@ const visit = (name, from) => {
 	}
 	if (seen.has(dir) || own.has(dir)) return;
 	const meta = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-	if (name.startsWith('@yukibana/')) own.add(dir);
+	const shared = isShared(dir);
+	if (shared) own.add(dir);
 	else seen.set(dir, meta);
-	for (const dep of Object.keys(meta.dependencies ?? {})) visit(dep, dir);
+	// A shared module is linked, not installed: what it depends on is installed
+	// beside the app, which depends on every module it uses.
+	for (const dep of Object.keys(meta.dependencies ?? {})) visit(dep, shared ? app : dir);
 };
 for (const name of roots) visit(name, app);
 
@@ -70,11 +89,29 @@ const STANDARD = {
 /** package.json's author, as a copyright line names them. */
 const authorOf = (meta) => (typeof meta.author === 'string' ? meta.author : meta.author?.name ? `${meta.author.name}${meta.author.email ? ` <${meta.author.email}>` : ''}` : null);
 const NOTICE = /^(third-?party-?notices|notice)(\.(md|txt))?$/i;
+/** Yukibana's own packages: listed without a licence file of their own. */
+const OWN = new Set(['@yukibana/design']);
+/** The licences of the fonts a package carries, one directory per family under fonts/, each headed by its path. */
+const fontLicences = (dir) => {
+	const fonts = join(dir, 'fonts');
+	if (!existsSync(fonts)) return [];
+	return readdirSync(fonts, { withFileTypes: true })
+		.filter((d) => d.isDirectory())
+		.sort((a, b) => a.name.localeCompare(b.name))
+		.flatMap((d) =>
+			readdirSync(join(fonts, d.name))
+				.filter((f) => /^(ofl|licen[cs]e)(\.(md|txt))?$/i.test(f))
+				.sort()
+				.map((f) => `fonts/${d.name}/${f}:\n\n${readFileSync(join(fonts, d.name, f), 'utf8').trim()}`),
+		);
+};
 const sections = [];
 for (const [dir, meta] of [...seen].sort(([, a], [, b]) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version))) {
 	const files = readdirSync(dir).filter((f) => LICENCE.test(f) || NOTICE.test(f)).sort((a, b) => Number(NOTICE.test(a)) - Number(NOTICE.test(b)) || a.localeCompare(b));
-	let texts = files.map((f) => readFileSync(join(dir, f), 'utf8').trim()).join('\n\n');
-	if (!files.some((f) => LICENCE.test(f))) {
+	let texts = [...files.map((f) => readFileSync(join(dir, f), 'utf8').trim()), ...fontLicences(dir)].join('\n\n');
+	if (OWN.has(meta.name)) {
+		texts = [`(${meta.name} is Yukibana's own, from the same project as this app. The fonts it carries are listed with their licences.)`, texts].filter(Boolean).join('\n\n');
+	} else if (!files.some((f) => LICENCE.test(f))) {
 		const standard = STANDARD[meta.license];
 		const who = authorOf(meta);
 		if (!standard || !who) {

@@ -2,7 +2,7 @@
 // language's server answering in Monaco (through MonacoBinding) and in the
 // textarea page (whose own client draws the answers).
 //
-//   npm run build && node test.mjs [language...]
+//   pnpm run build && node test.mjs [language...]
 //
 // For every language (or those named), on both pages: the server starts,
 // and an error the test types in is reported (Monaco's markers; the
@@ -24,7 +24,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
 const packs = normalize(process.env.PACKS ?? join(here, '../../app/static/packs'));
 if (!existsSync(join(dist, 'monaco.html'))) {
-	console.error(`No build in ${dist}: run npm run build first.`);
+	console.error(`No build in ${dist}: run pnpm run build first.`);
 	process.exit(1);
 }
 

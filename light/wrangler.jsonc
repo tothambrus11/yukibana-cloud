@@ -16,7 +16,7 @@
   },
   // The pack files too big to be an asset even as brotli, by the sha256 of
   // their content (deploy/prepare.mjs). Create it once:
-  //   npx wrangler@4.151.2 r2 bucket create yukibana-light
+  //   pnpm dlx wrangler@4.151.2 r2 bucket create yukibana-light
   "r2_buckets": [{ "binding": "BLOBS", "bucket_name": "yukibana-light" }],
   "routes": [{ "pattern": "light.yukibana.dev", "custom_domain": true }],
   "observability": { "enabled": true }

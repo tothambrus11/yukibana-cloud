@@ -32,34 +32,44 @@ export interface TokenRule {
 /** The contrast every text colour of the themes reaches against its editor's background. */
 export const TEXT_CONTRAST = 7;
 
-/** Each theme's editor background and the caret line's. */
+/**
+ * Each theme's editor background and the caret line's. The background is
+ * the design system's `--yk-code-bg` (@yukibana/design/tokens.css), as hex: the dock
+ * fills the current tab with it, so tab and editor are one surface. The caret
+ * line is a step from it towards `--yk-sunken`.
+ */
 export const EDITOR: Record<Theme, { background: Hex; caretLine: Hex; panel: Hex }> = {
-	dark: { background: '#121111', caretLine: '#1f1c1c', panel: '#121111' },
-	light: { background: '#ffffff', caretLine: '#f4f1f1', panel: '#ffffff' },
+	dark: { background: '#0e1218', caretLine: '#171c23', panel: '#0e1218' },
+	light: { background: '#f1f4f8', caretLine: '#e7ebf1', panel: '#f1f4f8' },
 };
 
-/** The themes' own token colours, before raising (the rest come from Monaco's `vs` and `vs-dark`). */
+/**
+ * The themes' own token colours, before raising (the rest come from Monaco's
+ * `vs` and `vs-dark`): the design system's `--yk-code-*` tokens
+ * (@yukibana/design/tokens.css), as hex. A type takes `--yk-code-function`'s blue,
+ * since Monaco's grammars mark types and not functions.
+ */
 export const OWN_RULES: Record<Theme, TokenRule[]> = {
 	dark: [
-		{ token: 'comment', foreground: '7f7676', fontStyle: 'italic' },
-		{ token: 'keyword', foreground: 'e0788f' },
-		{ token: 'string', foreground: '9ccf8a' },
-		{ token: 'number', foreground: '6fc2c6' },
-		{ token: 'type', foreground: '72c2a0' },
+		{ token: 'comment', foreground: '9399a1', fontStyle: 'italic' },
+		{ token: 'keyword', foreground: 'c9a3f5' },
+		{ token: 'string', foreground: '82d9b4' },
+		{ token: 'number', foreground: 'f6b575' },
+		{ token: 'type', foreground: '80c7f8' },
 	],
 	light: [
-		{ token: 'comment', foreground: '8a8080', fontStyle: 'italic' },
-		{ token: 'keyword', foreground: 'b3264f' },
-		{ token: 'string', foreground: '3c7a28' },
-		{ token: 'number', foreground: '0d7b80' },
-		{ token: 'type', foreground: '018053' },
+		{ token: 'comment', foreground: '555b65', fontStyle: 'italic' },
+		{ token: 'keyword', foreground: '6d41a9' },
+		{ token: 'string', foreground: '00694a' },
+		{ token: 'number', foreground: 'a05000' },
+		{ token: 'type', foreground: '005c9b' },
 	],
 };
 
-/** The line numbers (and the caret line's), before raising. */
+/** The line numbers (and the caret line's), before raising: `--yk-line-strong` and `--yk-ink`. */
 export const LINE_NUMBERS: Record<Theme, { normal: Hex; active: Hex }> = {
-	dark: { normal: '#635c5c', active: '#e3dcdc' },
-	light: { normal: '#a59c9c', active: '#352b2b' },
+	dark: { normal: '#676f7c', active: '#e8ebf0' },
+	light: { normal: '#848992', active: '#141b25' },
 };
 
 export function rgbOf(hex: Hex): Rgb {

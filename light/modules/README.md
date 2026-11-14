@@ -54,7 +54,7 @@ the globals it may use: `protocol/tsconfig.json` and `core/tsconfig.json`
 with the language and the few platform types every host has
 (`protocol/platform.d.ts`), and `runtime/` and `monaco/` with the DOM; none
 sees Node's types. They share
-`tsconfig.base.json`, and `npm run check` in `light/app` runs
+`tsconfig.base.json`, and `pnpm run check` in `light/app` runs
 `tsc -p ../modules/<name>` for each (`typecheck.mjs`).
 
 The modules are the directories here with a `package.json` (`list.mjs`),
@@ -63,13 +63,13 @@ and what a module may import is what its `package.json` names under
 Every list of the modules (the boundary test's arrows, `build.mjs`'s
 `PUBLISHED`, the type-check, the tests' resolve hook, the import tripwires)
 is read from there, so adding a module is adding a directory (and, for the
-app to import it, a `file:` line in `app/package.json`), and an arrow is
+app to import it, a `link:` line in `app/package.json`), and an arrow is
 a dependency a host installs too. `boundaries.test.mjs` fails on any
 import or mention that breaks the table or the rules above, and on a
 protocol project that would compile a source reaching for a page or Node
-(`npm run test:unit` in `light/app` runs it). The modules' own tests are in `tests/`,
+(`pnpm run test:unit` in `light/app` runs it). The modules' own tests are in `tests/`,
 beside them rather than in them, since a test imports `node:test`; the same
-`npm run test:unit` runs them, as does
+`pnpm run test:unit` runs them, as does
 `node --test "light/modules/**/*.test.mjs"` from the repository root.
 
 ## Packages

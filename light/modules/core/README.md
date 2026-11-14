@@ -63,4 +63,4 @@ in the runtime until the core is published beside it;
 
 Its tests are in `../tests/` (`core-instance`, `core-slot`,
 `core-property`): `node --test "light/modules/**/*.test.mjs"`, or
-`npm run test:unit` in `light/app`.
+`pnpm run test:unit` in `light/app`.

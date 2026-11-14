@@ -37,7 +37,7 @@ function playwright() {
 			return require(name);
 		} catch {}
 	}
-	throw new Error('playwright-core not found: npm i playwright-core, or set PLAYWRIGHT to its path');
+	throw new Error('playwright-core not found: pnpm add playwright-core, or set PLAYWRIGHT to its path');
 }
 const { chromium } = playwright();
 

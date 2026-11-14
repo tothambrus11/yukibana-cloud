@@ -1,4 +1,4 @@
-// What the built app is made of (build/_app, written by `npm run build`): it
+// What the built app is made of (build/_app, written by `pnpm run build`): it
 // carries Yukibana's own language client and not Monaco's (modules/runtime/language-session.ts
 // says why), which `editor.main` would bring in as `monaco.lsp`; what a
 // first page load downloads stays within 1% of bundle-baseline.json, so that
@@ -10,7 +10,7 @@
 // worker precaches (build/offline.json's shell) holds the first load and
 // every shared module's lazy body and what the download, the debugger and the call hierarchy load on use.
 //
-//   npm run build && node --test tests/unit/bundle.test.mjs
+//   pnpm run build && node --test tests/unit/bundle.test.mjs
 //
 // Without a build there is nothing to read, so the test is skipped and says
 // so; with BUNDLE_REQUIRED=1 (CI, after its build step) a missing build fails.
@@ -25,8 +25,8 @@ const build = fileURLToPath(new URL('../../build/', import.meta.url));
 const viteManifestPath = fileURLToPath(new URL('../../.svelte-kit/output/client/.vite/manifest.json', import.meta.url));
 const app = join(build, '_app');
 const built = existsSync(app);
-if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${app} does not exist: run npm run build first.`);
-const skip = built ? false : `${app} does not exist: run npm run build first`;
+if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${app} does not exist: run pnpm run build first.`);
+const skip = built ? false : `${app} does not exist: run pnpm run build first`;
 
 /** Every uncompressed file under `dir`, as paths; the .br and .gz copies say the same thing. */
 function files(dir) {

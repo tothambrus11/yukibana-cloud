@@ -1,4 +1,4 @@
-// What the built page is made of (dist/, written by `npm run build`, and
+// What the built page is made of (dist/, written by `pnpm run build`, and
 // the chunk list its vite.config.ts writes beside the manifest): the
 // scripts a first load runs stay within 1% of bundle-budget.json and hold
 // neither Monaco nor any language's body; and the page's two instances
@@ -6,7 +6,7 @@
 // `createInstance` call, not a second core, std or runtime, and the one
 // Monaco is in one chunk. DESIGN.md step 8's bundle fixtures.
 //
-//   npm run build && node --test tests/bundle.test.mjs
+//   pnpm run build && node --test tests/bundle.test.mjs
 //
 // Without a build there is nothing to read, so the test is skipped and says
 // so; with BUNDLE_REQUIRED=1 (CI, after its build step) a missing build fails.
@@ -20,8 +20,8 @@ import { gzipSync } from 'node:zlib';
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const listPath = join(dist, '.vite', 'chunks.json');
 const built = existsSync(listPath);
-if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${listPath} does not exist: run npm run build first.`);
-const skip = built ? false : `${listPath} does not exist: run npm run build first`;
+if (!built && process.env.BUNDLE_REQUIRED === '1') throw new Error(`BUNDLE_REQUIRED=1, but ${listPath} does not exist: run pnpm run build first.`);
+const skip = built ? false : `${listPath} does not exist: run pnpm run build first`;
 
 /** @typedef {{ file: string; entry: boolean; imports: string[]; dynamicImports: string[]; modules: string[] }} Chunk */
 /** @type {Chunk[]} */

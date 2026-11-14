@@ -317,7 +317,7 @@ run-to-run noise. So the app's Optimization select is not shown for PHP.
 
 ```sh
 ./build.sh
-npm install          # playwright-core
+pnpm install         # playwright-core
 node test.mjs        # the language server
 node test-run.mjs    # Run and Test
 ```

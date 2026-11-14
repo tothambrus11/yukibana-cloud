@@ -14,7 +14,7 @@
  *
  * - **Monaco's enums** (a marker's severity, a completion's kind). Their
  *   values are written here as numbers, in tables whose type is the
- *   installed Monaco's own enum (`Mirror`), so `npm run check` fails if a
+ *   installed Monaco's own enum (`Mirror`), so `pnpm run check` fails if a
  *   Monaco upgrade renumbers, adds or removes a member, rather than a
  *   warning turning into a hint on the page.
  * - **Commands.** A server's command runs through a Monaco command the

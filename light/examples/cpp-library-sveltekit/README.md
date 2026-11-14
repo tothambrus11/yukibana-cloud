@@ -32,11 +32,11 @@ read; Run compiles and links every `.cpp` of the project.
 
 ```sh
 node ../../setup/cli.mjs cpp --latest   # the C++ pack, in light/app/static/packs (once)
-npm install
-npm run dev                             # http://localhost:5173
+pnpm install
+pnpm run dev                            # http://localhost:5173
 ```
 
-`npm run build && npm run test:e2e` checks the prerendered page, then
+`pnpm run build && pnpm run test:e2e` checks the prerendered page, then
 drives the built site in Chromium (`CHROMIUM` names a browser, a Chrome or
 Edge executable will do) through `../cpp-library`'s checks: hover with the
 library's comment, completion of its members, go to its definition and

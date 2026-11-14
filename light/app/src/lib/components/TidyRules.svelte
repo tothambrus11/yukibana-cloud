@@ -84,7 +84,7 @@
 
 	<div class="state">
 		<label class="toggle">
-			<input type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
+			<input class="yk-check" type="checkbox" checked={workspace.clangTidy} onchange={(e) => workspace.setClangTidy(e.currentTarget.checked)} />
 			<span>Check the code with clang-tidy as you type</span>
 		</label>
 		<small>{describeTidy(workspace.clangTidy, workspace.tidyStatus)}</small>
@@ -106,8 +106,8 @@
 					{#if glob}{matching.length} matching <code>{glob}</code>, {matchingOn} on{:else}{enabled.size} of {names.length} checks on{/if}
 				{/if}
 			</span>
-			<button class="btn" disabled={!glob || !catalogue || (matching.length > 0 && matchingOn === matching.length)} onclick={() => glob && set(glob, true)}>Turn on {glob ? 'all matching' : ''}</button>
-			<button class="btn" disabled={!glob || !catalogue || matchingOn === 0} onclick={() => glob && set(glob, false)}>Turn off {glob ? 'all matching' : ''}</button>
+			<button class="btn yk-btn yk-btn--secondary" disabled={!glob || !catalogue || (matching.length > 0 && matchingOn === matching.length)} onclick={() => glob && set(glob, true)}>Turn on {glob ? 'all matching' : ''}</button>
+			<button class="btn yk-btn yk-btn--secondary" disabled={!glob || !catalogue || matchingOn === 0} onclick={() => glob && set(glob, false)}>Turn off {glob ? 'all matching' : ''}</button>
 		</div>
 		<div class="filter" role="radiogroup" aria-label="Show">
 			{#each [['all', 'All'], ['on', 'On'], ['off', 'Off']] as const as [value, label] (value)}
@@ -129,7 +129,7 @@
 					{@const on = enabled.has(check.name)}
 					<li class="check" class:on>
 						<label>
-							<input type="checkbox" checked={on} onchange={(e) => set(check.name, e.currentTarget.checked)} />
+							<input class="yk-check" type="checkbox" checked={on} onchange={(e) => set(check.name, e.currentTarget.checked)} />
 							<span class="name">{check.name}</span>
 						</label>
 						<span class="badges">
@@ -160,8 +160,8 @@
 			{/if}
 		</div>
 		<div class="buttons">
-			<button class="btn" disabled={isDefault} onclick={reset} title="Put back the {languageOf(workspace.language).label} defaults">Reset to defaults</button>
-			<button class="btn" onclick={openFile} disabled={!workspace.files.includes(TIDY_FILE)}>Open {TIDY_FILE}</button>
+			<button class="btn yk-btn yk-btn--secondary" disabled={isDefault} onclick={reset} title="Put back the {languageOf(workspace.language).label} defaults">Reset to defaults</button>
+			<button class="btn yk-btn yk-btn--secondary" onclick={openFile} disabled={!workspace.files.includes(TIDY_FILE)}>Open {TIDY_FILE}</button>
 		</div>
 	</footer>
 </dialog>
@@ -172,10 +172,10 @@
 		width: min(48rem, calc(100vw - 2rem));
 		height: min(42rem, calc(100vh - 4rem));
 		padding: 0;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.5rem;
-		background: var(--gray-7);
-		color: var(--white);
+		background: var(--yk-rail);
+		color: var(--yk-ink);
 		font-size: 0.85rem;
 	}
 	.tidy-rules[open] {
@@ -198,7 +198,7 @@
 	.close {
 		border: 0;
 		background: none;
-		color: var(--gray-2);
+		color: var(--label);
 		font-size: 1.4rem;
 		cursor: pointer;
 	}
@@ -218,22 +218,22 @@
 	small,
 	.muted,
 	.count {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.78rem;
 	}
 	.search {
 		display: grid;
 		gap: 0.45rem;
 		padding: 0.75rem 1rem 0.5rem;
-		border-bottom: 1px solid var(--gray-6);
+		border-bottom: 1px solid var(--yk-sunken);
 	}
 	.search input[type='search'] {
 		min-height: 2rem;
 		padding: 0 0.55rem;
 		border: 1px solid var(--control-border);
 		border-radius: 0.35rem;
-		background: var(--black);
-		color: var(--white);
+		background: var(--yk-code-bg);
+		color: var(--yk-ink);
 		font: inherit;
 		font-family: var(--font-mono);
 	}
@@ -250,7 +250,7 @@
 	.filter {
 		display: flex;
 		gap: 0.9rem;
-		color: var(--gray-2);
+		color: var(--label);
 	}
 	.list {
 		flex: 1;
@@ -271,16 +271,16 @@
 		grid-template-columns: minmax(0, 1fr) auto;
 		gap: 0.1rem 0.5rem;
 		padding: 0.35rem 1rem;
-		border-bottom: 1px solid var(--gray-6);
+		border-bottom: 1px solid var(--yk-sunken);
 	}
 	.check .name {
 		font-family: var(--font-mono);
 		font-size: 0.8rem;
-		color: var(--gray-2);
+		color: var(--label);
 		overflow-wrap: anywhere;
 	}
 	.check.on .name {
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 	.badges {
 		display: flex;
@@ -290,31 +290,32 @@
 	.badge {
 		padding: 0 0.35rem;
 		border-radius: 0.6rem;
-		background: var(--gray-6);
-		color: var(--gray-2);
+		background: var(--yk-sunken);
+		color: var(--label);
 		font-size: 0.7rem;
 		line-height: 1.3rem;
 		white-space: nowrap;
 	}
+	/* Information about the check, so info blue: green is for actions. */
 	.badge.fix {
-		background: var(--accent-low);
-		color: var(--accent-high);
+		background: var(--yk-info-bg);
+		color: var(--yk-info);
 	}
 	.badge.slow {
-		background: var(--orange-low, var(--gray-6));
-		color: var(--orange-high);
+		background: var(--yk-warn-bg);
+		color: var(--yk-warn);
 	}
 	.badge.never {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	a {
-		color: var(--accent-high);
+		color: var(--yk-accent-strong);
 		font-size: 0.75rem;
 	}
 	.summary {
 		grid-column: 1 / -1;
 		margin: 0 0 0 1.55rem;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		font-size: 0.78rem;
 		line-height: 1.35;
 	}
@@ -322,7 +323,7 @@
 		display: grid;
 		gap: 0.5rem;
 		padding: 0.6rem 1rem 0.8rem;
-		border-top: 1px solid var(--gray-5);
+		border-top: 1px solid var(--yk-line);
 	}
 	.rules {
 		display: flex;
@@ -333,7 +334,7 @@
 		overflow: auto;
 	}
 	.label {
-		color: var(--gray-2);
+		color: var(--label);
 		font-weight: 600;
 	}
 	.globs {
@@ -343,22 +344,22 @@
 		display: inline-flex;
 		align-items: center;
 		padding-left: 0.4rem;
-		border: 1px solid var(--gray-5);
+		border: 1px solid var(--yk-line);
 		border-radius: 0.3rem;
 		font-size: 0.75rem;
 	}
 	.glob.off code {
-		color: var(--gray-3);
+		color: var(--yk-soft);
 	}
 	.x {
 		padding: 0 0.35rem;
 		border: 0;
 		background: none;
-		color: var(--gray-3);
+		color: var(--yk-soft);
 		cursor: pointer;
 	}
 	.x:hover {
-		color: var(--white);
+		color: var(--yk-ink);
 	}
 	.buttons {
 		display: flex;

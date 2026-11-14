@@ -18,8 +18,8 @@ that imports resolve. `?language=` picks the language: `python`, `cpp`,
 
 ```sh
 node ../../setup/cli.mjs --latest   # the packs, in light/app/static/packs (once)
-npm install
-npm run dev                         # http://localhost:5173/monaco.html, /textarea.html
+pnpm install
+pnpm run dev                        # http://localhost:5173/monaco.html, /textarea.html
 ```
 
 ## What each editor takes of the modules
@@ -45,8 +45,8 @@ npm run dev                         # http://localhost:5173/monaco.html, /textar
 
 ## Tests
 
-* `npm test`: `src/text.ts`'s tables.
-* `npm run build && npm run test:e2e [language...]`: Chromium against the
+* `pnpm test`: `src/text.ts`'s tables.
+* `pnpm run build && pnpm run test:e2e [language...]`: Chromium against the
   installed packs. On both pages, for each language, the server starts and
   reports an error the test types in; for Python, also a hover, a
   completion accepted, and go to definition into another file. A language

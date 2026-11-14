@@ -45,11 +45,11 @@ same: its files as strings under `hidden`.
 
 ```sh
 node ../../setup/cli.mjs cpp --latest   # the C++ pack, in light/app/static/packs (once)
-npm install
-npm run dev                             # http://localhost:5173
+pnpm install
+pnpm run dev                            # http://localhost:5173
 ```
 
-`npm run build && npm run test:e2e` drives the built page in Chromium
+`pnpm run build && pnpm run test:e2e` drives the built page in Chromium
 (`CHROMIUM` names a browser, a Chrome or Edge executable will do): the
 server starts; hovering a library function shows its header comment;
 completion offers the class's members; go to definition opens the

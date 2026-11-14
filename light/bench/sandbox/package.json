@@ -9,11 +9,11 @@
 		"bench": "node bench.mjs"
 	},
 	"dependencies": {
-		"@yukibana/core": "file:../../modules/core",
-		"@yukibana/lang-cpp": "file:../../modules/lang-cpp",
-		"@yukibana/protocol": "file:../../modules/protocol",
-		"@yukibana/runtime": "file:../../modules/runtime",
-		"@yukibana/std": "file:../../modules/std"
+		"@yukibana/core": "link:../../modules/core",
+		"@yukibana/lang-cpp": "link:../../modules/lang-cpp",
+		"@yukibana/protocol": "link:../../modules/protocol",
+		"@yukibana/runtime": "link:../../modules/runtime",
+		"@yukibana/std": "link:../../modules/std"
 	},
 	"devDependencies": {
 		"playwright-core": "1.56.1",

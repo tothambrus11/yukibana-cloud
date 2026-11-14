@@ -33,9 +33,9 @@ if [ "${1:-}" = --check-versions ]; then
 fi
 
 : "${OUT:?OUT is the pack being assembled, every unit already linked into it}"
-want=$(sha256sum < "$HERE/package-lock.json" | cut -d' ' -f1)
+want=$(sha256sum < "$HERE/pnpm-lock.yaml" | cut -d' ' -f1)
 if [ "$(cat "$HERE/node_modules/.yk-lock" 2>/dev/null)" != "$want" ]; then
-  (cd "$HERE" && npm ci --no-audit --no-fund >&2)
+  (cd "$HERE" && pnpm install --frozen-lockfile --filter . >&2)
   echo "$want" > "$HERE/node_modules/.yk-lock"
 fi
 esbuild() { "$HERE/node_modules/.bin/esbuild" "$@" --format=esm --minify --target=es2022 --log-level=warning; }

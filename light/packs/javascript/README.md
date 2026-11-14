@@ -9,7 +9,7 @@ that holds the project's documents and the bundled `lib.*.d.ts` files.
 * **Server:** TypeScript **6.0.3** (`typescript` on npm, the last JavaScript
   release line; `latest` is 7.x, which is the Go port and has no JavaScript
   LanguageService). Upstream: <https://github.com/microsoft/TypeScript>. The
-  version is pinned in `package-lock.json` together with its npm integrity hash.
+  version is pinned in `pnpm-lock.yaml` together with its npm integrity hash.
 * **Adapter:** hand-written for this pack (`yukibana-typescript-ls` 0.1.0).
   It needs no runtime dependencies apart from TypeScript.
   `vscode-languageserver-protocol` is used only for types.
@@ -183,17 +183,17 @@ The alternative named in the task, `@typescript/vfs`, was not needed: the
 ## Files
 
 * `build.sh`
-  * Runs `npm ci` with its cache in `$PACK_CACHE/javascript/npm`, but only
-    when the lock file changed.
+  * Runs `pnpm install --frozen-lockfile`, but only when the lock file
+    changed.
   * Refuses a TypeScript version that is not 5.x or 6.x.
   * Typechecks the adapter, then builds the server's three files, `runner.js` and `strip.js` into
     `../../app/static/packs/javascript/` and writes `.gz` and `.br` siblings.
   * Incremental: big outputs are rebuilt only when their inputs change.
-  * A clean build (npm install plus brotli 11 on 6 MB) takes about
+  * A clean build (pnpm install plus brotli 11 on 6 MB) takes about
     **1 min 50 s** on the shared 4-core machine; a rebuild that touches only
     the adapter takes about 2 s.
 * `src/server.ts`: the adapter, written in TypeScript with strict settings
-  (`npx tsc -p tsconfig.json`).
+  (`pnpm exec tsc -p tsconfig.json`).
 * `tools/libs.mjs`: collects and minifies the lib bundle and checks it.
 * `tools/compress.mjs`: writes the compressed siblings and prints the size
   table.
@@ -491,7 +491,7 @@ decision rather than a technical one:
 
 What the pack does is the third, for two packages so far. The first is **fast-check
 4.10.2** (MIT), the property-based testing library, with its one
-dependency, pure-rand 8.4.2 (MIT). Both are pinned in `package-lock.json`
+dependency, pure-rand 8.4.2 (MIT). Both are pinned in `pnpm-lock.yaml`
 with their npm integrity hashes; nothing in them is changed.
 
 * **Run and Test.** `import fc from 'fast-check'` (or `import * as fc`, or
@@ -527,7 +527,7 @@ with their npm integrity hashes; nothing in them is changed.
 
 The second is for web pages: **p5.js 2.3.4** (LGPL-2.1, its licence is
 `LICENSE-p5.txt` next to it), the creative-coding library, pinned in
-`package-lock.json` with its integrity hash. The app's two **Web: p5.js
+`pnpm-lock.yaml` with its integrity hash. The app's two **Web: p5.js
 sketch** projects start with it (a canvas that fills the page, a circle
 that follows the mouse), one in each of p5's styles, and any web project
 can use it. Each style costs only what it uses:

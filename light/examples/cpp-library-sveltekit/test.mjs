@@ -2,7 +2,7 @@
 // the prerendered page, then what the playground promises, each against the
 // library (the same checks as ../cpp-library/test.mjs).
 //
-//   npm run build && node test.mjs
+//   pnpm run build && node test.mjs
 //
 // Serves build/ cross-origin isolated and /packs/ from $PACKS or Light's
 // installed packs (light/app/static/packs: the cpp pack must be there).
@@ -18,7 +18,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'build');
 const packs = normalize(process.env.PACKS ?? join(here, '../../app/static/packs'));
 if (!existsSync(join(dist, 'index.html'))) {
-	console.error(`No build in ${dist}: run npm run build first.`);
+	console.error(`No build in ${dist}: run pnpm run build first.`);
 	process.exit(1);
 }
 if (!existsSync(join(packs, 'cpp', 'server.js'))) {

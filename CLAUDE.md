@@ -185,6 +185,9 @@ so; the bugs are the documentation people read.
 lines up to 180 characters. With the stack
 running: `npm run db:lint`, `npm run db:reset`, `npm run db:test`,
 `npm run test:integration`. CI runs all of it, plus the devcontainer build.
+Light is not part of that: it is a pnpm workspace of its own
+(`light/pnpm-workspace.yaml`), installed with `pnpm install` in `light/` and
+checked with `pnpm run check` and `pnpm run test:unit` in `light/app`.
 On `main`, the database deploys only after CI is green (migrations,
 bootstrap, settings), but Cloudflare deploys the Worker on every push
 regardless, so nothing orders the two: a change that needs a migration ships

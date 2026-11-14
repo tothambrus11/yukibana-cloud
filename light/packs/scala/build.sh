@@ -35,7 +35,7 @@
 #
 # Idempotent; everything downloaded or built is cached in $PACK_CACHE/scala
 # (default ~/.cache/yukibana-packs/scala). Needs: git, curl, unzip, patch,
-# node 18+, npm, a JDK 17+ (java) to run sbt and the stripper. The JDK whose
+# node 18+, pnpm, a JDK 17+ (java) to run sbt and the stripper. The JDK whose
 # API student code sees is not that one: it is downloaded (pinned) below. sbt is fetched (pinned) into the cache.
 set -euo pipefail
 
@@ -196,7 +196,7 @@ rm -rf "$CACHE/sjsir-qc"
 # 7. Output. esbuild only removes whitespace and renames locals (no property
 #    mangling), which is all Scala.js's ES-module output leaves to do.
 #    Its only warnings are about Scala.js comparing with -0 on purpose.
-[ -x "$HERE/node_modules/.bin/esbuild" ] || (cd "$HERE" && npm ci --no-audit --no-fund)
+[ -x "$HERE/node_modules/.bin/esbuild" ] || (cd "$HERE" && pnpm install --frozen-lockfile --filter .)
 rm -rf "$OUT" && mkdir -p "$OUT"
 "$HERE/node_modules/.bin/esbuild" "$LINKED" --minify --format=esm --log-level=error --outfile="$OUT/scalac.js"
 "$HERE/node_modules/.bin/esbuild" "$LINKER_LINKED" --minify --format=esm --log-level=error --outfile="$OUT/sjslinker.js"

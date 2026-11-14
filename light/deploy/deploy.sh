@@ -5,10 +5,11 @@
 # the new version live, which is when it starts naming the new blobs. Needs
 # CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (or `wrangler login`).
 #
-#   deploy/deploy.sh            (from light/, after cd app && npm run build)
+#   deploy/deploy.sh            (from light/, after cd app && pnpm run build)
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-WRANGLER=(npx --yes wrangler@4.151.2)
+# esbuild and workerd check their platform binaries after install, as npx let them.
+WRANGLER=(pnpm dlx --allow-build=esbuild --allow-build=workerd wrangler@4.151.2)
 
 # The bucket, on the first deploy.
 "${WRANGLER[@]}" r2 bucket info yukibana-light >/dev/null 2>&1 ||

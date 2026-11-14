@@ -6,7 +6,7 @@ glue.paths
 glue.sh
 build.sh
 package.json
-package-lock.json
+pnpm-lock.yaml
 README.md
 LICENSES.txt
 src/

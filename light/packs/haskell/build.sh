@@ -39,7 +39,7 @@
 # ~/.ghc-wasm), set HASKELL_GHC_ROOTFS=build to build it here instead (the
 # hashes then differ: they pin CI's build). Idempotent; the unpacked
 # artifact is kept in $PACK_CACHE/haskell (default
-# ~/.cache/yukibana-packs/haskell). Needs node 22 and npm.
+# ~/.cache/yukibana-packs/haskell). Needs node 22 and pnpm.
 set -euo pipefail
 
 GHC_VERSION=9.14.1.20260731
@@ -153,7 +153,7 @@ if [ "$(git -C "$SHIM" rev-parse HEAD 2>/dev/null)" != "$SHIM_COMMIT" ]; then
     git -C "$SHIM" checkout -q "$SHIM_COMMIT"
 fi
 cd "$HERE"
-[ -x node_modules/.bin/esbuild ] || npm ci --no-audit --no-fund
+[ -x node_modules/.bin/esbuild ] || pnpm install --frozen-lockfile --filter .
 node_modules/.bin/esbuild "$SHIM/src/index.ts" --bundle --format=esm --target=es2022 --minify --legal-comments=none --log-level=warning --outfile="$OUT/wasi.js"
 
 step "pack files"
