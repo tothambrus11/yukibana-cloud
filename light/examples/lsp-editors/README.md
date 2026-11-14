@@ -19,7 +19,7 @@ that imports resolve. `?language=` picks the language: `python`, `cpp`,
 ```sh
 (cd ../.. && pnpm install --filter ./setup)   # the setup tool's own dependencies, once
 node ../../setup/cli.mjs --latest   # the packs, in light/app/static/packs (once)
-pnpm install
+pnpm install --filter .
 pnpm run dev                        # http://localhost:5173/monaco.html, /textarea.html
 ```
 

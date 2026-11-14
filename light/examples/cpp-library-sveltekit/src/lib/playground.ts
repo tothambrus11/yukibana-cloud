@@ -13,7 +13,8 @@ self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
 /** A C++ playground in `element`: `files` edited, `hidden` read by the server and compiled by Run; `status` hears what the server is doing. */
 export function createCppPlayground(element: HTMLElement, files: Record<string, string>, hidden: Record<string, string>, status: (text: string) => void): Playground {
-	const playground = createPlayground({ monaco, element, language: LANGUAGES.cpp, files, hidden, status });
+	// The packs are at the site's root (vite.config.ts), not beside whichever route shows the component.
+	const playground = createPlayground({ monaco, element, language: LANGUAGES.cpp, files, hidden, status, packs: new URL('/packs/', location.origin) });
 	// For the end-to-end test (test.mjs).
 	Object.assign(globalThis, { playground, monaco });
 	return playground;

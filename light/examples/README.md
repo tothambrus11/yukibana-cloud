@@ -19,4 +19,6 @@ tried before it is called stable (section 5 of the architecture plan).
 
 An example imports the shared modules by their package names, the npm
 packages its `package.json` declares and its own files, never Light's app
-(`light/modules/boundaries.test.mjs`).
+(checked for an example's .ts and .js sources by
+`light/modules/boundaries.test.mjs`; its components are held to the same
+rule by review).

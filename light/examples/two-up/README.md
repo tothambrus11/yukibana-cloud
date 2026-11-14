@@ -7,7 +7,7 @@ both borrowing one host, so one runner pool for the page. It is step 8 of
 without Light's app, imported by name as another site would import them.
 
 ```sh
-pnpm install
+pnpm install --filter .
 pnpm run dev                       # http://localhost:5173, packs from light/app/static/packs
 pnpm run check                     # TypeScript, strict, the modules' settings
 pnpm run build && pnpm test        # the bundle fixtures (tests/bundle.test.mjs)
@@ -58,4 +58,5 @@ chunk, the C++ editor's, which the page imports lazily.
 
 The page keeps its host and instances in `globalThis.twoUp`, for the
 test. Neither snippet has a language server (DESIGN.md section 17 says
-why).
+why); a page with one playground per Monaco gets one from
+@yukibana/playground's `createPlayground`.

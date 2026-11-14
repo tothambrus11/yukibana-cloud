@@ -25,7 +25,9 @@
  *   offered for editing): one Monaco model per file, the shown entry file
  *   in the editor, and an editor opener, so go to definition into any file
  *   shows it (a hidden one read-only) rather than doing nothing, which is
- *   standalone Monaco's way;
+ *   standalone Monaco's way. Read-only is the playground editor's option
+ *   only: Monaco's peek view follows the editor's options, so a hidden
+ *   file peeked from a shown one can still be edited there;
  * - the language's server, its pack's `server.js` in a worker as a
  *   `LanguageSession` (@yukibana/runtime), bound to the models by
  *   `MonacoBinding` (@yukibana/monaco) without Monaco's internals, so a
@@ -65,8 +67,9 @@ export interface PlaygroundOptions {
 	/**
 	 * Files that are part of the project but not offered for editing: a
 	 * library's headers and sources, `compile_flags.txt`. The server reads
-	 * them (go to definition opens one, read-only) and a run compiles them.
-	 * None may also be in `files`.
+	 * them (go to definition opens one, read-only in the playground's
+	 * editor; Monaco's peek view, which follows the editor's options, can
+	 * still edit one) and a run compiles them. None may also be in `files`.
 	 */
 	readonly hidden?: Files;
 	/** The file a run starts from and the editor shows first: the language's entry (`main.cpp`) when `files` has it, else the first of `files`. */
@@ -239,6 +242,9 @@ export function describeRun(state: RunState): string {
 
 let made = 0;
 
+/** The Monacos that have a playground alive, which `dispose` takes back. */
+const inUse = new WeakSet<typeof monaco>();
+
 /**
  * Makes a playground of `options.language` in `options.element`: the
  * editor at once, the language server starting (`ready`), Run available as
@@ -246,9 +252,11 @@ let made = 0;
  *
  * - Requires: `files` has at least one file; no path is in both `files`
  *   and `hidden`; every path is a project path (relative, `/`-separated);
- *   and no file is already a model of this Monaco, since every playground's
- *   files are under one workspace folder: two playgrounds alive at once
- *   share no file name. Each throws a `RangeError` naming it, before
+ *   and no other playground of this Monaco is alive: one playground per
+ *   Monaco at a time, since every playground's files are under one
+ *   workspace folder and a binding's providers answer for its language
+ *   ids alone, so a second one's formatting would answer for the first's
+ *   models with nothing. Each throws a `RangeError` naming it, before
  *   anything is made.
  */
 export function createPlayground(options: PlaygroundOptions): Playground {
@@ -271,9 +279,7 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 	// ---- The project: a model per file -----------------------------------
 
 	const uriOf = (path: string): monaco.Uri => m.Uri.parse(WORKSPACE.uriOf(path));
-	for (const path of Object.keys({ ...options.files, ...hidden })) {
-		if (m.editor.getModel(uriOf(path)) !== null) throw new RangeError(`"${path}" is already a file of another playground in this Monaco: dispose that one first, or name this one's file otherwise.`);
-	}
+	if (inUse.has(m)) throw new RangeError('This Monaco already has a playground: dispose that one first (one playground per Monaco at a time).');
 	const models = new Map<Path, monaco.editor.ITextModel>();
 	for (const [path, text] of Object.entries({ ...options.files, ...hidden })) models.set(pathOf(path), m.editor.createModel(text, undefined, uriOf(path)));
 	// Monaco names a model's language from its extension, and only for the
@@ -283,6 +289,7 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		for (const model of models.values()) model.dispose();
 		throw new RangeError(`Monaco has no language for "${entry}": register it with Monaco first (a language package's \`/monaco\` entry does).`);
 	}
+	inUse.add(m);
 	let revision = 0;
 	let current: ReturnType<typeof snapshotOf> | null = null;
 	const project: Project = {
@@ -460,6 +467,7 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 			for (const disposable of disposables) disposable.dispose();
 			editor.dispose();
 			for (const model of models.values()) model.dispose();
+			inUse.delete(m);
 		},
 	};
 }

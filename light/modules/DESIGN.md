@@ -1187,7 +1187,9 @@ Where it departs from sections 2 to 5, D10 and D11:
   Binding clangd to Monaco needs `MonacoBinding` with the host's Monaco
   internals and services (section 15), which an embed would have to
   assemble as Light's `startEditor` does: a step of its own, with
-  `ServerLeases` (deferred, D10). The check of "one runner per pack" is
+  `ServerLeases` (deferred, D10). @yukibana/playground has since bound
+  clangd without internals (`createPlayground`, one playground per Monaco),
+  with a few features less (modules/monaco/README.md). The check of "one runner per pack" is
   "never two runners of a pack at once": the C++ and Python runners end
   after every run (they never say `reusable`), so each run starts one, as
   in Light.

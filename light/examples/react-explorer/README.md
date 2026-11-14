@@ -37,7 +37,7 @@ checks, saying why, and checks that message instead.
 ## Run it
 
 ```sh
-pnpm install
+pnpm install --filter .
 PACKS=/path/to/light/app/static/packs pnpm run dev  # http://localhost:5173
 pnpm run check                                      # TypeScript, strict, the modules' settings
 pnpm run build && pnpm test                         # unit tables and bundle fixtures
@@ -49,7 +49,7 @@ them. The e2e test needs the cpp, rust, python, javascript and lldb packs;
 swift is optional.
 
 CI (`.github/workflows/light-ci.yml`, job `react-explorer-example`) runs
-`pnpm install`, `pnpm run check`, `pnpm run build` and `pnpm test` with
+`pnpm install --filter .`, `pnpm run check`, `pnpm run build` and `pnpm test` with
 `BUNDLE_REQUIRED=1` whenever this example or `light/modules` changes. It
 does not run `test:e2e`: that workflow builds no C++, Rust, Python or LLDB
 pack (they take from twenty minutes to hours cold), so the end-to-end test

@@ -31,7 +31,7 @@ runButton.onclick = () => playground.run({ output: (text) => output.append(text)
 
 | Part | From |
 |---|---|
-| a Monaco model per file, `files` editable and `hidden` read-only, the entry shown, and an editor opener so go to definition into another file switches to it (standalone Monaco does nothing there) | the host's Monaco, passed in |
+| a Monaco model per file, `files` editable and `hidden` read-only in the playground's editor (Monaco's peek view follows the editor's options, so a hidden file peeked from a shown one can still be edited there), the entry shown, and an editor opener so go to definition into another file switches to it (standalone Monaco does nothing there) | the host's Monaco, passed in |
 | the language's server, `server.js` of its pack in a worker, bound to the models | `LanguageSession` (runtime), `MonacoBinding` with no internals (monaco) |
 | an instance with the language and its package's providers, over a page host whose runner pool and explorers are made on first use | `createInstance` (core), `packLanguage`, `pageExplorers`, `run` (std) |
 | `run`, `input`, `stop`, and the run's and the server's states in words | `describeRun`, `describeServer` |
@@ -60,11 +60,10 @@ body, so the package's samples are never loaded.
   makes everything and `dispose` takes it all back.
 * It names no language (`../boundaries.test.mjs`): the language is the
   package the host passes.
-* Two playgrounds alive in one Monaco share no file name: every
-  playground's files are under one workspace folder, which the language
-  servers are told. A second `main.cpp` is refused with a `RangeError`
-  before anything is made; dispose the first playground, or name the files
-  apart.
+* One playground per Monaco at a time: every playground's files are under
+  one workspace folder, which the language servers are told, and a
+  binding's providers answer for its language ids alone. A second one is
+  refused with a `RangeError` before anything is made; dispose the first.
 * A run resolves exactly once, with how it ended: a final state,
   `refused`, or `cancelled` when a newer run replaced it or the playground
   was disposed.

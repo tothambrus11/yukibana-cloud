@@ -22,7 +22,7 @@ WRANGLER=(pnpm dlx --allow-build=esbuild --allow-build=workerd wrangler@4.151.2)
 BUCKET=yukibana-run
 [ $# -eq 0 ] || { echo "deploy.sh: takes no argument" >&2; exit 2; }
 
-node --test >/dev/null || { echo "deploy.sh: the registry's tests fail; not deployed" >&2; exit 1; }
+node --test || { echo "deploy.sh: the registry's tests fail; not deployed" >&2; exit 1; }
 
 "${WRANGLER[@]}" r2 bucket info "$BUCKET" >/dev/null 2>&1 ||
   "${WRANGLER[@]}" r2 bucket create "$BUCKET"

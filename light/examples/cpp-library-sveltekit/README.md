@@ -33,7 +33,7 @@ read; Run compiles and links every `.cpp` of the project.
 ```sh
 (cd ../.. && pnpm install --filter ./setup)   # the setup tool's own dependencies, once
 node ../../setup/cli.mjs cpp --latest   # the C++ pack, in light/app/static/packs (once)
-pnpm install
+pnpm install --filter .
 pnpm run dev                            # http://localhost:5173
 ```
 

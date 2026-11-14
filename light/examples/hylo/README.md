@@ -13,7 +13,7 @@ snippets through an instance of `@yukibana/core`, whose one provider
 the same runner; what the page shows is unchanged.
 
 ```sh
-pnpm install                     # its own pnpm-lock.yaml, in Light's workspace
+pnpm install --filter .          # this example alone, not all of Light's workspace
 pnpm run dev                     # http://localhost:5173
 pnpm run check                   # TypeScript, strict, the modules' settings
 pnpm test                        # the runner and the page in Node, workers stood in for

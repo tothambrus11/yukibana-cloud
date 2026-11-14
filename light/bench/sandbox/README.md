@@ -8,7 +8,7 @@ nothing runs it in CI, and it needs the C++ pack installed and Chrome on Windows
 memory sampling is Windows').
 
 ```sh
-pnpm install
+pnpm install --filter .
 pnpm run build
 node bench.mjs 5          # rounds; each starts a fresh Chrome per mode
 ```

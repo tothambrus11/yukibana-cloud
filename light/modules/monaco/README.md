@@ -23,7 +23,7 @@ files, the theme, and Monaco's editor services for a host that wants them.
 |---|---|
 | `convert.ts` | every conversion between a language server's values (`@yukibana/protocol`'s `lsp.ts`) and Monaco's, as pure functions: positions and ranges both ways, markers, hovers and documentation, completions and their contexts, signature help, symbols, locations, highlights, workspace edits, code actions and their context (one the editor can make only in part is disabled, with the reason), code lenses, document links, folds, smart select, inlay hints, a refused rename's reason |
 | `internals.ts` | the one adapter over Monaco's internals, the things a host needs that Monaco has no public API for: replacing editor services (file labels, notifications, the bulk edit service, dialogs), the inline message, the quick pick, the references peek's tree, commands, undo steps across files, and the built-in themes' rules |
-| `bind.ts` | `MonacoBinding`, a runtime `LanguageSession`'s client in the host's Monaco: the client capabilities Monaco's features have (`monacoClientCapabilities`), every model's edits fed to the session as ranges by version, the documents opened, closed and moved as the host's core `Project` says its files were created, deleted and renamed, the server's diagnostics as markers, every language feature registered for the server's capabilities, Show Call Hierarchy, Go to Symbol in Workspace's quick pick, and a server's workspace edit applied through the bulk edit service (one undo step across files) |
+| `bind.ts` | `MonacoBinding`, a runtime `LanguageSession`'s client in the host's Monaco: the client capabilities Monaco's features have (`monacoClientCapabilities`), every model's edits fed to the session as ranges by version, the documents opened, closed and moved as the host's core `Project` says its files were created, deleted and renamed, the server's diagnostics as markers, every language feature registered for the server's capabilities, Show Call Hierarchy, Go to Symbol in Workspace's quick pick, and a server's workspace edit applied through the bulk edit service (one undo step across files); with `internals: null`, a workspace edit is applied model by model (one that creates, renames or deletes a file is refused whole), there is no Go to Symbol in Workspace pick, and Show Call Hierarchy only when `events.callHierarchy` is given (@yukibana/playground binds clangd this way) |
 | `port.ts` | `monacoPort`, a Monaco editor as the core's `EditorPort` of kind `monaco` (`EditorKinds['monaco']`: its `native` is the editor; the caret its one capability) |
 | `call-hierarchy.ts` | a call hierarchy panel's rows from the server's answers, as plain data, and its labels |
 | `workspace-symbols.ts` | Go to Symbol in Workspace's rows, ranked and highlighted the same way for every server |
@@ -58,8 +58,10 @@ A host's editor is on from the calls it makes, in this order, and from
 nothing it imports. Light's app makes them in `startEditor`
 (`app/src/lib/monaco.ts`), which its page calls before the first model:
 
-1. `monacoInternals(modules)`, which only checks the modules.
-2. `internals.startServices(overrides)`, before any editor, model, theme
+1. For a host that passes internals: `monacoInternals(modules)`, which
+   only checks the modules.
+2. For a host that passes internals: `internals.startServices(overrides)`,
+   before any editor, model, theme
    or marker listener exists, since Monaco takes replacements only then
    (and the call throws, naming it, for one Monaco did not take).
 3. `MonacoEnvironment`, which is the host's alone: this module never sets

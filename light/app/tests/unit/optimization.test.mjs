@@ -10,8 +10,8 @@ import { test } from 'node:test';
 import { sourceUrlOf } from '../../../modules/list.mjs';
 import { targetOf, withTarget } from '../../../modules/lang-cpp/targets.ts';
 
-// The app imports the language packages by their names (vite.config.ts's
-// aliases); Node is told the same names here, from the same list.
+// The app imports the language packages by name (link: dependencies read
+// through their @yukibana/source condition); Node is told the same names here, from the same list.
 registerHooks({
 	resolve(specifier, context, next) {
 		const url = sourceUrlOf(specifier);

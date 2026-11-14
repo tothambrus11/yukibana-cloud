@@ -17,7 +17,7 @@ It shows what a docs or cookbook site needs from Yukibana:
 | `/` | An overview with one TypeScript playground. |
 
 ```sh
-pnpm install
+pnpm install --filter .
 pnpm run dev                 # http://localhost:4321, packs served under /packs/
 pnpm run check               # astro check (strict TS in .astro/.tsx/.ts), tsc, tsc for the Node files
 pnpm run build               # static site in dist/

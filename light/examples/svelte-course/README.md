@@ -34,7 +34,7 @@ the embeddable packages of `light/modules`, imported by name as another
 site would import them.
 
 ```sh
-pnpm install
+pnpm install --filter .
 PACKS=/path/to/packs pnpm run dev  # http://localhost:5173 (default PACKS: light/app/static/packs)
 pnpm run check                     # svelte-check (components and .ts, strict), and vite.config.ts
 pnpm run build && pnpm test        # unit tests (reports, diff, progress, the lesson) and the bundle fixtures
@@ -182,7 +182,8 @@ of file at once (the runtime says so in the output).
 ## Not done
 
 * No language server: Monaco highlights, and nothing more (DESIGN.md
-  section 17 says what binding one takes).
+  section 17 says what binding one takes; @yukibana/playground's
+  `createPlayground` binds one, for one playground per Monaco).
 * Swift is untested (above): its files follow the Swift pack's README
   (XCTest discovery, `@testable import App`, `main.swift` left out of a
   test run), and nothing has compiled them.
