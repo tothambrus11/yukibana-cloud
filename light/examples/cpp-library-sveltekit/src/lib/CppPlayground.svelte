@@ -35,7 +35,7 @@
 				made = createCppPlayground(element, files, hidden, (text) => (server = text));
 				playground = made;
 			})
-			// Also what making the playground throws: a second one on the page while this one is alive.
+			// Also what making the playground throws (files it refuses).
 			.catch((error: unknown) => (server = `The editor did not load: ${error instanceof Error ? error.message : String(error)}`));
 		return () => {
 			unmounted = true;
