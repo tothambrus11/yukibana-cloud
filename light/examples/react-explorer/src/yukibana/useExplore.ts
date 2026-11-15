@@ -89,11 +89,19 @@ export function useExplore(yukibana: Yukibana, language: LanguageDef, project: M
 				},
 				holder: holder.current,
 			};
-			void instance.perform(language.subject, explore, input, snapshot, controller.signal).then(async (outcome) => {
-				const result: EmitResult = outcome.kind === 'done' ? await outcome.value : { kind: 'broken', error: outcome.reason };
-				if (controller.signal.aborted || result.kind === 'dropped') return;
-				setState({ result, pending: false, progress: null });
-			});
+			void instance.perform(language.subject, explore, input, snapshot, controller.signal).then(
+				async (outcome) => {
+					const result: EmitResult = outcome.kind === 'done' ? await outcome.value : { kind: 'broken', error: outcome.reason };
+					if (controller.signal.aborted || result.kind === 'dropped') return;
+					setState({ result, pending: false, progress: null });
+				},
+				// The provider's body is loaded first, and that load can fail (offline, or a chunk gone after a deploy).
+				(e: unknown) => {
+					if (controller.signal.aborted) return;
+					const error = `The compiler output views could not be loaded: ${e instanceof Error ? e.message : String(e)}`;
+					setState({ result: { kind: 'broken', error }, pending: false, progress: null });
+				},
+			);
 		}, delay);
 		return () => {
 			clearTimeout(timer);

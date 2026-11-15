@@ -9,24 +9,13 @@
 //   node --test light/modules/          (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createInstance, languageKey, pathOf } from '../core/index.ts';
+import { createInstance, pathOf } from '../core/index.ts';
 import { packIdOf } from '../runtime/packs.ts';
 import { defaultOptions, explore, explorerProvider, viewIn, viewKind } from '../std/index.ts';
 import { ExplorerWorkers } from '../std/explore-workers.ts';
 import { snapshotOf } from './core-fakes.mjs';
-import { served } from './run-fakes.mjs';
-
-/** A language of these tests, on pack `pack`. */
-const languageOf = (key, pack = key) => ({
-	key: languageKey(key),
-	label: key.toUpperCase(),
-	short: null,
-	pack: packIdOf(pack),
-	uses: [],
-	entry: pathOf('main.x'),
-	extension: 'x',
-	body: async () => ({ sample: {}, serverSettings: {}, properties: { properties: [], summary: () => '' } }),
-});
+import { served, settle } from './run-fakes.mjs';
+import { languageOf } from './std-fakes.mjs';
 
 const ASM = viewKind('asm');
 const IR = viewKind('llvm-ir');
@@ -84,9 +73,6 @@ const HOLDER = { name: 'the explorer' };
 
 const subjectOf = (language) => ({ kind: 'language', id: language.key });
 const inputOf = (view = ASM, progress = [], holder = HOLDER) => ({ view, files: { 'main.x': 'f()' }, path: pathOf('main.x'), options: { demangle: true }, onProgress: (p) => progress.push(p), holder });
-
-/** Lets the provider's awaits (the locator's `file`) run. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 /** Performs `explore` and returns the answer's promise. */
 async function ask(instance, language, input, signal = new AbortController().signal) {
@@ -317,4 +303,17 @@ test('a language’s views say which toggles start on, and a provider refuses a 
 	assert.throws(() => explorerProvider(languageOf('cpp'), { ...VIEWS, views: [] }), RangeError);
 	assert.throws(() => explorerProvider(languageOf('cpp'), { ...VIEWS, views: [VIEWS.views[0], VIEWS.views[0]] }), RangeError);
 	assert.throws(() => viewKind('Asm'), RangeError);
+});
+
+test('a disposed page’s explorer workers stop, whoever holds them, their waiting requests are dropped, and none starts after', async () => {
+	const { platform, workers } = fakePlatform();
+	const cpp = languageOf('cpp');
+	const { instance, explorers } = instanceOf([cpp], platform);
+	const answer = ask(instance, cpp, inputOf());
+	await settle();
+	explorers.dispose();
+	assert.deepEqual(await answer, { kind: 'dropped' });
+	assert.equal(workers[0].terminated, true);
+	assert.deepEqual(await ask(instance, cpp, inputOf()), { kind: 'dropped' });
+	assert.equal(workers.length, 1, 'no worker was started after dispose');
 });

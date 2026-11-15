@@ -52,8 +52,8 @@ at once.
 From the build (`tests/bundle.test.mjs`, over the chunk list
 `vite.config.ts` writes to `dist/.vite/chunks.json`): a first load runs at
 most 1% more script than `bundle-budget.json` records, and neither Monaco
-nor any language's body; no module is bundled into two chunks, so the
-second instance shares the first's core, std and runtime; Monaco is one
+nor any language's body; no module comes from a second copy of its
+package (a `dist/` or an installed copy), so the second instance shares the first's core, std and runtime; Monaco is one
 chunk, the C++ editor's, which the page imports lazily.
 
 The page keeps its host and instances in `globalThis.twoUp`, for the

@@ -196,15 +196,6 @@ export function startEditor(): void {
 }
 
 /**
- * Shows `text` in `editor` under `position`, as the inline message a
- * refused rename shows; it closes when the caret moves or the editor loses
- * focus. For a command that found nothing to do at the caret.
- */
-export function showEditorMessage(editor: monaco.editor.ICodeEditor, text: string, position: monaco.IPosition): void {
-	internals.showMessage(editor, text, position);
-}
-
-/**
  * A new quick pick: the box at the top of the editor that Go to Symbol
  * (Ctrl+Shift+O) and the command palette (F1) use, for a picker of the
  * app's own (Go to Symbol in Workspace, which standalone Monaco lacks).

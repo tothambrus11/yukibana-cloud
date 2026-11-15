@@ -275,7 +275,8 @@ export interface ExploreHost {
 	/**
 	 * Returns the page's explorer workers, shared by every language and
 	 * instance: the same on every call, made at the first (`pageExplorers`),
-	 * which loads their code and starts no worker.
+	 * which loads their code and starts no worker. A host that can be
+	 * disposed gives disposed ones after (`ExplorerWorkers.dispose`).
 	 */
 	explorers(): Promise<ExplorerWorkers>;
 	/** The page's explorer workers once `explorers` has made them, else null: what a release reads, so that letting go loads nothing. */

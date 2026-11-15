@@ -129,7 +129,7 @@ server's download is never a prerequisite for running and vice versa; the
 two may of course share files (a toolchain's wasm, headers) by URL so the
 browser and service worker cache them once.
 
-For a language with `warmRunner` (`app/src/lib/languages.ts`), the app
+For a language whose package provides `@yukibana/std`'s `warm` (`warmProvider`, modules/std/run.ts), the app
 starts the runner before Run is pressed (once the language server is up,
 and again after each run ends), and posts the message below whenever Run
 comes, which may be minutes later. Such a runner starts its slow part (the
@@ -144,7 +144,7 @@ started; a run it has not finished must not be disturbed by one that
 arrives. A page keeps such a worker for the next run instead of starting
 another (`RunnerPool` in `light/modules/runtime/run-pool.ts`: one runner
 per pack per page, shared by its snippets), and the app also starts one
-ahead of the first run for a language with `warmRunner`. The Swift runner
+ahead of the first run for a language that provides `warm`. The Swift runner
 does, so only the first Run loads its compiler, linker and sysroot. The Haskell runner does too: GHC, linked and warm, then answers
 in a fraction of a second, and Chromium compiles the wasm of only a few
 new workers in a row while the language server's GHC is alive.
@@ -174,7 +174,7 @@ carries them and never reads them (`RunnerOptions`). Light's packs use two
 kinds. The C and C++ packs' `{ emulation: 'system' | 'user', cpus: 1 | 2 |
 4, strace: boolean }` are how a program is emulated, for a runner that runs it in an
 emulator. The app sends them for C and C++ projects only (the project's
-Run options, saved with it; `app/src/lib/cpp-targets.ts`), and the C++
+Run options, saved with it: `runOptionsProperty` in `modules/std/linux.ts`, as lang-cpp's `CPP_RUN_OPTIONS`), and the C++
 runner uses them only for a Linux target (`--target=` in
 `compile_flags.txt`, packs/cpp/README.md): `system` runs the program in
 Linux under QEMU's system emulation with `cpus` CPUs, `user` under QEMU's
@@ -191,13 +191,13 @@ or C++ project's level is the `-O` line of its `compile_flags.txt`, which
 the runner reads anyway, so none is sent.
 
 A runner that can also run the project's tests takes the same message with
-`type: 'test'` (the app offers Test for languages with `tests: true` in
-`app/src/lib/languages.ts`). It builds the tests instead of the program and
+`type: 'test'` (the app offers Test for languages whose package provides
+`@yukibana/std`'s `test`, modules/std/run.ts). It builds the tests instead of the program and
 runs them, with the same messages back: the report on stdout, exit 0 only
 when every test passed.
 
 A runner that can also mutation-test the project takes it with
-`type: 'mutate'` (the app offers Mutate for languages with `mutates: true`):
+`type: 'mutate'` (the app offers Mutate for languages that provide std's `mutate`):
 it changes the code in small ways, one mutant at a time, runs the tests
 against each, and prints the report (which mutants the tests killed, which
 survived, which no test reached, which timed out, with file and line and the
@@ -265,7 +265,7 @@ ignored without a word.
 ## Debugging (optional)
 
 A runner that can run its program under the debugger (the app offers Debug
-for the languages with a debug provider in `app/src/lib/providers/debug.ts`,
+for the languages whose package provides std's `debug` (`debugProvider`, modules/std/debug.ts),
 and Debug tests where that runner debugs a `type: 'test'` run too) takes the
 run message with one more field:
 
@@ -484,7 +484,7 @@ kind.
   compressed siblings, honest README section ("Running"), a test
   (`test-run.mjs` or a section of `test.mjs`) that runs the sample project
   and a program reading two lines of stdin.
-* The sample projects in `app/src/lib/languages.ts` are what runs by
+* The sample projects in `modules/lang-*/body.ts` are what runs by
   default: entry `main.py`, `main.js`, `main.cpp` (with every `.cpp` of the
   project compiled and linked), `main.swift`, `Main.scala` (`@main` or
   `object Main { def main }`).
@@ -504,7 +504,8 @@ kinds are `llvm-ir` and `asm` (C and C++; Swift; Haskell's is `asm` only),
 and `lowered` (Scala's trees after typer and before the back end) and
 `bytecode` (Python's, and the JVM's for Java). Which views a language has, which files they show,
 what the compiler is called and the toggles each view's header offers are
-`app/src/lib/providers/explore.ts`, a table and the language's provider
+the language package's table of views (modules/lang-cpp/views.ts for C++, the
+package's index.ts for the others) and its provider
 of `@yukibana/std`'s `explore` (`modules/std/explore.ts`): a language gains
 a view by an entry there and an `explorer.js` that answers for it. The app
 starts the pack's third worker, `app/static/packs/<id>/explorer.js` (a
@@ -523,7 +524,7 @@ App to explorer, any number of times:
   options: Record<string, boolean | string> }   // the view's toggles, and the project's level
 ```
 
-`options` holds one boolean per toggle of the view (providers/explore.ts),
+`options` holds one boolean per toggle of the view (the language's table of views),
 by the name the pack reads, and, for a language whose optimisation level
 is the project's rather than the view's (Swift), that level as Run gets
 it (`optimization: '-O'`). The names the packs share mean the same in
@@ -541,7 +542,7 @@ source (one the views cannot show, such as a header, keeps the source
 shown before), when an option or the project's level changes, and 500 ms
 after the last edit of any project file, and only for a panel that is in
 front: a panel behind another tab asks when it comes back. Each toggle
-starts as providers/explore.ts says (C++: `{demangle: true, intel: false,
+starts as the language's table of views says (C++: `{demangle: true, intel: false,
 directives: false, library: false}` for assembly, `demangle: false` for
 IR), and keeps its state for the session, per language. A toggle that
 `sets: 'language'` there is set in every view of the language at once: Haskell's

@@ -7,13 +7,13 @@
 // two headers on every response (README.md, "Hosting the packs").
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { extname, join, normalize, relative, sep } from 'node:path';
+import { extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { defaultClientConditions, defineConfig, type Plugin } from 'vite';
 
 /** The packs dev and preview serve under /packs/: $PACKS, else Light's installed ones. */
-const PACKS = ((dir: string): string => (dir.endsWith(sep) ? dir : dir + sep))(process.env['PACKS'] ?? fileURLToPath(new URL('../../app/static/packs/', import.meta.url)));
+const PACKS = ((dir: string): string => (dir.endsWith(sep) ? dir : dir + sep))(resolve(process.env['PACKS'] ?? fileURLToPath(new URL('../../app/static/packs/', import.meta.url))));
 
 /**
  * Cross-origin isolation, so a program can read standard input (stdin is
@@ -52,9 +52,10 @@ const isolatedWithPacks = (): Plugin => {
  * chunk of the page, with the modules it holds (paths relative to this
  * directory) and the chunks it imports statically and by `import()`, so
  * that tests/bundle.test.mjs can say what the page loads first and that no
- * module is bundled twice. A Svelte component is one module, though Vite
- * names its script and its style apart (`?svelte&type=style`). The page's
- * workers are builds of their own and not listed.
+ * module comes from a second copy of its package. A Svelte component is
+ * one module, though Vite names its script and its style apart
+ * (`?svelte&type=style`). The page's workers are builds of their own and
+ * not listed.
  */
 const chunkList = (): Plugin => ({
 	name: 'chunk-list',

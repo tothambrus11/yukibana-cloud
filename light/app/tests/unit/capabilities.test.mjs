@@ -4,27 +4,17 @@
 // said it with `runs`, `tests`, `mutates`, `cannotRun` and `debugs`, a
 // runner is kept warm where `warmRunner` said, and a web project's Run
 // previews its page where `preview` said. That table is gone; TODAY below
-// is what it said. Debug tests is new: C++'s alone.
+// is what it said. Debug tests is new: C++'s and Swift's.
 //
 //   node --test tests/unit/capabilities.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { sourceUrlOf } from '../../../modules/list.mjs';
-
-// The app imports the shared modules by name (link: dependencies read through
-// their @yukibana/source condition); Node is told the same names here, from the same list.
-registerHooks({
-	resolve(specifier, context, next) {
-		const url = sourceUrlOf(specifier);
-		return url === null ? next(specifier, context) : { url, shortCircuit: true };
-	},
-});
+import '../modules-hook.mjs';
+import { snapshotOf } from '../../../modules/tests/core-fakes.mjs';
 
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
 const { metaOf, subjectOf, yukibana } = await import('../../src/lib/yukibana.ts');
 const std = await import('../../../modules/std/index.ts');
-const { pathOf } = await import('../../../modules/core/index.ts');
 const { withTarget } = await import('../../../modules/lang-cpp/targets.ts');
 const { chooseTestFramework } = await import('../../../modules/lang-cpp/tests.ts');
 
@@ -48,17 +38,6 @@ const TODAY = {
 	go: { runs: true, tests: true },
 	zig: { runs: true, tests: true },
 };
-
-/** A project of `files`, with `meta` as its saved settings. */
-function snapshotOf(files = {}, meta = {}) {
-	return {
-		revision: 1,
-		paths: () => Object.keys(files).map(pathOf),
-		file: (path) => (Object.hasOwn(files, path) ? files[path] : null),
-		files: () => ({ ...files }),
-		meta: (binding) => (Object.hasOwn(meta, binding.key) ? binding.parse(meta[binding.key]) : null),
-	};
-}
 
 /** What the top bar showed for a mode: absent, or shown and enabled, or shown, disabled, with that title. */
 const offered = (instance, subject, token, snapshot) => {
@@ -111,7 +90,7 @@ test('a runner is kept warm for the languages that kept one, and only where Run 
 	}
 });
 
-test('Debug and Debug tests are offered and enabled for each language as the Language table said, Debug tests for C++ alone', () => {
+test('Debug and Debug tests are offered and enabled for each language as the Language table said, Debug tests for C++ and Swift', () => {
 	const instance = yukibana();
 	for (const language of LANGUAGES) {
 		const was = TODAY[language.id];

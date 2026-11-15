@@ -48,8 +48,8 @@ const isolatedWithPacks = (): Plugin => {
  * chunk of the page, with the modules it holds (paths relative to this
  * directory) and the chunks it imports statically and by `import()`, so
  * that tests/bundle.test.mjs can say what the page loads first and that no
- * module is bundled twice. The page's workers are builds of their own and
- * not listed.
+ * module comes from a second copy of its package. The page's workers
+ * are builds of their own and not listed.
  */
 const chunkList = (): Plugin => ({
 	name: 'chunk-list',

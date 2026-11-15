@@ -147,8 +147,9 @@ about 60 KB of it is React and react-dom), checked within 1% by
   first request, which a widget makes only once it is near the screen;
 * each language's **body**, which nothing here asks for.
 
-No module is in two chunks: the four widgets' instances share one core,
-std and runtime.
+No module comes from a second copy of its package (a `dist/` or an
+installed copy): the four widgets' instances share one core, std and
+runtime.
 
 ## What it checks
 
@@ -171,8 +172,10 @@ once; the dark scheme reaches the page and Monaco; no page error.
 ## Limits
 
 * No language server: the editors colour and edit, but have no
-  completions or diagnostics (binding clangd needs `MonacoBinding` and
-  Monaco's internals, as DESIGN.md section 17 says).
+  completions or diagnostics. The editors share one Monaco, and a binding
+  answers for its language ids alone, so one clangd binding would answer
+  for every editor's models (one playground per Monaco, DESIGN.md
+  section 17).
 * The DAP client is copied from Light's app; `@yukibana/runtime` has none
   yet.
 * The sanitizer widget compiles at `-O0`: at `-O2` clang deletes the

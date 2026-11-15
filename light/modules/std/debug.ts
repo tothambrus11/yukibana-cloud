@@ -18,7 +18,7 @@
 
 import { defineToken, type LanguageKey, type Provider, type Token } from '../core/index.ts';
 import type { DebugChannel, DebugProgram, TestSelector } from '../protocol/index.ts';
-import type { RunEvent, RunHandle, SessionRequest } from '../runtime/index.ts';
+import { isFinal, type RunEvent, type RunHandle, type SessionRequest } from '../runtime/index.ts';
 import type { PackLanguage } from './language.ts';
 import { runMessage, sourceOf, type RunAvailability, type RunHost, type RunInput } from './run.ts';
 
@@ -97,13 +97,6 @@ export function debugMessage(mode: DebugMode, input: DebugInput, options: DebugO
 	return { ...runMessage(mode, options === 'none' ? { ...input, options: null } : input), debug: input.channel };
 }
 
-/** `true` iff `event` ends the run it belongs to, however it ends. */
-function ends(event: RunEvent): boolean {
-	if (event.type !== 'state') return false;
-	const kind = event.state.kind;
-	return kind === 'ended' || kind === 'stopped' || kind === 'unavailable' || kind === 'failed';
-}
-
 /**
  * Returns `language`'s provider of the token of `mode` (`debugTokenOf`): an
  * eager one that hands the pool of its host the debug message
@@ -134,7 +127,7 @@ function performDebug(language: PackLanguage, host: RunHost, input: DebugInput, 
 	const { promise, resolve } = Promise.withResolvers<DebugProgram | null>();
 	const onEvent = (event: RunEvent): void => {
 		if (event.type === 'debug') resolve(event);
-		else if (ends(event)) resolve(null);
+		else if (event.type === 'state' && isFinal(event.state)) resolve(null);
 		input.onEvent(event);
 	};
 	const run = host.pool.run({ snippet: input.snippet, source: sourceOf(language, host.packs, host.requires), request, onEvent });

@@ -8,18 +8,11 @@
 //   node --test tests/unit/properties.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { sourceUrlOf } from '../../../modules/list.mjs';
+import '../modules-hook.mjs';
+import { snapshotOf } from '../../../modules/tests/core-fakes.mjs';
 
-registerHooks({
-	resolve(specifier, context, next) {
-		const url = sourceUrlOf(specifier);
-		return url === null ? next(specifier, context) : { url, shortCircuit: true };
-	},
-});
-
-const { pathOf, readProperty, writeProperty } = await import('../../../modules/core/index.ts');
+const { readProperty, writeProperty } = await import('../../../modules/core/index.ts');
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
 const { metaOf } = await import('../../src/lib/yukibana.ts');
 const { runnerOptionsOf, settingsOf } = await import('../../src/lib/properties/index.ts');
@@ -27,17 +20,6 @@ const cpp = await import('../../../modules/lang-cpp/properties.ts');
 const rust = await import('../../../modules/lang-rust/properties.ts');
 const { SWIFT_LEVEL } = await import('../../../modules/lang-swift/properties.ts');
 const { SCALA_LEVEL } = await import('../../../modules/lang-scala/properties.ts');
-
-/** A project of `files`, with `meta` as its saved fields, as the workspace's snapshot answers. */
-function snapshotOf(files = {}, meta = {}) {
-	return {
-		revision: 1,
-		paths: () => Object.keys(files).map(pathOf),
-		file: (path) => (Object.hasOwn(files, path) ? files[path] : null),
-		files: () => ({ ...files }),
-		meta: (binding) => (Object.hasOwn(meta, binding.key) ? binding.parse(meta[binding.key]) : null),
-	};
-}
 
 /** What a file lens reads from `text`. */
 const read = (property, text) => property.storage.read(text);

@@ -139,9 +139,9 @@ export interface Playground extends Disposable {
 	/**
 	 * Takes back everything `createPlayground` made: the run in flight
 	 * (which resolves as `cancelled`), the runners it started, the language
-	 * server, the editor and the models. Workers of a compiler view a host
-	 * asked for through `instance` are let go by that host
-	 * (`ExplorerWorkers.release`), as they were held by it.
+	 * server, the editor and the models, and the workers of any compiler
+	 * view a host asked for through `instance`, whose requests waiting then
+	 * settle as `dropped`.
 	 */
 	dispose(): void;
 }
@@ -158,6 +158,8 @@ class PageHost implements PackHost {
 	#pool: RunnerPool | null = null;
 	#explorers: Promise<ExplorerWorkers> | null = null;
 	#madeExplorers: ExplorerWorkers | null = null;
+	/** Whether `dispose` was called: no explorer workers are made after it. */
+	#disposed = false;
 	readonly packs: UnpinnedPackLocator;
 	readonly requires: Requires = RUNNER_NEEDS;
 
@@ -171,6 +173,9 @@ class PageHost implements PackHost {
 	}
 
 	explorers(): Promise<ExplorerWorkers> {
+		// A view asked for before dispose may get here after it, once its code
+		// has loaded: it gets workers that are disposed, so it settles as `dropped`.
+		if (this.#disposed) return pageExplorers().then((workers) => (workers.dispose(), workers));
 		if (this.#explorers === null) {
 			const made = pageExplorers();
 			this.#explorers = made;
@@ -187,7 +192,8 @@ class PageHost implements PackHost {
 	}
 
 	/**
-	 * Ends every runner the page's pool started, and refuses any later one.
+	 * Ends every runner the page's pool started, and refuses any later one;
+	 * the same for the explorer workers (`ExplorerWorkers.dispose`).
 	 * A disposed playground once left them: in a site that mounts and
 	 * unmounts a playground as its reader moves between pages, each visit
 	 * kept one more runner worker alive.
@@ -198,7 +204,13 @@ class PageHost implements PackHost {
 	 * starts nothing.
 	 */
 	dispose(): void {
+		this.#disposed = true;
 		this.pool.dispose();
+		// Made or still being made: either way they stop, and start no worker after.
+		void this.#explorers?.then(
+			(workers) => workers.dispose(),
+			() => {},
+		);
 	}
 }
 

@@ -146,7 +146,7 @@ jobs:
             light/pnpm-workspace.yaml
             light/pnpm-lock.yaml
             light/modules
-            light/examples/*/src
+            light/examples/*/src/**
             light/examples/*/package.json
             light/packs/cpp/src
             light/packs/cpp/tests/fixtures
@@ -214,7 +214,7 @@ jobs:
             light/packs/*/requires.json
             light/packs/*/pins.sh
             light/packs/*/toolchain.*
-            light/packs/*/toolchains
+            light/packs/*/toolchains/**
             light/packs/*/glue.paths
             light/packs/*/test.sh
             light/packs/stub

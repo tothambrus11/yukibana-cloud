@@ -7,18 +7,8 @@
 //
 //   node --test tests/unit/explore-views.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { sourceUrlOf } from '../../../modules/list.mjs';
-
-// The app imports the shared modules by name (link: dependencies read through
-// their @yukibana/source condition); Node is told the same names here, from the same list.
-registerHooks({
-	resolve(specifier, context, next) {
-		const url = sourceUrlOf(specifier);
-		return url === null ? next(specifier, context) : { url, shortCircuit: true };
-	},
-});
+import '../modules-hook.mjs';
 
 const { LANGUAGES } = await import('../../src/lib/languages.ts');
 const { metaOf, subjectOf, viewOf: viewOfSubject, viewsOf: viewsOfSubject, yukibana } = await import('../../src/lib/yukibana.ts');

@@ -35,7 +35,7 @@ import { SCALA_LEVELS } from '@yukibana/lang-scala/properties';
 import { SWIFT_LEVELS } from '@yukibana/lang-swift/properties';
 import { defaultLevel, savedLevel, type LevelChoice, type OptimizationLevel } from '@yukibana/std';
 
-export { CPP_LEVELS, cppLevelOf, defaultLevel, RUST_LEVELS, SCALA_LEVELS, SWIFT_LEVELS, withCppLevel, type LevelChoice, type OptimizationLevel };
+export { cppLevelOf, defaultLevel, withCppLevel, type LevelChoice };
 
 /** The languages with levels. */
 export type OptimizingLanguage = 'c' | 'cpp' | 'swift' | 'scala' | 'rust';

@@ -160,7 +160,7 @@ export default function PlaygroundIsland(props: PlaygroundIslandProps): JSX.Elem
 		const files = at.editor.project.snapshot().files();
 		if (props.continues.length === 0) return files;
 		const parts = props.continues.map((id) => ({ id, code: snippetText(id) }));
-		return { ...files, [at.path]: joinPrelude(parts, files[at.path] ?? '', info.comment).text };
+		return { ...files, [at.path]: joinPrelude(parts, files[at.path] ?? '', info.comment) };
 	};
 
 	const show = (event: RunEvent): void => {
