@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>C++ snippets in CodeMirror</title>
+		<link rel="icon" href="data:," />
+		<style>
+			body { margin: 0 auto; max-width: 52rem; padding: 16px; font-family: system-ui, sans-serif; line-height: 1.5; }
+			.snippet { margin: 24px 0; }
+			.editor { border: 1px solid #c8ccd2; }
+			.editor .cm-editor { max-height: 22em; }
+			.editor .cm-scroller { overflow: auto; }
+			.output { min-height: 2em; margin: 0; padding: 8px; background: #f6f7f9; border: 1px solid #c8ccd2; border-top: 0; white-space: pre-wrap; }
+			.line { display: flex; gap: 12px; align-items: baseline; margin: 6px 0; color: #5b6370; font-size: 0.9em; }
+		</style>
+	</head>
+	<body>
+		<h1>C++ snippets in CodeMirror</h1>
+		<p>
+			Three playgrounds on one page, each with a language server of its own: hover over a name, type for completions (Ctrl+Space),
+			F12 to go to a definition, Shift+Alt+F to format, break something to see the errors, then Run. What one server says shows in
+			its own editor alone.
+		</p>
+
+		<section class="snippet" id="hello">
+			<h2>Hello</h2>
+			<div class="line"><span class="server" role="status">Starting…</span></div>
+			<div class="editor"></div>
+			<div class="line"><button class="run" type="button">Run</button> <span class="run-status" role="status"></span></div>
+			<pre class="output" aria-live="polite"></pre>
+		</section>
+
+		<section class="snippet" id="greet">
+			<h2>A header of its own</h2>
+			<p><code>greet.h</code> is part of this snippet only: F12 on <code>greet</code> opens it, read-only.</p>
+			<div class="line"><span class="server" role="status">Starting…</span></div>
+			<div class="editor"></div>
+			<div class="line"><button class="run" type="button">Run</button> <span class="run-status" role="status"></span></div>
+			<pre class="output" aria-live="polite"></pre>
+		</section>
+
+		<section class="snippet" id="squares">
+			<h2>A loop</h2>
+			<div class="line"><span class="server" role="status">Starting…</span></div>
+			<div class="editor"></div>
+			<div class="line"><button class="run" type="button">Run</button> <span class="run-status" role="status"></span></div>
+			<pre class="output" aria-live="polite"></pre>
+		</section>
+
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

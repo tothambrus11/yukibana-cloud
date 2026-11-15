@@ -1,0 +1,23 @@
+{
+	// The page: the browser's globals and Vite's (for `?raw` imports),
+	// nothing of Node. The modules' own settings, so the example is held to
+	// what the @yukibana modules are (light/modules/tsconfig.base.json).
+	"extends": "../../modules/tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		"types": ["vite/client"],
+		// The modules' sources through their `link:` links, as Vite reads
+		// them (vite.config.ts).
+		"customConditions": ["@yukibana/source"],
+		// The modules `import type` from CodeMirror's packages by their bare
+		// names, and have no node_modules of their own: the names are this
+		// page's copies, the very ones it passes in.
+		"paths": {
+			"@codemirror/autocomplete": ["./node_modules/@codemirror/autocomplete"],
+			"@codemirror/lint": ["./node_modules/@codemirror/lint"],
+			"@codemirror/state": ["./node_modules/@codemirror/state"],
+			"@codemirror/view": ["./node_modules/@codemirror/view"]
+		}
+	},
+	"include": ["src"]
+}

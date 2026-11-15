@@ -854,7 +854,7 @@ decision D1. Where this section and those differ, this one holds.
   `@yukibana/lang-<pack>`. list.mjs finds them as it finds every module,
   and now also reads each package's `exports` (`entries`, under the
   `@yukibana/source` condition) and whether it is allowed Monaco's types
-  (`monacoTypes`, a `monaco-editor` peer dependency). The app's Vite
+  (`typePeers`, its peer dependencies other than shared modules, such as `monaco-editor`). The app's Vite
   aliases (`moduleSources()`), the Node resolve hook the app's tests
   register (`tests/modules-hook.mjs`, over `sourceUrlOf`) and the import
   tripwires (52 entries) all read that list, so none of them is edited

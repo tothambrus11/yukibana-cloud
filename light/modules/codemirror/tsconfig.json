@@ -1,0 +1,17 @@
+{
+	// codemirror runs in the host's page beside its editor: the DOM, nothing
+	// of Node, and CodeMirror's types only (H1: the host's CodeMirror is
+	// injected, never bundled), resolved from the app's installed copies,
+	// which the app installs for this check and the tests alone.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable"],
+		"paths": {
+			"@codemirror/autocomplete": ["../../app/node_modules/@codemirror/autocomplete"],
+			"@codemirror/lint": ["../../app/node_modules/@codemirror/lint"],
+			"@codemirror/state": ["../../app/node_modules/@codemirror/state"],
+			"@codemirror/view": ["../../app/node_modules/@codemirror/view"]
+		}
+	},
+	"include": ["."]
+}

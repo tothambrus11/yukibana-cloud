@@ -25,7 +25,7 @@ export const MODULES_DIR = dirname(fileURLToPath(import.meta.url));
  * @property {boolean} published `true` iff the package is not marked private, so build.mjs builds it and a release carries it.
  * @property {readonly string[]} imports The shared modules it depends on (dependencies and peerDependencies), by directory, in its package.json's order.
  * @property {readonly ModuleEntry[]} entries What a host may import of it: its package.json's `exports`, the root (`.`) first.
- * @property {boolean} monacoTypes `true` iff its package.json names `monaco-editor` as a peer dependency: it may `import type` Monaco's declarations, and nothing else of Monaco.
+ * @property {readonly string[]} typePeers The packages other than shared modules its package.json names as peer dependencies (`monaco-editor`, `@codemirror/state`): the host's own, injected, so it may `import type` their declarations and nothing else of them.
  */
 
 /**
@@ -88,8 +88,8 @@ export function modules() {
 		/** @type {{ private?: boolean; exports?: unknown; dependencies?: Record<string, string>; peerDependencies?: Record<string, string> }} */
 		const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
 		const imports = [...sharedOf(parsed.dependencies), ...sharedOf(parsed.peerDependencies)];
-		const monacoTypes = Object.hasOwn(parsed.peerDependencies ?? {}, 'monaco-editor');
-		found.set(entry.name, { name: entry.name, published: parsed.private !== true, imports, entries: entriesOf(entry.name, parsed.exports), monacoTypes });
+		const typePeers = Object.keys(parsed.peerDependencies ?? {}).filter((name) => !name.startsWith('@yukibana/'));
+		found.set(entry.name, { name: entry.name, published: parsed.private !== true, imports, entries: entriesOf(entry.name, parsed.exports), typePeers });
 	}
 	/** @type {ModuleInfo[]} */
 	const ordered = [];

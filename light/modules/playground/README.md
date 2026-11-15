@@ -1,7 +1,8 @@
 # @yukibana/playground
 
 One call from a language package and some files to a working playground
-in the host's Monaco: the language server answering in the editor, the
+in the host's Monaco (`@yukibana/playground`) or CodeMirror 6
+(`@yukibana/playground/codemirror`, below): the language server answering in the editor, the
 files in one project with hidden files beside them, and Run through the
 language's runner. For a host that wants a concrete thing (my C++ against
 my library, its errors as I type, Run) rather than the parts, which it can
@@ -61,7 +62,8 @@ body, so the package's samples are never loaded.
   makes everything and `dispose` takes it all back.
 * It names no language (`../boundaries.test.mjs`): the language is the
   package the host passes.
-* One playground per Monaco at a time: every playground's files are under
+* One playground per Monaco at a time (the CodeMirror entry has no such
+  limit): every playground's files are under
   one workspace folder, which the language servers are told, and a
   binding's providers answer for its language ids alone. A second one is
   refused with a `RangeError` before anything is made; dispose the first.
@@ -73,3 +75,49 @@ body, so the package's samples are never loaded.
   applied a file at a time, and Go to Symbol in Workspace is not offered.
   Show Call Hierarchy is not offered either: a playground has no view for
   it.
+
+## In CodeMirror, any number per page
+
+`@yukibana/playground/codemirror` is the same playground in the host's
+CodeMirror 6, over `@yukibana/codemirror`:
+
+```ts
+import * as state from '@codemirror/state';
+import * as view from '@codemirror/view';
+import * as lint from '@codemirror/lint';
+import * as autocomplete from '@codemirror/autocomplete';
+import { basicSetup } from 'codemirror';
+import { cpp } from '@codemirror/lang-cpp';
+import { LANGUAGES } from '@yukibana/lang-cpp';
+import { createPlayground } from '@yukibana/playground/codemirror';
+
+const playground = createPlayground({
+	cm: { state, view, lint, autocomplete },
+	element,
+	extensions: () => [basicSetup, cpp()],
+	language: LANGUAGES.cpp,
+	files: { 'main.cpp': mainText },
+});
+```
+
+`../../examples/codemirror-playgrounds` is a page of three.
+
+* **Any number per page.** Each playground is a project of its own (a
+  state per file), a server of its own and a view; the server's features
+  are extensions of that project's states (`../codemirror/README.md`), so
+  two playgrounds never answer for each other. What that costs: every
+  playground runs one server worker, so a page of ten C++ snippets runs
+  ten clangd, each with its memory. A page with many snippets that need no
+  server can leave the language session out by using
+  `@yukibana/codemirror`'s project alone.
+* **The host's part** is CodeMirror, passed in as its four packages, and
+  `extensions(path)`: the language mode, `basicSetup` or the parts it
+  wants, a theme. The playground adds the server's features and makes
+  hidden files read-only in their states, so in every view.
+* **What the editor offers** is `CodeMirrorBinding`'s: diagnostics,
+  completion, hover, F12 go to definition (into a hidden file too, shown in
+  the same view) and Shift-Alt-F formatting. Rename, signature help and
+  code actions are not there yet.
+* The Monaco entry and this one share everything that is not the editor
+  (`page.ts`): the checks of the files, the page host, the session, why a
+  server did not start, and Run.

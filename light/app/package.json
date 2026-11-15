@@ -19,6 +19,10 @@
 		"test:export:ci": "node tests/export-ci.mjs"
 	},
 	"devDependencies": {
+		"@codemirror/autocomplete": "6.20.4",
+		"@codemirror/lint": "6.9.7",
+		"@codemirror/state": "6.7.6",
+		"@codemirror/view": "6.43.15",
 		"@sveltejs/adapter-static": "4.0.0",
 		"@sveltejs/kit": "3.1.0",
 		"@sveltejs/vite-plugin-svelte": "7.3.1",
