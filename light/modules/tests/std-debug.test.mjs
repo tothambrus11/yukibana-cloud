@@ -13,8 +13,6 @@ import { snapshotOf } from './core-fakes.mjs';
 import { recorder, settle } from './run-fakes.mjs';
 import { always, instanceOf, languageOf } from './std-fakes.mjs';
 
-/** A language of these tests, on its own pack. */
-
 const channel = { buffer: new SharedArrayBuffer(16), address: 4 };
 const input = (told, options = null) => ({ files: { 'main.x': 'print 1', 'tests/t.x': 'check 1' }, entry: pathOf('main.x'), options, snippet: 'project', onEvent: told.listener, channel });
 const program = { type: 'debug', name: '/debug/program.wasm', wasm: new Uint8Array([0, 97, 115, 109]) };

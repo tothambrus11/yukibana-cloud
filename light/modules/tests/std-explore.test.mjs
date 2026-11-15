@@ -17,8 +17,6 @@ import { snapshotOf } from './core-fakes.mjs';
 import { served, settle } from './run-fakes.mjs';
 import { languageOf } from './std-fakes.mjs';
 
-/** A language of these tests, on pack `pack`. */
-
 const ASM = viewKind('asm');
 const IR = viewKind('llvm-ir');
 const VIEWS = {

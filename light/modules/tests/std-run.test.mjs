@@ -14,8 +14,6 @@ import { snapshotOf } from './core-fakes.mjs';
 import { fakeClock, fakeTransport, hostBuilt, recorder, settle } from './run-fakes.mjs';
 import { always, instanceOf, languageOf } from './std-fakes.mjs';
 
-/** A language of these tests, on pack `pack`. */
-
 const input = (told, options = null) => ({ files: { 'main.x': 'print 1', 'lib.x': 'x' }, entry: pathOf('main.x'), options, snippet: 'project', onEvent: told.listener });
 
 test('each mode has its own token, and tokenOf finds it', () => {
