@@ -173,8 +173,9 @@ class PageHost implements PackHost {
 	}
 
 	explorers(): Promise<ExplorerWorkers> {
-		// A view asked for before dispose may get here after it, once its code has loaded.
-		if (this.#disposed) return Promise.reject(new Error('the playground was disposed'));
+		// A view asked for before dispose may get here after it, once its code
+		// has loaded: it gets workers that are disposed, so it settles as `dropped`.
+		if (this.#disposed) return pageExplorers().then((workers) => (workers.dispose(), workers));
 		if (this.#explorers === null) {
 			const made = pageExplorers();
 			this.#explorers = made;

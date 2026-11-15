@@ -266,7 +266,7 @@ async function main(packs, opts) {
 
 	say('Done');
 	if (done.kept.length) console.log(`up to date: ${done.kept.join(' ')}`);
-	if (done.fetched.length) console.log(`downloaded: ${done.fetched.join(' ')}`);
+	if (done.fetched.length) console.log(`from the store: ${done.fetched.join(' ')}`);
 	if (done.built.length) console.log(`built: ${done.built.join(' ')}`);
 	if (done.skipped.length) console.log(`skipped: ${done.skipped.join(' ')} (see above)`);
 	if (done.pulled.length) console.log(`WARNING: ${done.pulled.join(' ')}: units the store lacks are pull request #${pull}'s builds, made by its CI, not main's`);
