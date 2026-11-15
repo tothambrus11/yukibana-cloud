@@ -93,6 +93,11 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # The R2 key `yukibana-registry sync` puts builds into the bucket with
+      # (light/registry/README.md, "The tool"): Object Read & Write on
+      # yukibana-run only.
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -115,3 +120,18 @@ jobs:
             exit 0
           fi
           bash deploy.sh
+
+      # No builds are synced yet: this syncs an empty registry, which asks
+      # the bucket one question with the R2 key, so a key that is missing,
+      # wrong or not allowed on the bucket is said by the deploy that will
+      # need it.
+      - name: Check the bucket key
+        working-directory: light/registry
+        run: |
+          if [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::no R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY: the registry cannot be synced"
+            exit 0
+          fi
+          node cli.mjs init "$RUNNER_TEMP/registry"
+          AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
+            node cli.mjs sync "$RUNNER_TEMP/registry" "https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com/yukibana-run"

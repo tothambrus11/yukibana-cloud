@@ -141,9 +141,11 @@ node registry/cli.mjs sync   ./my-registry https://<account>.r2.cloudflarestorag
 
 For CI to sync `yukibana.run`, its owner makes an R2 API token with "Object Read &
 Write" on the bucket `yukibana-run` only (Cloudflare dashboard, R2, "Manage API
-tokens") and stores its key pair as the `light` environment's `R2_ACCESS_KEY_ID` and
-`R2_SECRET_ACCESS_KEY` (PLAN.md 0.5, step 8). No workflow runs `sync` yet: there is
-no registry of builds for it to sync until the packs are stamped in their release.
+tokens") and stores its key pair as the secrets `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY` (PLAN.md 0.5, step 8; set on the repository on 2026-11-15). The
+deploy job syncs an empty registry with them, which checks the key against the bucket
+with one request; no workflow syncs builds yet, since none are stamped until the
+packs' release does it.
 
 Not yet: `add` from another registry or a URL, roots and `gc`, `check` of a served
 registry, `serve` and its Caddy configuration, the index. No pack has its real

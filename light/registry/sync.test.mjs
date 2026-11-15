@@ -118,7 +118,18 @@ test('a second sync puts nothing, and one stopped half-way puts the build again 
 	assert.deepEqual(await syncRegistry(registry, bucket, quiet), { ok: true, uploaded: [demo, user], present: [] });
 	requests.length = 0;
 	assert.deepEqual(await syncRegistry(registry, bucket, quiet), { ok: true, uploaded: [], present: [demo, user] });
-	assert.deepEqual(requests, [`HEAD /bucket/packs/${demo}/pack.json`, `HEAD /bucket/packs/${user}/pack.json`]);
+	assert.deepEqual(requests, ['HEAD /bucket/frame/v1/frame.html', `HEAD /bucket/packs/${demo}/pack.json`, `HEAD /bucket/packs/${user}/pack.json`]);
+});
+
+test('a key the bucket refuses is said before any build is checked, also for an empty registry', async (t) => {
+	const { root } = await registryOf(t);
+	const { bucket, fail } = await fakeS3(t);
+	const empty = path.join(root, 'empty');
+	await initRegistry(empty);
+	assert.deepEqual(await syncRegistry(empty, bucket, quiet), { ok: true, uploaded: [], present: [] });
+	fail.push(403);
+	const refused = await syncRegistry(empty, bucket, quiet);
+	assert.deepEqual(refused, { ok: false, problems: [`${bucket} does not let this key in: HEAD frame/v1/frame.html: the bucket answered 403`] });
 });
 
 test('a registry with a damaged build puts nothing into the bucket', async (t) => {

@@ -21,6 +21,9 @@ import { eachAtOnce, hashFile, openRegistry, verifyBuild } from './build.mjs';
 import { DIGEST } from './rules.mjs';
 import { BucketError } from './s3.mjs';
 
+/** The key a sync asks about before anything else: the frame's page, which the official bucket has, though whether it is there does not matter. */
+const PROBE = 'frame/v1/frame.html';
+
 /** How many objects are put at once. */
 const AT_ONCE = 8;
 
@@ -80,7 +83,10 @@ async function objectOf(dir, file, listed) {
  * Puts every build of the directory registry `registry` that `bucket`
  * lacks into it, as `packs/<digest>/<file>`, in {@link orderOf}'s order,
  * checking each build ({@link verifyBuild}) before any of its files is
- * put. Says through `out` what it does, one line a build.
+ * put. Asks the bucket one question first, so that a key or address it
+ * refuses is said at once, also for an empty registry, which is how a
+ * deploy checks its key before there are builds. Says through `out` what
+ * it does, one line a build.
  *
  * Stops at the first build that fails, its check or the bucket, and
  * returns the problems: a later build may use it.
@@ -92,6 +98,13 @@ async function objectOf(dir, file, listed) {
 export async function syncRegistry(registry, bucket, io) {
 	const opened = await openRegistry(registry);
 	if (!opened.ok) return opened;
+	// One question first, whatever the registry holds, so a wrong key or address is said before minutes of checking, and by an empty registry too.
+	try {
+		await bucket.has(PROBE);
+	} catch (error) {
+		if (error instanceof BucketError) return { ok: false, problems: [`${bucket} does not let this key in: ${error.message}`] };
+		throw error;
+	}
 	const packs = path.join(registry, 'packs');
 	/** @type {Map<string, string[]>} */
 	const uses = new Map();
