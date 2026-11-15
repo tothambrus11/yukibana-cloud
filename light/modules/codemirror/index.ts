@@ -12,7 +12,7 @@
  * - bind.ts: a runtime `LanguageSession` shown in such a project
  *   (`CodeMirrorBinding`): its files synchronised with the server by
  *   ranges, the server's diagnostics shown by `@codemirror/lint`, and
- *   completion, hover, go to definition and formatting answered by it, in
+ *   completion, hover, go to definition, rename and formatting answered by it, in
  *   that project's states and nowhere else.
  * - convert.ts: every conversion between a server's values and
  *   CodeMirror's, as functions of their arguments.

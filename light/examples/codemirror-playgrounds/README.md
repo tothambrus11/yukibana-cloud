@@ -2,8 +2,9 @@
 
 Three C++ playgrounds on one page, in CodeMirror 6, each with a language
 server of its own answering in its own editor alone: errors as you type,
-hover, completion, F12 into a header that belongs to one snippet, Shift+Alt+F
-to format, and Run. Each is one `createPlayground` call of
+hover, completion, F12 into a header that belongs to one snippet, F2 to
+rename, Shift+Alt+F to format, Tab to indent (Escape then Tab leaves the
+editor), and Run. Each is one `createPlayground` call of
 `@yukibana/playground/codemirror`; the page is `src/main.ts`.
 
 ```text
@@ -42,7 +43,9 @@ three servers start; a problem typed into one snippet is marked where it
 is, in that snippet only (two changes in one transaction, so the server
 must rebuild its text from both ranges); completion offers what the
 snippet's server knows and nothing of another's; a hover is that
-snippet's server's; F12 opens the snippet's header, read-only; disposing
+snippet's server's; F12 opens the snippet's header, read-only; F2
+renames a local name and says why it will not rename one declared in the
+read-only header; Tab indents and keeps the focus; disposing
 one playground leaves the others answering; nothing logs an error. With
 the C++ pack installed these run against clangd and Run is checked too;
 without it (or with `FAKE_SERVER=1`) the server is `tests/fake-server.js`,

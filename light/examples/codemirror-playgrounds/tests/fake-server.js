@@ -60,7 +60,7 @@ function publish(uri) {
 
 const REQUESTS = {
 	initialize: () => ({
-		capabilities: { textDocumentSync: 2, completionProvider: { triggerCharacters: ['.'] }, hoverProvider: true, definitionProvider: true, documentFormattingProvider: true },
+		capabilities: { textDocumentSync: 2, completionProvider: { triggerCharacters: ['.'] }, hoverProvider: true, definitionProvider: true, documentFormattingProvider: true, renameProvider: { prepareProvider: true } },
 		serverInfo: { name: NAME },
 	}),
 	shutdown: () => null,
@@ -86,6 +86,23 @@ const REQUESTS = {
 			if (at >= 0) return [{ uri, range: { start: positionOf(other, at), end: positionOf(other, at + word.length) } }];
 		}
 		return null;
+	},
+	'textDocument/prepareRename': ({ textDocument, position }) => {
+		const text = docs.get(textDocument.uri) ?? '';
+		const { word, from, to } = wordAt(text, offsetOf(text, position));
+		return word === '' ? null : { start: positionOf(text, from), end: positionOf(text, to) };
+	},
+	// Every whole-word occurrence in every document, as one workspace edit.
+	'textDocument/rename': ({ textDocument, position, newName }) => {
+		const text = docs.get(textDocument.uri) ?? '';
+		const { word } = wordAt(text, offsetOf(text, position));
+		if (word === '') return null;
+		const changes = {};
+		for (const [uri, other] of docs) {
+			const edits = [...other.matchAll(new RegExp(`\\b${word}\\b`, 'g'))].map((match) => ({ range: { start: positionOf(other, match.index), end: positionOf(other, match.index + word.length) }, newText: newName }));
+			if (edits.length > 0) changes[uri] = edits;
+		}
+		return { changes };
 	},
 	'textDocument/formatting': ({ textDocument }) => {
 		const lines = (docs.get(textDocument.uri) ?? '').split('\n');

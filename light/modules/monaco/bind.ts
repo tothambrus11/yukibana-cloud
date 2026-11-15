@@ -18,7 +18,7 @@
  */
 import type * as monaco from 'monaco-editor';
 import type { Disposable, Path, Project, ProjectChange } from '../core/index.ts';
-import { ResponseError } from '../protocol/connection.ts';
+import { reasonOf, ResponseError } from '../protocol/connection.ts';
 import type * as lsp from '../protocol/lsp.ts';
 import type { LanguageSession, OpenOrigin, RefreshKind, SessionClient } from '../runtime/language-session.ts';
 import { whenLanguage } from './call-hierarchy.ts';
@@ -612,13 +612,13 @@ export class MonacoBinding implements SessionClient {
 						} catch (e) {
 							const message = messageOf(e);
 							log('error', `textDocument/rename: ${message}`);
-							return { edits: [], rejectReason: c.reasonOf(message) };
+							return { edits: [], rejectReason: reasonOf(message) };
 						} finally {
 							listening.dispose();
 						}
 						const { edit: converted, unsupported } = edit ? c.toWorkspaceEdit(edit, uriOf) : { edit: { edits: [] }, unsupported: [] };
 						if (unsupported.length) return { edits: [], rejectReason: `the rename needs changes the editor cannot make: ${unsupported.join(', ')}` };
-						if (converted.edits.length === 0 && shown !== undefined) return { edits: [], rejectReason: c.reasonOf(shown) };
+						if (converted.edits.length === 0 && shown !== undefined) return { edits: [], rejectReason: reasonOf(shown) };
 						return converted;
 					},
 					...(prepare && {

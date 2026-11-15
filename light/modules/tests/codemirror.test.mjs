@@ -237,6 +237,14 @@ function fakeSession(capabilities, answers = {}) {
 		open: (document, origin) => sent.push({ open: document.uri, version: document.version, text: document.text, origin }),
 		change: (uri, change) => sent.push({ change: uri, version: change.version, changes: change.changes }),
 		ask: async (method, params) => (sent.push({ ask: method, params }), answers[method] ?? null),
+		// An answer that is an Error is the server's error response.
+		askOrThrow: async (method, params) => {
+			sent.push({ ask: method, params });
+			const answer = answers[method] ?? null;
+			if (answer instanceof Error) throw answer;
+			return answer;
+		},
+		onShownError: () => ({ dispose: () => {} }),
 	};
 	return session;
 }
@@ -330,4 +338,56 @@ test('a document the server asks to show is handed to the host as a file and a s
 	assert.deepEqual(opened, [{ path: 'lib.h', selection: { from: 4, to: 5 } }]);
 	assert.equal(session.client.showDocument({ uri: 'file:///w/lib.h', external: true }), false);
 	assert.equal(session.client.showDocument({ uri: 'file:///else.h' }), false);
+});
+
+/** The state of `project`'s file `path` with the caret at `pos`. */
+const caretAt = (project, path, pos) => project.state(path).update({ selection: { anchor: pos } }).state;
+
+test("F2's rename starts at the range the server prepares, or the word at the caret, and says why when there is nothing to rename", async () => {
+	const main = pathOf('main.cpp');
+	const range = { start: { line: 0, character: 4 }, end: { line: 0, character: 8 } };
+	const target = async (answer, prepare = true, pos = 5, path = main) => {
+		const project = twoFiles();
+		const binding = bindingOf(project, fakeSession({ renameProvider: { prepareProvider: true } }, { 'textDocument/prepareRename': answer }));
+		await binding.start();
+		return binding.renameTarget(path, caretAt(project, path, pos), prepare);
+	};
+	assert.deepEqual(await target(range), { from: 4, to: 8, placeholder: 'main' });
+	assert.deepEqual(await target({ range, placeholder: 'other' }), { from: 4, to: 8, placeholder: 'other' });
+	assert.deepEqual(await target({ defaultBehavior: true }), { from: 4, to: 8, placeholder: 'main' });
+	assert.deepEqual(await target(null, false), { from: 4, to: 8, placeholder: 'main' }, 'a server that prepares nothing renames the word');
+	assert.deepEqual(await target(null), { refused: 'This element cannot be renamed.' });
+	assert.deepEqual(await target(new Error('cannot rename symbol: it is a keyword\n#0 trace')), { refused: 'cannot rename symbol: it is a keyword' });
+	assert.deepEqual(await target(null, false, 12), { refused: 'Nothing to rename here.' });
+	assert.deepEqual(await target(range, true, 1, pathOf('lib.h')), { refused: 'This file is read-only.' });
+});
+
+test("a rename makes the server's edits, one undo step per file, and changes nothing where it would touch a read-only file, a file not of the project, or a file edited meanwhile", async () => {
+	const main = pathOf('main.cpp');
+	const edit = (newText) => [{ range: { start: { line: 0, character: 4 }, end: { line: 0, character: 8 } }, newText }];
+	const renamed = async (answer, meanwhile = () => {}) => {
+		const project = twoFiles();
+		const session = fakeSession({ renameProvider: true }, { 'textDocument/rename': answer });
+		const binding = bindingOf(project, session);
+		await binding.start();
+		const state = caretAt(project, main, 5);
+		const done = binding.rename(main, state, 5, 'start');
+		meanwhile(project);
+		return { result: await done, files: project.snapshot().files(), asked: session.sent.find((s) => s.ask === 'textDocument/rename')?.params };
+	};
+	const ok = await renamed({ changes: { 'file:///w/main.cpp': edit('start') } });
+	assert.equal(ok.result, null);
+	assert.equal(ok.files['main.cpp'], 'int start() {}\n');
+	assert.deepEqual(ok.asked, { textDocument: { uri: 'file:///w/main.cpp' }, position: { line: 0, character: 5 }, newName: 'start' });
+
+	const header = await renamed({ changes: { 'file:///w/main.cpp': edit('start'), 'file:///w/lib.h': edit('x') } });
+	assert.equal(header.result, 'The rename would change lib.h, which is read-only.');
+	assert.equal(header.files['main.cpp'], 'int main() {}\n', 'not even the editable file');
+	assert.match((await renamed({ changes: { 'file:///else.cpp': edit('x') } })).result, /else\.cpp, which is not a file of the project/);
+	assert.match((await renamed({ documentChanges: [{ kind: 'create', uri: 'file:///w/new.cpp' }] })).result, /cannot make: creating file:\/\/\/w\/new\.cpp/);
+	assert.equal((await renamed(new Error('invalid name'))).result, 'invalid name');
+	assert.equal((await renamed(null)).result, 'The language server found nothing to rename.');
+	const typed = await renamed({ changes: { 'file:///w/main.cpp': edit('start') } }, (project) => project.update(main, { changes: { from: 0, insert: ' ' } }));
+	assert.match(typed.result, /changed before the server answered/);
+	assert.equal(typed.files['main.cpp'], ' int main() {}\n');
 });

@@ -4,10 +4,12 @@
  * @yukibana/playground/codemirror, with its own project, language server
  * and view. The host's part is CodeMirror (passed in), the C++ mode and
  * the look (`extensions`: basicSetup, then the playground theme, Monaco's
- * light or dark as the page is), and the frame around each editor: the
- * file tabs, the server's state, Run and the output.
+ * light or dark as the page is), the keys (Tab indents), and the frame
+ * around each editor: the file tabs, the server's state, Run and the
+ * output.
  */
 import * as autocomplete from '@codemirror/autocomplete';
+import { indentWithTab } from '@codemirror/commands';
 import { cpp } from '@codemirror/lang-cpp';
 import * as language from '@codemirror/language';
 import * as lint from '@codemirror/lint';
@@ -28,6 +30,12 @@ const cm = { state, view, lint, autocomplete };
 const syntax = { language, highlight };
 const dark = matchMedia('(prefers-color-scheme: dark)').matches;
 const look = playgroundTheme(cm, syntax, { dark });
+// Tab indents, as in Monaco, instead of leaving the editor. CodeMirror
+// leaves it out of basicSetup so a keyboard can always get out of an
+// editor: Escape and then Tab still moves the focus on (Ctrl-M, or
+// Shift-Alt-M on macOS, makes Tab move it until pressed again). The page's
+// choice, not the playground's: which keys an editor takes is the host's.
+const keys = view.keymap.of([indentWithTab]);
 
 /** Each section's files: what the reader edits, and what is part of the snippet but not offered for editing. */
 const SNIPPETS: Readonly<Record<string, { readonly files: Files; readonly hidden?: Files }>> = {
@@ -82,7 +90,7 @@ for (const [id, snippet] of Object.entries(SNIPPETS)) {
 		cm,
 		syntax,
 		element: editor,
-		extensions: (path) => [basicSetup, look, isCpp(path) ? cpp() : []],
+		extensions: (path) => [basicSetup, keys, look, isCpp(path) ? cpp() : []],
 		language: LANGUAGES.cpp,
 		...snippet,
 		status: (text, serverState) => {

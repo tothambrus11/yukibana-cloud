@@ -38,7 +38,7 @@ await binding.start();
 |---|---|
 | `codemirror.ts` | `CodeMirror`: the host's `@codemirror/state`, `view`, `lint` and `autocomplete`, as namespaces |
 | `project.ts` | `codeMirrorProject`: a state per file, the views that show them (`view`, then `show` and `dispose` on what it returns), `update`, the edits as transactions (`onEdit`), and the core's `Project` over them |
-| `bind.ts` | `CodeMirrorBinding`: the session's client: files opened, edits sent as ranges by version, diagnostics through `@codemirror/lint`, completion (snippets and additional edits included), hover, F12 go to definition, Shift-Alt-F formatting, a server's workspace edit; `renderMarkup` |
+| `bind.ts` | `CodeMirrorBinding`: the session's client: files opened, edits sent as ranges by version, diagnostics through `@codemirror/lint`, completion (snippets and additional edits included), hover, F12 go to definition, F2 rename, Shift-Alt-F formatting, a server's workspace edit; `renderMarkup` |
 | `convert.ts` | positions and offsets, a transaction's changes as LSP's, diagnostics, completions, hover text as blocks, definition answers, workspace edits |
 | `theme.ts` | `playgroundTheme(cm, { language, highlight }, { dark })`: Monaco's `vs` or `vs-dark` as a CodeMirror theme and highlight style, the binding's widgets (hover, completion list, problems) included, so a CodeMirror snippet looks like the Monaco playground; the host adds it to its extensions |
 | `port.ts` | `codeMirrorPort`: a project's view as the core's `EditorPort<'codemirror'>`, the caret its one capability |
@@ -70,12 +70,21 @@ meet.
   started from, last first; the file's version is one more per such
   transaction.
 * **Read-only is the state's.** `EditorState.readOnly` stops typing in a
-  hidden file in every view; completion is not offered there and
-  formatting is refused. An edit the server asks for is still made.
+  hidden file in every view; completion is not offered there, and
+  formatting and rename are refused, a rename too when it would change a
+  read-only file elsewhere (a hidden header's declaration). An edit the
+  server asks for itself (`workspace/applyEdit`) is still made.
+* **A refused rename says why, in the editor.** F2 opens a box over the
+  name (the server's `prepareRename` range, else the word); Enter asks
+  for the rename and makes it, one undo step per file, or puts the
+  reason in that box: the server's error, a read-only file, a file not of
+  the project. `renameTarget` and `rename` are that logic without the
+  box, for a host with its own UI.
 * **Text from a server is text.** A hover's or a completion's
   documentation is drawn as paragraphs and code blocks through
-  `textContent`, never as HTML; Markdown is not rendered beyond its fences.
-* **Not yet offered:** rename, signature help, code actions, references,
+  `textContent`, never as HTML (`markdown.ts` parses a safe subset into
+  data, `render.ts` draws it).
+* **Not yet offered:** signature help, code actions, references,
   document symbols, semantic tokens and the rest of what `MonacoBinding`
   has. The client capabilities say so, so no server sends what nothing
   would show.

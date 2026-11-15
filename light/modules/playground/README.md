@@ -130,8 +130,13 @@ const playground = createPlayground({
   changed, F12 into a header included, so a page's tab bar follows.
 * **What the editor offers** is `CodeMirrorBinding`'s: diagnostics,
   completion, hover, F12 go to definition (into a hidden file too, shown in
-  the same view) and Shift-Alt-F formatting. Rename, signature help and
-  code actions are not there yet.
+  the same view), F2 rename and Shift-Alt-F formatting. Signature help
+  and code actions are not there yet.
+* **Tab is the host's.** CodeMirror leaves `indentWithTab` out of
+  `basicSetup` so a keyboard can always leave an editor; a page that wants
+  Monaco's Tab adds `keymap.of([indentWithTab])` from
+  `@codemirror/commands` to `extensions` (the example does), and Escape
+  then Tab still moves the focus on.
 * The Monaco entry and this one share everything that is not the editor
   (`page.ts`): the checks of the files, the page host, the session, why a
   server did not start, and Run.

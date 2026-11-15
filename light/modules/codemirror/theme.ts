@@ -4,7 +4,7 @@
  * CodeMirror looks like Light and like the Monaco playground. It covers
  * the editor (font, gutter, current line, selection, brackets), the syntax
  * colours, and the widgets a binding opens (hover, completion list and its
- * documentation, a diagnostic's tooltip, the squiggles).
+ * documentation, a diagnostic's tooltip, the squiggles, the rename box).
  *
  * A theme is the host's to choose: nothing adds this one but a host that
  * asks for it (`playgroundTheme` in its extensions). The syntax colours
@@ -146,6 +146,16 @@ export function playgroundTheme(cm: CodeMirror, syntax: SyntaxPackages, options:
 			},
 			'.cm-tooltip .cm-yukibana-markup': { padding: '4px 8px', lineHeight: '1.45' },
 			'.cm-tooltip .cm-yukibana-markup pre': { fontFamily: EDITOR_FONT, fontSize: '13px', margin: '4px 0' },
+			// F2's box: Monaco's rename input, an inline field with the focus border.
+			'.cm-yukibana-rename input': {
+				fontFamily: EDITOR_FONT,
+				fontSize: '13px',
+				color: p.foreground,
+				backgroundColor: p.background,
+				border: `1px solid ${p.listActive}`,
+				outline: 'none',
+				padding: '2px 4px',
+			},
 			// The completion list: Monaco's suggest widget.
 			'.cm-tooltip.cm-tooltip-autocomplete': { padding: '0' },
 			'.cm-tooltip.cm-tooltip-autocomplete > ul': { fontFamily: EDITOR_FONT, fontSize: '13px', maxHeight: '12em', minWidth: '260px' },

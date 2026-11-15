@@ -12,6 +12,7 @@ import { dirname, join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import * as c from '../monaco/convert.ts';
+import { reasonOf } from '../protocol/connection.ts';
 
 const ROOT = 'file:///workspace/';
 /** The host's answer for a file of the workspace; a stand-in for a Monaco Uri. */
@@ -106,10 +107,10 @@ test('documentation stays plain text when the server sent plain text, and is abs
 
 test("a refused rename says the server's sentence, not Phpactor's stack trace, and never nothing", () => {
 	const phpactor = "There are no file path candidates#0 /opt/phpactor/lib/Rename/Adapter/ReferenceFinder/ClassMover/ClassRenamer.php(80): Phpactor\\Rename\\x->convert('Geometry\\\\Pt')\n#1 /opt/phpactor/lib/Rename/Model/Renamer/ChainRenamer.php(34)";
-	assert.equal(c.reasonOf(phpactor), 'There are no file path candidates');
-	assert.equal(c.reasonOf('invalid name: "int" is a keyword'), 'invalid name: "int" is a keyword');
-	assert.equal(c.reasonOf('  \n'), 'The language server could not do this.');
-	const long = c.reasonOf('x'.repeat(1000));
+	assert.equal(reasonOf(phpactor), 'There are no file path candidates');
+	assert.equal(reasonOf('invalid name: "int" is a keyword'), 'invalid name: "int" is a keyword');
+	assert.equal(reasonOf('  \n'), 'The language server could not do this.');
+	const long = reasonOf('x'.repeat(1000));
 	assert.equal(long.length, 300);
 	assert.ok(long.endsWith('…'));
 });

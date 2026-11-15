@@ -202,6 +202,39 @@ if (fake) {
 	});
 }
 
+await check("F2 renames a name in its snippet as the server says, and says why when the rename would change a read-only header", async () => {
+	await caretOn('squares', 'i =');
+	await page.keyboard.press('F2');
+	const input = page.locator('#squares .cm-yukibana-rename input');
+	await input.waitFor({ timeout: ANSWER });
+	await page.keyboard.type('k');
+	await page.keyboard.press('Enter');
+	await page.waitForFunction(() => /int k = 1; k <= 5; \+\+k/.test(globalThis.playgrounds.squares.view.state.doc.toString()), null, { timeout: ANSWER });
+	await page.keyboard.press('Control+z');
+	await page.waitForFunction(() => globalThis.playgrounds.squares.view.state.doc.toString().includes('int i = 1'), null, { timeout: ANSWER });
+
+	await caretOn('greet', 'greet', 'greet("');
+	await page.keyboard.press('F2');
+	await page.locator('#greet .cm-yukibana-rename input').waitFor({ timeout: ANSWER });
+	await page.keyboard.type('hello');
+	await page.keyboard.press('Enter');
+	await page.locator('#greet .cm-yukibana-rename-refused').filter({ hasText: /greet\.h, which is read-only/ }).waitFor({ timeout: ANSWER });
+	await page.keyboard.press('Escape');
+	if (await page.evaluate(() => globalThis.playgrounds.greet.view.state.doc.toString().includes('hello('))) throw new Error('a refused rename changed main.cpp');
+});
+
+await check('Tab indents in the editor instead of moving the focus out of it', async () => {
+	await page.evaluate(() => {
+		const { view } = globalThis.playgrounds.squares;
+		view.dispatch({ selection: { anchor: view.state.doc.line(2).from } });
+		view.focus();
+	});
+	await page.keyboard.press('Tab');
+	const [line, inside] = await page.evaluate(() => [globalThis.playgrounds.squares.view.state.doc.line(2).text, document.querySelector('#squares .cm-content')?.contains(document.activeElement) ?? false]);
+	await page.keyboard.press('Control+z');
+	if (!/^\s+$/.test(line) || !inside) throw new Error(`Tab did not indent in place: line 2 is ${JSON.stringify(line)}, focus ${inside ? 'kept' : 'lost'}`);
+});
+
 await check('disposing one playground leaves the others answering', async () => {
 	await page.evaluate(() => globalThis.playgrounds.hello.dispose());
 	if ((await page.locator('#hello .cm-editor').count()) !== 0) throw new Error("hello's editor is still there");
