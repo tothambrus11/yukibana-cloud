@@ -16,9 +16,11 @@
  * ```
  */
 import type * as autocomplete from '@codemirror/autocomplete';
+import type * as language from '@codemirror/language';
 import type * as lint from '@codemirror/lint';
 import type * as state from '@codemirror/state';
 import type * as view from '@codemirror/view';
+import type * as highlight from '@lezer/highlight';
 
 /** The host's CodeMirror packages, by the name of each. */
 export interface CodeMirror {
@@ -30,4 +32,14 @@ export interface CodeMirror {
 	readonly lint: typeof lint;
 	/** `@codemirror/autocomplete`: where a server's completions are offered, its snippets included. */
 	readonly autocomplete: typeof autocomplete;
+}
+
+/**
+ * The host's `@codemirror/language` and `@lezer/highlight`: what colours
+ * code (a hover's code blocks, the playground theme's syntax colours).
+ * Optional wherever it is taken: without them code is plain.
+ */
+export interface SyntaxPackages {
+	readonly language: typeof language;
+	readonly highlight: typeof highlight;
 }

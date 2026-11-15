@@ -18,6 +18,7 @@ import type { ChangeSet, EditorState, Text, TransactionSpec } from '@codemirror/
 import type { EditorView } from '@codemirror/view';
 import type * as lsp from '../protocol/lsp.ts';
 import type { RangeChange } from '../runtime/language-session.ts';
+import { markupBlocks, type MarkupBlock } from './markdown.ts';
 
 /**
  * Returns the offset of `position` in `doc`. A line past the end is the
@@ -90,47 +91,6 @@ export function toDiagnostic(doc: Text, diagnostic: lsp.Diagnostic): CodeMirrorD
  */
 export function lspToSnippet(text: string): string {
 	return text.replace(/\\([$}\\])|\$(\d+)/g, (_match, escaped: string | undefined, field: string | undefined) => escaped ?? `\${${field ?? ''}}`);
-}
-
-/** A part of a hover or a completion's documentation: prose, or a block of code. */
-export interface MarkupBlock {
-	/** `code` for a fenced block or a `MarkedString` with a language, else `text`. */
-	readonly kind: 'text' | 'code';
-	/** The part's text, fences and the trailing line break taken away. */
-	readonly text: string;
-}
-
-/**
- * Returns `contents` (a hover's, or a completion's documentation) as
- * blocks of prose and code: Markdown's fenced code blocks are code, and
- * everything else is text, as it is. No Markdown is rendered and no HTML
- * read, so whatever a server sends is shown as text, never run.
- */
-export function markupBlocks(contents: lsp.Hover['contents'] | string): MarkupBlock[] {
-	const items: readonly (lsp.MarkupContent | lsp.MarkedString)[] = Array.isArray(contents) ? contents : [contents as lsp.MarkupContent | lsp.MarkedString];
-	const blocks: MarkupBlock[] = [];
-	for (const item of items) {
-		if (typeof item === 'string') blocks.push(...fencedBlocks(item));
-		else if ('language' in item) blocks.push({ kind: 'code', text: item.value });
-		else if (item.kind === 'markdown') blocks.push(...fencedBlocks(item.value));
-		else blocks.push({ kind: 'text', text: item.value });
-	}
-	return blocks.filter((block) => block.text.trim() !== '');
-}
-
-/** Splits Markdown on its fenced code blocks (three backticks or more, or tildes, on a line of their own). */
-function fencedBlocks(markdown: string): MarkupBlock[] {
-	const blocks: MarkupBlock[] = [];
-	let rest = markdown;
-	const fence = /^(`{3,}|~{3,})[^\n]*\n([\s\S]*?)\n?^\1[ \t]*$/m;
-	for (let match = fence.exec(rest); match !== null; match = fence.exec(rest)) {
-		const before = rest.slice(0, match.index).replace(/\n$/, '');
-		if (before.trim() !== '') blocks.push({ kind: 'text', text: before.trim() });
-		blocks.push({ kind: 'code', text: match[2] ?? '' });
-		rest = rest.slice(match.index + match[0].length);
-	}
-	if (rest.trim() !== '') blocks.push({ kind: 'text', text: rest.trim() });
-	return blocks;
 }
 
 /** CodeMirror's completion type (the icon it shows) of each LSP completion kind; one with none shows no icon. */

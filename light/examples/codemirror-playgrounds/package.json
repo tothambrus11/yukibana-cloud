@@ -14,9 +14,11 @@
 	"dependencies": {
 		"@codemirror/autocomplete": "6.20.4",
 		"@codemirror/lang-cpp": "6.0.3",
+		"@codemirror/language": "6.13.1",
 		"@codemirror/lint": "6.9.7",
 		"@codemirror/state": "6.7.6",
 		"@codemirror/view": "6.43.15",
+		"@lezer/highlight": "1.2.5",
 		"@yukibana/codemirror": "link:../../modules/codemirror",
 		"@yukibana/core": "link:../../modules/core",
 		"@yukibana/lang-cpp": "link:../../modules/lang-cpp",

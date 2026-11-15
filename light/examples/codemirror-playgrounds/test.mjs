@@ -159,7 +159,11 @@ await check("hovering a name shows that snippet's server's answer", async () => 
 	if (fake) {
 		const name = (await page.locator('#greet .server').innerText()).replace(/ is running\.$/, '');
 		if (!text.includes(name)) throw new Error(`the hover is not greet's server's (${name}): ${text}`);
-	} else if (!/greeting/.test(text)) throw new Error(`the hover has no header comment: ${text}`);
+	} else {
+		// clangd answers in Markdown: shown as a heading and a code block, never as its marks.
+		if (!/greeting/.test(text)) throw new Error(`the hover has no header comment: ${text}`);
+		if (/###|```|\*\*/.test(text) || (await page.locator('#greet .cm-yukibana-markup-heading').count()) === 0) throw new Error(`the hover's Markdown is not rendered: ${text}`);
+	}
 	await page.mouse.move(0, 0);
 });
 

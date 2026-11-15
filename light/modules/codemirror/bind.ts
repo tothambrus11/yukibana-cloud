@@ -22,9 +22,11 @@ import type { EditorView, KeyBinding, Tooltip } from '@codemirror/view';
 import type { Disposable, Path } from '../core/index.ts';
 import type * as lsp from '../protocol/lsp.ts';
 import type { LanguageSession, SessionClient } from '../runtime/language-session.ts';
-import type { CodeMirror } from './codemirror.ts';
+import type { CodeMirror, SyntaxPackages } from './codemirror.ts';
 import * as c from './convert.ts';
+import { markupBlocks } from './markdown.ts';
 import type { CodeMirrorProject } from './project.ts';
+import { MARKUP_CLASS, renderMarkup, stateHighlighter } from './render.ts';
 
 /** What a binding tells its host. */
 export interface CodeMirrorBindingEvents {
@@ -48,6 +50,8 @@ export interface CodeMirrorBindingOptions {
 	readonly documentUri: (path: Path) => lsp.DocumentUri;
 	/** Returns the LSP language id of project file `path` (`cpp`, `plaintext` for a `compile_flags.txt`). */
 	readonly languageId: (path: Path) => string;
+	/** The host's syntax packages, to colour the code in a hover or a completion's documentation as the editor colours its own; null: plain. */
+	readonly syntax: SyntaxPackages | null;
 	readonly events: CodeMirrorBindingEvents;
 }
 
@@ -75,25 +79,6 @@ export function codeMirrorClientCapabilities(): lsp.ClientCapabilities {
 			formatting: {},
 		},
 	};
-}
-
-/** The class of the element a hover or a completion's documentation is drawn in; `pre` inside it is a code block. */
-export const MARKUP_CLASS = 'cm-yukibana-markup';
-
-/**
- * Returns `blocks` drawn as DOM in `document`: prose in paragraphs, code in
- * `pre`, every piece as text (`textContent`), so nothing a server sends is
- * read as HTML.
- */
-export function renderMarkup(document: Document, blocks: readonly c.MarkupBlock[]): HTMLElement {
-	const root = document.createElement('div');
-	root.className = MARKUP_CLASS;
-	for (const block of blocks) {
-		const element = document.createElement(block.kind === 'code' ? 'pre' : 'p');
-		element.textContent = block.text;
-		root.append(element);
-	}
-	return root;
 }
 
 /**
@@ -268,23 +253,29 @@ export class CodeMirrorBinding implements SessionClient {
 			this.#signal(abort.signal),
 		);
 		if (answer === null || context.aborted) return null;
-		const document = context.view?.dom.ownerDocument;
+		const document = context.view?.dom.ownerDocument ?? globalThis.document;
 		const cm = this.#cm.autocomplete;
-		return c.toCompletionResult(context.state, context.pos, answer, { snippet: cm.snippet, insertCompletionText: cm.insertCompletionText }, (blocks) =>
-			document === undefined ? new Text(blocks.map((block) => block.text).join('\n\n')) : renderMarkup(document, blocks),
-		);
+		const state = context.state;
+		return c.toCompletionResult(state, context.pos, answer, { snippet: cm.snippet, insertCompletionText: cm.insertCompletionText }, (blocks) => renderMarkup(document, blocks, this.#highlighter(state, document)));
 	}
 
 	/** The server's hover at `pos` of file `path`, over the range it names (else at `pos`); null when it has nothing to say. */
 	async #hover(path: Path, view: EditorView, pos: number): Promise<Tooltip | null> {
 		const doc = view.state.doc;
 		const answer = await this.#session.ask<lsp.Hover>('textDocument/hover', { textDocument: { uri: this.#options.documentUri(path) }, position: c.toPosition(doc, pos) }, this.#signal());
-		const blocks = answer === null ? [] : c.markupBlocks(answer.contents);
+		const blocks = answer === null ? [] : markupBlocks(answer.contents);
 		if (answer === null || blocks.length === 0 || view.state.doc !== doc) return null;
 		const range = answer.range;
 		const from = range === undefined ? pos : c.toOffset(doc, range.start);
 		const to = range === undefined ? pos : c.toOffset(doc, range.end);
-		return { pos: from, end: to, above: true, create: () => ({ dom: renderMarkup(view.dom.ownerDocument, blocks) }) };
+		const document = view.dom.ownerDocument;
+		return { pos: from, end: to, above: true, create: () => ({ dom: renderMarkup(document, blocks, this.#highlighter(view.state, document)) }) };
+	}
+
+	/** What colours a code block drawn in `state`'s editor, when the host gave the syntax packages. */
+	#highlighter(state: EditorState, document: Document): ReturnType<typeof stateHighlighter> {
+		const syntax = this.#options.syntax;
+		return syntax === null ? null : stateHighlighter(syntax, state, document);
 	}
 
 	/** Go to definition from the caret of `state` (file `path`): the first place the server names, handed to `events.open`. */
@@ -330,11 +321,16 @@ function offered(option: boolean | object | undefined): boolean {
 	return option !== undefined && option !== false;
 }
 
-/** How a hover's and a completion's documentation look: a block of code keeps its lines and scrolls, prose wraps. */
+/** How a hover's and a completion's documentation look, at the least: a block of code keeps its lines and scrolls, prose wraps, a rule spans the box. */
 function markupTheme(cm: CodeMirror): Extension {
 	return cm.view.EditorView.baseTheme({
-		[`.${MARKUP_CLASS}`]: { maxWidth: '40em', maxHeight: '20em', overflow: 'auto', padding: '2px 6px' },
-		[`.${MARKUP_CLASS} p`]: { margin: '4px 0', whiteSpace: 'pre-wrap' },
+		[`.${MARKUP_CLASS}`]: { maxWidth: '40em', maxHeight: '20em', overflow: 'auto', padding: '4px 8px' },
+		[`.${MARKUP_CLASS} p`]: { margin: '4px 0' },
+		[`.${MARKUP_CLASS} .${MARKUP_CLASS}-plain`]: { whiteSpace: 'pre-wrap' },
+		[`.${MARKUP_CLASS} .${MARKUP_CLASS}-heading`]: { margin: '2px 0 4px', fontWeight: '600' },
 		[`.${MARKUP_CLASS} pre`]: { margin: '4px 0', fontFamily: 'monospace', whiteSpace: 'pre' },
+		[`.${MARKUP_CLASS} code`]: { fontFamily: 'monospace' },
+		[`.${MARKUP_CLASS} hr`]: { border: 'none', borderTop: '1px solid currentColor', opacity: '0.2', margin: '4px -8px' },
+		[`.${MARKUP_CLASS} ul, .${MARKUP_CLASS} ol`]: { margin: '4px 0', paddingLeft: '1.5em' },
 	});
 }

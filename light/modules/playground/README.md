@@ -86,15 +86,21 @@ import * as state from '@codemirror/state';
 import * as view from '@codemirror/view';
 import * as lint from '@codemirror/lint';
 import * as autocomplete from '@codemirror/autocomplete';
+import * as language from '@codemirror/language';
+import * as highlight from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { cpp } from '@codemirror/lang-cpp';
 import { LANGUAGES } from '@yukibana/lang-cpp';
+import { playgroundTheme } from '@yukibana/codemirror';
 import { createPlayground } from '@yukibana/playground/codemirror';
 
+const cm = { state, view, lint, autocomplete };
+const syntax = { language, highlight };
 const playground = createPlayground({
-	cm: { state, view, lint, autocomplete },
+	cm,
+	syntax,
 	element,
-	extensions: () => [basicSetup, cpp()],
+	extensions: () => [basicSetup, playgroundTheme(cm, syntax, { dark: false }), cpp()],
 	language: LANGUAGES.cpp,
 	files: { 'main.cpp': mainText },
 });
@@ -113,7 +119,15 @@ const playground = createPlayground({
 * **The host's part** is CodeMirror, passed in as its four packages, and
   `extensions(path)`: the language mode, `basicSetup` or the parts it
   wants, a theme. The playground adds the server's features and makes
-  hidden files read-only in their states, so in every view.
+  hidden files read-only in their states, so in every view. `syntax`
+  (`@codemirror/language` and `@lezer/highlight`) is optional: with it, a
+  hover's code blocks are coloured as the editor colours its own text;
+  without it they are plain. `playgroundTheme` is Monaco's look (its
+  light and dark palettes, font, gutter, tooltips and squiggles) for a page
+  that wants its playgrounds to look like Light's.
+* **Tabs are the page's.** The playground shows one file at a time;
+  `show(path)` changes it, and `shownChanged(path, hidden)` says when it
+  changed, F12 into a header included, so a page's tab bar follows.
 * **What the editor offers** is `CodeMirrorBinding`'s: diagnostics,
   completion, hover, F12 go to definition (into a hidden file too, shown in
   the same view) and Shift-Alt-F formatting. Rename, signature help and

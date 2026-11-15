@@ -123,8 +123,10 @@ const CASTS = {
 		TidyCheck: 'the same guard reads one check\'s fields to test their types',
 		string: '`JSON.parse` of a double-quoted YAML scalar, which is a JSON string',
 	},
-	'codemirror/convert.ts': {
+	'codemirror/markdown.ts': {
 		'lsp.MarkupContent | lsp.MarkedString': 'a hover\'s contents that are not an array are one item; `Array.isArray` does not narrow a readonly array out of the union',
+	},
+	'codemirror/convert.ts': {
 		'lsp.CompletionList': 'a completion answer that is not an array is a list; `Array.isArray` does not narrow a readonly array out of the union',
 		'lsp.Location': 'a definition answer that is not an array is one location; `Array.isArray` does not narrow a readonly array out of the union',
 	},

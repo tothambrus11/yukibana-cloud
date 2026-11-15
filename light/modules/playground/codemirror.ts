@@ -36,7 +36,7 @@
  */
 import type { Extension } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
-import { CodeMirrorBinding, codeMirrorProject, type CodeMirror, type CodeMirrorProject } from '../codemirror/index.ts';
+import { CodeMirrorBinding, codeMirrorProject, type CodeMirror, type CodeMirrorProject, type SyntaxPackages } from '../codemirror/index.ts';
 import type { Path } from '../core/index.ts';
 import { workspaceRoot } from '../runtime/index.ts';
 import { checkFiles, playgroundRunner, playgroundSession, readyOf, type PlaygroundBase, type PlaygroundFiles } from './page.ts';
@@ -58,11 +58,25 @@ export interface CodeMirrorPlaygroundOptions extends PlaygroundFiles {
 	 */
 	readonly extensions: (path: Path) => Extension;
 	/**
+	 * The host's `@codemirror/language` and `@lezer/highlight`, so the code
+	 * in a hover or a completion's documentation is coloured as the editor
+	 * colours its own (the look itself is the host's: `playgroundTheme` of
+	 * @yukibana/codemirror in `extensions`). Without them it is plain.
+	 */
+	readonly syntax?: SyntaxPackages;
+	/**
 	 * The LSP language id of file `path`. By default the language's own key
 	 * for every file but the configuration a server reads as data
 	 * (`.txt`, `.json`, `.toml`, `.md`).
 	 */
 	readonly languageId?: (path: Path) => string;
+	/**
+	 * Called with the file the view shows each time it changes (go to
+	 * definition into a header, `show`): for a host that draws the file's
+	 * name above the editor, a tab strip. Not called for the entry, shown
+	 * first.
+	 */
+	readonly shownChanged?: (path: Path, hidden: boolean) => void;
 }
 
 /** A playground in the host's CodeMirror. A hidden file is read-only in its state, so in every view of it. */
@@ -110,7 +124,9 @@ export function createPlayground(options: CodeMirrorPlaygroundOptions): CodeMirr
 	const show = (path: string, selection: { readonly from: number; readonly to: number } | null = null): boolean => {
 		const found = project.paths().find((known) => known === path);
 		if (found === undefined) return false;
+		const before = shown.path;
 		shown.show(found, selection);
+		if (found !== before) options.shownChanged?.(found, isHidden(found));
 		return true;
 	};
 
@@ -120,6 +136,7 @@ export function createPlayground(options: CodeMirrorPlaygroundOptions): CodeMirr
 		project,
 		documentUri: (path) => WORKSPACE.uriOf(path),
 		languageId,
+		syntax: options.syntax ?? null,
 		events: {
 			log,
 			open: (path, selection) => {

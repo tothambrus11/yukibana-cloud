@@ -40,6 +40,7 @@ await binding.start();
 | `project.ts` | `codeMirrorProject`: a state per file, the views that show them (`view`, then `show` and `dispose` on what it returns), `update`, the edits as transactions (`onEdit`), and the core's `Project` over them |
 | `bind.ts` | `CodeMirrorBinding`: the session's client: files opened, edits sent as ranges by version, diagnostics through `@codemirror/lint`, completion (snippets and additional edits included), hover, F12 go to definition, Shift-Alt-F formatting, a server's workspace edit; `renderMarkup` |
 | `convert.ts` | positions and offsets, a transaction's changes as LSP's, diagnostics, completions, hover text as blocks, definition answers, workspace edits |
+| `theme.ts` | `playgroundTheme(cm, { language, highlight }, { dark })`: Monaco's `vs` or `vs-dark` as a CodeMirror theme and highlight style, the binding's widgets (hover, completion list, problems) included, so a CodeMirror snippet looks like the Monaco playground; the host adds it to its extensions |
 | `port.ts` | `codeMirrorPort`: a project's view as the core's `EditorPort<'codemirror'>`, the caret its one capability |
 
 ## Why it can have many editors on a page
@@ -78,6 +79,10 @@ meet.
   document symbols, semantic tokens and the rest of what `MonacoBinding`
   has. The client capabilities say so, so no server sends what nothing
   would show.
+* **The look is the host's choice.** `playgroundTheme` is an extension a
+  host adds; it takes `@codemirror/language` and `@lezer/highlight` as it
+  takes the rest of CodeMirror, injected (optional peers: a host that
+  does not use it needs neither).
 * **Nothing on import** (`../tests/imports.test.mjs`).
 
 It may import core, runtime and protocol, and `import type` from the

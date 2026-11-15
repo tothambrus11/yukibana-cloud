@@ -16,6 +16,13 @@
  *   that project's states and nowhere else.
  * - convert.ts: every conversion between a server's values and
  *   CodeMirror's, as functions of their arguments.
+ * - theme.ts: the playground look, Monaco's light or dark theme as a
+ *   CodeMirror theme and highlight style (`playgroundTheme`), for a host
+ *   that asks for it.
+ * - markdown.ts: a server's Markdown (hover, documentation) read into
+ *   blocks and spans, data only, for `renderMarkup` to draw as text.
+ * - render.ts: those blocks drawn as DOM, text as text nodes, code coloured
+ *   in the editor's language (`renderMarkup`).
  * - port.ts: a project's view as the core's `EditorPort` of kind
  *   `codemirror` (`codeMirrorPort`).
  *
@@ -25,5 +32,8 @@
 export * from './bind.ts';
 export type * from './codemirror.ts';
 export * from './convert.ts';
+export * from './markdown.ts';
 export * from './port.ts';
 export * from './project.ts';
+export * from './render.ts';
+export * from './theme.ts';

@@ -14,9 +14,11 @@
 		// page's copies, the very ones it passes in.
 		"paths": {
 			"@codemirror/autocomplete": ["./node_modules/@codemirror/autocomplete"],
+			"@codemirror/language": ["./node_modules/@codemirror/language"],
 			"@codemirror/lint": ["./node_modules/@codemirror/lint"],
 			"@codemirror/state": ["./node_modules/@codemirror/state"],
-			"@codemirror/view": ["./node_modules/@codemirror/view"]
+			"@codemirror/view": ["./node_modules/@codemirror/view"],
+			"@lezer/highlight": ["./node_modules/@lezer/highlight"]
 		}
 	},
 	"include": ["src"]

@@ -8,9 +8,11 @@
 		"lib": ["es2024", "DOM", "DOM.Iterable"],
 		"paths": {
 			"@codemirror/autocomplete": ["../../app/node_modules/@codemirror/autocomplete"],
+			"@codemirror/language": ["../../app/node_modules/@codemirror/language"],
 			"@codemirror/lint": ["../../app/node_modules/@codemirror/lint"],
 			"@codemirror/state": ["../../app/node_modules/@codemirror/state"],
-			"@codemirror/view": ["../../app/node_modules/@codemirror/view"]
+			"@codemirror/view": ["../../app/node_modules/@codemirror/view"],
+			"@lezer/highlight": ["../../app/node_modules/@lezer/highlight"]
 		}
 	},
 	"include": ["."]

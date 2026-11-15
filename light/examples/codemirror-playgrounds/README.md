@@ -11,7 +11,7 @@ cpp/hello.cpp      the first snippet
 cpp/greet.cpp      the second, which includes greet.h
 cpp/greet.h        a hidden file of the second snippet alone: read-only, shown by F12
 cpp/squares.cpp    the third
-src/main.ts        the page: one playground per section of index.html
+src/main.ts        the page: one playground per section of index.html, in a Monaco-like frame (file tabs, server status, Run, output)
 tests/fake-server.js  a stand-in language server for test.mjs where the C++ pack is not installed
 vite.config.ts     serving: the packs at /packs/, the page cross-origin isolated
 ```

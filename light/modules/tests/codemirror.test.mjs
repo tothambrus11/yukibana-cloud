@@ -12,7 +12,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { CodeMirrorBinding, codeMirrorProject, firstLocation, lspToSnippet, markupBlocks, textEditsOf, toCompletionResult, toDiagnostic, toOffset, toPosition, toRangeChanges } from '../codemirror/index.ts';
+import { CodeMirrorBinding, codeMirrorProject, firstLocation, inlineSpans, lspToSnippet, markupBlocks, textEditsOf, toCompletionResult, toDiagnostic, toOffset, toPosition, toRangeChanges } from '../codemirror/index.ts';
 import { pathOf } from '../core/index.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -78,17 +78,43 @@ test("an LSP snippet's tab stops and escapes become CodeMirror's template", () =
 	assert.equal(lspToSnippet('cost: \\$5 \\} \\\\'), 'cost: $5 } \\');
 });
 
-test('hover text is prose and code blocks, shown as text whatever it holds', () => {
-	assert.deepEqual(markupBlocks({ kind: 'markdown', value: '### function `area`\n\n```cpp\ndouble area(Shape s);\n```\nThe area, in m².' }), [
-		{ kind: 'text', text: '### function `area`' },
-		{ kind: 'code', text: 'double area(Shape s);' },
-		{ kind: 'text', text: 'The area, in m².' },
+test("clangd's hover Markdown reads as Monaco shows it: a heading, rules, the type in code, the comment's own asterisks kept, and the declaration as C++", () => {
+	// What clangd sent for `/// 3 he **hello**` above `int f()`; it escapes the comment's Markdown.
+	const hover = '### function `f`  \n\n---\n→ `int`  \n3 he \\*\\*hello\\*\\*  \n\n---\n```cpp\nint f()\n```';
+	assert.deepEqual(markupBlocks({ kind: 'markdown', value: hover }), [
+		{ kind: 'heading', level: 3, children: [{ kind: 'text', text: 'function ' }, { kind: 'code', text: 'f' }] },
+		{ kind: 'rule' },
+		{ kind: 'paragraph', children: [{ kind: 'text', text: '→ ' }, { kind: 'code', text: 'int' }, { kind: 'break' }, { kind: 'text', text: '3 he **hello**' }] },
+		{ kind: 'rule' },
+		{ kind: 'code', language: 'cpp', text: 'int f()' },
 	]);
+});
+
+test('Markdown spans: strong, emphasis, links, escapes, and an underscore inside a word is a letter', () => {
+	assert.deepEqual(inlineSpans('a **b** *c* [d](https://e.test) \\`x\\` snake_case_name'), [
+		{ kind: 'text', text: 'a ' },
+		{ kind: 'strong', children: [{ kind: 'text', text: 'b' }] },
+		{ kind: 'text', text: ' ' },
+		{ kind: 'emphasis', children: [{ kind: 'text', text: 'c' }] },
+		{ kind: 'text', text: ' ' },
+		{ kind: 'link', children: [{ kind: 'text', text: 'd' }], href: 'https://e.test' },
+		{ kind: 'text', text: ' `x` snake_case_name' },
+	]);
+	assert.deepEqual(inlineSpans('2 * 3 * 4'), [{ kind: 'text', text: '2 * 3 * 4' }], 'a lone asterisk between spaces is no emphasis');
+});
+
+test('hover text that is not Markdown is text, and lists and plain text keep their shape', () => {
 	assert.deepEqual(markupBlocks([{ language: 'python', value: 'def f(): ...' }, '<b>bold</b>']), [
-		{ kind: 'code', text: 'def f(): ...' },
-		{ kind: 'text', text: '<b>bold</b>' },
+		{ kind: 'code', language: 'python', text: 'def f(): ...' },
+		{ kind: 'paragraph', children: [{ kind: 'text', text: '<b>bold</b>' }] },
 	]);
-	assert.deepEqual(markupBlocks({ kind: 'plaintext', value: '```not a fence```' }), [{ kind: 'text', text: '```not a fence```' }]);
+	assert.deepEqual(markupBlocks({ kind: 'plaintext', value: '```not a fence```\n  indented' }), [{ kind: 'plain', text: '```not a fence```\n  indented' }]);
+	assert.deepEqual(markupBlocks('Params:\n- `a` the first\n- `b`\n\n1. one'), [
+		{ kind: 'paragraph', children: [{ kind: 'text', text: 'Params:' }] },
+		{ kind: 'list', ordered: false, items: [[{ kind: 'code', text: 'a' }, { kind: 'text', text: ' the first' }], [{ kind: 'code', text: 'b' }]] },
+		{ kind: 'list', ordered: true, items: [[{ kind: 'text', text: 'one' }]] },
+	]);
+	assert.deepEqual(markupBlocks('---\n'), [], 'a rule that separates nothing is dropped');
 	assert.deepEqual(markupBlocks(''), []);
 });
 
@@ -125,7 +151,7 @@ test("a server's completions complete the word it names, as snippets where it sa
 	assert.equal(result.validFor, undefined, 'an incomplete list is asked again as the word grows');
 	const [area, arc] = result.options;
 	assert.deepEqual([area.label, area.displayLabel, area.type, area.detail], ['area', ' area(Shape s)', 'function', 'double']);
-	assert.deepEqual(area.info(area), [{ kind: 'text', text: 'The area.' }]);
+	assert.deepEqual(area.info(area), [{ kind: 'paragraph', children: [{ kind: 'text', text: 'The area.' }] }]);
 	area.apply({ state, dispatch: () => assert.fail('a snippet with no other edit dispatches nothing of its own') }, area, 7, 9);
 	assert.deepEqual(calls, [{ snippet: 'area(${1:s})', from: 7, to: 9 }]);
 	assert.equal(arc.apply, undefined, 'a label that is its text needs no apply');
@@ -222,6 +248,7 @@ function bindingOf(project, session, log = [], opened = []) {
 		project,
 		documentUri: (path) => `file:///w/${path}`,
 		languageId: () => 'cpp',
+		syntax: null,
 		events: { log: (level, text) => log.push([level, text]), open: (path, selection) => opened.push({ path, selection }) },
 	});
 }
