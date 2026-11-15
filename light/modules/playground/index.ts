@@ -44,7 +44,7 @@
  * Nothing happens on import; `createPlayground` makes everything, and
  * `dispose` takes it all back. What does not depend on the editor is
  * page.ts's, shared with the CodeMirror playground
- * (`@yukibana/playground/codemirror`), which has no limit of one per page.
+ * (`@yukibana/playground/codemirror`).
  */
 import type * as monaco from 'monaco-editor';
 import { pathOf, snapshotOf, type Disposable, type Path, type Project, type ProjectChange } from '../core/index.ts';
@@ -75,39 +75,39 @@ export interface Playground extends PlaygroundBase {
 	readonly editor: monaco.editor.IStandaloneCodeEditor;
 }
 
-/** The workspace folder every document is under: the server's root, and where a project path becomes a document's URI and back. */
+/** The workspace folder every document is under at the server: the one root the packs' contract fixes (packs/CONTRACT.md). */
 const WORKSPACE = workspaceRoot('file:///workspace/');
-
-/** The Monacos that have a playground alive, which `dispose` takes back. */
-const inUse = new WeakSet<typeof monaco>();
 
 /**
  * Makes a playground of `options.language` in `options.element`: the
  * editor at once, the language server starting (`ready`), Run available as
  * soon as the instance says so.
  *
+ * Any number of playgrounds share a Monaco. Monaco keeps one model per
+ * URI and one registry of language features for the whole page, so each
+ * playground's models have a URI scheme of its own, made here, which its
+ * features are registered for: a server answers in its own playground's
+ * editor and no other. What Monaco keeps once per page stays the page's:
+ * the theme (`monaco.editor.setTheme`) and each language's grammar.
+ *
  * - Requires: what `checkFiles` (page.ts) requires of the files and the
- *   packs; that Monaco has a language for the entry file; and that no
- *   other playground of this Monaco is alive: one playground per Monaco at
- *   a time, since every playground's files are under one workspace folder
- *   and a binding's providers answer for its language ids alone, so a
- *   second one's formatting would answer for the first's models with
- *   nothing. Each throws a `RangeError` naming it, before anything is
- *   made.
+ *   packs, and that Monaco has a language for the entry file. Each throws
+ *   a `RangeError` naming it, before anything is made.
  */
 export function createPlayground(options: PlaygroundOptions): Playground {
 	const m = options.monaco;
 	const checked = checkFiles(options);
 	const { entry, isHidden, log } = checked;
 	const disposables: { dispose(): void }[] = [];
-	// A second dispose does nothing (core's Disposable): run again, it would
-	// take back the claim of a playground made on this Monaco since.
+	// A second dispose does nothing (core's Disposable).
 	let disposed = false;
 
 	// ---- The project: a model per file -----------------------------------
 
-	const uriOf = (path: string): monaco.Uri => m.Uri.parse(WORKSPACE.uriOf(path));
-	if (inUse.has(m)) throw new RangeError('This Monaco already has a playground: dispose that one first (one playground per Monaco at a time).');
+	// Where this playground's models are: a root no other has, by its scheme.
+	const scheme = `playground-${crypto.randomUUID()}`;
+	const own = workspaceRoot(`${scheme}:/`);
+	const uriOf = (path: string): monaco.Uri => m.Uri.parse(own.uriOf(path));
 	const models = new Map<Path, monaco.editor.ITextModel>();
 	for (const [path, text] of Object.entries(checked.all)) models.set(pathOf(path), m.editor.createModel(text, undefined, uriOf(path)));
 	// Monaco names a model's language from its extension, and only for the
@@ -117,7 +117,6 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		for (const model of models.values()) model.dispose();
 		throw new RangeError(`Monaco has no language for "${entry}": register it with Monaco first (a language package's \`/monaco\` entry does).`);
 	}
-	inUse.add(m);
 	let revision = 0;
 	let current: ReturnType<typeof snapshotOf> | null = null;
 	const project: Project = {
@@ -166,7 +165,7 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		m.editor.registerEditorOpener({
 			openCodeEditor: (source, resource, selection) => {
 				if (source !== editor) return false;
-				const path = WORKSPACE.pathOf(resource);
+				const path = own.pathOf(resource);
 				return path !== null && show(path, selection === undefined ? null : 'startLineNumber' in selection ? selection : m.Range.fromPositions(selection));
 			},
 		}),
@@ -185,13 +184,15 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 		session,
 		project,
 		documentUri: (path) => uriOf(path).toString(),
+		serverUri: (path) => WORKSPACE.uriOf(path),
 		languages,
+		scheme,
 		rootUri: WORKSPACE.uri,
 		events: {
 			log,
 			// The server asked to show a document, or a symbol was chosen.
 			open: (uri, selection) => {
-				const path = WORKSPACE.pathOf(uri);
+				const path = own.pathOf(uri);
 				if (path !== null) show(path, selection);
 			},
 		},
@@ -224,7 +225,6 @@ export function createPlayground(options: PlaygroundOptions): Playground {
 			for (const disposable of disposables) disposable.dispose();
 			editor.dispose();
 			for (const model of models.values()) model.dispose();
-			inUse.delete(m);
 		},
 	};
 }

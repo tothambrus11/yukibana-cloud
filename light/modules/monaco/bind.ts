@@ -75,10 +75,31 @@ export interface MonacoBindingOptions {
 	readonly project: Project;
 	/** Returns the URI of the model of project file `path`, as the host made it. */
 	readonly documentUri: (path: Path) => lsp.DocumentUri;
+	/**
+	 * Returns the URI the server knows project file `path` by, under the
+	 * session's root. Light's app has one workspace and gives its models
+	 * these very URIs; a page of several playgrounds gives each one's models
+	 * URIs of its own (Monaco keeps one model per URI for the whole page)
+	 * while every server sees the one root the packs' contract fixes, and
+	 * the binding translates: a model's URI never reaches the server, and a
+	 * server's URI names this binding's model of that file or, for a file
+	 * the binding has no model of, itself.
+	 */
+	readonly serverUri: (path: Path) => lsp.DocumentUri;
 	/** The Monaco language ids whose editor features the server answers. */
 	readonly languages: readonly string[];
-	/** The workspace folder the models live under, with its slash: Go to Symbol shows a file in it by its path. */
+	/**
+	 * The scheme of the models' URIs (`file` in Light's app): the features
+	 * are registered for models of `languages` with this scheme, so Monaco
+	 * asks nothing of this binding about another's models where each
+	 * playground of a page has a scheme of its own. That matters where
+	 * Monaco takes one provider's answer rather than every provider's
+	 * (formatting, semantic tokens).
+	 */
+	readonly scheme: string;
+	/** The server's workspace folder, with its slash: Go to Symbol shows a file in it by its path. */
 	readonly rootUri: string;
+	/** Where the binding tells the host what it cannot show itself: log lines, a document to show, a call hierarchy. */
 	readonly events: BindingEvents;
 }
 
@@ -196,9 +217,11 @@ export class MonacoBinding implements SessionClient {
 	readonly #session: LanguageSession;
 	/** What the binding registered with Monaco, disposed when the session closes. */
 	readonly #disposables: monaco.IDisposable[] = [];
-	/** Models synchronised with the server, by `uri.toString()`. */
-	readonly #models = new Map<string, { readonly model: monaco.editor.ITextModel; readonly listener: monaco.IDisposable }>();
-	/** The server's diagnostics as it sent them, for code action requests. */
+	/** Models synchronised with the server, by `uri.toString()`; `uri` is the document's URI at the server. */
+	readonly #models = new Map<string, { readonly model: monaco.editor.ITextModel; readonly listener: monaco.IDisposable; readonly uri: lsp.DocumentUri }>();
+	/** Each synchronised model's URI by its document's URI at the server (as Monaco writes that one, so a server's own spelling of it is found). */
+	readonly #served = new Map<string, monaco.Uri>();
+	/** The server's diagnostics as it sent them, by model, for code action requests. */
 	readonly #diagnostics = new Map<string, readonly lsp.Diagnostic[]>();
 	/** The code lens provider, once registered: `workspace/codeLens/refresh` names it to Monaco. */
 	#codeLenses: monaco.languages.CodeLensProvider | null = null;
@@ -207,8 +230,12 @@ export class MonacoBinding implements SessionClient {
 	readonly #semanticTokensChanged: monaco.Emitter<void>;
 	readonly #codeLensesChanged: monaco.Emitter<monaco.languages.CodeLensProvider>;
 	readonly #inlayHintsChanged: monaco.Emitter<void>;
-	/** The model a server's document URI names: the same URI, parsed, never null (opening a document no model holds finds out). */
-	readonly #uriOf: c.UriOf;
+	/**
+	 * The model a server's document URI names: the synchronised model of
+	 * that document, else the same URI, parsed (a file outside the project;
+	 * opening a document no model holds finds out). Never null.
+	 */
+	readonly #uriOf: (uri: lsp.DocumentUri) => monaco.Uri;
 
 	/** Makes a binding of `options.session`; it registers nothing until `start`. */
 	constructor(options: MonacoBindingOptions) {
@@ -218,7 +245,10 @@ export class MonacoBinding implements SessionClient {
 		this.#semanticTokensChanged = new options.monaco.Emitter<void>();
 		this.#codeLensesChanged = new options.monaco.Emitter<monaco.languages.CodeLensProvider>();
 		this.#inlayHintsChanged = new options.monaco.Emitter<void>();
-		this.#uriOf = (uri) => options.monaco.Uri.parse(uri);
+		this.#uriOf = (uri) => {
+			const parsed = options.monaco.Uri.parse(uri);
+			return this.#served.get(parsed.toString()) ?? parsed;
+		};
 	}
 
 	/**
@@ -258,23 +288,25 @@ export class MonacoBinding implements SessionClient {
 			return;
 		}
 		const { key, model } = found;
+		const uri = this.#options.serverUri(path);
 		const listener = model.onDidChangeContent((e) =>
-			session.change(key, {
+			session.change(uri, {
 				version: model.getVersionId(),
 				changes: e.changes.map((ch) => ({ range: c.toLspRange(ch.range), rangeLength: ch.rangeLength, text: ch.text })),
 				text: () => model.getValue(),
 			}),
 		);
-		this.#models.set(key, { model, listener });
-		const document = { uri: key, languageId: languageIdOf(model), version: model.getVersionId(), text: model.getValue() };
+		this.#models.set(key, { model, listener, uri });
+		this.#served.set(this.#monaco.Uri.parse(uri).toString(), model.uri);
+		const document = { uri, languageId: languageIdOf(model), version: model.getVersionId(), text: model.getValue() };
 		if (how.kind === 'moved') session.rename(how.from, document);
 		else session.open(document, how.origin);
 	}
 
 	/**
 	 * Stops synchronising project file `path`, deleted or renamed, and takes
-	 * its markers away; returns its key, or null when it was not
-	 * synchronised. Its model may already be disposed: markers are kept by
+	 * its markers away; returns its document's URI at the server, or null
+	 * when it was not synchronised. Its model may already be disposed: markers are kept by
 	 * URI. Closing the document is the caller's.
 	 */
 	#forget(path: Path): string | null {
@@ -283,9 +315,10 @@ export class MonacoBinding implements SessionClient {
 		if (!entry) return null;
 		entry.listener.dispose();
 		this.#models.delete(key);
+		this.#served.delete(this.#monaco.Uri.parse(entry.uri).toString());
 		this.#diagnostics.delete(key);
 		this.#monaco.editor.setModelMarkers(entry.model, MARKER_OWNER, []);
-		return key;
+		return entry.uri;
 	}
 
 	/** Follows a change of the project's files: a file created is opened, one deleted closed, one renamed moved; an edit or a setting is not the binding's. */
@@ -295,8 +328,8 @@ export class MonacoBinding implements SessionClient {
 				this.#add(change.path, { kind: 'open', origin: 'created' });
 				return;
 			case 'deleted': {
-				const key = this.#forget(change.path);
-				if (key !== null) this.#session.close(key);
+				const uri = this.#forget(change.path);
+				if (uri !== null) this.#session.close(uri);
 				return;
 			}
 			case 'renamed': {
@@ -320,7 +353,7 @@ export class MonacoBinding implements SessionClient {
 
 	/** Shows a synchronised model's diagnostics as its markers; those of any other document are dropped. */
 	readonly diagnostics = (uri: lsp.DocumentUri, diagnostics: readonly lsp.Diagnostic[]): void => {
-		const key = this.#monaco.Uri.parse(uri).toString();
+		const key = this.#uriOf(uri).toString();
 		const entry = this.#models.get(key);
 		if (!entry) return;
 		this.#diagnostics.set(key, diagnostics);
@@ -333,7 +366,7 @@ export class MonacoBinding implements SessionClient {
 
 	/** Returns `true` iff the document is one of the host's models and not external, after handing it to `events.open`. */
 	readonly showDocument = (params: lsp.ShowDocumentParams): boolean => {
-		const uri = this.#monaco.Uri.parse(params.uri);
+		const uri = this.#uriOf(params.uri);
 		if (params.external || !this.#monaco.editor.getModel(uri)) return false;
 		this.#options.events.open(uri, params.selection ? c.toMonacoRange(params.selection) : null);
 		return true;
@@ -403,11 +436,22 @@ export class MonacoBinding implements SessionClient {
 			this.#monaco.editor.setModelMarkers(model, MARKER_OWNER, []);
 		}
 		this.#models.clear();
+		this.#served.clear();
 		for (const d of this.#disposables.splice(0)) d.dispose();
 		this.#semanticTokensChanged.dispose();
 		this.#codeLensesChanged.dispose();
 		this.#inlayHintsChanged.dispose();
 	};
+
+	/**
+	 * `model`'s document as a request names it: its URI at the server.
+	 *
+	 * - Requires: `model` is synchronised (`owns`); a request about any
+	 *   other is never sent (`#ask`), so its URI here is of no use.
+	 */
+	#doc(model: monaco.editor.ITextModel): { readonly uri: lsp.DocumentUri } {
+		return { uri: this.#models.get(model.uri.toString())?.uri ?? model.uri.toString() };
+	}
 
 	/** The first synchronised model, or null: the one to ask a workspace-wide question from. */
 	#anyModel(): monaco.editor.ITextModel | null {
@@ -459,7 +503,7 @@ export class MonacoBinding implements SessionClient {
 		const items = await this.#ask<lsp.CallHierarchyItem[]>(
 			model,
 			'textDocument/prepareCallHierarchy',
-			{ textDocument: { uri: model.uri.toString() }, position: c.toLspPosition(position) },
+			{ textDocument: this.#doc(model), position: c.toLspPosition(position) },
 			this.#never(),
 		);
 		const item = items?.[0];
@@ -473,8 +517,8 @@ export class MonacoBinding implements SessionClient {
 
 	#registerFeatures(caps: lsp.ServerCapabilities): void {
 		const m = this.#monaco;
-		const selector = [...this.#options.languages];
-		const doc = (model: monaco.editor.ITextModel) => ({ uri: model.uri.toString() });
+		const selector = this.#options.languages.map((language) => ({ language, scheme: this.#options.scheme }));
+		const doc = (model: monaco.editor.ITextModel) => this.#doc(model);
 		const at = (model: monaco.editor.ITextModel, position: monaco.IPosition) => ({ textDocument: doc(model), position: c.toLspPosition(position) });
 		const add = (d: monaco.IDisposable) => this.#disposables.push(d);
 		const owned = () => m.editor.getModels().find((model) => this.owns(model));
@@ -709,12 +753,15 @@ export class MonacoBinding implements SessionClient {
 			const opens = (target: string | undefined) => {
 				if (target === undefined) return true;
 				const uri = m.Uri.parse(target);
-				return uri.scheme !== 'file' || !!m.editor.getModel(uri.with({ fragment: '' }));
+				return uri.scheme !== 'file' || !!m.editor.getModel(uriOf(uri.with({ fragment: '' }).toString()));
 			};
+			// A link to one of the binding's files opens its model, the fragment (a line) kept.
 			const toLink = (l: lsp.DocumentLink): monaco.languages.ILink => {
 				const link = c.toLink(l);
-				original.set(link, l);
-				return link;
+				const model = l.target === undefined ? undefined : this.#served.get(m.Uri.parse(l.target).with({ fragment: '' }).toString());
+				const local = l.target === undefined || model === undefined ? link : { ...link, url: model.with({ fragment: m.Uri.parse(l.target).fragment }) };
+				original.set(local, l);
+				return local;
 			};
 			add(
 				L.registerLinkProvider(selector, {
@@ -793,7 +840,7 @@ export class MonacoBinding implements SessionClient {
 					id: 'yukibana.showCallHierarchy',
 					label: 'Show Call Hierarchy',
 					keybindings: [m.KeyMod.Shift | m.KeyMod.Alt | m.KeyCode.KeyH],
-					precondition: whenLanguage(selector),
+					precondition: whenLanguage([...this.#options.languages]),
 					contextMenuGroupId: 'navigation',
 					contextMenuOrder: 1.5,
 					run: (editor) => this.#showCallHierarchy(editor),
@@ -911,7 +958,7 @@ export class MonacoBinding implements SessionClient {
 			if (resolved && 'range' in resolved.location) ({ uri, range } = resolved.location);
 		}
 		const m = this.#monaco;
-		const target = m.Uri.parse(uri);
+		const target = this.#uriOf(uri);
 		const start = range ? c.toMonacoRange({ start: range.start, end: range.start }) : null;
 		this.#options.events.open(target, start);
 		// After the picker has handed the focus back to the editor it opened from.
@@ -930,7 +977,7 @@ export class MonacoBinding implements SessionClient {
 		return (cmd) => ({ id: commandId, title: cmd.title, arguments: [cmd] });
 	}
 
-	#registerCodeActions(selector: string[], resolve: boolean, toCommand: c.CommandOf): void {
+	#registerCodeActions(selector: monaco.languages.LanguageFilter[], resolve: boolean, toCommand: c.CommandOf): void {
 		const original = new WeakMap<monaco.languages.CodeAction, lsp.CodeAction>();
 		const uriOf = this.#uriOf;
 		// An action whose edit the editor can make only in part comes back
@@ -949,7 +996,7 @@ export class MonacoBinding implements SessionClient {
 					const result = await this.#ask<(lsp.Command | lsp.CodeAction)[]>(
 						model,
 						'textDocument/codeAction',
-						{ textDocument: { uri: model.uri.toString() }, range: lspRange, context: c.toLspCodeActionContext(context, diagnostics) },
+						{ textDocument: this.#doc(model), range: lspRange, context: c.toLspCodeActionContext(context, diagnostics) },
 						token,
 					);
 					const actions = (result ?? []).map((a) => convert(a).action);

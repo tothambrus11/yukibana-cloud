@@ -1189,7 +1189,7 @@ Where it departs from sections 2 to 5, D10 and D11:
   internals and services (section 15), which an embed would have to
   assemble as Light's `startEditor` does: a step of its own, with
   `ServerLeases` (deferred, D10). @yukibana/playground has since bound
-  clangd without internals (`createPlayground`, one playground per Monaco),
+  clangd without internals (`createPlayground`, any number per Monaco, section 21),
   with a few features less (modules/monaco/README.md). The check of "one runner per pack" is
   "never two runners of a pack at once": the C++ and Python runners end
   after every run (they never say `reusable`), so each run starts one, as
@@ -1468,14 +1468,16 @@ What the review found, and what changed:
   entry of the build fails the build. bundle.test.mjs's offline test
   checks each one's static files are in the shell.
 
-## 21. CodeMirror: many playgrounds on a page
+## 21. Many playgrounds on a page, in CodeMirror and in Monaco
 
 Monaco keeps language providers in one registry per page, chosen by
-language id, so `@yukibana/playground` allows one playground per Monaco.
-A page of docs with many snippets (Hylo's, hylo-lang.org's) needs more,
-so CodeMirror 6 got its own adapter instead of the "later as a subpath of
-`editors/`" planned in section 3: it binds a language session, which
-`editors/` (core only) may not.
+language id, so `@yukibana/playground` first allowed one playground per
+Monaco. A page of docs with many snippets (Hylo's, hylo-lang.org's) needs
+more, so CodeMirror 6 got its own adapter instead of the "later as a
+subpath of `editors/`" planned in section 3: it binds a language session,
+which `editors/` (core only) may not. The Monaco rule then went too
+(below): a module that keeps a "one at a time" flag for the page is not a
+part one can use twice.
 
 * **`@yukibana/codemirror` is the Monaco binding's twin.** `project.ts`
   keeps one `EditorState` per file and is the core's `Project` over them;
@@ -1501,6 +1503,32 @@ so CodeMirror 6 got its own adapter instead of the "later as a subpath of
   `render.ts`), F12, F2 rename and Shift-Alt-F. A refusal a person should
   see is said in the editor, with `reasonOf`, which moved to protocol so
   both editors share it. `playgroundTheme` is Monaco's look, opt-in.
-* **Not yet:** signature help, code actions, references; and Monaco
-  playgrounds scoped by file (a selector per playground's root), which
-  would lift the one-per-Monaco rule too.
+* **Monaco playgrounds, any number per page, by two addresses per file.**
+  Two things in Monaco are the page's: one model per URI, and one
+  provider registry. Every server must see `file:///workspace/` (the
+  packs' contract; the C++ server's compile flags are found from it), so
+  two playgrounds' `main.cpp` would be one model. Each playground
+  therefore makes its models under a URI scheme of its own
+  (`playground-<crypto.randomUUID()>:/main.cpp`), and `MonacoBinding`
+  takes both addresses: `documentUri` (the model's) and `serverUri` (the
+  server's), translating every URI that crosses, both ways. A server's
+  URI for a file the binding has no model of stays itself. The providers
+  are registered for `{ language, scheme }`: a scheme because a Monaco
+  selector can filter on it and not on an authority, and scoped at all
+  because Monaco takes one provider's answer for formatting and semantic
+  tokens, where "answer null for a model that is not mine" (which the
+  binding also does) is not enough. Light's app has one workspace and
+  passes the same URI for both, with scheme `file`. Nothing is counted or
+  remembered outside a playground: the old `inUse` flag is gone, and what
+  is still the page's is Monaco's own (the theme, the grammars,
+  `MonacoEnvironment`). The editor actions the binding adds with Monaco's
+  internals (call hierarchy, Go to Symbol) are still registered once per
+  binding and page-wide; a playground passes no internals and has none.
+  examples/monaco-playgrounds is three on a page, and its test's
+  formatting check fails without the scheme in the selector.
+* **A request an edit overtook is no answer, not an error.** clangd
+  answers "content modified" (-32801) to every request an edit overtakes;
+  `LanguageSession.ask` logged each as an error, a dozen per typed word
+  with three servers. It answers null now, as for a cancelled request.
+* **Not yet:** signature help, code actions and references in
+  CodeMirror.

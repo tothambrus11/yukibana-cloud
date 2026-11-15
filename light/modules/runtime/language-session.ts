@@ -173,6 +173,13 @@ export interface Unsubscribe {
 
 /** LSP's "server cancelled": a pull the server refused for now; with `retriggerRequest`, ask again. */
 const SERVER_CANCELLED = -32802;
+/**
+ * LSP's "content modified": the server gave a request up because the
+ * document was edited while it worked (clangd, for every request an edit
+ * overtakes). No answer, and not a failure to show: the editor asks again
+ * for the text as it is now.
+ */
+const CONTENT_MODIFIED = -32801;
 /** How long to wait before asking again for diagnostics a server refused for now. */
 export const RETRIGGER_MS = 250;
 /** How long `stop` waits for the server to answer `shutdown` before ending it regardless. */
@@ -375,7 +382,8 @@ export class LanguageSession {
 
 	/**
 	 * Returns the server's answer to `method`, or null when the request was
-	 * cancelled (by `signal` or by the server) or the server is not ready.
+	 * cancelled (by `signal` or by the server), was overtaken by an edit
+	 * (the server's "content modified") or the server is not ready.
 	 * Any other failure is thrown: for a caller that shows it (a refused
 	 * rename says why).
 	 */
@@ -384,7 +392,7 @@ export class LanguageSession {
 		try {
 			return await this.#connection.request<R>(method, params, signal);
 		} catch (e) {
-			if (e instanceof ResponseError && e.code === REQUEST_CANCELLED) return null;
+			if (e instanceof ResponseError && (e.code === REQUEST_CANCELLED || e.code === CONTENT_MODIFIED)) return null;
 			throw e;
 		}
 	}

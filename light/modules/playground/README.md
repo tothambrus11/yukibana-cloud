@@ -62,11 +62,18 @@ body, so the package's samples are never loaded.
   makes everything and `dispose` takes it all back.
 * It names no language (`../boundaries.test.mjs`): the language is the
   package the host passes.
-* One playground per Monaco at a time (the CodeMirror entry has no such
-  limit): every playground's files are under
-  one workspace folder, which the language servers are told, and a
-  binding's providers answer for its language ids alone. A second one is
-  refused with a `RangeError` before anything is made; dispose the first.
+* Any number of playgrounds on a page, in either editor, each with a
+  language server that answers in its own editor alone. Monaco keeps one
+  model per URI and one registry of language features for the whole page,
+  so every Monaco playground's models have a URI scheme of its own
+  (`playground-<uuid>:/main.cpp`), made when it is, and its server's
+  features are registered for that scheme. Every server still sees the
+  one workspace folder the packs' contract fixes (`file:///workspace/`):
+  `MonacoBinding` translates between the two, so a model's URI never
+  reaches a server. No state is shared between playgrounds, in the module
+  or on the page. What Monaco itself keeps once per page stays the
+  page's to set: the theme (`monaco.editor.setTheme`), a language's
+  grammar, `MonacoEnvironment`.
 * A run resolves exactly once, with how it ended: a final state,
   `refused`, or `cancelled` when a newer run replaced it or the playground
   was disposed.

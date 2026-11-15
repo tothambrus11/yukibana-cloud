@@ -17,16 +17,16 @@ tests/fake-server.js  a stand-in language server for test.mjs where the C++ pack
 vite.config.ts     serving: the packs at /packs/, the page cross-origin isolated
 ```
 
-## Why several on one page work here and not in Monaco
+## Why several on one page work
 
-Monaco's language features are registered once per page and chosen by
-language id, so a second C++ editor with a second server would have both
-servers answer in both editors: `@yukibana/playground` allows one
-playground per Monaco. CodeMirror keeps an editor's features in its
-state, and `@yukibana/codemirror` puts a server's completion, hover and
-keys in the states of the one playground it serves
-(`../../modules/codemirror/README.md`). The price is a server per
-playground: three snippets run three clangd workers.
+CodeMirror keeps an editor's features in its state, and
+`@yukibana/codemirror` puts a server's completion, hover and keys in the
+states of the one playground it serves
+(`../../modules/codemirror/README.md`), so nothing is shared between the
+three. The price is a server per playground: three snippets run three
+clangd workers. `../monaco-playgrounds` is the same page in Monaco, where
+the language features are the page's and each playground's are registered
+for its own models.
 
 ## Running it
 

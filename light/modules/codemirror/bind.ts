@@ -10,9 +10,9 @@
  *
  * Everything it adds lives in the states of its own project (project.ts),
  * so two bindings on one page, each with its own server, never answer for
- * each other's editors: what made one playground per Monaco the rule there
- * (Monaco's providers are page-global and chosen by language id) does not
- * exist here.
+ * each other's editors. Monaco's providers are the page's, so its binding
+ * gets the same by registering them for its own models' URI scheme
+ * (../monaco/bind.ts); here there is nothing page-wide to scope.
  *
  * Not offered yet: signature help, code actions, references and the rest
  * of what `MonacoBinding` has.

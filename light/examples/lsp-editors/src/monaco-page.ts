@@ -117,7 +117,10 @@ const binding = new MonacoBinding({
 	session,
 	project,
 	documentUri: WORKSPACE.uriOf,
+	// One workspace on the page: the models' URIs are the server's.
+	serverUri: WORKSPACE.uriOf,
 	languages: language.monacoLanguages,
+	scheme: 'file',
 	rootUri: ROOT_URI,
 	events: {
 		log: (level, text) => view.log(level, text),

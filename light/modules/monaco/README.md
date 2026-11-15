@@ -52,6 +52,25 @@ The tests are `../tests/convert.test.mjs`, `../tests/internals.test.mjs`,
 `../tests/workspace-symbols.test.mjs`, run with the other modules'; the
 binding is driven by Light's e2e tests.
 
+## Several bindings in one Monaco
+
+Monaco keeps one model per URI and one registry of language features for
+the whole page; a binding keeps neither to itself, so several share a
+Monaco by what each is given. `documentUri` is where a file's model is,
+`serverUri` what the server knows the file by, and the binding translates
+every URI that crosses, both ways (a server's URI for a file it has no
+model of stays itself). The features are registered for the models of
+`languages` whose URI has `scheme`, so Monaco asks a binding about its
+own models only, which matters where it takes one provider's answer
+(formatting, semantic tokens). Light's app has one workspace: both URIs
+are the same, and `scheme` is `file`. A page of playgrounds gives each a
+scheme of its own (`../playground/README.md`), and every server the one
+root the packs' contract fixes.
+
+The editor actions a binding adds (Show Call Hierarchy, Go to Symbol in
+Workspace) are Monaco's, once per page: two bindings that both add them
+are not supported. A playground adds neither.
+
 ## Turning the editor on
 
 A host's editor is on from the calls it makes, in this order, and from

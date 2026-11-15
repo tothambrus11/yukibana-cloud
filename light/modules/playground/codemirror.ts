@@ -1,7 +1,7 @@
 /**
  * @yukibana/playground/codemirror: a working playground in the host's
  * CodeMirror 6 from one call, as the Monaco one (`@yukibana/playground`)
- * is in Monaco, and with no limit of one per page:
+ * is in Monaco, any number per page:
  *
  * ```ts
  * import * as state from '@codemirror/state';

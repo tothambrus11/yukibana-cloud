@@ -200,6 +200,19 @@ test('a pull the server refuses for now is asked again, and one it refuses outri
 	assert.equal(without.server.sent.some((m) => m.method === 'workspace/diagnostic'), false);
 });
 
+test('a request the server gave up because the document was edited answers null and logs nothing, where another failure is logged', async () => {
+	const { server, session, events } = await started({ hoverProvider: true }, [MAIN]);
+	const logged = events.logs.length;
+	const overtaken = session.ask('textDocument/hover', { textDocument: { uri: MAIN.uri }, position: { line: 0, character: 1 } }, new AbortController().signal);
+	server.refuse('textDocument/hover', -32801, 'Request cancelled because the document was modified');
+	assert.equal(await overtaken, null);
+	assert.equal(events.logs.length, logged);
+	const broken = session.ask('textDocument/hover', { textDocument: { uri: MAIN.uri }, position: { line: 0, character: 1 } }, new AbortController().signal);
+	server.refuse('textDocument/hover', -32603, 'it broke');
+	assert.equal(await broken, null);
+	assert.deepEqual(events.logs.at(-1), ['error', 'textDocument/hover: it broke']);
+});
+
 test('selection ranges and a call hierarchy are asked only of a server that has them, for a document it has open', async () => {
 	const none = await started({}, [MAIN]);
 	assert.equal(await none.session.selectionRanges(MAIN.uri, [{ line: 0, character: 1 }], new AbortController().signal), null);

@@ -47,11 +47,11 @@ await binding.start();
 
 ## Why it can have many editors on a page
 
-Monaco keeps language features in one registry per page, chosen by
-language id: two C++ editors with two servers cannot each have their own
-completion, because Monaco asks every C++ provider for every C++ model,
-which is why the Monaco playground allows one per Monaco. CodeMirror keeps
-an editor's features in its state's extensions. Every state of a project
+Monaco keeps language features in one registry per page and one model
+per URI, so its playgrounds each give their models a URI scheme of their
+own and register their server's features for it (`../monaco/README.md`).
+CodeMirror has nothing page-wide to scope: it keeps an editor's features
+in its state's extensions. Every state of a project
 has a compartment of the project's, which a binding fills with its
 server's features when the server is ready and empties when it closes, so
 a server's completions, hovers and keys exist in the states of the one
