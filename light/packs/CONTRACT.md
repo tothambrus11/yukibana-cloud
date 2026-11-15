@@ -174,7 +174,7 @@ carries them and never reads them (`RunnerOptions`). Light's packs use two
 kinds. The C and C++ packs' `{ emulation: 'system' | 'user', cpus: 1 | 2 |
 4, strace: boolean }` are how a program is emulated, for a runner that runs it in an
 emulator. The app sends them for C and C++ projects only (the project's
-Run options, saved with it; `modules/lang-cpp/targets.ts`), and the C++
+Run options, saved with it: `runOptionsProperty` in `modules/std/linux.ts`, as lang-cpp's `CPP_RUN_OPTIONS`), and the C++
 runner uses them only for a Linux target (`--target=` in
 `compile_flags.txt`, packs/cpp/README.md): `system` runs the program in
 Linux under QEMU's system emulation with `cpus` CPUs, `user` under QEMU's

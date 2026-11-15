@@ -5,19 +5,9 @@
 //
 //   node --test tests/unit/optimization.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { sourceUrlOf } from '../../../modules/list.mjs';
+import '../modules-hook.mjs';
 import { targetOf, withTarget } from '../../../modules/lang-cpp/targets.ts';
-
-// The app imports the language packages by name (link: dependencies read
-// through their @yukibana/source condition); Node is told the same names here, from the same list.
-registerHooks({
-	resolve(specifier, context, next) {
-		const url = sourceUrlOf(specifier);
-		return url === null ? next(specifier, context) : { url, shortCircuit: true };
-	},
-});
 
 const { cppLevelOf, levelsOf, savedLevelOf, withCppLevel } = await import('../../src/lib/optimization.ts');
 

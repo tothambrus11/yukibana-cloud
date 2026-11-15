@@ -10,9 +10,7 @@
 //   node --test light/modules/          (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AVAILABLE, createInstance, languageKey, pathOf } from '../core/index.ts';
-import { packIdOf } from '../runtime/packs.ts';
-import { RunnerPool } from '../runtime/run-pool.ts';
+import { AVAILABLE, pathOf } from '../core/index.ts';
 import { TEST_FAILED_FUNCTION } from '../protocol/index.ts';
 import {
 	debug,
@@ -33,27 +31,8 @@ import {
 	testCaseProvider,
 } from '../std/index.ts';
 import { snapshotOf } from './core-fakes.mjs';
-import { fakeClock, fakeTransport, OPTIONAL_STDIN, recorder, served, settle } from './run-fakes.mjs';
-
-const languageOf = (key) => ({
-	key: languageKey(key),
-	label: key.toUpperCase(),
-	short: null,
-	pack: packIdOf(key),
-	uses: [],
-	entry: pathOf('main.x'),
-	extension: 'x',
-	body: async () => ({ sample: {}, serverSettings: {}, properties: { properties: [], summary: () => '' } }),
-});
-const always = { requires: [], available: () => AVAILABLE };
-
-function instanceOf(languages, providers) {
-	const clock = fakeClock();
-	const { transport, runners } = fakeTransport();
-	const pool = new RunnerPool({ transport, timers: clock.timers, now: clock.now });
-	const { locator } = served();
-	return { instance: createInstance({ languages, providers, host: { pool, packs: locator, requires: OPTIONAL_STDIN } }), runners };
-}
+import { recorder, settle } from './run-fakes.mjs';
+import { always, instanceOf, languageOf } from './std-fakes.mjs';
 
 const FILES = { 'main.x': 'print 1', 'tests/t.x': 'check 1' };
 const channel = { buffer: new SharedArrayBuffer(16), address: 4 };

@@ -7,16 +7,8 @@
 //
 //   node --test tests/unit/preview.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { sourceUrlOf } from '../../../modules/list.mjs';
-
-registerHooks({
-	resolve(specifier, context, next) {
-		const url = sourceUrlOf(specifier);
-		return url === null ? next(specifier, context) : { url, shortCircuit: true };
-	},
-});
+import '../modules-hook.mjs';
 
 // The panel listens for its frame's console on the page; there is no page here.
 globalThis.addEventListener ??= () => {};

@@ -8,34 +8,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AVAILABLE, createInstance, languageKey, pathOf } from '../core/index.ts';
-import { packIdOf } from '../runtime/packs.ts';
 import { RunnerPool } from '../runtime/run-pool.ts';
 import { mutate, run, runMessage, runProvider, runProviderFrom, sourceOf, test as testToken, tokenOf, warm, warmProvider } from '../std/index.ts';
 import { snapshotOf } from './core-fakes.mjs';
-import { fakeClock, fakeTransport, hostBuilt, OPTIONAL_STDIN, recorder, served, settle } from './run-fakes.mjs';
+import { fakeClock, fakeTransport, hostBuilt, recorder, settle } from './run-fakes.mjs';
+import { always, instanceOf, languageOf } from './std-fakes.mjs';
 
 /** A language of these tests, on pack `pack`. */
-const languageOf = (key, pack = key) => ({
-	key: languageKey(key),
-	label: key.toUpperCase(),
-	short: null,
-	pack: packIdOf(pack),
-	uses: [],
-	entry: pathOf('main.x'),
-	extension: 'x',
-	body: async () => ({ sample: {}, serverSettings: {}, properties: { properties: [], summary: () => '' } }),
-});
-
-const always = { requires: [], available: () => AVAILABLE };
-
-function instanceOf(languages, providers) {
-	const clock = fakeClock();
-	const { transport, runners } = fakeTransport();
-	const pool = new RunnerPool({ transport, timers: clock.timers, now: clock.now });
-	const { locator } = served();
-	const host = { pool, packs: locator, requires: OPTIONAL_STDIN };
-	return { instance: createInstance({ languages, providers, host }), pool, runners, host };
-}
 
 const input = (told, options = null) => ({ files: { 'main.x': 'print 1', 'lib.x': 'x' }, entry: pathOf('main.x'), options, snippet: 'project', onEvent: told.listener });
 
