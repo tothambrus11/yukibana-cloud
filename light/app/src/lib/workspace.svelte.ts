@@ -1465,7 +1465,10 @@ export class Workspace implements CoreProject {
 			session,
 			project: this,
 			documentUri: (path) => uriOf(path).toString(),
+			// One workspace: the models' URIs are the server's.
+			serverUri: (path) => uriOf(path).toString(),
 			languages: language.monacoLanguages,
+			scheme: 'file',
 			rootUri: WORKSPACE.uri,
 			events: {
 				log: (level, text) => this.write(level, text, 'server'),

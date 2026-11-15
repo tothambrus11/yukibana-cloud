@@ -183,7 +183,7 @@ of file at once (the runtime says so in the output).
 
 * No language server: Monaco highlights, and nothing more (DESIGN.md
   section 17 says what binding one takes; @yukibana/playground's
-  `createPlayground` binds one, for one playground per Monaco).
+  `createPlayground` binds one per playground).
 * Swift is untested (above): its files follow the Swift pack's README
   (XCTest discovery, `@testable import App`, `main.swift` left out of a
   test run), and nothing has compiled them.

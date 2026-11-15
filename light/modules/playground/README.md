@@ -1,7 +1,8 @@
 # @yukibana/playground
 
 One call from a language package and some files to a working playground
-in the host's Monaco: the language server answering in the editor, the
+in the host's Monaco (`@yukibana/playground`) or CodeMirror 6
+(`@yukibana/playground/codemirror`, below): the language server answering in the editor, the
 files in one project with hidden files beside them, and Run through the
 language's runner. For a host that wants a concrete thing (my C++ against
 my library, its errors as I type, Run) rather than the parts, which it can
@@ -61,10 +62,18 @@ body, so the package's samples are never loaded.
   makes everything and `dispose` takes it all back.
 * It names no language (`../boundaries.test.mjs`): the language is the
   package the host passes.
-* One playground per Monaco at a time: every playground's files are under
-  one workspace folder, which the language servers are told, and a
-  binding's providers answer for its language ids alone. A second one is
-  refused with a `RangeError` before anything is made; dispose the first.
+* Any number of playgrounds on a page, in either editor, each with a
+  language server that answers in its own editor alone. Monaco keeps one
+  model per URI and one registry of language features for the whole page,
+  so every Monaco playground's models have a URI scheme of its own
+  (`playground-<uuid>:/main.cpp`), made when it is, and its server's
+  features are registered for that scheme. Every server still sees the
+  one workspace folder the packs' contract fixes (`file:///workspace/`):
+  `MonacoBinding` translates between the two, so a model's URI never
+  reaches a server. No state is shared between playgrounds, in the module
+  or on the page. What Monaco itself keeps once per page stays the
+  page's to set: the theme (`monaco.editor.setTheme`), a language's
+  grammar, `MonacoEnvironment`.
 * A run resolves exactly once, with how it ended: a final state,
   `refused`, or `cancelled` when a newer run replaced it or the playground
   was disposed.
@@ -73,3 +82,68 @@ body, so the package's samples are never loaded.
   applied a file at a time, and Go to Symbol in Workspace is not offered.
   Show Call Hierarchy is not offered either: a playground has no view for
   it.
+
+## In CodeMirror, any number per page
+
+`@yukibana/playground/codemirror` is the same playground in the host's
+CodeMirror 6, over `@yukibana/codemirror`:
+
+```ts
+import * as state from '@codemirror/state';
+import * as view from '@codemirror/view';
+import * as lint from '@codemirror/lint';
+import * as autocomplete from '@codemirror/autocomplete';
+import * as language from '@codemirror/language';
+import * as highlight from '@lezer/highlight';
+import { basicSetup } from 'codemirror';
+import { cpp } from '@codemirror/lang-cpp';
+import { LANGUAGES } from '@yukibana/lang-cpp';
+import { playgroundTheme } from '@yukibana/codemirror';
+import { createPlayground } from '@yukibana/playground/codemirror';
+
+const cm = { state, view, lint, autocomplete };
+const syntax = { language, highlight };
+const playground = createPlayground({
+	cm,
+	syntax,
+	element,
+	extensions: () => [basicSetup, playgroundTheme(cm, syntax, 'light'), cpp()],
+	language: LANGUAGES.cpp,
+	files: { 'main.cpp': mainText },
+});
+```
+
+`../../examples/codemirror-playgrounds` is a page of three.
+
+* **Any number per page.** Each playground is a project of its own (a
+  state per file), a server of its own and a view; the server's features
+  are extensions of that project's states (`../codemirror/README.md`), so
+  two playgrounds never answer for each other. What that costs: every
+  playground runs one server worker, so a page of ten C++ snippets runs
+  ten clangd, each with its memory. A page with many snippets that need no
+  server can leave the language session out by using
+  `@yukibana/codemirror`'s project alone.
+* **The host's part** is CodeMirror, passed in as its four packages, and
+  `extensions(path)`: the language mode, `basicSetup` or the parts it
+  wants, a theme. The playground adds the server's features and makes
+  hidden files read-only in their states, so in every view. `syntax`
+  (`@codemirror/language` and `@lezer/highlight`) is optional: with it, a
+  hover's code blocks are coloured as the editor colours its own text;
+  without it they are plain. `playgroundTheme` is Monaco's look (its
+  light and dark palettes, font, gutter, tooltips and squiggles) for a page
+  that wants its playgrounds to look like Light's.
+* **Tabs are the page's.** The playground shows one file at a time;
+  `show(path)` changes it, and `shownChanged(path, hidden)` says when it
+  changed, F12 into a header included, so a page's tab bar follows.
+* **What the editor offers** is `CodeMirrorBinding`'s: diagnostics,
+  completion, hover, F12 go to definition (into a hidden file too, shown in
+  the same view), F2 rename and Shift-Alt-F formatting. Signature help
+  and code actions are not there yet.
+* **Tab is the host's.** CodeMirror leaves `indentWithTab` out of
+  `basicSetup` so a keyboard can always leave an editor; a page that wants
+  Monaco's Tab adds `keymap.of([indentWithTab])` from
+  `@codemirror/commands` to `extensions` (the example does), and Escape
+  then Tab still moves the focus on.
+* The Monaco entry and this one share everything that is not the editor
+  (`page.ts`): the checks of the files, the page host, the session, why a
+  server did not start, and Run.

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>C++ snippets in CodeMirror</title>
+		<link rel="icon" href="data:," />
+		<style>
+			:root {
+				color-scheme: light dark;
+				--page: #f7f7f8;
+				--text: #1f2328;
+				--muted: #59636e;
+				--card: #ffffff;
+				--border: #d0d7de;
+				--bar: #f3f3f3;
+				--tab: #ffffff;
+				--tab-text: #333333;
+				--tab-idle: #6e7781;
+				--accent: #007acc;
+				--accent-hover: #0062a3;
+				--output: #fbfbfb;
+				--ok: #1a7f37;
+				--busy: #bf8803;
+				--bad: #cf222e;
+				--code-font: Consolas, 'Courier New', Menlo, Monaco, monospace;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--page: #181818;
+					--text: #e6edf3;
+					--muted: #9198a1;
+					--card: #1e1e1e;
+					--border: #3c3c3c;
+					--bar: #252526;
+					--tab: #1e1e1e;
+					--tab-text: #ffffff;
+					--tab-idle: #969696;
+					--accent: #0e639c;
+					--accent-hover: #1177bb;
+					--output: #181818;
+					--ok: #3fb950;
+					--busy: #cca700;
+					--bad: #f85149;
+				}
+			}
+			body { margin: 0; background: var(--page); color: var(--text); font: 15px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+			main { max-width: 54rem; margin: 0 auto; padding: 32px 16px 64px; }
+			h1 { font-size: 1.6rem; margin: 0 0 8px; }
+			h2 { font-size: 1.1rem; margin: 36px 0 6px; }
+			p { margin: 6px 0; color: var(--muted); }
+			kbd { font: 12px var(--code-font); padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--card); }
+			code { font-family: var(--code-font); font-size: 0.92em; }
+
+			.playground { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); }
+			.bar { display: flex; align-items: stretch; background: var(--bar); border-bottom: 1px solid var(--border); min-height: 35px; }
+			.tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
+			.tab { display: flex; align-items: center; gap: 6px; padding: 0 14px; border: 0; border-right: 1px solid var(--border); background: transparent; color: var(--tab-idle); font: 13px var(--code-font); cursor: pointer; white-space: nowrap; }
+			.tab[aria-selected='true'] { background: var(--tab); color: var(--tab-text); box-shadow: inset 0 2px 0 var(--accent); margin-bottom: -1px; }
+			.tab .lock { font: 11px system-ui, sans-serif; opacity: 0.7; }
+			.server { display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 12px; color: var(--muted); white-space: nowrap; max-width: 40%; overflow: hidden; text-overflow: ellipsis; }
+			.server::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--busy); }
+			.server[data-state='running']::before { background: var(--ok); }
+			.server[data-state='failed']::before, .server[data-state='stopped']::before { background: var(--bad); }
+			.run { align-self: center; margin: 0 8px; display: flex; align-items: center; gap: 6px; padding: 4px 12px; border: 0; border-radius: 4px; background: var(--accent); color: #fff; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+			.run:hover { background: var(--accent-hover); }
+			.run::before { content: ''; border-style: solid; border-width: 5px 0 5px 8px; border-color: transparent transparent transparent currentColor; }
+
+			.editor .cm-editor { max-height: 24em; }
+			.editor .cm-scroller { overflow: auto; }
+
+			.console { border-top: 1px solid var(--border); background: var(--output); }
+			.console[hidden] { display: none; }
+			.console-head { display: flex; justify-content: space-between; gap: 12px; padding: 4px 12px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+			.run-status { text-transform: none; letter-spacing: 0; }
+			.output { margin: 0; padding: 4px 12px 10px; min-height: 1.5em; max-height: 14em; overflow: auto; font: 13px/1.45 var(--code-font); white-space: pre-wrap; }
+			.output .stderr { color: var(--bad); }
+		</style>
+	</head>
+	<body>
+		<main>
+			<h1>C++ snippets in CodeMirror</h1>
+			<p>
+				Three playgrounds on one page, each with a language server of its own. Hover over a name, type for completions
+				(<kbd>Ctrl</kbd>+<kbd>Space</kbd>), <kbd>F12</kbd> to go to a definition, <kbd>F2</kbd> to rename, <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> to format,
+				break something to see the errors, then Run. What one server says shows in its own editor alone.
+			</p>
+
+			<section class="snippet" id="hello">
+				<h2>Hello</h2>
+				<p>The smallest program there is.</p>
+			</section>
+
+			<section class="snippet" id="greet">
+				<h2>A header of its own</h2>
+				<p><code>greet.h</code> belongs to this snippet only: <kbd>F12</kbd> on <code>greet</code> opens it, read-only.</p>
+			</section>
+
+			<section class="snippet" id="squares">
+				<h2>A loop</h2>
+				<p>Hover over <code>i</code>, or change the bound and run it again.</p>
+			</section>
+		</main>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

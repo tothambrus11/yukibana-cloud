@@ -50,7 +50,7 @@ const FORBIDDEN_NAMES = {
  * to say (DESIGN.md, rule 3), so a language id in one of their string
  * literals is a decision about that language made in the wrong place.
  */
-const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco', 'editors', 'playground']);
+const NO_LANGUAGES = new Set(['core', 'std', 'runtime', 'monaco', 'codemirror', 'editors', 'playground']);
 
 /** `true` iff `module` is a language package (`lang-<pack>`, DESIGN.md section 3). */
 const isLanguagePackage = (module) => module.startsWith('lang-');
@@ -66,12 +66,17 @@ const LANGUAGE_IDS = new Set(
 );
 
 /**
- * Modules that may `import type` from monaco-editor, and nothing else from
- * it: monaco, and every module whose package.json names monaco-editor as a
- * peer dependency (the grammars of lang-haskell and lang-zig), list.mjs's
- * `monacoTypes`.
+ * Per module, the packages of the host's it may `import type` from, and
+ * nothing else of them: every module the packages its package.json names
+ * as peer dependencies, other than shared modules (list.mjs's
+ * `typePeers`): Monaco for monaco and the grammars of lang-haskell and
+ * lang-zig, CodeMirror's for codemirror. The host's copy is injected, so
+ * a value import would bundle a second one.
  */
-const MONACO_TYPES = new Set(['monaco', ...modules().filter((module) => module.monacoTypes).map((module) => module.name)]);
+const TYPE_PEERS = Object.fromEntries(modules().map((module) => [module.name, new Set(module.typePeers)]));
+
+/** The package a bare specifier names: its first segment, or its first two for a scoped one (`@codemirror/state/dist` is `@codemirror/state`). */
+const packageOf = (specifier) => specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/');
 
 /**
  * Modules a language package's entry point (its index.ts) may import
@@ -117,6 +122,13 @@ const CASTS = {
 		'Record<string, unknown>': 'the guard of tidy-checks.json reads fields of a non-null object',
 		TidyCheck: 'the same guard reads one check\'s fields to test their types',
 		string: '`JSON.parse` of a double-quoted YAML scalar, which is a JSON string',
+	},
+	'codemirror/markdown.ts': {
+		'lsp.MarkupContent | lsp.MarkedString': 'a hover\'s contents that are not an array are one item; `Array.isArray` does not narrow a readonly array out of the union',
+	},
+	'codemirror/convert.ts': {
+		'lsp.CompletionList': 'a completion answer that is not an array is a list; `Array.isArray` does not narrow a readonly array out of the union',
+		'lsp.Location': 'a definition answer that is not an array is one location; `Array.isArray` does not narrow a readonly array out of the union',
 	},
 	'monaco/bind.ts': { 'lsp.CodeAction': 'a code action answer is a `Command` or a `CodeAction`, and one without a string `command` is the latter' },
 	'monaco/call-hierarchy.ts': {
@@ -252,12 +264,11 @@ function problemsOf(root, module, path, source) {
 			target = inside.startsWith('..') ? null : inside.split(sep)[0];
 		} else if (/^@yukibana\/[^/]+/.test(specifier)) {
 			target = specifier.split('/')[1];
-		} else if (specifier === 'monaco-editor' || specifier.startsWith('monaco-editor/')) {
-			if (!MONACO_TYPES.has(module)) {
-				problems.push(`${name} imports '${specifier}', and only monaco may use Monaco's types`);
-			} else if (!typeOnly) {
-				problems.push(`${name} imports '${specifier}' as a value: the host's Monaco is injected, so only \`import type\` is allowed`);
-			}
+		} else if (TYPE_PEERS[module]?.has(packageOf(specifier))) {
+			if (!typeOnly) problems.push(`${name} imports '${specifier}' as a value: the host's ${packageOf(specifier)} is injected, so only \`import type\` is allowed`);
+			continue;
+		} else if (packageOf(specifier) === 'monaco-editor') {
+			problems.push(`${name} imports '${specifier}', and only monaco and the modules that declare Monaco as a peer may use Monaco's types`);
 			continue;
 		} else {
 			problems.push(`${name} imports '${specifier}', which is not one of the shared modules`);
@@ -460,10 +471,20 @@ test('a language package imports no other, and its index.ts imports values from 
 });
 
 test('only the packages that declare Monaco as a peer may name its types', () => {
-	assert.ok(MONACO_TYPES.has('lang-haskell') && MONACO_TYPES.has('lang-zig') && !MONACO_TYPES.has('lang-cpp'));
+	assert.ok(TYPE_PEERS['lang-haskell'].has('monaco-editor') && TYPE_PEERS['lang-zig'].has('monaco-editor') && !TYPE_PEERS['lang-cpp'].has('monaco-editor'));
 	assert.deepEqual(check('lang-haskell', "import type * as Monaco from 'monaco-editor';"), []);
 	assert.equal(check('lang-haskell', "import * as monaco from 'monaco-editor';").length, 1);
 	assert.equal(check('lang-cpp', "import type * as Monaco from 'monaco-editor';").length, 1);
+});
+
+test("a module may name the types of the host's packages it declares as peers, and only their types", () => {
+	assert.ok(TYPE_PEERS.codemirror.has('@codemirror/state') && !TYPE_PEERS.monaco.has('@codemirror/state'));
+	assert.deepEqual(check('codemirror', "import type { EditorState } from '@codemirror/state';"), []);
+	assert.deepEqual(check('codemirror', "import type { Text } from '@codemirror/state/dist/index.js';"), []);
+	assert.equal(check('codemirror', "import { EditorState } from '@codemirror/state';").length, 1, 'a value would bundle a second copy of the host\'s');
+	assert.equal(check('codemirror', "import type { cpp } from '@codemirror/lang-cpp';").length, 1, 'a package it does not declare');
+	assert.equal(check('monaco', "import type { EditorState } from '@codemirror/state';").length, 1);
+	assert.equal(check('codemirror', "import type * as Monaco from 'monaco-editor';").length, 1);
 });
 
 test('core, std, the runtime and monaco name no language, though their comments may', () => {

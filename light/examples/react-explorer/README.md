@@ -172,10 +172,9 @@ once; the dark scheme reaches the page and Monaco; no page error.
 ## Limits
 
 * No language server: the editors colour and edit, but have no
-  completions or diagnostics. The editors share one Monaco, and a binding
-  answers for its language ids alone, so one clangd binding would answer
-  for every editor's models (one playground per Monaco, DESIGN.md
-  section 17).
+  completions or diagnostics. @yukibana/playground's `createPlayground`
+  binds one per editor, any number sharing a Monaco (DESIGN.md section
+  21); this example makes its editors itself.
 * The DAP client is copied from Light's app; `@yukibana/runtime` has none
   yet.
 * The sanitizer widget compiles at `-O0`: at `-O2` clang deletes the

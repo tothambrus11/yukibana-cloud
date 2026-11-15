@@ -7,6 +7,7 @@ table below, and one language package per pack:
 
 ```text
 app, embeds  ->  @yukibana/monaco  ->  @yukibana/runtime  ->  @yukibana/protocol  <-  packs' glue, runner frame
+embeds       ->  @yukibana/codemirror  ->  @yukibana/runtime, @yukibana/core, @yukibana/protocol
 app, embeds  ->  @yukibana/std     ->  @yukibana/runtime
 std  ->  @yukibana/core  --(types only)-->  @yukibana/protocol
 app, embeds  ->  @yukibana/lang-<pack>  ->  @yukibana/std, @yukibana/core
@@ -24,8 +25,9 @@ into which package, and the order.
 | `runtime/` | workers, packs and sessions in a browser: workspace paths, pack locator, worker factories, runner transports, LSP, run and preview sessions | itself, protocol |
 | `std/` | the tokens any language may provide (run, test, mutate, warm, debug, preview, explore) and the helpers that make a language's providers of them from its pack, and what languages share (levels, a Linux target's run options); it names no language | itself, runtime, core, protocol |
 | `monaco/` | the host's Monaco fed from a session: conversions, features, models, opt-in services, theme; a Monaco editor as the core's `EditorPort` (`monacoPort`) | itself, core, runtime, protocol, and `import type` from `monaco-editor` |
+| `codemirror/` | the host's CodeMirror 6 fed from a session: a project of files as one `EditorState` each with a language-feature compartment (`codeMirrorProject`), the binding that syncs them by ranges and shows diagnostics, completion, hover, go to definition, rename and formatting in that project's states alone (`CodeMirrorBinding`), the conversions, a server's Markdown as data and as DOM, and Monaco's look as a theme (`playgroundTheme`); it names no language | itself, core, runtime, protocol, and `import type` from the `@codemirror/*` packages it declares as peers |
 | `editors/` | editors other than Monaco, each an entry point (`editors/textarea`: a `<textarea>` as the core's `EditorPort` over a one-document project); it names no language | itself, core |
-| `playground/` | one call (`createPlayground`) from a language package and some files to a playground in the host's Monaco: the project with hidden files, the language server bound without Monaco's internals, an instance and a page host, and Run; it names no language | itself, core, std, runtime, monaco, protocol, and `import type` from `monaco-editor` |
+| `playground/` | one call (`createPlayground`) from a language package and some files to a playground in the host's Monaco (`.`) or CodeMirror (`./codemirror`), any number per page: the project with hidden files, the language server bound, an instance and a page host, and Run; it names no language | itself, core, std, runtime, monaco, codemirror, protocol, and `import type` from `monaco-editor` and `@codemirror/state` and `/view` |
 | `lang-<pack>/` | one pack's languages (`lang-cpp`: C and C++; `lang-javascript`: JavaScript, TypeScript, web, p5 and p5-global; one each for the others): `index.ts`, each language's spec and providers (cheap: no body, no message sent on import); `body.ts`, the samples, the server's settings and the build settings; `monaco.ts`, the Monaco languages (and Haskell's and Zig's grammars, whose tokenizers load with their language); and what the app's own pickers import by subpath (`lang-cpp/targets`, …) | itself, std, core; never another `lang-*`; `lang-cpp` and `lang-javascript` protocol too; `lang-haskell` and `lang-zig` `import type` from `monaco-editor` |
 
 Rules every module keeps, so that a host can import one without taking on
@@ -36,8 +38,9 @@ the app:
   host calls a function when it wants one. `tests/imports.test.mjs`
   imports every module with the page's objects as tripwires, and fails on
   any reach for one, any listener or timer, and any new global.
-* **The host's Monaco is injected.** Nothing here bundles or configures an
-  editor.
+* **The host's editor is injected.** Nothing here bundles or configures an
+  editor: Monaco and CodeMirror are passed in, and a module names their
+  types only, from the packages its package.json declares as peers.
 * **No app or framework.** No Svelte, dockview or `$app`, no
   `localStorage`, and no reading of `yukibana.json`: a project's
   configuration is the app's, and reaches a module as values.

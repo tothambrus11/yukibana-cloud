@@ -1,0 +1,32 @@
+{
+	"name": "@yukibana/codemirror",
+	"private": true,
+	"version": "0.0.0",
+	"description": "A language session's results in the host's CodeMirror 6: a project of files as editor states, its language server's diagnostics, completion, hover, go to definition, rename and formatting scoped to that project's editors, so any number of them share a page.",
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		".": "./index.ts"
+	},
+	"dependencies": {
+		"@yukibana/core": "^0.1.0",
+		"@yukibana/protocol": "^0.1.0",
+		"@yukibana/runtime": "^0.1.0"
+	},
+	"peerDependencies": {
+		"@codemirror/autocomplete": "^6.20.4",
+		"@codemirror/language": "^6.13.1",
+		"@codemirror/lint": "^6.9.7",
+		"@codemirror/state": "^6.7.6",
+		"@codemirror/view": "^6.43.15",
+		"@lezer/highlight": "^1.2.5"
+	},
+	"peerDependenciesMeta": {
+		"@codemirror/language": {
+			"optional": true
+		},
+		"@lezer/highlight": {
+			"optional": true
+		}
+	}
+}

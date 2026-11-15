@@ -37,6 +37,15 @@
 #   (light/modules/playground): type-check and a Vite build. Its end-to-end
 #   test needs the C++ pack installed, which this workflow never does, and
 #   is run where it is (node test.mjs).
+# - codemirror-playgrounds-example: light/examples/codemirror-playgrounds,
+#   three C++ playgrounds on one page in CodeMirror 6, each with its own
+#   server: type-check, a Vite build, and the page driven in Chromium with
+#   its stand-in language server (tests/fake-server.js), since this
+#   workflow never installs the C++ pack; where it is installed, test.mjs
+#   runs against clangd and checks Run too.
+# - monaco-playgrounds-example: light/examples/monaco-playgrounds, the
+#   same page in one Monaco, driven with the CodeMirror example's
+#   stand-in server: type-check, a Vite build, and the page in Chromium.
 # - cpp-library-sveltekit-example: light/examples/cpp-library-sveltekit,
 #   the same as a SvelteKit app: svelte-check and a prerendering build.
 #   Its end-to-end test needs the C++ pack and is run where it is.
@@ -122,6 +131,10 @@ jobs:
       lsp-editors-example-key: ${{ steps.lsp-editors-example.outputs.key }}
       cpp-library-example-done: ${{ steps.cpp-library-example.outputs.done }}
       cpp-library-example-key: ${{ steps.cpp-library-example.outputs.key }}
+      codemirror-playgrounds-example-done: ${{ steps.codemirror-playgrounds-example.outputs.done }}
+      codemirror-playgrounds-example-key: ${{ steps.codemirror-playgrounds-example.outputs.key }}
+      monaco-playgrounds-example-done: ${{ steps.monaco-playgrounds-example.outputs.done }}
+      monaco-playgrounds-example-key: ${{ steps.monaco-playgrounds-example.outputs.key }}
       cpp-library-sveltekit-example-done: ${{ steps.cpp-library-sveltekit-example.outputs.done }}
       cpp-library-sveltekit-example-key: ${{ steps.cpp-library-sveltekit-example.outputs.key }}
       svelte-course-example-done: ${{ steps.svelte-course-example.outputs.done }}
@@ -263,6 +276,29 @@ jobs:
           name: light-cpp-library-example
           paths: |
             light/examples/cpp-library
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: codemirror-playgrounds-example
+        uses: ./.github/actions/once
+        with:
+          name: light-codemirror-playgrounds-example
+          paths: |
+            light/examples/codemirror-playgrounds
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: monaco-playgrounds-example
+        uses: ./.github/actions/once
+        with:
+          name: light-monaco-playgrounds-example
+          paths: |
+            light/examples/monaco-playgrounds
+            light/examples/codemirror-playgrounds/tests
             light/package.json
             light/pnpm-workspace.yaml
             light/pnpm-lock.yaml
@@ -685,6 +721,100 @@ jobs:
       - uses: ./.github/actions/once
         with:
           record: ${{ needs.plan.outputs.cpp-library-example-key }}
+
+  codemirror-playgrounds-example:
+    name: CodeMirror playgrounds example
+    needs: plan
+    if: needs.plan.outputs.codemirror-playgrounds-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/codemirror-playgrounds
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/codemirror-playgrounds/pnpm-lock.yaml
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          pnpm install --frozen-lockfile --filter .
+          pnpm exec playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: End-to-end (Chromium, the stand-in language server)
+        run: pnpm run test:e2e
+        env:
+          FAKE_SERVER: '1'
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.codemirror-playgrounds-example-key }}
+
+  monaco-playgrounds-example:
+    name: Monaco playgrounds example
+    needs: plan
+    if: needs.plan.outputs.monaco-playgrounds-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/monaco-playgrounds
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/monaco-playgrounds/pnpm-lock.yaml
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          pnpm install --frozen-lockfile --filter .
+          pnpm exec playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: End-to-end (Chromium, the stand-in language server)
+        run: pnpm run test:e2e
+        env:
+          FAKE_SERVER: '1'
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.monaco-playgrounds-example-key }}
 
   cpp-library-sveltekit-example:
     name: C++ library in SvelteKit example

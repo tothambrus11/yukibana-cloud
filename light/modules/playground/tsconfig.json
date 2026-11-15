@@ -1,13 +1,21 @@
 {
 	// playground runs in the host's page beside its editor: the DOM, nothing
-	// of Node, and Monaco's types only (the host's Monaco is passed in, H1).
+	// of Node, and Monaco's and CodeMirror's types only (the host's editor is
+	// passed in, H1).
 	"extends": "../tsconfig.base.json",
 	"compilerOptions": {
 		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
 		// As modules/monaco/tsconfig.json: the declarations of `editor.api`,
-		// from the app's installed copy.
+		// from the app's installed copy; and for the CodeMirror entry, as
+		// modules/codemirror/tsconfig.json, CodeMirror's.
 		"paths": {
-			"monaco-editor": ["../../app/node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+			"monaco-editor": ["../../app/node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"],
+			"@codemirror/autocomplete": ["../../app/node_modules/@codemirror/autocomplete"],
+			"@codemirror/language": ["../../app/node_modules/@codemirror/language"],
+			"@codemirror/lint": ["../../app/node_modules/@codemirror/lint"],
+			"@codemirror/state": ["../../app/node_modules/@codemirror/state"],
+			"@codemirror/view": ["../../app/node_modules/@codemirror/view"],
+			"@lezer/highlight": ["../../app/node_modules/@lezer/highlight"]
 		}
 	},
 	"include": ["."]

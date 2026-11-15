@@ -58,5 +58,5 @@ chunk, the C++ editor's, which the page imports lazily.
 
 The page keeps its host and instances in `globalThis.twoUp`, for the
 test. Neither snippet has a language server (DESIGN.md section 17 says
-why); a page with one playground per Monaco gets one from
+why); a page gets one per editor from
 @yukibana/playground's `createPlayground`.

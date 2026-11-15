@@ -74,6 +74,24 @@ export class ResponseError extends Error {
 	}
 }
 
+/** At most this many characters of a server's error are shown to a person. */
+const REASON_LIMIT = 300;
+
+/**
+ * A server's error message as one readable sentence, for an editor to
+ * show where it refused a request (a rename's reason, in Monaco and in
+ * CodeMirror). Only the first line is kept; Phpactor appends its PHP
+ * stack trace to the message without a line break ("There are no
+ * file path candidates#0 /opt/phpactor/…"), so a `#0 /` and what follows
+ * is dropped too. Never empty: a server that said nothing gets a generic
+ * reason; at most 300 characters, a longer one cut with an ellipsis.
+ */
+export function reasonOf(message: string): string {
+	const line = (message.split('\n')[0] ?? '').replace(/#0 \/.*$/, '').trim();
+	if (!line) return 'The language server could not do this.';
+	return line.length > REASON_LIMIT ? line.slice(0, REASON_LIMIT - 1) + '…' : line;
+}
+
 /**
  * One connection to one worker. Ordering is the caller's business: the LSP
  * client sends nothing but `initialize` until that has been answered.
