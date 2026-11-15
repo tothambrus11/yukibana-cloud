@@ -40,6 +40,8 @@ export interface CodeMirror {
  * Optional wherever it is taken: without them code is plain.
  */
 export interface SyntaxPackages {
+	/** `@codemirror/language`: a state's language and its highlight style. */
 	readonly language: typeof language;
+	/** `@lezer/highlight`: `highlightCode`, which colours code outside an editor. */
 	readonly highlight: typeof highlight;
 }

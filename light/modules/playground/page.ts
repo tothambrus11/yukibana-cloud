@@ -103,7 +103,11 @@ export interface PlaygroundBase extends Disposable {
  */
 const RUNNER_NEEDS: Requires = { runner: { default: { crossOriginIsolated: 'optional-stdin', sameOriginPacks: true } } };
 
-/** The page's runners and explorers, each made on first use, and where the packs are. */
+/**
+ * One playground's runners and explorers, each made on first use, and
+ * where the packs are. Each playground has its own: a page of ten
+ * CodeMirror playgrounds that all run has ten runner pools.
+ */
 export class PageHost implements PackHost {
 	#pool: RunnerPool | null = null;
 	#explorers: Promise<ExplorerWorkers> | null = null;
@@ -301,9 +305,13 @@ export function readyOf(started: Promise<void>, options: PlaygroundFiles, checke
 
 /** A playground's Run: one run at a time, from its entry, through its instance. */
 export interface PlaygroundRunner extends Disposable {
+	/** The instance whose providers run the entry: the language's, over the playground's project. */
 	readonly instance: Instance<PackHost>;
+	/** As `PlaygroundBase.run`: a run of the project as it is now, replacing one in flight; never rejects. */
 	run(listener?: RunListener): Promise<RunResult>;
+	/** Sends `line` to the running program's standard input (a newline is added); nothing when no program is running. */
 	input(line: string): void;
+	/** Stops the running program; nothing when no program is running. */
 	stop(): void;
 	/** Cancels the run in flight (resolving it as `cancelled`), stops its program, and ends the page host's runners and explorers. */
 	dispose(): void;

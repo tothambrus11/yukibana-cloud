@@ -81,10 +81,20 @@ export interface CodeMirrorProject extends Project {
 	readonly cm: CodeMirror;
 	/** Every file's path, in the order of `options.files`. */
 	paths(): readonly Path[];
-	/** The state of file `path` now, or null when the project has no such file. */
-	state(path: Path): EditorState | null;
-	/** The file's version now (`DocumentEdit.version`), or null when the project has no such file. */
-	version(path: Path): number | null;
+	/**
+	 * The state of file `path` now.
+	 *
+	 * - Requires: `path` is a file of the project; throws a `RangeError`
+	 *   naming it.
+	 */
+	state(path: Path): EditorState;
+	/**
+	 * The file's version now (`DocumentEdit.version`).
+	 *
+	 * - Requires: `path` is a file of the project; throws a `RangeError`
+	 *   naming it.
+	 */
+	version(path: Path): number;
 	/**
 	 * Makes a view in `parent` showing file `path`. Its transactions go to
 	 * the file's state, and a host's `dispatch` on it is the same as an
@@ -174,8 +184,11 @@ export function codeMirrorProject(options: CodeMirrorProjectOptions): CodeMirror
 	const project: CodeMirrorProject = {
 		cm,
 		paths: () => paths,
-		state: (path) => states.get(path) ?? null,
-		version: (path) => versions.get(path) ?? null,
+		state: stateOf,
+		version: (path) => {
+			stateOf(path);
+			return versions.get(path) ?? 1;
+		},
 		snapshot: () => (current ??= snapshotOf(Object.fromEntries(paths.map((path) => [path, states.get(path)?.doc.toString() ?? ''])), revision)),
 		onChange: (listener) => {
 			changeListeners.add(listener);

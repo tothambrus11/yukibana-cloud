@@ -217,7 +217,8 @@ All packages are lockstep and `sideEffects: false`. Each has its own tsconfig.
 | `runtime/` | today's code (browser host), plus `language-session.ts` (Connection, document sync over a `Project`, typed requests: pull diagnostics, selectionRanges, custom notifications), plus `host.ts` (`BrowserHost = { pool: RunnerPool; packs: PackLocator; servers: ServerLeases }`) | core, protocol | es2024 + DOM + WebWorker |
 | `std/` **new** | tokens and input types: `std/run` (`run`, `test`, `mutate`: `Token<RunInput, RunHandle>`), `std/debug`, `std/preview`, `std/explore` (`Token<EmitInput, EmitResult>`, `ViewKind` brand), `std/export` (`many`). Also helpers `runProvider(meta, build)` and `packsOf(meta)`. No language ids. | core, runtime, protocol | same as runtime |
 | `monaco/` | today's code, plus `bind.ts` (Monaco models ↔ `Project`, `LanguageSession` ↔ Monaco features, from `lsp/client.ts`), plus `EditorKinds['monaco']` | core, runtime, protocol, `import type` monaco-editor | DOM |
-| `editors/` **new, step 8** | `editors/textarea` (`EditorKinds['textarea']`); CodeMirror later as a subpath | core | DOM |
+| `editors/` **new, step 8** | `editors/textarea` (`EditorKinds['textarea']`) | core | DOM |
+| `codemirror/` **section 21** | a project as CodeMirror 6 states, and `CodeMirrorBinding` (`LanguageSession` ↔ CodeMirror features, in that project's states only) | core, runtime, protocol, `import type` its CodeMirror peers | DOM |
 | `lang-<pack>/` **new, step 6** (`@yukibana/lang-cpp` serves `c` and `cpp`; `lang-javascript` serves javascript, typescript, web, p5, p5-global; one each for python, swift, scala, rust, php, java, kotlin, haskell, go, zig) | `index.ts` holds each language's `PackLanguageSpec` and its providers, whose bodies are std's or loaded on a first request. Subpaths: `/body` (sample, server settings, properties), `/monaco` (`MONACO_LANGUAGES`, and Haskell's and Zig's grammars, lazy), and the property modules the app's pickers read (section 14) | core, std, runtime, protocol. `/monaco` may also `import type` monaco-editor, where the package's `peerDependencies` name it. Never another `lang-*` | DOM |
 
 Packs and `CONTRACT.md` are unchanged.
@@ -226,7 +227,7 @@ Packs and `CONTRACT.md` are unchanged.
 
 1. `ALLOWED` is derived from each `package.json`'s `dependencies` and `peerDependencies`. `build.mjs PUBLISHED`, the app's `check` tsc list and `light-modules.yml` read the same directory list.
 2. `core/`: forbid the identifiers `document`, `window`, `HTMLElement`, `customElements`, `Worker`, `location`, `crossOriginIsolated`, `fetch` and `MessagePort`. A tsconfig compile test (as already done for protocol) proves the core compiles without DOM.
-3. `core/`, `std/`, `runtime/`, `monaco/` and `editors/`: forbid every `LanguageId` literal, read from the `spec: { key: … }` of each `lang-*/index.ts`, in string literals. A `lang-*` never imports another `lang-*`.
+3. `core/`, `std/`, `runtime/`, `monaco/`, `codemirror/`, `editors/` and `playground/`: forbid every `LanguageId` literal, read from the `spec: { key: … }` of each `lang-*/index.ts`, in string literals. A `lang-*` never imports another `lang-*`.
 4. `lang-<pack>/index.ts` may value-import only `core` and token modules of `std` (`std/run`, not `std/run/*` bodies). Anything that sends a message lives in a subpath reached by `import()` or, for Light's eager set, a static import in the host config.
 5. A module that is the target of any `import()` has no static importer inside its own package.
 6. No top-level call other than `/* @__PURE__ */ defineToken(...)` and `provide(...)` in an entry module. `tests/imports.test.mjs` tripwires cover every new entry.
@@ -854,7 +855,7 @@ decision D1. Where this section and those differ, this one holds.
   `@yukibana/lang-<pack>`. list.mjs finds them as it finds every module,
   and now also reads each package's `exports` (`entries`, under the
   `@yukibana/source` condition) and whether it is allowed Monaco's types
-  (`typePeers`, its peer dependencies other than shared modules, such as `monaco-editor`). The app's Vite
+  (`monacoTypes`, a `monaco-editor` peer dependency). The app's Vite
   aliases (`moduleSources()`), the Node resolve hook the app's tests
   register (`tests/modules-hook.mjs`, over `sourceUrlOf`) and the import
   tripwires (52 entries) all read that list, so none of them is edited
@@ -1467,3 +1468,39 @@ What the review found, and what changed:
   entry of the build fails the build. bundle.test.mjs's offline test
   checks each one's static files are in the shell.
 
+## 21. CodeMirror: many playgrounds on a page
+
+Monaco keeps language providers in one registry per page, chosen by
+language id, so `@yukibana/playground` allows one playground per Monaco.
+A page of docs with many snippets (Hylo's, hylo-lang.org's) needs more,
+so CodeMirror 6 got its own adapter instead of the "later as a subpath of
+`editors/`" planned in section 3: it binds a language session, which
+`editors/` (core only) may not.
+
+* **`@yukibana/codemirror` is the Monaco binding's twin.** `project.ts`
+  keeps one `EditorState` per file and is the core's `Project` over them;
+  `bind.ts`'s `CodeMirrorBinding` is the session's client. Every state has
+  a compartment of its project's that the binding fills with its server's
+  completion, hover and keys and empties on close, so a server answers in
+  the states of the project it serves and nowhere else. Edits reach the
+  server as ranges, one `didChange` per transaction (D9).
+* **CodeMirror is injected, as Monaco is** (H1): a page has one copy of
+  `@codemirror/state`, and an extension of a second copy is silently
+  ignored. The modules `import type` from it only. list.mjs's
+  `monacoTypes` became `typePeers`: a module may name the types of the
+  peers its package.json declares (`monaco-editor` for monaco and two
+  grammars, CodeMirror's packages for codemirror), and boundaries.test.mjs
+  reads them, with no special case.
+* **`@yukibana/playground/codemirror`** is `createPlayground` over it, any
+  number per page. What is not the editor (the files' checks, the host,
+  the session, Run) moved to `playground/page.ts`, shared with the Monaco
+  entry, whose API did not change. The price is a server and a runner
+  pool per playground: a page of ten C++ snippets runs ten clangd.
+* **What the binding offers:** diagnostics, completion, hover (a server's
+  Markdown parsed into data, `markdown.ts`, and drawn as text nodes,
+  `render.ts`), F12, F2 rename and Shift-Alt-F. A refusal a person should
+  see is said in the editor, with `reasonOf`, which moved to protocol so
+  both editors share it. `playgroundTheme` is Monaco's look, opt-in.
+* **Not yet:** signature help, code actions, references; and Monaco
+  playgrounds scoped by file (a selector per playground's root), which
+  would lift the one-per-Monaco rule too.

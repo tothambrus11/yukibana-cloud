@@ -14,10 +14,10 @@
  */
 import type { Completion, CompletionResult } from '@codemirror/autocomplete';
 import type { Diagnostic as CodeMirrorDiagnostic } from '@codemirror/lint';
-import type { ChangeSet, EditorState, Text, TransactionSpec } from '@codemirror/state';
-import type { EditorView } from '@codemirror/view';
+import type { ChangeSet, EditorState, Text } from '@codemirror/state';
 import type * as lsp from '../protocol/lsp.ts';
 import type { RangeChange } from '../runtime/language-session.ts';
+import type { CodeMirror } from './codemirror.ts';
 import { markupBlocks, type MarkupBlock } from './markdown.ts';
 
 /**
@@ -121,13 +121,8 @@ const COMPLETION_TYPES: Readonly<Partial<Record<lsp.CompletionItemKind, string>>
 	25: 'type',
 };
 
-/** The host's two functions of `@codemirror/autocomplete` a completion's `apply` calls. */
-export interface CompletionApply {
-	/** `@codemirror/autocomplete`'s `snippet`. */
-	readonly snippet: (template: string) => (view: EditorView, completion: Completion | null, from: number, to: number) => void;
-	/** `@codemirror/autocomplete`'s `insertCompletionText`. */
-	readonly insertCompletionText: (state: EditorState, text: string, from: number, to: number) => TransactionSpec;
-}
+/** The host's two functions of `@codemirror/autocomplete` a completion's `apply` calls: `snippet` and `insertCompletionText`. */
+export type CompletionApply = Pick<CodeMirror['autocomplete'], 'snippet' | 'insertCompletionText'>;
 
 /** What a completion's documentation becomes in the list's info box: the host's DOM, made from the blocks when the box opens. */
 export type RenderMarkup = (blocks: readonly MarkupBlock[]) => Node;
@@ -223,7 +218,10 @@ export function firstLocation(answer: lsp.Location | readonly (lsp.Location | ls
 
 /** A change to one document, as CodeMirror's change specs, in `doc`'s offsets. */
 export function toChanges(doc: Text, edits: readonly lsp.TextEdit[]): { from: number; to: number; insert: string }[] {
-	return edits.map((edit) => ({ from: toOffset(doc, edit.range.start), to: toOffset(doc, edit.range.end), insert: edit.newText }));
+	return edits.map((edit) => {
+		const from = toOffset(doc, edit.range.start);
+		return { from, to: Math.max(from, toOffset(doc, edit.range.end)), insert: edit.newText };
+	});
 }
 
 /**

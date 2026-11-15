@@ -362,7 +362,7 @@ test("F2's rename starts at the range the server prepares, or the word at the ca
 	assert.deepEqual(await target(range, true, 1, pathOf('lib.h')), { refused: 'This file is read-only.' });
 });
 
-test("a rename makes the server's edits, one undo step per file, and changes nothing where it would touch a read-only file, a file not of the project, or a file edited meanwhile", async () => {
+test("a rename makes the server's edits, one transaction per file, and changes nothing where it would touch a read-only file or a file not of the project, or after any file was edited meanwhile", async () => {
 	const main = pathOf('main.cpp');
 	const edit = (newText) => [{ range: { start: { line: 0, character: 4 }, end: { line: 0, character: 8 } }, newText }];
 	const renamed = async (answer, meanwhile = () => {}) => {
@@ -370,8 +370,7 @@ test("a rename makes the server's edits, one undo step per file, and changes not
 		const session = fakeSession({ renameProvider: true }, { 'textDocument/rename': answer });
 		const binding = bindingOf(project, session);
 		await binding.start();
-		const state = caretAt(project, main, 5);
-		const done = binding.rename(main, state, 5, 'start');
+		const done = binding.rename(main, 5, 'start');
 		meanwhile(project);
 		return { result: await done, files: project.snapshot().files(), asked: session.sent.find((s) => s.ask === 'textDocument/rename')?.params };
 	};
@@ -390,4 +389,8 @@ test("a rename makes the server's edits, one undo step per file, and changes not
 	const typed = await renamed({ changes: { 'file:///w/main.cpp': edit('start') } }, (project) => project.update(main, { changes: { from: 0, insert: ' ' } }));
 	assert.match(typed.result, /changed before the server answered/);
 	assert.equal(typed.files['main.cpp'], ' int main() {}\n');
+	// Another file edited meanwhile: the answer's offsets there are of the text before.
+	const elsewhere = await renamed({ changes: { 'file:///w/main.cpp': edit('start') } }, (project) => project.update(pathOf('lib.h'), { changes: { from: 0, insert: '// x\n' } }));
+	assert.match(elsewhere.result, /changed before the server answered/);
+	assert.equal(elsewhere.files['main.cpp'], 'int main() {}\n');
 });

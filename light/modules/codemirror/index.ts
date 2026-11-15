@@ -23,8 +23,6 @@
  *   blocks and spans, data only, for `renderMarkup` to draw as text.
  * - render.ts: those blocks drawn as DOM, text as text nodes, code coloured
  *   in the editor's language (`renderMarkup`).
- * - port.ts: a project's view as the core's `EditorPort` of kind
- *   `codemirror` (`codeMirrorPort`).
  *
  * What it promises, and may import, is in ./README.md and is enforced by
  * ../boundaries.test.mjs.
@@ -33,7 +31,6 @@ export * from './bind.ts';
 export type * from './codemirror.ts';
 export * from './convert.ts';
 export * from './markdown.ts';
-export * from './port.ts';
 export * from './project.ts';
 export * from './render.ts';
 export * from './theme.ts';

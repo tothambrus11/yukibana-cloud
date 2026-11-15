@@ -19,7 +19,7 @@
  *     element,
  *     extensions: () => [basicSetup, cpp()],
  *     language: LANGUAGES.cpp,
- *     files: { 'main.cpp': element.textContent },
+ *     files: { 'main.cpp': element.textContent ?? '' },
  *   });
  * }
  * ```
@@ -28,7 +28,8 @@
  * @yukibana/codemirror), its own language server in a worker of its own,
  * and its own view; the server's completions, hovers and keys are
  * extensions of that project's states alone, so playgrounds never answer
- * for each other (DESIGN.md, the playground's README). Every playground
+ * for each other (../codemirror/README.md, "Why it can have many editors
+ * on a page"). Every playground
  * runs one server worker: a page of ten C++ snippets runs ten clangd.
  *
  * Nothing happens on import; `createPlayground` makes everything, and

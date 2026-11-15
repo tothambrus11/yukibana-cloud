@@ -126,9 +126,11 @@ await check("completion offers what this snippet's server knows, and nothing of 
 	await page.keyboard.press('Control+Space');
 	const list = page.locator('#squares .cm-tooltip-autocomplete');
 	if (fake) {
-		await list.waitFor({ timeout: ANSWER }).catch(() => {});
-		const options = await textsIn('squares', '.cm-tooltip-autocomplete li');
-		if (options.some((option) => option.includes('greet'))) throw new Error(`squares was offered another snippet's greet: ${options.join(', ')}`);
+		// The stand-in names its server in each item's detail: every one must be squares'.
+		await list.waitFor({ timeout: ANSWER });
+		const name = (await page.locator('#squares .server').innerText()).replace(/ is running\.$/, '');
+		const details = await textsIn('squares', '.cm-tooltip-autocomplete .cm-completionDetail');
+		if (details.length === 0 || details.some((detail) => detail !== name)) throw new Error(`squares was offered another server's completions: ${details.join(', ')}`);
 	}
 	await page.keyboard.press('Escape');
 	await page.keyboard.press('Control+z');
@@ -172,8 +174,9 @@ await check('F12 on a name of the header opens the header, read-only, in the sam
 	await page.keyboard.press('F12');
 	await page.waitForFunction(() => globalThis.playgrounds.greet.shown === 'greet.h', null, { timeout: ANSWER });
 	const readOnly = await page.evaluate(() => globalThis.playgrounds.greet.view.state.readOnly);
+	const before = await page.evaluate(() => globalThis.playgrounds.greet.project.snapshot().file('greet.h'));
 	await page.keyboard.type('x');
-	const changed = await page.evaluate(() => globalThis.playgrounds.greet.project.snapshot().file('greet.h').includes('x#pragma'));
+	const changed = await page.evaluate((text) => globalThis.playgrounds.greet.project.snapshot().file('greet.h') !== text, before);
 	await page.evaluate(() => globalThis.playgrounds.greet.show('main.cpp'));
 	if (!readOnly || changed) throw new Error('greet.h is editable');
 });

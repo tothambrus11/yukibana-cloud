@@ -100,7 +100,7 @@ const playground = createPlayground({
 	cm,
 	syntax,
 	element,
-	extensions: () => [basicSetup, playgroundTheme(cm, syntax, { dark: false }), cpp()],
+	extensions: () => [basicSetup, playgroundTheme(cm, syntax, 'light'), cpp()],
 	language: LANGUAGES.cpp,
 	files: { 'main.cpp': mainText },
 });

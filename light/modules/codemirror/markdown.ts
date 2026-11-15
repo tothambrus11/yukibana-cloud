@@ -5,7 +5,7 @@
  * paragraphs with hard breaks, lists; inline code, strong, emphasis,
  * links and backslash escapes. Anything else is text, as written.
  *
- * Pure, and producing data only: drawing it is bind.ts's `renderMarkup`,
+ * Pure, and producing data only: drawing it is render.ts's `renderMarkup`,
  * which makes every piece of text a text node, so nothing a server sends
  * is ever read as HTML.
  *

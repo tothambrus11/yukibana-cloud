@@ -26,6 +26,7 @@ const binding = new CodeMirrorBinding({
 	project,
 	documentUri: (path) => root.uriOf(path),
 	languageId: () => 'cpp',
+	syntax: null, // or { language, highlight }: a hover's code coloured as the editor's
 	events: { log: console.warn, open: (path, selection) => shown.show(path, selection) },
 });
 await binding.start();
@@ -38,10 +39,11 @@ await binding.start();
 |---|---|
 | `codemirror.ts` | `CodeMirror`: the host's `@codemirror/state`, `view`, `lint` and `autocomplete`, as namespaces |
 | `project.ts` | `codeMirrorProject`: a state per file, the views that show them (`view`, then `show` and `dispose` on what it returns), `update`, the edits as transactions (`onEdit`), and the core's `Project` over them |
-| `bind.ts` | `CodeMirrorBinding`: the session's client: files opened, edits sent as ranges by version, diagnostics through `@codemirror/lint`, completion (snippets and additional edits included), hover, F12 go to definition, F2 rename, Shift-Alt-F formatting, a server's workspace edit; `renderMarkup` |
+| `bind.ts` | `CodeMirrorBinding`: the session's client: files opened, edits sent as ranges by version, diagnostics through `@codemirror/lint`, completion (snippets and additional edits included), hover, F12 go to definition, F2 rename, Shift-Alt-F formatting, a server's workspace edit |
+| `markdown.ts` | `markupBlocks`: a server's Markdown (a hover, a completion's documentation) read into data, a safe subset: headings, rules, fenced code, paragraphs, lists, code spans, strong, emphasis, links |
+| `render.ts` | `renderMarkup`: those blocks as DOM, text through text nodes only and links followed for http(s) only; `stateHighlighter`: a code block coloured as the editor colours its own text |
 | `convert.ts` | positions and offsets, a transaction's changes as LSP's, diagnostics, completions, hover text as blocks, definition answers, workspace edits |
-| `theme.ts` | `playgroundTheme(cm, { language, highlight }, { dark })`: Monaco's `vs` or `vs-dark` as a CodeMirror theme and highlight style, the binding's widgets (hover, completion list, problems) included, so a CodeMirror snippet looks like the Monaco playground; the host adds it to its extensions |
-| `port.ts` | `codeMirrorPort`: a project's view as the core's `EditorPort<'codemirror'>`, the caret its one capability |
+| `theme.ts` | `playgroundTheme(cm, { language, highlight }, 'light' | 'dark')`: Monaco's `vs` or `vs-dark` as a CodeMirror theme and highlight style, the binding's widgets (hover, completion list, problems) included, so a CodeMirror snippet looks like the Monaco playground; the host adds it to its extensions |
 
 ## Why it can have many editors on a page
 

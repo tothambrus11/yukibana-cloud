@@ -10,5 +10,8 @@
 		"@yukibana/core": "^0.1.0",
 		"@yukibana/protocol": "^0.1.0",
 		"@yukibana/runtime": "^0.1.0"
+	},
+	"peerDependencies": {
+		"monaco-editor": "^0.57.0"
 	}
 }

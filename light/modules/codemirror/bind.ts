@@ -58,12 +58,19 @@ export interface CodeMirrorBindingOptions {
 	readonly session: LanguageSession;
 	/** The project whose files are the server's documents; one binding at a time serves it. */
 	readonly project: CodeMirrorProject;
-	/** Returns the document URI of project file `path`, under the session's root; a different URI for each path. */
+	/**
+	 * Returns the document URI of project file `path`, under the session's
+	 * root.
+	 *
+	 * - Requires: a different URI for each path; the binding's constructor
+	 *   throws a `RangeError` otherwise.
+	 */
 	readonly documentUri: (path: Path) => lsp.DocumentUri;
 	/** Returns the LSP language id of project file `path` (`cpp`, `plaintext` for a `compile_flags.txt`). */
 	readonly languageId: (path: Path) => string;
 	/** The host's syntax packages, to colour the code in a hover or a completion's documentation as the editor colours its own; null: plain. */
 	readonly syntax: SyntaxPackages | null;
+	/** Where the binding tells the host what it cannot show itself: log lines, and a file to show. */
 	readonly events: CodeMirrorBindingEvents;
 }
 
@@ -124,6 +131,7 @@ export class CodeMirrorBinding implements SessionClient {
 		this.#session = options.session;
 		this.#project = options.project;
 		for (const path of options.project.paths()) this.#paths.set(options.documentUri(path), path);
+		if (this.#paths.size !== options.project.paths().length) throw new RangeError('documentUri gives two files of the project the same URI.');
 		const cm = this.#cm;
 		const set = cm.state.StateEffect.define<Tooltip | null>();
 		this.#setRenameBox = set;
@@ -146,9 +154,7 @@ export class CodeMirrorBinding implements SessionClient {
 	readonly started = (capabilities: lsp.ServerCapabilities): void => {
 		const project = this.#project;
 		for (const [uri, path] of this.#paths) {
-			const state = project.state(path);
-			if (state === null) continue;
-			this.#session.open({ uri, languageId: this.#options.languageId(path), version: project.version(path) ?? 1, text: state.doc.toString() }, 'existing');
+			this.#session.open({ uri, languageId: this.#options.languageId(path), version: project.version(path), text: project.state(path).doc.toString() }, 'existing');
 		}
 		this.#edits = project.onEdit(({ path, version, transaction }) => {
 			this.#session.change(this.#options.documentUri(path), {
@@ -163,16 +169,16 @@ export class CodeMirrorBinding implements SessionClient {
 	/** Shows a file's diagnostics through `@codemirror/lint`, replacing the ones it had; those of any other document are dropped. */
 	readonly diagnostics = (uri: lsp.DocumentUri, diagnostics: readonly lsp.Diagnostic[]): void => {
 		const path = this.#paths.get(uri);
-		const state = path === undefined ? null : this.#project.state(path);
-		if (path === undefined || state === null || this.#lifetime.signal.aborted) return;
+		if (path === undefined || this.#lifetime.signal.aborted) return;
+		const state = this.#project.state(path);
 		this.#project.update(path, this.#cm.lint.setDiagnostics(state, diagnostics.map((d) => c.toDiagnostic(state.doc, d))));
 	};
 
 	/** Returns `true` iff the document is a file of the project and not external, after handing it to `events.open`. */
 	readonly showDocument = (params: lsp.ShowDocumentParams): boolean => {
 		const path = this.#paths.get(params.uri);
-		const state = path === undefined ? null : this.#project.state(path);
-		if (params.external === true || path === undefined || state === null) return false;
+		if (params.external === true || path === undefined) return false;
+		const state = this.#project.state(path);
 		const selection = params.selection === undefined ? null : { from: c.toOffset(state.doc, params.selection.start), to: c.toOffset(state.doc, params.selection.end) };
 		this.#options.events.open(path, selection);
 		return true;
@@ -213,17 +219,21 @@ export class CodeMirrorBinding implements SessionClient {
 	}
 
 	/**
-	 * Renames what is at `pos` of `state` (file `path`) to `newName`, as the
-	 * server says: one transaction (one undo step) per file it changes.
-	 * Resolves null when it is done, or with why it was not, in a sentence
-	 * for the person: the server's reason (its error, or an error it showed
-	 * meanwhile), a change to a read-only file or to one that is not of the
-	 * project, a change the editor cannot make (a file created, renamed or
-	 * deleted), or `path` edited before the answer came. A refused rename
-	 * changes nothing.
+	 * Renames what is at `pos` of file `path` now to `newName`, as the
+	 * server says: one transaction per file it changes. Resolves null when
+	 * it is done, or with why it was not, in a sentence for the person: the
+	 * server's reason (its error, or an error it showed meanwhile), a change
+	 * to a read-only file or to one that is not of the project, a change the
+	 * editor cannot make (a file created, renamed or deleted), or any file
+	 * of the project edited before the answer came (the answer's offsets are
+	 * of the text before). A refused rename changes nothing.
+	 *
+	 * - Requires: `path` is a file of the project, and `0 <= pos <=` its
+	 *   length.
 	 */
-	async rename(path: Path, state: EditorState, pos: number, newName: string): Promise<string | null> {
-		const version = this.#project.version(path);
+	async rename(path: Path, pos: number, newName: string): Promise<string | null> {
+		const state = this.#project.state(path);
+		const revision = this.#project.snapshot().revision;
 		let shown: string | undefined;
 		const listening = this.#session.onShownError((message) => (shown ??= message));
 		let edit: lsp.WorkspaceEdit | null;
@@ -238,14 +248,14 @@ export class CodeMirrorBinding implements SessionClient {
 		} finally {
 			listening.dispose();
 		}
-		if (this.#project.version(path) !== version) return 'The file changed before the server answered; rename again.';
+		if (this.#project.snapshot().revision !== revision) return 'The code changed before the server answered; rename again.';
 		const { edits, unsupported } = c.textEditsOf(edit ?? {});
 		if (unsupported.length > 0) return `The rename needs changes the editor cannot make: ${unsupported.join(', ')}.`;
 		if (edits.size === 0) return shown === undefined ? 'The language server found nothing to rename.' : reasonOf(shown);
 		for (const uri of edits.keys()) {
 			const at = this.#paths.get(uri);
 			if (at === undefined) return `The rename would change ${uri}, which is not a file of the project.`;
-			if (this.#project.state(at)?.readOnly === true) return `The rename would change ${at}, which is read-only.`;
+			if (this.#project.state(at).readOnly) return `The rename would change ${at}, which is read-only.`;
 		}
 		this.#apply(edits);
 		return null;
@@ -269,29 +279,30 @@ export class CodeMirrorBinding implements SessionClient {
 		return Promise.resolve(true);
 	};
 
-	/** Makes each file's text edits, one transaction per file; requires every document to be a file of the project. */
+	/**
+	 * Makes each file's text edits, one transaction per file.
+	 *
+	 * - Requires: every document is a file of the project.
+	 */
 	#apply(edits: ReadonlyMap<lsp.DocumentUri, readonly lsp.TextEdit[]>): void {
 		for (const [uri, more] of edits) {
 			const path = this.#paths.get(uri);
-			const state = path === undefined ? null : this.#project.state(path);
-			if (path !== undefined && state !== null) this.#project.update(path, { changes: c.toChanges(state.doc, more) });
+			if (path === undefined) throw new RangeError(`${uri} is not a file of the project.`);
+			this.#project.update(path, { changes: c.toChanges(this.#project.state(path).doc, more) });
 		}
 	}
 
 	/** Nothing to ask again: the binding shows none of what a server refreshes. */
 	readonly refreshed = (): void => {};
 
-	/** Takes back everything the binding offered: the edit listener, the features, the diagnostics; requests in flight end. */
+	/** Takes back everything the binding offered: the edit listener, the features, the diagnostics; requests in flight end. A second call changes nothing. */
 	readonly closed = (): void => {
 		this.#lifetime.abort();
 		this.#edits?.dispose();
 		this.#edits = null;
 		const project = this.#project;
 		project.setFeatures(null);
-		for (const path of this.#paths.values()) {
-			const state = project.state(path);
-			if (state !== null) project.update(path, this.#cm.lint.setDiagnostics(state, []));
-		}
+		for (const path of this.#paths.values()) project.update(path, this.#cm.lint.setDiagnostics(project.state(path), []));
 	};
 
 	/** The language features of file `path`, as the server's capabilities offer them. */
@@ -381,9 +392,8 @@ export class CodeMirrorBinding implements SessionClient {
 		);
 		if (answer === null || context.aborted) return null;
 		const document = context.view?.dom.ownerDocument ?? globalThis.document;
-		const cm = this.#cm.autocomplete;
 		const state = context.state;
-		return c.toCompletionResult(state, context.pos, answer, { snippet: cm.snippet, insertCompletionText: cm.insertCompletionText }, (blocks) => renderMarkup(document, blocks, this.#highlighter(state, document)));
+		return c.toCompletionResult(state, context.pos, answer, this.#cm.autocomplete, (blocks) => renderMarkup(document, blocks, this.#highlighter(state, document)));
 	}
 
 	/** The server's hover at `pos` of file `path`, over the range it names (else at `pos`); null when it has nothing to say. */
@@ -461,9 +471,8 @@ export class CodeMirrorBinding implements SessionClient {
 			} else if (event.key === 'Enter') {
 				event.preventDefault();
 				const name = input.value.trim();
-				const state = view.state;
 				close(true);
-				if (name !== '' && name !== target.placeholder) void this.#finishRename(path, view, state, target.from, name);
+				if (name !== '' && name !== target.placeholder) void this.#finishRename(path, view, target.from, name);
 			}
 		});
 		input.addEventListener('blur', () => queueMicrotask(() => close(false)));
@@ -476,10 +485,10 @@ export class CodeMirrorBinding implements SessionClient {
 		};
 	}
 
-	/** Renames to `name` from `state`, and says in the rename box why not when it was refused. */
-	async #finishRename(path: Path, view: EditorView, state: EditorState, pos: number, name: string): Promise<void> {
-		const refused = await this.rename(path, state, pos, name);
-		if (refused !== null) this.#showRenameBox(view, { pos: Math.min(pos, view.state.doc.length), above: true, create: () => this.#renameMessage(view, refused) });
+	/** Renames what is at `pos` of file `path` to `name`, and says in `view`'s rename box why not when it was refused, if `view` still shows that file. */
+	async #finishRename(path: Path, view: EditorView, pos: number, name: string): Promise<void> {
+		const refused = await this.rename(path, pos, name);
+		if (refused !== null && view.state === this.#project.state(path)) this.#showRenameBox(view, { pos: Math.min(pos, view.state.doc.length), above: true, create: () => this.#renameMessage(view, refused) });
 	}
 
 	/** What colours a code block drawn in `state`'s editor, when the host gave the syntax packages. */
@@ -498,11 +507,11 @@ export class CodeMirrorBinding implements SessionClient {
 		const target = c.firstLocation(answer);
 		if (target === null) return;
 		const to = this.#paths.get(target.uri);
-		const doc = to === undefined ? undefined : this.#project.state(to)?.doc;
-		if (to === undefined || doc === undefined) {
+		if (to === undefined) {
 			this.#options.events.log('warning', `The definition is in ${target.uri}, which is not a file of the project.`);
 			return;
 		}
+		const doc = this.#project.state(to).doc;
 		this.#options.events.open(to, { from: c.toOffset(doc, target.range.start), to: c.toOffset(doc, target.range.end) });
 	}
 
@@ -520,9 +529,8 @@ export class CodeMirrorBinding implements SessionClient {
 			{ textDocument: { uri: this.#options.documentUri(path) }, options: { tabSize: state.tabSize, insertSpaces: true } },
 			this.#signal(),
 		);
-		const now = this.#project.state(path);
-		if (edits === null || edits.length === 0 || now === null || this.#project.version(path) !== version) return;
-		this.#project.update(path, { changes: c.toChanges(now.doc, edits) });
+		if (edits === null || edits.length === 0 || this.#project.version(path) !== version) return;
+		this.#project.update(path, { changes: c.toChanges(this.#project.state(path).doc, edits) });
 	}
 }
 

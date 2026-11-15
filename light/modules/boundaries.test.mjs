@@ -67,13 +67,13 @@ const LANGUAGE_IDS = new Set(
 
 /**
  * Per module, the packages of the host's it may `import type` from, and
- * nothing else of them: monaco Monaco's, and every module the packages its
- * package.json names as peer dependencies, other than shared modules
- * (list.mjs's `typePeers`): Monaco for the grammars of lang-haskell and
+ * nothing else of them: every module the packages its package.json names
+ * as peer dependencies, other than shared modules (list.mjs's
+ * `typePeers`): Monaco for monaco and the grammars of lang-haskell and
  * lang-zig, CodeMirror's for codemirror. The host's copy is injected, so
  * a value import would bundle a second one.
  */
-const TYPE_PEERS = Object.fromEntries(modules().map((module) => [module.name, new Set(module.name === 'monaco' ? ['monaco-editor', ...module.typePeers] : module.typePeers)]));
+const TYPE_PEERS = Object.fromEntries(modules().map((module) => [module.name, new Set(module.typePeers)]));
 
 /** The package a bare specifier names: its first segment, or its first two for a scoped one (`@codemirror/state/dist` is `@codemirror/state`). */
 const packageOf = (specifier) => specifier.split('/').slice(0, specifier.startsWith('@') ? 2 : 1).join('/');

@@ -12,7 +12,9 @@
  * reason (one copy of each on the page).
  */
 import type { Extension } from '@codemirror/state';
+import { RENAME_CLASS } from './bind.ts';
 import type { CodeMirror, SyntaxPackages } from './codemirror.ts';
+import { MARKUP_CLASS } from './render.ts';
 
 /** One of Monaco's two built-in themes, as colours. */
 interface Palette {
@@ -106,12 +108,12 @@ function squiggle(colour: string): string {
 
 /**
  * Returns the playground look as an extension: Monaco's light theme, or
- * its dark one when `options.dark`. Put it after `basicSetup` (or the
+ * its dark one when `scheme` is `'dark'`. Put it after `basicSetup` (or the
  * parts of it the host takes), whose default highlighting it replaces.
  */
-export function playgroundTheme(cm: CodeMirror, syntax: SyntaxPackages, options: { readonly dark?: boolean } = {}): Extension {
-	const dark = options.dark === true;
-	const p = PALETTES[dark ? 'dark' : 'light'];
+export function playgroundTheme(cm: CodeMirror, syntax: SyntaxPackages, scheme: 'light' | 'dark'): Extension {
+	const dark = scheme === 'dark';
+	const p = PALETTES[scheme];
 	const t = syntax.highlight.tags;
 	const editor = cm.view.EditorView.theme(
 		{
@@ -144,10 +146,10 @@ export function playgroundTheme(cm: CodeMirror, syntax: SyntaxPackages, options:
 				fontFamily: UI_FONT,
 				fontSize: '13px',
 			},
-			'.cm-tooltip .cm-yukibana-markup': { padding: '4px 8px', lineHeight: '1.45' },
-			'.cm-tooltip .cm-yukibana-markup pre': { fontFamily: EDITOR_FONT, fontSize: '13px', margin: '4px 0' },
+			[`.cm-tooltip .${MARKUP_CLASS}`]: { lineHeight: '1.45' },
+			[`.cm-tooltip .${MARKUP_CLASS} pre`]: { fontFamily: EDITOR_FONT, fontSize: '13px', margin: '4px 0' },
 			// F2's box: Monaco's rename input, an inline field with the focus border.
-			'.cm-yukibana-rename input': {
+			[`.${RENAME_CLASS} input`]: {
 				fontFamily: EDITOR_FONT,
 				fontSize: '13px',
 				color: p.foreground,

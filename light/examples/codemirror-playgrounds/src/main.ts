@@ -28,8 +28,7 @@ import squares from '../cpp/squares.cpp?raw';
 
 const cm = { state, view, lint, autocomplete };
 const syntax = { language, highlight };
-const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-const look = playgroundTheme(cm, syntax, { dark });
+const look = playgroundTheme(cm, syntax, matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 // Tab indents, as in Monaco, instead of leaving the editor. CodeMirror
 // leaves it out of basicSetup so a keyboard can always get out of an
 // editor: Escape and then Tab still moves the focus on (Ctrl-M, or
