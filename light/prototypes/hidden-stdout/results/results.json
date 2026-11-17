@@ -1,0 +1,428 @@
+[
+  {
+    "language": "Python",
+    "arrangement": "inproc",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.030459,
+      "batched": 0.031088
+    },
+    "ns per call": 152.295,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "attack output bytes": 26888,
+    "attack leaks through filter": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "base64 attack leaks through filter": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "honest output after filter": [
+      "debug: solve call 1 got 3 numbers, starting###############",
+      "debug: solve call 2 got 4 numbers, starting##########",
+      "debug: solve call 3 got #### numbers, starting [0, 1, 2]"
+    ]
+  },
+  {
+    "language": "Python",
+    "arrangement": "split",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 7.021695,
+      "batched": 0.082753
+    },
+    "ns per call": 35108.475000000006,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "attack output bytes": 31445
+  },
+  {
+    "language": "Python",
+    "arrangement": "split-1cpu",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 1.353408,
+      "batched": 0.056045
+    },
+    "ns per call": 6767.04,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "attack output bytes": 31445
+  },
+  {
+    "language": "JavaScript",
+    "arrangement": "inproc",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.0119,
+      "batched": 0.013373
+    },
+    "ns per call": 59.5,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "attack output bytes": 12457,
+    "attack leaks through filter": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "base64 attack leaks through filter": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "honest output after filter": [
+      "debug: solve call 1 got 3 numbers, starting 3,1,######",
+      "debug: solve call 2 got 4 numbers, starting 7,7,7",
+      "debug: solve call 3 got #### numbers, starting 0,1,2"
+    ]
+  },
+  {
+    "language": "JavaScript",
+    "arrangement": "split",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 5.737044,
+      "batched": 0.121118
+    },
+    "ns per call": 28685.219999999998,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 12901
+  },
+  {
+    "language": "JavaScript",
+    "arrangement": "split-1cpu",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 1.263687,
+      "batched": 0.13793
+    },
+    "ns per call": 6318.435,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 12901
+  },
+  {
+    "language": "Java",
+    "arrangement": "inproc",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.003591,
+      "batched": 0.003375
+    },
+    "ns per call": 17.955000000000002,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "attack output bytes": 6090,
+    "attack leaks through filter": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "base64 attack leaks through filter": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "honest output after filter": [
+      "debug: solve call 1 got 3 numbers, starting [############]",
+      "debug: solve call 2 got 4 numbers, starting [7, 7, 7]",
+      "debug: solve call 3 got #### numbers, starting [0, 1, 2]"
+    ]
+  },
+  {
+    "language": "Java",
+    "arrangement": "split",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 4.713633,
+      "batched": 0.039888
+    },
+    "ns per call": 23568.165,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 4553
+  },
+  {
+    "language": "Java",
+    "arrangement": "split-1cpu",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.999861,
+      "batched": 0.077903
+    },
+    "ns per call": 4999.305,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 4553
+  },
+  {
+    "language": "C++",
+    "arrangement": "inproc",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.000353,
+      "batched": 0.001672
+    },
+    "ns per call": 1.765,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "attack output bytes": 96396,
+    "attack leaks through filter": {
+      "library": true,
+      "test code": false,
+      "expected value": true,
+      "test input": true
+    },
+    "base64 attack leaks through filter": {
+      "library": true,
+      "test code": true,
+      "expected value": true,
+      "test input": true
+    },
+    "honest output after filter": [
+      "debug: solve call 1 got 3 numbers, starting 3 1 ######",
+      "debug: solve call 2 got 4 numbers, starting 7 7 7",
+      "debug: solve call 3 got #### numbers, starting 0 1 2"
+    ]
+  },
+  {
+    "language": "C++",
+    "arrangement": "split",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 4.916027,
+      "batched": 0.009185
+    },
+    "ns per call": 24580.135,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 104841
+  },
+  {
+    "language": "C++",
+    "arrangement": "split-1cpu",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.561467,
+      "batched": 0.005343
+    },
+    "ns per call": 2807.335,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 104841
+  },
+  {
+    "language": "C++",
+    "arrangement": "split-shm",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.08261,
+      "batched": 0.007384
+    },
+    "ns per call": 413.05,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": false
+    },
+    "attack output bytes": 104841
+  },
+  {
+    "language": "C++ \u2192 wasm",
+    "arrangement": "mono",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.000649
+    },
+    "ns per call": 3.2449999999999997,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": true,
+      "test code": true,
+      "expected value": false,
+      "test input": true
+    },
+    "attack output bytes": 3408132
+  },
+  {
+    "language": "C++ \u2192 wasm",
+    "arrangement": "split",
+    "debug output shown": true,
+    "honest leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "seconds": {
+      "honest": 0.001746
+    },
+    "ns per call": 8.729999999999999,
+    "attack passes tests": true,
+    "attack leaks": {
+      "library": false,
+      "test code": false,
+      "expected value": false,
+      "test input": true
+    },
+    "attack output bytes": 262220
+  }
+]
