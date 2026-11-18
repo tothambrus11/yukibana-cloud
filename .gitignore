@@ -1,18 +1,7 @@
 node_modules/
 .env
 .env.local
-supabase/.temp/
-supabase/.branches/
-
-# The Worker's local secrets and state
-.dev.vars
 .wrangler/
-app/.wrangler/
-app/.svelte-kit/
-app/build/
-
-# Local bucket data, if run without Docker
-dev/data/
 
 # direnv
 .direnv/
