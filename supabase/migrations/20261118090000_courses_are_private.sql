@@ -27,9 +27,12 @@
 --   * An admin is an owner of every edition, and sees every course and
 --     edition and every roster. That is `app.is_owner` and three read
 --     policies, so the owner functions and the edition page work for an
---     admin unchanged. It stops at the edition: an admin is not staff
---     (`app.is_staff`), so projects, releases and submissions stay with
---     the people enrolled.
+--     admin unchanged.
+--   * An admin also reads every project and its releases, starter and
+--     teacher archive alike (`app.oversees`), to see what a course hands
+--     out. That is all: an admin is not staff (`app.is_staff`), so
+--     students' submissions stay with the people enrolled, and changing a
+--     project, or its tokens, stays with its staff and owners.
 --
 -- A teacher outside a course learns one thing about it: that its code is
 -- taken, because codes are unique across the platform.
@@ -65,25 +68,6 @@ as $$
       and c.created_by = (select auth.uid())
       and not exists (select 1 from public.course_edition e where e.course_id = c.course_id)
   )
-$$;
-
--- Whether the caller is in the course: enrolled in one of its editions, the
--- creator of it while it has none, or an admin. Never null. Security
--- definer because a policy on `course` reading `enrollment` would see it
--- through `enrollment_read`.
-create or replace function app.in_course(course uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select app.is_admin()
-    or exists (
-      select 1 from public.enrollment r join public.course_edition e on e.edition_id = r.edition_id
-      where e.course_id = course and r.user_id = (select auth.uid())
-    )
-    or app.created_unstarted(course)
 $$;
 
 -- Whether the caller may add an edition to the course: a teacher who owns
@@ -131,8 +115,11 @@ as $$
 $$;
 
 drop policy course_read on public.course;
+-- A course: whoever can see one of its editions (through `edition_read`, so
+-- members and admins), and its creator before it has any.
 create policy course_read on public.course for select to authenticated using (
-  app.in_course(course_id)
+  exists (select 1 from public.course_edition e where e.course_id = course.course_id)
+  or app.created_unstarted(course_id)
 );
 
 drop policy edition_read on public.course_edition;
@@ -179,3 +166,44 @@ begin
   return eid;
 end
 $$;
+
+-- Whether the caller may read every project of `edition` and its releases:
+-- its staff, or an admin. Never null. Not `app.is_staff` with admins added,
+-- because that also opens submissions and project edits, which an admin
+-- has no part in.
+create or replace function app.oversees(edition uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select app.is_staff(edition) or app.is_admin()
+$$;
+
+-- As in 20261007120000, with an admin reading every starter, so the
+-- edition and project pages say whether a project is ready.
+create or replace function app.current_starter(project uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select r.starter_key
+  from public.project p
+  join public.project_release r on r.project_id = p.project_id
+  where p.project_id = project
+    and (app.oversees(p.edition_id) or app.project_open(p.edition_id, p.available_after, p.closes_at))
+  order by r.seq desc
+  limit 1
+$$;
+
+drop policy project_read on public.project;
+create policy project_read on public.project for select to authenticated using (
+  app.oversees(edition_id) or app.project_open(edition_id, available_after, closes_at)
+);
+
+drop policy release_read on public.project_release;
+create policy release_read on public.project_release for select to authenticated using (
+  exists (select 1 from public.project p where p.project_id = project_release.project_id and app.oversees(p.edition_id))
+);

@@ -36,9 +36,8 @@ const editionOf = (param: string): EditionId => {
 };
 
 /** An edition as the caller sees it: the projects the policies let them see
- *  (published ones for a student, all for staff), and for staff and owners
- *  the roster. An admin sees it as an owner who is not staff: the roster and
- *  settings, and no projects. */
+ *  (published ones for a student, all for staff and admins), and for them
+ *  the roster. An admin sees it as an owner does, without being on it. */
 export const load: PageServerLoad = async event => {
   const claims = requireClaims(event);
   const edition = editionOf(event.params.edition);
@@ -49,12 +48,12 @@ export const load: PageServerLoad = async event => {
       >`
         select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role,
                app.may_edit_projects(e.edition_id) as can_edit, app.is_owner(e.edition_id) as owner,
-               app.is_staff(e.edition_id) or app.is_owner(e.edition_id) as staff
+               app.oversees(e.edition_id) as staff
         from course_edition e join course c on c.course_id = e.course_id
         where e.edition_id = ${edition}`;
       if (head === undefined) error(404, 'No such edition.');
       // `owner` and `staff` are the database's answers, not the role's: an
-      // admin owns every edition without being on its roster.
+      // admin owns and oversees every edition without being on its roster.
       const staff = head.staff;
       const projects = await tx<ProjectRow[]>`
         select p.project_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,

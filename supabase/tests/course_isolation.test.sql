@@ -2,9 +2,10 @@
 -- not in a teacher's list, an edition of their own cannot be put under it,
 -- and somebody in one edition of a course does not learn what a later
 -- edition they are not in is called. Admins see and manage every edition,
--- and stop there: projects and submissions stay with the people enrolled.
+-- see every project, and stop there: submissions and project edits stay
+-- with the people enrolled.
 begin;
-select plan(26);
+select plan(28);
 
 select tests.create_user('owner@example.com', 'Owner', 'owner');
 update public.app_user set role = 'teacher' where user_id = tests.uid('owner@example.com');
@@ -96,7 +97,10 @@ select results_eq($$ select label from public.course_edition where course_id = (
 select isnt_empty($$ select 1 from public.enrollment where edition_id = tests.edition('T-ISO', '2026') $$, 'and every roster');
 select lives_ok($$ select app.enrol(tests.edition('T-ISO', '2026'), 'new@example.com', 'owner') $$,
   'an admin manages an edition they are not enrolled in');
-select is_empty($$ select 1 from public.project $$, 'but does not see its projects, which belong to the people enrolled');
+select isnt_empty($$ select 1 from public.project where slug = 'p' $$, 'and every project, drafts included');
+select ok(not app.may_edit_projects(tests.edition('T-ISO', '2026')), 'but may not change one, which is for its staff');
+update public.project set title = 'Hijacked' where slug = 'p';
+select is((select title from public.project where slug = 'p'), 'P', 'and an attempt changes nothing');
 
 select * from finish();
 rollback;

@@ -85,7 +85,7 @@
         </table>
       </div>
     {/if}
-    <p class="note">An admin owns every edition: open one to change its roster, names or archive state. Its projects and submissions stay with the people enrolled.</p>
+    <p class="note">An admin owns every edition: open one to change its roster, names or archive state. Its submissions stay with the people enrolled.</p>
   </section>
 
 {:else}
