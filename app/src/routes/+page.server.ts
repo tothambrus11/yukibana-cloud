@@ -16,8 +16,9 @@ interface EditionRow {
 
 /** What the home screen shows: the editions the person is in, a student's
  *  projects for the to-do list, and for a teacher the courses they may add
- *  an edition to. Every row comes through
- *  the policies, so there is nothing to filter here. */
+ *  an edition to. Every row comes through the policies, and which courses
+ *  take a new edition is `app.may_add_edition`'s answer, so nothing is
+ *  decided here. */
 export const load: PageServerLoad = async event => {
   if (event.locals.claims === null) return { user: null, editions: [], courses: [], platformRole: null, tasks: [] };
   const claims = event.locals.claims;
@@ -32,7 +33,8 @@ export const load: PageServerLoad = async event => {
       const courses =
         platformRole === 'teacher' || platformRole === 'admin'
           ? // A course is named by its latest edition: `course.title` is kept so.
-            await tx<{ course_id: string; code: string; title: string }[]>`select course_id, code, title from course order by code`
+            await tx<{ course_id: string; code: string; title: string }[]>`
+              select course_id, code, title from course where app.may_add_edition(course_id) order by code`
           : [];
       // The to-do list: every project the person has as a student, across
       // editions. The page sorts and splits it.
@@ -52,7 +54,8 @@ export const actions: Actions = {
     try {
       await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.create_course(${code}, ${title})`));
     } catch (e) {
-      if (clashOf(e) === 'course_code_key') return fail(409, { error: `A course with the code "${code}" already exists. Add an edition to it instead.` });
+      if (clashOf(e) === 'course_code_key')
+        return fail(409, { error: `The course code "${code}" is already taken. If it is your course, ask one of its owners to add you to an edition.` });
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }
     return { ok: true };
