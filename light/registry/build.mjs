@@ -1,6 +1,7 @@
 // Builds on disk: describing a directory as a build, checking a build
-// against its name, and adding one to a registry kept as a directory
-// (REGISTRY-DESIGN.md 3 and 8.3). format.mjs holds what the two
+// against its name, writing one as an archive, and adding one to a
+// registry kept as a directory, from a directory or an archive
+// (REGISTRY-DESIGN.md 3, 4.4, 8.3 and 8.6). format.mjs holds what the two
 // descriptions say; this file reads and writes the files.
 //
 // A registry on disk:
@@ -9,6 +10,7 @@
 //   packs/sha256-<hex>/pack.json  one directory per build, whole or absent
 //   packs/sha256-<hex>/files.json
 //   packs/sha256-<hex>/<file…>
+//   packs/sha256-<hex>/<file>.br  the registry's own compressed copy of a file, where one pays
 //
 // Nothing here fetches, runs anything from a build, or lists a link as a
 // file. What is wrong with a build or a registry is returned, every problem
@@ -17,9 +19,14 @@
 // Every operating-system path is made with `node:path` from a build's
 // POSIX paths, which format.mjs has checked first.
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
-import { copyFile, lstat, mkdir, mkdtemp, opendir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { copyFile, lstat, mkdir, mkdtemp, opendir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { availableParallelism } from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { constants, createBrotliCompress, createBrotliDecompress, createGunzip } from 'node:zlib';
+import { ArchiveError, FILES_JSON_LIMIT, openArchive, PACK_JSON_LIMIT, writeArchive } from './archive.mjs';
 import { derivedFrom, FORMAT, readFilesJson, readPackJson, writeFilesJson, writePackJson } from './format.mjs';
 
 const PACK_JSON = 'pack.json';
@@ -55,7 +62,7 @@ function textOf(bytes) {
  * @param {string} file
  * @returns {Promise<{ sha256: string, size: number }>}
  */
-async function hashFile(file) {
+export async function hashFile(file) {
 	const hash = createHash('sha256');
 	let size = 0;
 	for await (const chunk of createReadStream(file)) {
@@ -63,6 +70,98 @@ async function hashFile(file) {
 		size += chunk.length;
 	}
 	return { sha256: hash.digest('hex'), size };
+}
+
+/** How a registry's compressed copy is decoded, by its suffix. */
+const DECODERS = { '.br': createBrotliDecompress, '.gz': createGunzip };
+
+/**
+ * Whether the compressed copy `file` (a `.br` or `.gz`) decodes to exactly
+ * the bytes `listed` describes. Decoding stops at the first byte past the
+ * listed size, so a copy that expands without end costs no more than the
+ * file it claims to be.
+ * @param {string} file
+ * @param {{ sha256: string, size: number }} listed
+ * @returns {Promise<boolean>}
+ */
+async function decodesTo(file, listed) {
+	const decoder = DECODERS[path.extname(file)];
+	const hash = createHash('sha256');
+	let size = 0;
+	const decoded = createReadStream(file).pipe(decoder());
+	try {
+		for await (const chunk of decoded) {
+			size += chunk.length;
+			if (size > listed.size) return false;
+			hash.update(chunk);
+		}
+	} catch {
+		return false;
+	} finally {
+		decoded.destroy();
+	}
+	return size === listed.size && hash.digest('hex') === listed.sha256;
+}
+
+/** The smallest file a registry makes a compressed copy of: below this, a request costs more than the bytes it saves. */
+const SMALLEST = 1024;
+/** Files whose kind is compressed already, which brotli would spend minutes on to gain nothing. */
+const COMPRESSED_KINDS = /\.(br|gz|tgz|zst|xz|bz2|zip|jar|7z|png|jpe?g|gif|webp|avif|woff2|mp3|mp4|ogg|webm)$/i;
+
+/**
+ * Runs `work` over `items`, `atOnce` at a time, by default as many as the
+ * machine has cores. Rejects with the first failure, once every started
+ * item has finished, and starts none after a failure.
+ * @template T
+ * @param {T[]} items
+ * @param {(item: T) => Promise<void>} work
+ * @param {number} [atOnce]
+ */
+export async function eachAtOnce(items, work, atOnce = availableParallelism()) {
+	let next = 0;
+	let failed = false;
+	const worker = async () => {
+		while (!failed && next < items.length) {
+			try {
+				await work(items[next++]);
+			} catch (error) {
+				failed = true;
+				throw error;
+			}
+		}
+	};
+	const settled = await Promise.allSettled(Array.from({ length: Math.min(items.length, atOnce) }, worker));
+	const rejected = settled.find((result) => result.status === 'rejected');
+	if (rejected) throw rejected.reason;
+}
+
+/**
+ * Writes the registry's own compressed copy beside each of `files` in
+ * `dir` that is worth one (REGISTRY-DESIGN.md 4.4): `<file>.br`, brotli at
+ * its highest quality, made from the file's bytes as they are in `dir`,
+ * which the caller has checked. A file smaller than {@link SMALLEST}, of a
+ * kind that is compressed already, or whose copy would save less than a
+ * twentieth of it, gets none: a registry serves it as it is.
+ *
+ * Only `.br`: the official registry keeps one object per path and the edge
+ * decodes it for a client without brotli, and Caddy serves the file itself
+ * to such a client.
+ * @param {string} dir
+ * @param {{ path: string, size: number }[]} files
+ * @returns {Promise<number>} how many copies were made
+ */
+async function compressCopies(dir, files) {
+	let made = 0;
+	const worth = files.filter((file) => file.size >= SMALLEST && !COMPRESSED_KINDS.test(file.path));
+	await eachAtOnce(worth, async (file) => {
+		const from = path.join(dir, file.path);
+		const to = `${from}.br`;
+		const params = { [constants.BROTLI_PARAM_QUALITY]: 11, [constants.BROTLI_PARAM_LGWIN]: 24, [constants.BROTLI_PARAM_SIZE_HINT]: file.size };
+		await pipeline(createReadStream(from), createBrotliCompress({ params }), createWriteStream(to));
+		if ((await stat(to)).size > file.size - file.size / 20) await rm(to);
+		else made += 1;
+	});
+	return made;
 }
 
 /**
@@ -160,32 +259,36 @@ export async function stampBuild(dir, meta) {
 }
 
 /**
- * The two descriptions of the build in `dir`, read and checked against
- * each other and, when `wanted` is given, against the name the build was
- * asked for by. pack.json is hashed before anything else is read, and
- * nothing else is when it is not the wanted build.
- * @param {string} dir
- * @param {string} [wanted] `sha256-<hex>`
- * @returns {Promise<{ ok: true, digest: string, manifest: import('./format.mjs').PackManifest, files: Map<string, { sha256: string, size: number }>, packJson: Buffer, filesJson: Buffer } | { ok: false, problems: string[] }>}
+ * What a build's two descriptions say, read and checked against each
+ * other: its name, its manifest, its files, and the two files' bytes as
+ * they are.
+ * @typedef {{ ok: true, digest: string, manifest: import('./format.mjs').PackManifest, files: Map<string, { sha256: string, size: number }>, packJson: Uint8Array, filesJson: Uint8Array }} Descriptions
  */
-async function readDescriptions(dir, wanted) {
-	let packJson;
-	try {
-		packJson = await readFile(path.join(dir, PACK_JSON));
-	} catch (error) {
-		return { ok: false, problems: [`pack.json cannot be read: ${reasonOf(error)}`] };
-	}
+
+/**
+ * Reads a pack.json's bytes as the build named by their hash, refused when
+ * that is not `wanted` before anything else is read.
+ * @param {Uint8Array} packJson
+ * @param {string | undefined} wanted
+ * @returns {{ ok: true, digest: string, manifest: import('./format.mjs').PackManifest } | { ok: false, problems: string[] }}
+ */
+function readPack(packJson, wanted) {
 	const digest = digestOf(packJson);
 	if (wanted !== undefined && digest !== wanted) return { ok: false, problems: [`this is build ${digest}, not ${wanted}`] };
 	const packText = textOf(packJson);
 	const pack = packText === null ? { ok: false, problems: ['pack.json is not UTF-8'] } : readPackJson(packText);
-	if (!pack.ok) return pack;
-	let filesJson;
-	try {
-		filesJson = await readFile(path.join(dir, FILES_JSON));
-	} catch (error) {
-		return { ok: false, problems: [`files.json cannot be read: ${reasonOf(error)}`] };
-	}
+	return pack.ok ? { ok: true, digest, manifest: pack.manifest } : pack;
+}
+
+/**
+ * Reads a files.json's bytes as the one `pack` names: its hash, its count
+ * and its bytes in all.
+ * @param {{ digest: string, manifest: import('./format.mjs').PackManifest }} pack
+ * @param {Uint8Array} packJson
+ * @param {Uint8Array} filesJson
+ * @returns {Descriptions | { ok: false, problems: string[] }}
+ */
+function readFiles(pack, packJson, filesJson) {
 	if (hex(filesJson) !== pack.manifest.files.sha256) return { ok: false, problems: ['files.json is not the one pack.json names: its hash differs'] };
 	const filesText = textOf(filesJson);
 	const table = filesText === null ? { ok: false, problems: ['files.json is not UTF-8'] } : readFilesJson(filesText);
@@ -194,21 +297,50 @@ async function readDescriptions(dir, wanted) {
 	if (table.count !== pack.manifest.files.count) problems.push(`pack.json says ${pack.manifest.files.count} files and files.json lists ${table.count}`);
 	if (table.bytes !== pack.manifest.files.bytes) problems.push(`pack.json says ${pack.manifest.files.bytes} bytes and files.json lists ${table.bytes}`);
 	if (problems.length > 0) return { ok: false, problems };
-	return { ok: true, digest, manifest: pack.manifest, files: table.files, packJson, filesJson };
+	return { ok: true, digest: pack.digest, manifest: pack.manifest, files: table.files, packJson, filesJson };
 }
 
 /**
- * What a check of a build found: its name and what it says, or every
- * problem.
- * @typedef {{ ok: true, digest: string, manifest: import('./format.mjs').PackManifest, count: number, bytes: number } | { ok: false, problems: string[] }} Verified
+ * The two descriptions of the build in `dir` ({@link Descriptions}),
+ * checked, when `wanted` is given, against the name the build was asked
+ * for by. pack.json is hashed before anything else is read, and nothing
+ * else is when it is not the wanted build.
+ * @param {string} dir
+ * @param {string} [wanted] `sha256-<hex>`
+ * @returns {Promise<Descriptions | { ok: false, problems: string[] }>}
+ */
+async function readDescriptions(dir, wanted) {
+	let packJson;
+	try {
+		packJson = await readFile(path.join(dir, PACK_JSON));
+	} catch (error) {
+		return { ok: false, problems: [`pack.json cannot be read: ${reasonOf(error)}`] };
+	}
+	const pack = readPack(packJson, wanted);
+	if (!pack.ok) return pack;
+	let filesJson;
+	try {
+		filesJson = await readFile(path.join(dir, FILES_JSON));
+	} catch (error) {
+		return { ok: false, problems: [`files.json cannot be read: ${reasonOf(error)}`] };
+	}
+	return readFiles(pack, packJson, filesJson);
+}
+
+/**
+ * What a check of a build found: its name, what it says and its files, or
+ * every problem.
+ * @typedef {{ ok: true, digest: string, manifest: import('./format.mjs').PackManifest, files: Map<string, { sha256: string, size: number }>, count: number, bytes: number } | { ok: false, problems: string[] }} Verified
  */
 
 /**
  * Checks that the directory `dir` is exactly one build: its pack.json
  * hashes to `wanted` (when given), names its files.json, and every file
  * listed is there as a regular file of the listed size and hash, with
- * nothing beside them but compressed copies of listed files, which are a
- * registry's own and are not checked here.
+ * nothing beside them but compressed copies (`<file>.br`, `<file>.gz`) of
+ * listed files and of the two descriptions, each of which decodes to
+ * exactly its file's bytes: a registry serves the copy in the file's
+ * place, so a wrong copy is a wrong file (REGISTRY-DESIGN.md 4.4).
  * @param {string} dir
  * @param {string} [wanted] `sha256-<hex>`
  * @returns {Promise<Verified>}
@@ -233,14 +365,35 @@ export async function verifyBuild(dir, wanted) {
 			else if (actual.sha256 !== listed.sha256) problems.push(`${JSON.stringify(file)} has other content than listed`);
 		}
 	}
-	for (const file of present.keys()) {
-		if (file === PACK_JSON || file === FILES_JSON || read.files.has(file)) continue;
+	const descriptions = new Map([
+		[PACK_JSON, { sha256: hex(read.packJson), size: read.packJson.length }],
+		[FILES_JSON, { sha256: hex(read.filesJson), size: read.filesJson.length }],
+	]);
+	for (const [file, regular] of present) {
+		if (descriptions.has(file) || read.files.has(file)) continue;
 		const original = derivedFrom(file);
-		const copied = original !== null && (read.files.has(original) || original === PACK_JSON || original === FILES_JSON);
-		if (!copied) problems.push(`${JSON.stringify(file)} is not listed in files.json`);
+		const listed = original === null ? undefined : (read.files.get(original) ?? descriptions.get(original));
+		if (listed === undefined) problems.push(`${JSON.stringify(file)} is not listed in files.json`);
+		else if (!regular || !(await decodesTo(path.join(dir, file), listed))) problems.push(`${JSON.stringify(file)} is not a compressed copy of ${JSON.stringify(original)}: it does not decode to its bytes`);
 	}
 	if (problems.length > 0) return { ok: false, problems };
-	return { ok: true, digest: read.digest, manifest: read.manifest, count: read.manifest.files.count, bytes: read.manifest.files.bytes };
+	return { ok: true, digest: read.digest, manifest: read.manifest, files: read.files, count: read.manifest.files.count, bytes: read.manifest.files.bytes };
+}
+
+/**
+ * Writes the build in `dir` as the pack archive `out` (archive.mjs),
+ * after checking it whole ({@link verifyBuild}): what goes into the
+ * archive is what files.json lists, and no compressed copy.
+ * @param {string} dir
+ * @param {string} [out] by default `<id>-<version>.pack.tar.zst` in the working directory
+ * @returns {Promise<(Verified & { ok: true, archive: string }) | { ok: false, problems: string[] }>}
+ */
+export async function packBuild(dir, out) {
+	const verified = await verifyBuild(dir);
+	if (!verified.ok) return verified;
+	const archive = out ?? `${verified.manifest.id}-${verified.manifest.version}.pack.tar.zst`;
+	await writeArchive(dir, verified.files.keys(), archive);
+	return { ...verified, archive };
 }
 
 /**
@@ -270,7 +423,7 @@ export async function initRegistry(registry) {
  * @param {string} registry
  * @returns {Promise<{ ok: true } | { ok: false, problems: string[] }>}
  */
-async function openRegistry(registry) {
+export async function openRegistry(registry) {
 	let value;
 	try {
 		value = JSON.parse(await readFile(path.join(registry, REGISTRY_JSON), 'utf8'));
@@ -294,71 +447,175 @@ async function openRegistry(registry) {
  */
 
 /**
- * Adds the build in `dir` to the registry at `registry`, as
- * `packs/<digest>/`.
+ * Where a build is added from: its descriptions, read first, and then its
+ * listed files, written into a directory.
+ * @typedef {object} Source
+ * @property {(wanted: string | undefined) => Promise<Descriptions | { ok: false, problems: string[] }>} describe reads the two descriptions, refusing the build before anything else is read when it is not `wanted`
+ * @property {(into: string, read: Descriptions) => Promise<string[]>} fill writes every listed file into `into` and returns the problems, none when every file was there at its listed size
+ * @property {() => Promise<void>} close lets go of the source; called once, whatever happened
+ */
+
+/**
+ * A build kept as a directory, as a {@link Source}: only the listed files
+ * are copied, each refused before a byte is copied when it is not a
+ * regular file of its listed size.
+ * @param {string} dir
+ * @returns {Source}
+ */
+const directorySource = (dir) => ({
+	describe: (wanted) => readDescriptions(dir, wanted),
+	async fill(into, read) {
+		for (const [file, listed] of read.files) {
+			const from = path.join(dir, file);
+			let found;
+			try {
+				found = await lstat(from);
+			} catch (error) {
+				return [`${JSON.stringify(file)} cannot be read: ${reasonOf(error)}`];
+			}
+			// Before a byte is copied: a source cannot fill the registry's disk with more than it listed.
+			if (!found.isFile()) return [`${JSON.stringify(file)} is not a regular file`];
+			if (found.size !== listed.size) return [`${JSON.stringify(file)} is ${found.size} bytes, not the ${listed.size} listed`];
+			const to = path.join(into, file);
+			await mkdir(path.dirname(to), { recursive: true });
+			await copyFile(from, to);
+		}
+		return [];
+	},
+	close: async () => {},
+});
+
+/**
+ * A pack archive (archive.mjs) as a {@link Source}, read once from start
+ * to end: its first file must be pack.json and its second files.json, each
+ * no larger than a description is; then each file listed, once, at its
+ * listed size, and nothing else. A file is refused by its header, before a
+ * byte of it is written, so an archive cannot put more on the registry's
+ * disk than its files.json lists.
+ * @param {string} file
+ * @returns {Source}
+ */
+function archiveSource(file) {
+	const archive = openArchive(file);
+	/** The next file of the archive, which must be `name`, read whole. */
+	const description = async (name, limit) => {
+		const { done, value: entry } = await archive.next();
+		if (done || entry.path !== name) return { ok: false, problems: [`its ${name === PACK_JSON ? 'first' : 'second'} file is ${done ? 'not there' : JSON.stringify(entry.path)}, not ${name}`] };
+		if (entry.size > limit) return { ok: false, problems: [`its ${name} is ${entry.size} bytes, more than a ${name} may be`] };
+		const chunks = [];
+		for await (const chunk of entry.body()) chunks.push(chunk);
+		return { ok: true, bytes: Buffer.concat(chunks) };
+	};
+	const named = (problems) => problems.map((problem) => `${file}: ${problem}`);
+	const caught = async (work) => {
+		try {
+			return await work();
+		} catch (error) {
+			if (error instanceof ArchiveError) return { ok: false, problems: named([error.message]) };
+			throw error;
+		}
+	};
+	return {
+		describe: (wanted) =>
+			caught(async () => {
+				const packJson = await description(PACK_JSON, PACK_JSON_LIMIT);
+				if (!packJson.ok) return { ok: false, problems: named(packJson.problems) };
+				const pack = readPack(packJson.bytes, wanted);
+				if (!pack.ok) return { ok: false, problems: named(pack.problems) };
+				const filesJson = await description(FILES_JSON, FILES_JSON_LIMIT);
+				if (!filesJson.ok) return { ok: false, problems: named(filesJson.problems) };
+				const read = readFiles(pack, packJson.bytes, filesJson.bytes);
+				return read.ok ? read : { ok: false, problems: named(read.problems) };
+			}),
+		fill: async (into, read) => {
+			const problems = await caught(async () => {
+				const seen = new Set();
+				for await (const entry of archive) {
+					const listed = read.files.get(entry.path);
+					if (listed === undefined) return named([`${JSON.stringify(entry.path)} is not listed in its files.json`]);
+					if (seen.has(entry.path)) return named([`${JSON.stringify(entry.path)} is in it twice`]);
+					if (entry.size !== listed.size) return named([`${JSON.stringify(entry.path)} is ${entry.size} bytes, not the ${listed.size} listed`]);
+					seen.add(entry.path);
+					const to = path.join(into, entry.path);
+					await mkdir(path.dirname(to), { recursive: true });
+					await pipeline(Readable.from(entry.body()), createWriteStream(to));
+				}
+				const absent = [...read.files.keys()].filter((listed) => !seen.has(listed));
+				return named(absent.map((listed) => `${JSON.stringify(listed)} is listed and not in it`));
+			});
+			return Array.isArray(problems) ? problems : problems.problems;
+		},
+		close: async () => {
+			await archive.return(undefined);
+		},
+	};
+}
+
+/**
+ * Adds the build at `from`, a build's directory or a pack archive, to the
+ * registry at `registry`, as `packs/<digest>/`, with the registry's own
+ * compressed copies of its files beside them.
  *
- * Safe whatever `dir` holds: the build is identified by its pack.json's
+ * Safe whatever `from` holds: the build is identified by its pack.json's
  * hash before anything else is read (and refused when it is not `wanted`),
- * only the files its files.json lists are copied, none larger than listed,
- * and the copy is checked whole ({@link verifyBuild}) before it gets its
- * name, by one rename. A failed add leaves the registry as it was. Of two
- * adds of one build at once, one adds it and the other's rename is refused
- * by the file system, with the registry right either way.
+ * only the files its files.json lists are written, none larger than
+ * listed, and the copy is checked whole ({@link verifyBuild}) with its
+ * compressed copies before it gets its name, by one rename. A failed add
+ * leaves the registry as it was. Of two adds of one build at once, one
+ * adds it and the other's rename is refused by the file system, with the
+ * registry right either way.
  *
  * A build the registry already holds is checked ({@link verifyBuild}) and
- * left alone. `missing` names the builds this one uses that the registry
- * does not hold: adding in any order is fine, and a registry is complete
- * when nothing is missing.
+ * left alone; an archive of it is then read no further than its
+ * descriptions. `missing` names the builds this one uses that the
+ * registry does not hold: adding in any order is fine, and a registry is
+ * complete when nothing is missing.
  * @param {string} registry
- * @param {string} dir
+ * @param {string} from a directory, or a regular file, which is read as an archive
  * @param {string} [wanted] `sha256-<hex>`
- * @returns {Promise<{ ok: true, digest: string, added: boolean, manifest: import('./format.mjs').PackManifest, missing: Missing[] } | { ok: false, problems: string[] }>}
+ * @returns {Promise<{ ok: true, digest: string, added: boolean, compressed: number, manifest: import('./format.mjs').PackManifest, missing: Missing[] } | { ok: false, problems: string[] }>}
  */
-export async function addBuild(registry, dir, wanted) {
+export async function addBuild(registry, from, wanted) {
 	const opened = await openRegistry(registry);
 	if (!opened.ok) return opened;
-	const read = await readDescriptions(dir, wanted);
-	if (!read.ok) return read;
-	const packs = path.join(registry, PACKS);
-	const target = path.join(packs, read.digest);
-	let added = false;
-	if (await exists(target)) {
-		const held = await verifyBuild(target, read.digest);
-		if (!held.ok) return { ok: false, problems: held.problems.map((problem) => `the registry's own copy of ${read.digest} is damaged: ${problem}`) };
-	} else {
-		await mkdir(packs, { recursive: true });
-		const incoming = await mkdtemp(path.join(packs, INCOMING));
-		try {
-			for (const [file, listed] of read.files) {
-				const from = path.join(dir, file);
-				let found;
-				try {
-					found = await lstat(from);
-				} catch (error) {
-					return { ok: false, problems: [`${JSON.stringify(file)} cannot be read: ${reasonOf(error)}`] };
-				}
-				// Before a byte is copied: a source cannot fill the registry's disk with more than it listed.
-				if (!found.isFile()) return { ok: false, problems: [`${JSON.stringify(file)} is not a regular file`] };
-				if (found.size !== listed.size) return { ok: false, problems: [`${JSON.stringify(file)} is ${found.size} bytes, not the ${listed.size} listed`] };
-				const to = path.join(incoming, file);
-				await mkdir(path.dirname(to), { recursive: true });
-				await copyFile(from, to);
+	// A link is followed here, as a path a person typed is; nothing inside a build ever is.
+	const source = (await stat(from)).isFile() ? archiveSource(from) : directorySource(from);
+	try {
+		const read = await source.describe(wanted);
+		if (!read.ok) return read;
+		const packs = path.join(registry, PACKS);
+		const target = path.join(packs, read.digest);
+		let added = false;
+		let compressed = 0;
+		if (await exists(target)) {
+			const held = await verifyBuild(target, read.digest);
+			if (!held.ok) return { ok: false, problems: held.problems.map((problem) => `the registry's own copy of ${read.digest} is damaged: ${problem}`) };
+		} else {
+			await mkdir(packs, { recursive: true });
+			const incoming = await mkdtemp(path.join(packs, INCOMING));
+			try {
+				const problems = await source.fill(incoming, read);
+				if (problems.length > 0) return { ok: false, problems };
+				await writeFile(path.join(incoming, FILES_JSON), read.filesJson);
+				await writeFile(path.join(incoming, PACK_JSON), read.packJson);
+				const listed = [...read.files].map(([file, { size }]) => ({ path: file, size }));
+				compressed = await compressCopies(incoming, [{ path: FILES_JSON, size: read.filesJson.length }, { path: PACK_JSON, size: read.packJson.length }, ...listed]);
+				const whole = await verifyBuild(incoming, read.digest);
+				if (!whole.ok) return whole;
+				await rename(incoming, target);
+				added = true;
+			} finally {
+				await rm(incoming, { recursive: true, force: true });
 			}
-			await writeFile(path.join(incoming, FILES_JSON), read.filesJson);
-			await writeFile(path.join(incoming, PACK_JSON), read.packJson);
-			const whole = await verifyBuild(incoming, read.digest);
-			if (!whole.ok) return whole;
-			await rename(incoming, target);
-			added = true;
-		} finally {
-			await rm(incoming, { recursive: true, force: true });
 		}
+		const missing = [];
+		for (const [id, use] of Object.entries(read.manifest.uses)) {
+			if (!(await exists(path.join(packs, use.digest, PACK_JSON)))) missing.push({ id, digest: use.digest, optional: use.optional });
+		}
+		return { ok: true, digest: read.digest, added, compressed, manifest: read.manifest, missing };
+	} finally {
+		await source.close();
 	}
-	const missing = [];
-	for (const [id, use] of Object.entries(read.manifest.uses)) {
-		if (!(await exists(path.join(packs, use.digest, PACK_JSON)))) missing.push({ id, digest: use.digest, optional: use.optional });
-	}
-	return { ok: true, digest: read.digest, added, manifest: read.manifest, missing };
 }
 
 /** Whether anything is at `file`. */

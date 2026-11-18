@@ -7,6 +7,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 import { addBuild, describeBuild, digestOf, initRegistry, stampBuild, verifyBuild } from './build.mjs';
 import { run } from './cli.mjs';
 
@@ -80,15 +81,31 @@ test('a stamped directory is a build, and stamping it again changes nothing', as
 test('the compressed copies a pack leaves beside its files are not files of the build, and do not spoil it', async (t) => {
 	const root = await scratch(t);
 	const dir = await build(root);
-	await write(dir, { 'runner.js.br': 'br', 'wasm/a.wasm.gz': 'gz', 'sysroot.tar.gz': 'an archive with no file beside it' });
+	await write(dir, { 'runner.js.br': brotliCompressSync('export {}\n'), 'wasm/a.wasm.gz': gzipSync(Buffer.from([0, 0x61, 0x73, 0x6d])), 'sysroot.tar.gz': 'an archive with no file beside it' });
 	assert.equal((await stampBuild(dir, META)).skipped, 2);
 	// Stamped again after a compress step ran over the two descriptions: their copies are no files of the build either.
-	await write(dir, { 'pack.json.br': 'br', 'files.json.gz': 'gz' });
+	await write(dir, { 'pack.json.br': brotliCompressSync(await readFile(path.join(dir, 'pack.json'))), 'files.json.gz': gzipSync(await readFile(path.join(dir, 'files.json'))) });
 	const described = await stampBuild(dir, META);
 	assert.equal(described.ok, true);
 	assert.equal(described.skipped, 4);
 	assert.deepEqual(Object.keys(JSON.parse(described.filesJson)), ['runner.js', 'sysroot.tar.gz', 'wasm/a.wasm']);
 	assert.equal((await verifyBuild(dir)).ok, true);
+});
+
+test('a compressed copy that does not decode to its file is a wrong file, since a registry serves it in its place', async (t) => {
+	const { dir } = await stamped(t);
+	await write(dir, { 'runner.js.br': brotliCompressSync('export default 1\n'), 'wasm/a.wasm.gz': 'not gzip', 'files.json.br': brotliCompressSync('{}\n') });
+	const verified = await verifyBuild(dir, DEMO);
+	assert.deepEqual(verified.problems?.sort(), [
+		'"files.json.br" is not a compressed copy of "files.json": it does not decode to its bytes',
+		'"runner.js.br" is not a compressed copy of "runner.js": it does not decode to its bytes',
+		'"wasm/a.wasm.gz" is not a compressed copy of "wasm/a.wasm": it does not decode to its bytes',
+	]);
+	// One that would decode to far more than its file is stopped one byte past it.
+	await rm(path.join(dir, 'wasm', 'a.wasm.gz'));
+	await rm(path.join(dir, 'files.json.br'));
+	await write(dir, { 'runner.js.br': brotliCompressSync(Buffer.alloc(64 * 1024 * 1024)) });
+	assert.match((await verifyBuild(dir, DEMO)).problems?.join('; ') ?? '', /"runner.js.br" is not a compressed copy/);
 });
 
 test('a directory with a link in it, or a file a build may not have, is not described', async (t) => {
@@ -250,7 +267,7 @@ test('the command exits 0 when done, 1 with every problem named, 2 for what it d
 	assert.deepEqual(lines.out, [DEMO], 'stamp prints the name and nothing else on stdout');
 	assert.equal(await run(['verify', dir, DEMO], io), 0);
 	assert.equal(await run(['add', registry, dir], io), 0);
-	assert.equal(lines.out.at(-1), `${DEMO} demo 1.0.0: added`);
+	assert.equal(lines.out.at(-1), `${DEMO} demo 1.0.0: added, with 0 compressed copies`);
 
 	lines.err.length = 0;
 	assert.equal(await run(['verify', dir, `sha256-${'0'.repeat(64)}`], io), 1);
