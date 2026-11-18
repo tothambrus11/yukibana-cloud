@@ -29,6 +29,7 @@ export async function editions(ctx: Context, claims: Claims): Promise<EditionJso
     const rows = await tx<{ edition_id: string; label: string; archived: boolean; code: string; title: string; role: EditionRole }[]>`
       select e.edition_id, e.label, e.archived_at is not null as archived, c.code, e.title, app.role_in(e.edition_id)::text as role
       from course_edition e join course c on c.course_id = e.course_id
+      where app.role_in(e.edition_id) is not null
       order by e.archived_at nulls first, c.code, e.label desc`;
     return rows.map(r => ({ editionId: r.edition_id, courseCode: r.code, courseTitle: r.title, label: r.label, archived: r.archived, role: r.role }));
   });

@@ -36,19 +36,26 @@ const editionOf = (param: string): EditionId => {
 };
 
 /** An edition as the caller sees it: the projects the policies let them see
- *  (published ones for a student, all for staff), and for staff the roster. */
+ *  (published ones for a student, all for staff), and for staff and owners
+ *  the roster. An admin sees it as an owner who is not staff: the roster and
+ *  settings, and no projects. */
 export const load: PageServerLoad = async event => {
   const claims = requireClaims(event);
   const edition = editionOf(event.params.edition);
   return withContext(ctx =>
     asUser(ctx.sql, claims, async tx => {
-      const [head] = await tx<{ edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean }[]>`
+      const [head] = await tx<
+        { edition_id: EditionId; label: string; archived_at: Date | null; code: string; title: string; role: string | null; can_edit: boolean; owner: boolean; staff: boolean }[]
+      >`
         select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role,
-               app.may_edit_projects(e.edition_id) as can_edit
+               app.may_edit_projects(e.edition_id) as can_edit, app.is_owner(e.edition_id) as owner,
+               app.is_staff(e.edition_id) or app.is_owner(e.edition_id) as staff
         from course_edition e join course c on c.course_id = e.course_id
         where e.edition_id = ${edition}`;
       if (head === undefined) error(404, 'No such edition.');
-      const staff = head.role === 'owner' || head.role === 'assistant';
+      // `owner` and `staff` are the database's answers, not the role's: an
+      // admin owns every edition without being on its roster.
+      const staff = head.staff;
       const projects = await tx<ProjectRow[]>`
         select p.project_id, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                (select count(*) from project_release r where r.project_id = p.project_id)::int as releases,
@@ -68,7 +75,7 @@ export const load: PageServerLoad = async event => {
       // `canEdit` is the database's answer, the same function its policies
       // ask: the page draws the reorder handles and the new-project form only
       // when they would be accepted.
-      return { edition: head, role: head.role, staff, owner: head.role === 'owner', canEdit: head.can_edit, projects, mine, roster, kinds: KINDS };
+      return { edition: head, role: head.role, staff, owner: head.owner, canEdit: head.can_edit, projects, mine, roster, kinds: KINDS };
     }),
   );
 };

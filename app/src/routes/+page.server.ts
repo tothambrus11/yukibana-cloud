@@ -18,7 +18,8 @@ interface EditionRow {
  *  projects for the to-do list, and for a teacher the courses they may add
  *  an edition to. Every row comes through the policies, and which courses
  *  take a new edition is `app.may_add_edition`'s answer, so nothing is
- *  decided here. */
+ *  decided here. An admin can read every edition; this page lists only
+ *  those they have a role in, and `/admin` lists the rest. */
 export const load: PageServerLoad = async event => {
   if (event.locals.claims === null) return { user: null, editions: [], courses: [], platformRole: null, tasks: [] };
   const claims = event.locals.claims;
@@ -27,14 +28,15 @@ export const load: PageServerLoad = async event => {
       const editions = await tx<EditionRow[]>`
         select e.edition_id, e.label, e.archived_at, c.code, e.title, app.role_in(e.edition_id)::text as role
         from course_edition e join course c on c.course_id = e.course_id
+        where app.role_in(e.edition_id) is not null
         order by e.archived_at nulls first, c.code, e.label desc`;
       const [me] = await tx<{ role: string | null }[]>`select app.platform_role()::text as role`;
       const platformRole = me?.role ?? null;
       const courses =
         platformRole === 'teacher' || platformRole === 'admin'
-          ? // A course is named by its latest edition: `course.title` is kept so.
+          ? // The name of the latest edition the person is in: `course.title` is not theirs to read.
             await tx<{ course_id: string; code: string; title: string }[]>`
-              select course_id, code, title from course where app.may_add_edition(course_id) order by code`
+              select course_id, code, app.course_name(course_id) as title from course where app.may_add_edition(course_id) order by code`
           : [];
       // The to-do list: every project the person has as a student, across
       // editions. The page sorts and splits it.
