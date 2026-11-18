@@ -1,5 +1,5 @@
 {
-  description = "Yukibana Cloud development shell";
+  description = "Yukibana development shell";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -16,7 +16,7 @@
     in
     {
       devShells = forAllSystems (pkgs: {
-        # Node 22, as in CI and the CLI's `engines`; npm comes with it.
+        # Node 22, as in CI; npm comes with it.
         default = pkgs.mkShell {
           packages = [ pkgs.nodejs_22 ];
         };
