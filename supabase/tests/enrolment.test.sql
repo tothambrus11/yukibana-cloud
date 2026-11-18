@@ -9,10 +9,9 @@ select tests.create_user('early@example.com', 'Early Bird', 'early');
 
 -- A plain user cannot create a course; a teacher can, and owns the edition.
 select tests.authenticate(tests.uid('user@example.com'));
-select throws_ok($$ select app.create_course('X', 'X') $$, '42501', null, 'a plain user cannot create a course');
+select throws_ok($$ select app.create_course('X', 'X', 'X') $$, '42501', null, 'a plain user cannot create a course');
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-ENROL', 'Enrolment');
-select app.create_edition((select course_id from public.course where code = 'T-ENROL'), '2026');
+select app.create_course('T-ENROL', 'Enrolment', '2026');
 select is(app.role_in(tests.edition('T-ENROL', '2026'))::text, 'owner', 'the creator of an edition is its owner');
 
 -- Enrolling an address that already has a confirmed account links at once.

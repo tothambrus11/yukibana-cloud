@@ -9,8 +9,7 @@ select tests.create_user('ta@example.com', 'Assistant', 'ta');
 select tests.create_user('student@example.com', 'Student', 'student');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-ORD', 'Order');
-select app.create_edition((select course_id from public.course where code = 'T-ORD'), '2026');
+select app.create_course('T-ORD', 'Order', '2026');
 select app.create_edition((select course_id from public.course where code = 'T-ORD'), '2027');
 select app.enrol(tests.edition('T-ORD', '2026'), 'ta@example.com', 'assistant');
 select app.enrol(tests.edition('T-ORD', '2026'), 'student@example.com');

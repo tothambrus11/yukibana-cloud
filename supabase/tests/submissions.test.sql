@@ -9,8 +9,7 @@ select tests.create_user('bob@example.com', 'Bob', 'bob');
 select tests.create_user('outsider@example.com', 'Outsider', 'outsider');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-SUB', 'Submissions');
-select app.create_edition((select course_id from public.course where code = 'T-SUB'), '2026');
+select app.create_course('T-SUB', 'Submissions', '2026');
 select app.enrol(tests.edition('T-SUB', '2026'), 'alice@example.com');
 select app.enrol(tests.edition('T-SUB', '2026'), 'bob@example.com');
 insert into public.project (edition_id, slug, title, kind, available_after, deadline)

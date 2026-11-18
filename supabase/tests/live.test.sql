@@ -11,8 +11,7 @@ select tests.create_user('student@example.com', 'Student', 'student');
 select tests.create_user('outsider@example.com', 'Outsider', 'outsider');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-LIVE', 'Live');
-select app.create_edition((select course_id from public.course where code = 'T-LIVE'), '2026');
+select app.create_course('T-LIVE', 'Live', '2026');
 select app.enrol(tests.edition('T-LIVE', '2026'), 'ta@example.com', 'assistant');
 select app.enrol(tests.edition('T-LIVE', '2026'), 'student@example.com');
 

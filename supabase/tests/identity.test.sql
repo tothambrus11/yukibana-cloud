@@ -46,8 +46,7 @@ select is(
 select tests.create_user('linus@example.com', 'Linus', 'linus');
 select tests.create_user('stranger@example.com', 'Stranger', 'stranger');
 select tests.authenticate(tests.uid('grace@example.com'));
-select app.create_course('T-IDENT', 'Identity');
-select app.create_edition((select course_id from public.course where code = 'T-IDENT'), '2026');
+select app.create_course('T-IDENT', 'Identity', '2026');
 select app.enrol(tests.edition('T-IDENT', '2026'), 'linus@example.com');
 select tests.authenticate(tests.uid('linus@example.com'));
 select results_eq(

@@ -13,8 +13,7 @@ update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@e
 select tests.create_user('stranger@example.com', 'Stranger', 'stranger');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-STR', 'Strangers');
-select app.create_edition((select course_id from public.course where code = 'T-STR'), '2026');
+select app.create_course('T-STR', 'Strangers', '2026');
 select app.enrol(tests.edition('T-STR', '2026'), 'student@example.com');
 
 create temporary table e as select tests.edition('T-STR', '2026') as id;

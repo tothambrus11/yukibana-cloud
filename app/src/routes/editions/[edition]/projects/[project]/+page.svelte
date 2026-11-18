@@ -13,8 +13,7 @@
   // Without a starter there is nothing to start from, so nothing to submit:
   // the page leaves submissions out until one is released. Submissions that
   // exist anyway (sent through the API before any release) stay visible.
-  // An admin who is not in the edition sees no submissions, and no list.
-  const submissions = $derived(data.seesSubmissions && (p.ready || data.submissions.length > 0));
+  const submissions = $derived(p.ready || data.submissions.length > 0);
   const tabs = $derived<Tab[]>(data.staff
     ? [
         { id: 'overview', label: 'Overview' },

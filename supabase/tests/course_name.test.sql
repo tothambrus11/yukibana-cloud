@@ -1,7 +1,7 @@
 -- Each edition carries the course name it ran under; its owners rename it,
--- and the course shows the name of its latest edition. Nobody else renames
--- anything: not an assistant, not a student, not a stranger, not a teacher
--- who owns no edition of the course.
+-- and the course goes by the name of its latest edition (app.course_name).
+-- Nobody else renames anything: not an assistant, not a student, not a
+-- stranger, not a teacher who owns no edition of the course.
 begin;
 select plan(20);
 
@@ -16,8 +16,7 @@ select tests.create_user('student@example.com', 'Student', 'student');
 select tests.create_user('stranger@example.com', 'Stranger', 'stranger');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-REN', 'Old name');
-select app.create_edition((select course_id from public.course where code = 'T-REN'), '2025');
+select app.create_course('T-REN', 'Old name', '2025');
 select app.enrol(tests.edition('T-REN', '2025'), 'ta@example.com', 'assistant');
 select app.enrol(tests.edition('T-REN', '2025'), 'student@example.com');
 
@@ -60,18 +59,17 @@ select throws_ok($$ select app.set_course_code((select course from ids), '') $$,
 
 select tests.clear_auth();
 select results_eq(
-  $$ select c.code, c.title, e.label, e.title from public.course_edition e join public.course c using (course_id)
+  $$ select c.code, e.label, e.title from public.course_edition e join public.course c using (course_id)
      where course_id = (select course from ids) $$,
-  $$ values ('T-REN', 'Old name', '2025', 'Old name') $$,
+  $$ values ('T-REN', '2025', 'Old name') $$,
   'after every refusal, the course and its edition are as they were');
 
 -- An owner renames.
 select tests.authenticate(tests.uid('teacher@example.com'));
 select lives_ok($$ select app.update_edition((select old from ids), ' 2025 autumn ', ' New name ') $$,
   'an owner renames the edition and its course name');
-select tests.clear_auth();
 select results_eq(
-  $$ select e.label, e.title, c.title from public.course_edition e join public.course c using (course_id)
+  $$ select e.label, e.title, app.course_name(e.course_id) from public.course_edition e
      where course_id = (select course from ids) $$,
   $$ values ('2025 autumn', 'New name', 'New name') $$,
   'trimmed, and the course shows the name of its only edition');
@@ -87,9 +85,8 @@ select is((select title from public.course_edition where edition_id = tests.edit
   'a duplicate keeps the name of the edition it was copied from');
 select app.update_edition(tests.edition('T-REN', '2026'), '2026', 'Newest name');
 select app.update_edition((select old from ids), '2025 autumn', 'Old name again');
-select tests.clear_auth();
 select results_eq(
-  $$ select e.label, e.title, c.title from public.course_edition e join public.course c using (course_id)
+  $$ select e.label, e.title, app.course_name(e.course_id) from public.course_edition e
      where course_id = (select course from ids) order by e.label $$,
   $$ values ('2025 autumn', 'Old name again', 'Newest name'), ('2026', 'Newest name', 'Newest name') $$,
   'the course shows its latest edition''s name, whichever was renamed last');

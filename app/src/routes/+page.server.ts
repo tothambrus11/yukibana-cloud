@@ -1,4 +1,4 @@
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { asUser, clashOf, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
@@ -52,15 +52,23 @@ export const actions: Actions = {
     const form = await event.request.formData();
     const code = text(form, 'code');
     const title = text(form, 'title');
-    if (code === '' || title === '') return fail(400, { error: 'A course needs a code and a title.' });
+    const label = text(form, 'label');
+    if (code === '' || title === '' || label === '') return fail(400, { error: 'A course needs a code, a title and the label of its first edition.' });
+    let edition: string;
     try {
-      await withContext(ctx => asUser(ctx.sql, claims, tx => tx`select app.create_course(${code}, ${title})`));
+      edition = await withContext(ctx =>
+        asUser(ctx.sql, claims, async tx => {
+          const [row] = await tx<{ id: string }[]>`select app.create_course(${code}, ${title}, ${label}) as id`;
+          if (row === undefined) throw new Error('create_course returned nothing');
+          return row.id;
+        }),
+      );
     } catch (e) {
       if (clashOf(e) === 'course_code_key')
         return fail(409, { error: `The course code "${code}" is already taken. If it is your course, ask one of its owners to add you to an edition.` });
       return fail(statusOf(e).status, { error: statusOf(e).message });
     }
-    return { ok: true };
+    redirect(303, `/editions/${edition}`);
   },
   createEdition: async event => {
     const claims = requireClaims(event);

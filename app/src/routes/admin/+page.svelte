@@ -74,7 +74,7 @@
               <tr>
                 <td>{c.code}</td>
                 <td>
-                  {#if c.edition_id === null}<span class="muted">{c.title} · no edition yet</span>
+                  {#if c.edition_id === null}<span class="muted">no edition</span>
                   {:else}<a href="/editions/{c.edition_id}">{c.title} · {c.label}</a>{#if c.archived_at !== null} <span class="chip">archived</span>{/if}{/if}
                 </td>
                 <td>{#if c.owners === '' && c.edition_id !== null}<span class="chip">none</span>{:else}{c.owners}{/if}</td>
@@ -85,7 +85,7 @@
         </table>
       </div>
     {/if}
-    <p class="note">An admin owns every edition: open one to change its roster, names or archive state. Its submissions stay with the people enrolled.</p>
+    <p class="note">An admin is owner and staff of every edition, without being on its roster: open one to manage it as its owners do.</p>
   </section>
 
 {:else}

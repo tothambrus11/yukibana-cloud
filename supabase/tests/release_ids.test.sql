@@ -8,8 +8,7 @@ update public.app_user set role = 'teacher' where user_id = tests.uid('teacher@e
 select tests.create_user('alice@example.com', 'Alice', 'alice');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-REL', 'Release ids');
-select app.create_edition((select course_id from public.course where code = 'T-REL'), '2026');
+select app.create_course('T-REL', 'Release ids', '2026');
 select app.enrol(tests.edition('T-REL', '2026'), 'alice@example.com');
 insert into public.project (edition_id, slug, title, kind, available_after, deadline)
 values (tests.edition('T-REL', '2026'), 'rel-one', 'One', 'rust-cargo', now() - interval '1 day', now() + interval '1 day');

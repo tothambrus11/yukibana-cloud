@@ -84,9 +84,10 @@
       <form method="POST" action={actionIn('create', 'createCourse')} class="stack">
         <label>Code <input name="code" placeholder="CS-101" required /></label>
         <label>Title <input name="title" placeholder="Introduction to Programming" required /></label>
+        <label>First edition <input name="label" placeholder="2026 autumn" required /></label>
         <button>Create course</button>
       </form>
-      <p class="note">A course groups its editions; the work lives in an edition.</p>
+      <p class="note">A course groups its editions; the work lives in an edition, and you own the first one.</p>
     </section>
   {:else}
     <section>

@@ -19,13 +19,8 @@ interface ProjectRow {
   deadline: Date | null;
   closes_at: Date | null;
   role: string | null;
-  /** app.oversees: staff of the edition, or an admin; whether to show the
-   *  staff view of the project and its releases. */
-  oversees: boolean;
-  /** Whether the edition's submissions policy shows this person anything:
-   *  its staff all of them, a student their own. False for an admin who is
-   *  neither, so the page does not show an empty list as "none yet". */
-  sees_submissions: boolean;
+  /** app.is_staff: the edition's assistants and owners, and admins. */
+  staff: boolean;
   /** app.may_edit_projects: whether the settings and publishing controls
    *  would be accepted, so whether to draw them. */
   can_edit: boolean;
@@ -87,8 +82,7 @@ export const load: PageServerLoad = async event => {
       const [p] = await tx<ProjectRow[]>`
         select p.project_id, p.edition_id, c.code as course_code, e.label as edition_label, p.slug, p.title, p.kind::text as kind, p.available_after, p.deadline, p.closes_at,
                app.role_in(p.edition_id)::text as role,
-               app.oversees(p.edition_id) as oversees,
-               app.is_staff(p.edition_id) or coalesce(app.role_in(p.edition_id) = 'student', false) as sees_submissions,
+               app.is_staff(p.edition_id) as staff,
                app.may_edit_projects(p.edition_id) as can_edit,
                app.current_starter(p.project_id) is not null as ready,
                app.can_submit(p.project_id) as can_submit
@@ -97,9 +91,7 @@ export const load: PageServerLoad = async event => {
         join course c on c.course_id = e.course_id
         where p.project_id = ${project} and p.edition_id = ${edition}`;
       if (p === undefined) error(404, 'No such project.');
-      // The staff view is for whoever reads every project and release, which
-      // includes an admin; submissions are only for the edition's own people.
-      const staff = p.oversees;
+      const staff = p.staff;
       // Tokens publish to the project, so they stay with its enrolled owners
       // (token_read), not with admins.
       const owner = p.role === 'owner';
@@ -125,7 +117,7 @@ export const load: PageServerLoad = async event => {
             select token_id, label, created_at, last_used_at, revoked_at from project_token
             where project_id = ${project} order by created_at desc`
         : [];
-      return { project: p, staff, owner, seesSubmissions: p.sees_submissions, submissions, releases, tokens, origin: event.url.origin };
+      return { project: p, staff, owner, submissions, releases, tokens, origin: event.url.origin };
     }),
   );
 };

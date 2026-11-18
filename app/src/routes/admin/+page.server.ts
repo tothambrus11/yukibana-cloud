@@ -4,8 +4,9 @@ import { asUser, statusOf } from '#lib/server/db.ts';
 import { text } from '#lib/server/form.ts';
 import { requireClaims, withContext } from '#lib/server/context.ts';
 
-/** One row of the courses overview: an edition, or a course that has none
- *  yet, in which case every edition field is null. `owners` are addresses,
+/** One row of the courses overview: an edition, or a course left with none
+ *  (made before a course came with its first), in which case every edition
+ *  field is null. `owners` are addresses,
  *  comma-separated, as the roster has them; empty when nobody owns it. */
 interface CourseRow {
   course_id: string;
@@ -19,7 +20,7 @@ interface CourseRow {
 }
 
 /** Platform roles, every course and edition, and the audit log. Managing an
- *  edition is the edition's own page: an admin owns every edition there. */
+ *  edition is the edition's own page: an admin is owner and staff there. */
 export const load: PageServerLoad = async event => {
   const claims = requireClaims(event);
   return withContext(ctx =>
@@ -29,7 +30,7 @@ export const load: PageServerLoad = async event => {
       const staff = await tx<{ user_id: string; full_name: string | null; github_login: string | null; role: string }[]>`
         select user_id, full_name, github_login, role::text as role from app_user where role <> 'user' order by role, github_login`;
       const courses = await tx<CourseRow[]>`
-        select c.course_id, c.code, e.edition_id, e.label, coalesce(e.title, app.course_name(c.course_id)) as title, e.archived_at,
+        select c.course_id, c.code, e.edition_id, e.label, e.title, e.archived_at,
                coalesce((select string_agg(r.email, ', ' order by r.email) from enrollment r where r.edition_id = e.edition_id and r.role = 'owner'), '') as owners,
                (select count(*) from enrollment r where r.edition_id = e.edition_id and r.role = 'student')::int as students
         from course c left join course_edition e on e.course_id = c.course_id

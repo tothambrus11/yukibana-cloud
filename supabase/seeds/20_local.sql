@@ -18,14 +18,12 @@ declare
   alice   uuid := tests.create_user('alice@yukibana.local', 'Alice Student', 'alice');
   bob     uuid := tests.create_user('bob@yukibana.local', 'Bob Student', 'bob');
   ta      uuid := tests.create_user('ta@yukibana.local', 'Tom Assistant', 'tom');
-  cid uuid;
   eid uuid;
 begin
   update public.app_user set role = 'teacher' where user_id = teacher;
 
   perform tests.authenticate(teacher);
-  cid := app.create_course('CS-101', 'Introduction to Programming');
-  eid := app.create_edition(cid, '2026 autumn');
+  eid := app.create_course('CS-101', 'Introduction to Programming', '2026 autumn');
   perform app.enrol(eid, 'alice@yukibana.local');
   perform app.enrol(eid, 'bob@yukibana.local');
   perform app.enrol(eid, 'ta@yukibana.local', 'assistant');

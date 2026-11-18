@@ -16,8 +16,7 @@ update public.app_user set role = 'admin' where user_id = tests.uid('admin@examp
 select tests.create_user('outsider@example.com', 'Outsider', 'outsider');
 
 select tests.authenticate(tests.uid('teacher@example.com'));
-select app.create_course('T-WHY', 'Refusals');
-select app.create_edition((select course_id from public.course where code = 'T-WHY'), '2026');
+select app.create_course('T-WHY', 'Refusals', '2026');
 select app.create_edition((select course_id from public.course where code = 'T-WHY'), '2027');
 select app.enrol(tests.edition('T-WHY', '2026'), 'alice@example.com');
 select app.enrol(tests.edition('T-WHY', '2026'), 'dave@example.com');
