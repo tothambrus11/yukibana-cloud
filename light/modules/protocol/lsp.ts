@@ -380,3 +380,148 @@ export interface InlayHint {
 	/** The server's own, handed back in `inlayHint/resolve`. */
 	data?: unknown;
 }
+
+/** An edit to an open document as `textDocument/didChange` carries it: a range replaced, or the whole text when `range` is left out. */
+export type TextDocumentContentChangeEvent = { range: Range; rangeLength?: number; text: string } | { text: string };
+
+/** What a watched file went through: 1 created, 2 changed, 3 deleted. */
+export type FileChangeType = 1 | 2 | 3;
+
+/** How a server wants open documents kept in sync: 0 not at all, 1 the whole text on every change, 2 only the ranges that changed. */
+export type TextDocumentSyncKind = 0 | 1 | 2;
+
+/** A function a call hierarchy names, as the server made it; handed back to the server unchanged, since its `data` is the server's own. */
+export interface CallHierarchyItem {
+	name: string;
+	kind: SymbolKind;
+	tags?: readonly 1[];
+	detail?: string;
+	uri: DocumentUri;
+	range: Range;
+	selectionRange: Range;
+	data?: unknown;
+}
+
+/** A caller of a function, and the places in the caller's file where it calls it. */
+export interface CallHierarchyIncomingCall {
+	from: CallHierarchyItem;
+	fromRanges: readonly Range[];
+}
+
+/** A function a function calls, and the places in the caller's own file where it does. */
+export interface CallHierarchyOutgoingCall {
+	to: CallHierarchyItem;
+	fromRanges: readonly Range[];
+}
+
+/** A symbol of the workspace (`workspace/symbol`), whose location may lack a range until it is resolved. */
+export interface WorkspaceSymbol {
+	name: string;
+	kind: SymbolKind;
+	tags?: readonly 1[];
+	containerName?: string;
+	location: Location | { uri: DocumentUri };
+	data?: unknown;
+}
+
+/** What `textDocument/prepareRename` answers: the range to rename, with or without the text to offer, or "rename the word here". */
+export type PrepareRenameResult = Range | { range: Range; placeholder: string } | { defaultBehavior: boolean };
+
+/** A document's semantic tokens, five integers per token, relative to the token before. */
+export interface SemanticTokens {
+	resultId?: string;
+	data: readonly number[];
+}
+
+/** The names a server's semantic tokens' types and modifiers stand for, by index. */
+export interface SemanticTokensLegend {
+	tokenTypes: string[];
+	tokenModifiers: string[];
+}
+
+/** One document's report in a pull of the workspace's diagnostics: every diagnostic (`full`), or none changed since the last pull (`unchanged`). */
+export type WorkspaceDocumentDiagnosticReport =
+	| { kind: 'full'; uri: DocumentUri; version: number | null; resultId?: string; items: readonly Diagnostic[] }
+	| { kind: 'unchanged'; uri: DocumentUri; version: number | null; resultId: string };
+
+/** The answer to `workspace/diagnostic`: a report per document. */
+export interface WorkspaceDiagnosticReport {
+	items: readonly WorkspaceDocumentDiagnosticReport[];
+}
+
+/** The `data` of a pull a server refused for now (ServerCancelled): whether to ask again. */
+export interface DiagnosticServerCancellationData {
+	retriggerRequest: boolean;
+}
+
+/**
+ * What a client can do, as `initialize` tells the server: the part of the
+ * specification's structure an editor fills in. The editor's binding says
+ * it (it knows which features it shows), and the session sends it
+ * unchanged, so its parts are only named here.
+ */
+export interface ClientCapabilities {
+	general?: object;
+	window?: object;
+	workspace?: object;
+	textDocument?: object;
+}
+
+/**
+ * A provider field of a server's capabilities: offered (`true` or its
+ * options) or not (`false` or left out); only `resolveProvider` of its
+ * options is read.
+ */
+export type ProviderOption = boolean | { resolveProvider?: boolean };
+
+/**
+ * What a server can do, as it answered `initialize`: the fields Yukibana
+ * reads. A field left out is a feature the server does not have.
+ */
+export interface ServerCapabilities {
+	textDocumentSync?: TextDocumentSyncKind | { change?: TextDocumentSyncKind };
+	completionProvider?: { triggerCharacters?: string[]; resolveProvider?: boolean };
+	hoverProvider?: boolean | object;
+	signatureHelpProvider?: { triggerCharacters?: string[]; retriggerCharacters?: string[] };
+	definitionProvider?: boolean | object;
+	declarationProvider?: boolean | object;
+	typeDefinitionProvider?: boolean | object;
+	implementationProvider?: boolean | object;
+	referencesProvider?: boolean | object;
+	documentHighlightProvider?: boolean | object;
+	documentSymbolProvider?: boolean | object;
+	renameProvider?: boolean | { prepareProvider?: boolean };
+	documentFormattingProvider?: boolean | object;
+	documentRangeFormattingProvider?: boolean | object;
+	documentOnTypeFormattingProvider?: { firstTriggerCharacter: string; moreTriggerCharacter?: string[] };
+	foldingRangeProvider?: boolean | object;
+	selectionRangeProvider?: boolean | object;
+	documentLinkProvider?: { resolveProvider?: boolean };
+	codeActionProvider?: ProviderOption;
+	codeLensProvider?: { resolveProvider?: boolean };
+	semanticTokensProvider?: { legend: SemanticTokensLegend; full?: boolean | object };
+	callHierarchyProvider?: boolean | object;
+	inlayHintProvider?: ProviderOption;
+	workspaceSymbolProvider?: ProviderOption;
+	diagnosticProvider?: { workspaceDiagnostics: boolean };
+}
+
+/** The answer to `initialize`: what the server can do, and its name and version. */
+export interface InitializeResult {
+	capabilities: ServerCapabilities;
+	serverInfo?: { name: string; version?: string };
+}
+
+/** A server's request to show a document, with a selection, in the editor (`external` asks for another application). */
+export interface ShowDocumentParams {
+	uri: DocumentUri;
+	external?: boolean;
+	takeFocus?: boolean;
+	selection?: Range;
+}
+
+/** A line a server asks the client to log or show: 1 an error, 2 a warning, 3 information, 4 a log line, 5 a debug line. */
+export interface MessageParams {
+	type: 1 | 2 | 3 | 4 | 5;
+	message: string;
+}

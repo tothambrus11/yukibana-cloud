@@ -1,0 +1,13 @@
+---
+/** One panel of <Tabs>: shown when its position's radio button is chosen. */
+interface Props {
+	/** The panel's heading for readers without CSS: its tab's label. */
+	label: string;
+}
+const { label } = Astro.props;
+---
+
+<section class="tab-panel" aria-label={label}>
+	<h3 class="tab-panel-label">{label}</h3>
+	<slot />
+</section>

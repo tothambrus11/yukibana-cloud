@@ -566,11 +566,42 @@ test('every toolchain a CI job fetches from the store is verified to be built on
 test("a pull request reuses its own earlier build of a unit, and builds nothing it took", () => {
     const earlier = stepById(unitSteps, 'earlier');
     assert.match(String(earlier.if), /github\.event_name == 'pull_request'/);
+    // A branch dispatch looks for its own ref's too, main never, and a
+    // unit asked to rebuild not at all.
+    assert.match(String(earlier.if), /^inputs\.reuse &&/);
+    assert.match(String(earlier.if), /github\.event_name == 'workflow_dispatch' && github\.ref != 'refs\/heads\/main'/);
+    assert.equal(earlier.env?.HEAD_BRANCH, '${{ github.head_ref || github.ref_name }}');
     assert.match(String(earlier.run), /pack-store\.sh toolchain-artifact "\$UNIT" [^\n]*\n?\s*--ref "\$GITHUB_REF"/);
     // Everything that builds waits on it.
     for (const id of ['build', 'cache']) assert.match(String(stepById(unitSteps, id).if), /steps\.earlier\.outputs\.path == ''/, id);
     const upload = unitSteps.find((s) => String(s.uses ?? '').startsWith('actions/upload-artifact@'));
     assert.equal(upload?.with?.path, '${{ steps.earlier.outputs.path || steps.archive.outputs.path }}');
+});
+
+test("a dispatch's rebuild builds units the store has only off main, and never reaches a release", () => {
+    // Only a dispatch has the input: a release calls this workflow
+    // (workflow_call), whose inputs are upload and stored, and a rebuild
+    // named upload or stored would read as a release's switch.
+    const dispatch = /** @type {{ inputs?: Record<string, { type?: string, default?: unknown }> }} */ (workflow.on.workflow_dispatch);
+    assert.deepEqual(Object.keys(dispatch.inputs ?? {}), ['rebuild']);
+    assert.equal(dispatch.inputs?.rebuild?.type, 'string');
+    assert.equal(dispatch.inputs?.rebuild?.default, '');
+    const call = /** @type {{ inputs: Record<string, unknown> }} */ (workflow.on.workflow_call);
+    assert.deepEqual(Object.keys(call.inputs).sort(), ['stored', 'upload']);
+    const plan = stepById(stepsOf(/** @type {Job} */ (jobs.plan)), 'units');
+    assert.equal(plan.env?.REBUILD, '${{ inputs.rebuild }}');
+    const run = String(plan.run);
+    const refuse = run.indexOf('if [ "$GITHUB_REF" = refs/heads/main ]; then');
+    assert.ok(refuse > 0, 'the plan refuses a rebuild on main');
+    assert.match(run.slice(refuse), /^[^\n]*\n[^\n]*::error title=rebuild::[^\n]*\n\s*exit 1\n/);
+    // What is rebuilt is taken from the full plan, which a release never computes.
+    assert.ok(run.indexOf('all="$(light/scripts/pack-store.sh toolchain-plan --waves 3)"') < refuse);
+    assert.match(run, /if \[ "\$UPLOAD" != true \]; then\n\s*all=/);
+    // A rebuilt unit takes no earlier build, not even its own ref's.
+    assert.match(run, /reuse: \(\.\[1\] as \$u \| \(\$rebuild \| index\(" " \+ \$u \+ " "\)\) == null\)/);
+    for (const [name, job] of waves) assert.equal(job.with?.reuse, '${{ matrix.reuse }}', name);
+    const reuse = /** @type {{ inputs: Record<string, { type?: string, default?: unknown }> }} */ (unitWorkflow.on.workflow_call).inputs.reuse;
+    assert.deepEqual([reuse?.type, reuse?.default], ['boolean', true]);
 });
 
 test('no cache is deleted without naming its ref, and only main deletes one', () => {
@@ -599,6 +630,8 @@ test('no cache is deleted without naming its ref, and only main deletes one', ()
     const prune = /** @type {Job} */ (cachesWorkflow.jobs.prune);
     assert.match(String(prune.if), ON_MAIN);
     assert.match(String(stepsOf(prune).at(-1)?.run), /cache-prune\.mjs --stale-pulls/);
+    // A branch a dispatch ran on has caches too, which nothing else prunes.
+    assert.match(String(stepsOf(prune).at(-1)?.run), /cache-prune\.mjs [^\n]*--stale-branches/);
 });
 
 test('every third-party action is pinned by commit', () => {

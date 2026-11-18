@@ -1,5 +1,5 @@
 <!--
-  How Run runs a C++ program built for a Linux target (cpp-targets.ts,
+  How Run runs a C++ program built for a Linux target (lang-cpp/targets.ts,
   RunOptions): in Linux under QEMU's system emulation (the default) or with
   QEMU's user mode, on how many CPUs, and whether its system calls are
   traced. A row of the Build settings popover (BuildSettings.svelte),

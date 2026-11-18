@@ -1,0 +1,12 @@
+{
+	// std's providers hand runs to the runtime's pool, which starts workers
+	// in a browser: the DOM and worker globals, as the runtime has, and
+	// nothing of Node.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"]
+	},
+	"include": ["."],
+	// What build.mjs would write: the module's sources are the project, not its output.
+	"exclude": ["dist"]
+}

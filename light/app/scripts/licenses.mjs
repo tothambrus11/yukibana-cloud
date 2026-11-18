@@ -8,6 +8,10 @@
 // (src/lib/components/Licenses.svelte) links it, beside each pack's own
 // LICENSE-*.txt files.
 //
+// The shared modules (`link:`s to light/modules) are this repository's own
+// code, under its licence, like the app's: they are not listed, but what
+// they depend on is. @yukibana/design is another project's, and is (OWN).
+//
 // It is a superset: a package the bundle tree-shakes away entirely is still
 // listed. A package that ships no licence file but names MIT or ISC in its
 // package.json gets that licence's standard text under its author's name,
@@ -25,6 +29,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const app = fileURLToPath(new URL('..', import.meta.url));
+/** light/modules, resolved: a package installed from there is one of the shared modules. */
+const modules = realpathSync(join(app, '..', 'modules'));
+/** Whether directory `dir` (resolved) is under light/modules. */
+const isShared = (dir) => {
+	for (let d = dirname(dir); d !== dirname(d); d = dirname(d)) if (d === modules) return true;
+	return false;
+};
 const pkg = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8'));
 const roots = [...Object.keys(pkg.dependencies ?? {}), 'svelte', '@sveltejs/kit'];
 
@@ -43,6 +54,7 @@ function locate(name, from) {
 }
 
 const seen = new Map();
+const own = new Set();
 const missing = [];
 const visit = (name, from) => {
 	const dir = locate(name, from);
@@ -50,10 +62,14 @@ const visit = (name, from) => {
 		missing.push(`${name} (not installed)`);
 		return;
 	}
-	if (seen.has(dir)) return;
+	if (seen.has(dir) || own.has(dir)) return;
 	const meta = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-	seen.set(dir, meta);
-	for (const dep of Object.keys(meta.dependencies ?? {})) visit(dep, dir);
+	const shared = isShared(dir);
+	if (shared) own.add(dir);
+	else seen.set(dir, meta);
+	// A shared module is linked, not installed: what it depends on is installed
+	// beside the app, which depends on every module it uses.
+	for (const dep of Object.keys(meta.dependencies ?? {})) visit(dep, shared ? app : dir);
 };
 for (const name of roots) visit(name, app);
 

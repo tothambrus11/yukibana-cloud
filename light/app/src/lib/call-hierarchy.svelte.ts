@@ -2,18 +2,19 @@
  * What the Call Hierarchy panel shows: one function's callers or callees
  * as a tree, each level asked of the language server when it is expanded,
  * as VS Code's view does. The rows themselves are plain data
- * (lsp/call-hierarchy.ts); this holds which are expanded and what each
+ * (@yukibana/monaco's call-hierarchy.ts); this holds which are expanded and what each
  * expansion answered.
  */
-import type * as lsp from 'vscode-languageserver-protocol';
-import { rootRow, toRows, type CallDirection, type CallRow } from './lsp/call-hierarchy';
+import type * as lsp from '@yukibana/protocol';
+import { rootRow, toRows, type CallDirection, type CallRow } from '@yukibana/monaco';
+import type { Calls } from '@yukibana/runtime';
 
 /**
  * Asks the server for one level: the calls on `direction`'s side of `item`.
  * Null when the server did not answer (it failed, which the client has
  * logged, or it stopped).
  */
-export type AskCalls = (direction: CallDirection, item: lsp.CallHierarchyItem) => Promise<(lsp.CallHierarchyIncomingCall | lsp.CallHierarchyOutgoingCall)[] | null>;
+export type AskCalls = (direction: CallDirection, item: lsp.CallHierarchyItem) => Promise<Calls | null>;
 
 /** One node of the tree: a row and, once expanded, its children. */
 export class CallNode {

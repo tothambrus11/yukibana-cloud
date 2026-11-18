@@ -1,0 +1,16 @@
+{
+	// A language package runs in the host's page, beside std's providers it
+	// makes: the DOM and worker globals, as std has, and nothing of Node.
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		// monaco.ts's `import type` of Monaco only (the host's Monaco is
+		// injected, never bundled), resolved as ../monaco/tsconfig.json does.
+		"paths": {
+			"monaco-editor": ["../../app/node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+		}
+	},
+	"include": ["."],
+	// What build.mjs would write: the module's sources are the project, not its output.
+	"exclude": ["dist"]
+}

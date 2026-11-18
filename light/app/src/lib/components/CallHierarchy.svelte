@@ -7,7 +7,7 @@
 <script lang="ts">
 	import { WORKSPACE } from '../project';
 	import { toMonacoRange } from '@yukibana/monaco';
-	import { callsLabel, iconOf, placeOf, siteLabel, type CallSite } from '../lsp/call-hierarchy';
+	import { callsLabel, iconOf, placeOf, siteLabel, type CallSite } from '@yukibana/monaco';
 	import type { CallNode } from '../call-hierarchy.svelte';
 	import type { Workspace } from '../workspace.svelte';
 

@@ -1,0 +1,3 @@
+#!/bin/sh
+# zstd for a bash that has none (Git for Windows): ../zstd.mjs says what it does.
+exec node "$(dirname "$0")/../zstd.mjs" "$@"

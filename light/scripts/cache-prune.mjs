@@ -6,6 +6,12 @@
 //   node cache-prune.mjs --stale-pulls     on every refs/pull/<n>/merge: all
 //       of a closed pull request's Light build caches, and an open one's
 //       all but the newest of each prefix
+//   node cache-prune.mjs --stale-branches  on every refs/heads/<b> but main:
+//       all of a deleted branch's, and an existing one's all but the newest
+//       of each prefix (a light-packs.yml run dispatched on a branch saves
+//       its caches there, and nothing else ever deletes them)
+//
+// The two --stale- modes may be given together, and are then one run.
 //
 // A Light build cache is one of a toolchain unit, light/<pack>/<unit>/...,
 // or of an unsplit pack, light-<pack>-...; its prefix is that start, up to
@@ -21,7 +27,7 @@
 // pull requests' on a schedule, from main; pull request runs have
 // `actions: read` and prune nothing. Every delete names its ref.
 //
-// Reads with `gh cache list` and `gh pr list`, deletes with
+// Reads with `gh cache list`, `gh pr list` and `gh api .../branches`, deletes with
 // `gh cache delete <key> --ref <ref>`, in the repository GITHUB_REPOSITORY
 // (or gh's own), with GH_TOKEN. Each deletion is printed; a failed one is
 // named and makes the exit status 1 after the rest are tried.
@@ -98,6 +104,35 @@ export function stalePullCaches(caches, open) {
 }
 
 /**
+ * The branch name of a ref `refs/heads/<b>`, or null.
+ * @param {string} ref
+ * @returns {string | null}
+ */
+export function branchOf(ref) {
+    return ref.startsWith('refs/heads/') && ref.length > 'refs/heads/'.length ? ref.slice('refs/heads/'.length) : null;
+}
+
+/**
+ * Of `caches`, the Light build caches of branches other than main to
+ * delete: every one of a branch not in `branches` (deleted), and an
+ * existing one's older ones (olderOnRef). Main's caches, and any on a ref
+ * that is no branch, are never among them.
+ * @param {readonly Cache[]} caches
+ * @param {ReadonlySet<string>} branches the repository's branches, by name
+ * @returns {Cache[]}
+ */
+export function staleBranchCaches(caches, branches) {
+    const refs = new Set(caches.map((c) => c.ref).filter((ref) => branchOf(ref) !== null && ref !== 'refs/heads/main'));
+    /** @type {Cache[]} */
+    const out = [];
+    for (const ref of [...refs].sort()) {
+        if (branches.has(/** @type {string} */ (branchOf(ref)))) out.push(...olderOnRef(caches, ref));
+        else out.push(...caches.filter((c) => c.ref === ref && prefixOf(c.key) !== null));
+    }
+    return out;
+}
+
+/**
  * Parses what gh printed as JSON, naming `what` when it is not the array
  * expected.
  * @param {string} text
@@ -143,18 +178,33 @@ export function main(args) {
     let doomed;
     if (args[0] === '--ref' && args.length === 2 && args[1]) {
         doomed = olderOnRef(listCaches(repo, ['--ref', args[1]]), args[1]);
-    } else if (args[0] === '--stale-pulls' && args.length === 1) {
-        const pulls = jsonArray(execFileSync('gh', ['pr', 'list', ...repo, '--state', 'open', '--limit', '1000', '--json', 'number'], { encoding: 'utf8' }), 'gh pr list');
-        const open = new Set(
-            pulls.map((p) => {
-                const n = typeof p === 'object' && p !== null ? /** @type {Record<string, unknown>} */ (p).number : undefined;
-                if (typeof n !== 'number') throw new Error(`gh pr list: an entry has no number: ${JSON.stringify(p)}`);
-                return n;
-            }),
-        );
-        doomed = stalePullCaches(listCaches(repo, []), open);
+    } else if (args.length > 0 && args.length <= 2 && new Set(args).size === args.length && args.every((a) => a === '--stale-pulls' || a === '--stale-branches')) {
+        // One listing for both: the deletes are by ref, whichever mode found them.
+        const caches = listCaches(repo, []);
+        doomed = [];
+        if (args.includes('--stale-pulls')) {
+            const pulls = jsonArray(execFileSync('gh', ['pr', 'list', ...repo, '--state', 'open', '--limit', '1000', '--json', 'number'], { encoding: 'utf8' }), 'gh pr list');
+            const open = new Set(
+                pulls.map((p) => {
+                    const n = typeof p === 'object' && p !== null ? /** @type {Record<string, unknown>} */ (p).number : undefined;
+                    if (typeof n !== 'number') throw new Error(`gh pr list: an entry has no number: ${JSON.stringify(p)}`);
+                    return n;
+                }),
+            );
+            doomed.push(...stalePullCaches(caches, open));
+        }
+        if (args.includes('--stale-branches')) {
+            // {owner}/{repo} is gh's own placeholder for the current repository.
+            const where = process.env.GITHUB_REPOSITORY || '{owner}/{repo}';
+            const text = execFileSync('gh', ['api', '--paginate', `repos/${where}/branches?per_page=100`, '--jq', '.[].name'], { encoding: 'utf8' });
+            const branches = new Set(text.split('\n').filter((b) => b !== ''));
+            // A listing without main is a listing gone wrong, not a repository
+            // whose every branch was deleted: delete nothing on it.
+            if (!branches.has('main')) throw new Error(`gh api branches: main is not among the branches listed: ${text.slice(0, 200)}`);
+            doomed.push(...staleBranchCaches(caches, branches));
+        }
     } else {
-        console.error('usage: cache-prune.mjs --ref <ref> | --stale-pulls');
+        console.error('usage: cache-prune.mjs --ref <ref> | [--stale-pulls] [--stale-branches]');
         return 2;
     }
     let status = 0;

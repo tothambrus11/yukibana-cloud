@@ -6,8 +6,10 @@
 //   node --test tests/unit/optimization.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cppLevelOf, levelsOf, savedLevelOf, withCppLevel } from '../../src/lib/optimization.ts';
-import { targetOf, withTarget } from '../../src/lib/cpp-targets.ts';
+import '../modules-hook.mjs';
+import { targetOf, withTarget } from '../../../modules/lang-cpp/targets.ts';
+
+const { cppLevelOf, levelsOf, savedLevelOf, withCppLevel } = await import('../../src/lib/optimization.ts');
 
 const said = (choice) => (choice.kind === 'other' ? { kind: 'other', flag: choice.flag } : { kind: choice.kind, flag: choice.level.flag });
 

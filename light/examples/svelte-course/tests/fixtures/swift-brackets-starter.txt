@@ -1,0 +1,20 @@
+Test Suite 'All tests' started at 2026-11-07 18:00:00.000
+Test Suite 'App.xctest' started at 2026-11-07 18:00:00.000
+Test Suite 'BracketsTests' started at 2026-11-07 18:00:00.000
+Test Case 'BracketsTests.testEmptyIsBalanced' started at 2026-11-07 18:00:00.000
+Test Case 'BracketsTests.testEmptyIsBalanced' passed (0.000 seconds)
+Test Case 'BracketsTests.testIgnoresOtherCharacters' started at 2026-11-07 18:00:00.000
+Test Case 'BracketsTests.testIgnoresOtherCharacters' passed (0.000 seconds)
+Test Case 'BracketsTests.testNestedPairs' started at 2026-11-07 18:00:00.000
+Test Case 'BracketsTests.testNestedPairs' passed (0.000 seconds)
+Test Case 'BracketsTests.testUnclosed' started at 2026-11-07 18:00:00.000
+Test Case 'BracketsTests.testUnclosed' passed (0.000 seconds)
+Test Case 'BracketsTests.testWrongOrder' started at 2026-11-07 18:00:00.000
+Tests/BracketsTests.swift:14: error: BracketsTests.testWrongOrder : XCTAssertFalse failed - 
+Test Case 'BracketsTests.testWrongOrder' failed (0.001 seconds)
+Test Suite 'BracketsTests' failed at 2026-11-07 18:00:00.001
+	 Executed 5 tests, with 1 failure (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'App.xctest' failed at 2026-11-07 18:00:00.001
+	 Executed 5 tests, with 1 failure (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'All tests' failed at 2026-11-07 18:00:00.001
+	 Executed 5 tests, with 1 failure (0 unexpected) in 0.001 (0.001) seconds

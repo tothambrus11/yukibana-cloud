@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Two snippets, two instances</title>
+		<link rel="stylesheet" href="./src/page.css" />
+	</head>
+	<body>
+		<main>
+			<h1>Two snippets, two instances</h1>
+			<p>
+				A C++ snippet in Monaco and a Python snippet in a plain text area, each run by an instance of its own that knows only
+				its own language, both sharing the page's runners.
+			</p>
+			<section class="snippet" id="cpp">
+				<h2>C++</h2>
+				<template class="code">#include &lt;iostream&gt;
+
+int main() {
+    int total = 0;
+    for (int i = 1; i &lt;= 10; ++i) total += i;
+    std::cout &lt;&lt; "C++ says " &lt;&lt; total &lt;&lt; "\n";
+}
+</template>
+				<div class="editor" aria-label="C++: main.cpp"></div>
+				<div class="controls"><button class="run" disabled>Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+			<section class="snippet" id="python">
+				<h2>Python</h2>
+				<textarea class="code" rows="4" spellcheck="false" aria-label="Python: main.py">
+total = sum(range(1, 11))
+print(f"Python says {total * 2}")</textarea>
+				<div class="controls"><button class="run" disabled>Run</button> <button class="stop" disabled>Stop</button> <span class="status" role="status"></span></div>
+				<pre class="output" aria-live="polite"></pre>
+			</section>
+		</main>
+		<script type="module" src="./src/main.ts"></script>
+	</body>
+</html>

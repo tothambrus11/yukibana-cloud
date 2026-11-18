@@ -7,7 +7,7 @@
 		"dev": "vite dev",
 		"build": "vite build && node scripts/licenses.mjs && node scripts/compress.mjs && node scripts/offline-manifest.mjs",
 		"preview": "vite preview",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker --noEmit && tsc -p ../modules/protocol && tsc -p ../modules/runtime && tsc -p ../modules/monaco",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc -p src/service-worker --noEmit && node ../modules/typecheck.mjs",
 		"prepare": "svelte-kit sync",
 		"test:unit": "node --test \"tests/unit/*.test.mjs\" \"../modules/**/*.test.mjs\"",
 		"test:e2e": "node tests/e2e.mjs",
@@ -30,10 +30,26 @@
 		"vite": "8.3.5"
 	},
 	"dependencies": {
+		"@yukibana/core": "link:../modules/core",
 		"@yukibana/design": "github:Yukibana-Ed/Yukibana#8462e17ba26df25575735fad414052bd56a7f383&path:packages/design",
+		"@yukibana/lang-cpp": "link:../modules/lang-cpp",
+		"@yukibana/lang-go": "link:../modules/lang-go",
+		"@yukibana/lang-haskell": "link:../modules/lang-haskell",
+		"@yukibana/lang-java": "link:../modules/lang-java",
+		"@yukibana/lang-javascript": "link:../modules/lang-javascript",
+		"@yukibana/lang-kotlin": "link:../modules/lang-kotlin",
+		"@yukibana/lang-php": "link:../modules/lang-php",
+		"@yukibana/lang-python": "link:../modules/lang-python",
+		"@yukibana/lang-rust": "link:../modules/lang-rust",
+		"@yukibana/lang-scala": "link:../modules/lang-scala",
+		"@yukibana/lang-swift": "link:../modules/lang-swift",
+		"@yukibana/lang-zig": "link:../modules/lang-zig",
+		"@yukibana/monaco": "link:../modules/monaco",
+		"@yukibana/protocol": "link:../modules/protocol",
+		"@yukibana/runtime": "link:../modules/runtime",
+		"@yukibana/std": "link:../modules/std",
 		"arktype": "2.2.9",
 		"dockview": "8.6.1",
-		"monaco-editor": "0.57.0",
-		"vscode-languageserver-protocol": "3.17.5"
+		"monaco-editor": "0.57.0"
 	}
 }

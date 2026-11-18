@@ -28,7 +28,7 @@
 # Every read of a release's assets pages through its whole asset list
 # (assets), never the first page GitHub embeds in the release itself.
 # The tree a fetched pack came from is written to ../.pack-trees/<pack>, which
-# light/setup.sh reads to skip a pack that is already current.
+# light/setup reads to skip a pack that is already current.
 #
 # A split pack (one with packs/<pack>/toolchains/) is never in this store:
 # `has`, `fetch` and `publish` exit 2 for one, except `fetch <pack> --any`,
@@ -117,7 +117,7 @@
 # strict: `required` (every CI job) fails by name without gh or without such
 # an attestation; unset, the check runs when gh is signed in and a refusal
 # fails, and when gh is missing or signed out the toolchain is used and that
-# is said (setup.sh on a machine with no gh). Nothing here skips a check
+# is said (light/setup on a machine with no gh). Nothing here skips a check
 # silently.
 #
 # A toolchain directory holds toolchain.json, written by its build
@@ -158,7 +158,7 @@ SIGNER_WORKFLOW=.github/workflows/light-toolchain-unit.yml
 MAIN_REF=refs/heads/main
 # What each store release says it is, when it is created.
 PACKS_TITLE="Yukibana Light packs (build store)"
-PACKS_NOTES="Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup.sh); not a release of the app."
+PACKS_NOTES="Built language packs of Yukibana Light, one asset per pack and version of its sources: <pack>-<git tree id of light/packs/<pack>>.tar.zst. Written by .github/workflows/light-packs.yml and read by light/scripts/pack-store.sh (light/setup); not a release of the app."
 TOOLCHAINS_TITLE="Yukibana Light toolchains (build store)"
 TOOLCHAINS_NOTES="Toolchain units of Yukibana Light's split packs, one asset per unit and key of its inputs: toolchain-<pack>-<unit>-<key>.tar.zst (light/scripts/pack-store.sh toolchain-key <pack>/<unit>). Written by .github/workflows/light-packs.yml on main only, each asset attested by .github/workflows/light-toolchain-unit.yml, and read by light/scripts/pack-store.sh, which verifies that attestation; not a release of the app. Nothing is deleted automatically."
 
@@ -205,7 +205,7 @@ tree() {
   }
   git -C "$LIGHT" cat-file -e "HEAD:$root/$1/shared" 2>/dev/null || { echo "$id"; return; }
   lines="yukibana-pack/2"$'\n'"pack $1 $id"
-  while IFS= read -r name; do
+  while IFS= read -r name || [ -n "$name" ]; do
     name="${name%%#*}"
     name="${name//[[:space:]]/}"
     [ -n "$name" ] || continue
@@ -238,28 +238,33 @@ ASSETS_PER_PAGE=100
 # the list a release embeds is not documented to be complete, and one
 # shortened silently would make a stored toolchain look missing, so CI would
 # rebuild a compiler and a release would refuse a pack it could have had.
-# Each step returns explicitly, as callers may run this where `set -e` is
-# off; a caller keeps the list in a variable (asset_listed), never pipes it.
+# GitHub's answers reach node on stdin, never as an argument: a page of 100
+# assets is longer than the 32767 characters a command line may be on
+# Windows (light/setup runs this in Git for Windows' bash). Each step
+# returns explicitly, as callers may run this where `set -e` is off; a
+# caller keeps the list in a variable (asset_listed), never pipes it.
 assets() {
   local tag="${1:-$TAG}" out id page=1 n
   out="$(api_get "releases/tags/$tag")" || return 1
   id="$(node -e '
-    const [where, s] = process.argv.slice(1);
+    const [where] = process.argv.slice(1);
+    const s = require("fs").readFileSync(0, "utf8");
     let r;
     try { r = JSON.parse(s); } catch { console.error("pack-store.sh: " + where + ": not JSON: " + s.slice(0, 200)); process.exit(1); }
     if (Number.isSafeInteger(r?.id)) console.log(r.id);
     else if (r?.status !== "404" && r?.message !== "Not Found") { console.error("pack-store.sh: " + where + ": " + (r?.message ?? s.slice(0, 200))); process.exit(1); }
-  ' "release $tag of $(repo)" "$out")" || return 1
+  ' "release $tag of $(repo)" <<<"$out")" || return 1
   [ -n "$id" ] || return 0
   while :; do
     out="$(api_get "releases/$id/assets?per_page=$ASSETS_PER_PAGE&page=$page")" || return 1
     out="$(node -e '
-      const [where, s] = process.argv.slice(1);
+      const [where] = process.argv.slice(1);
+      const s = require("fs").readFileSync(0, "utf8");
       let r;
       try { r = JSON.parse(s); } catch { console.error("pack-store.sh: " + where + ": not JSON: " + s.slice(0, 200)); process.exit(1); }
       if (!Array.isArray(r)) { console.error("pack-store.sh: " + where + ": " + (r?.message ?? s.slice(0, 200))); process.exit(1); }
       for (const a of r) console.log(a.name, (a.digest ?? "-").replace(/^sha256:/, ""), a.created_at, a.browser_download_url);
-    ' "page $page of the assets of release $tag of $(repo)" "$out")" || return 1
+    ' "page $page of the assets of release $tag of $(repo)" <<<"$out")" || return 1
     [ -n "$out" ] || return 0
     printf '%s\n' "$out"
     n="$(grep -c . <<<"$out")"
@@ -758,7 +763,8 @@ toolchain_artifact() {
   # downloaded: a toolchain can be gigabytes, and more than three refusals
   # in a row means a rebuild is cheaper than looking further.
   cands="$(node -e '
-    const [where, s, branch] = process.argv.slice(1);
+    const [where, branch] = process.argv.slice(1);
+    const s = require("fs").readFileSync(0, "utf8");
     let r;
     try { r = JSON.parse(s); } catch { console.error("pack-store.sh: " + where + ": not JSON: " + s.slice(0, 200)); process.exit(1); }
     if (!Array.isArray(r?.artifacts)) { console.error("pack-store.sh: " + where + ": " + (r?.message ?? s.slice(0, 200))); process.exit(1); }
@@ -767,7 +773,7 @@ toolchain_artifact() {
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
       .slice(0, 3);
     for (const a of ok) console.log(a.id, (a.digest ?? "-").replace(/^sha256:/, ""), a.archive_download_url);
-  ' "the artifacts named $name of $(repo)" "$out_json" "$branch")" || die "the artifacts named $name cannot be read"
+  ' "the artifacts named $name of $(repo)" "$branch" <<<"$out_json")" || die "the artifacts named $name cannot be read"
   if [ -z "$cands" ]; then
     echo "pack-store.sh: $id: no unexpired artifact $name${branch:+ of branch $branch}" >&2
     exit 3

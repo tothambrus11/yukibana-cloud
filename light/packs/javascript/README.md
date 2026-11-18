@@ -377,7 +377,7 @@ the Node API a CLI is written with, over the same stdin protocol:
 
 ## TypeScript
 
-The `typescript` project kind (app/src/lib/languages.ts) uses this pack's
+The `typescript` project kind (modules/lang-javascript/body.ts) uses this pack's
 server and runner as they are. The server was already the TypeScript
 language service, and the sample's `tsconfig.json` turns `strict` on.
 

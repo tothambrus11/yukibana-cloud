@@ -8,9 +8,60 @@ importers:
 
   .:
     dependencies:
+      '@yukibana/core':
+        specifier: link:../modules/core
+        version: link:../modules/core
       '@yukibana/design':
         specifier: github:Yukibana-Ed/Yukibana#8462e17ba26df25575735fad414052bd56a7f383&path:packages/design
         version: https://codeload.github.com/Yukibana-Ed/Yukibana/tar.gz/8462e17ba26df25575735fad414052bd56a7f383#path:packages/design
+      '@yukibana/lang-cpp':
+        specifier: link:../modules/lang-cpp
+        version: link:../modules/lang-cpp
+      '@yukibana/lang-go':
+        specifier: link:../modules/lang-go
+        version: link:../modules/lang-go
+      '@yukibana/lang-haskell':
+        specifier: link:../modules/lang-haskell
+        version: link:../modules/lang-haskell
+      '@yukibana/lang-java':
+        specifier: link:../modules/lang-java
+        version: link:../modules/lang-java
+      '@yukibana/lang-javascript':
+        specifier: link:../modules/lang-javascript
+        version: link:../modules/lang-javascript
+      '@yukibana/lang-kotlin':
+        specifier: link:../modules/lang-kotlin
+        version: link:../modules/lang-kotlin
+      '@yukibana/lang-php':
+        specifier: link:../modules/lang-php
+        version: link:../modules/lang-php
+      '@yukibana/lang-python':
+        specifier: link:../modules/lang-python
+        version: link:../modules/lang-python
+      '@yukibana/lang-rust':
+        specifier: link:../modules/lang-rust
+        version: link:../modules/lang-rust
+      '@yukibana/lang-scala':
+        specifier: link:../modules/lang-scala
+        version: link:../modules/lang-scala
+      '@yukibana/lang-swift':
+        specifier: link:../modules/lang-swift
+        version: link:../modules/lang-swift
+      '@yukibana/lang-zig':
+        specifier: link:../modules/lang-zig
+        version: link:../modules/lang-zig
+      '@yukibana/monaco':
+        specifier: link:../modules/monaco
+        version: link:../modules/monaco
+      '@yukibana/protocol':
+        specifier: link:../modules/protocol
+        version: link:../modules/protocol
+      '@yukibana/runtime':
+        specifier: link:../modules/runtime
+        version: link:../modules/runtime
+      '@yukibana/std':
+        specifier: link:../modules/std
+        version: link:../modules/std
       arktype:
         specifier: 2.2.9
         version: 2.2.9
@@ -20,9 +71,6 @@ importers:
       monaco-editor:
         specifier: 0.57.0
         version: 0.57.0
-      vscode-languageserver-protocol:
-        specifier: 3.17.5
-        version: 3.17.5
     devDependencies:
       '@sveltejs/adapter-static':
         specifier: 4.0.0
@@ -537,16 +585,6 @@ packages:
       vite:
         optional: true
 
-  vscode-jsonrpc@8.2.0:
-    resolution: {integrity: sha512-C+r0eKJUIfiDIfwJhria30+TYWPtuHJXHtI7J0YlOmKAo7ogxP20T0zxB7HZQIFhIyvoBPwWskjxrvAtfjyZfA==}
-    engines: {node: '>=14.0.0'}
-
-  vscode-languageserver-protocol@3.17.5:
-    resolution: {integrity: sha512-mb1bvRJN8SVznADSGWM9u/b07H7Ecg0I3OgXDuLdn307rl/J3A9YD6/eYOssqhecL27hK1IPZAsaqh00i/Jljg==}
-
-  vscode-languageserver-types@3.17.5:
-    resolution: {integrity: sha512-Ld1VelNuX9pdF39h2Hgaeb5hEZM2Z3jUrrMgWQAu82jMtZp7p3vJT3BzToKtZI7NgQssZje5o0zryOrhQvzQAg==}
-
   zimmerframe@1.1.5:
     resolution: {integrity: sha512-msJxIvYDYcoNL+PJsu+7qmpDWsYmAxTY+2TNYXXF0hzBzBk0BMecOqDOG/EckUoKCuKwObfbugIl8QpqHDXeFA==}
 
@@ -912,14 +950,5 @@ snapshots:
   vitefu@1.1.3(vite@8.3.5(@types/node@24.19.2)):
     optionalDependencies:
       vite: 8.3.5(@types/node@24.19.2)
-
-  vscode-jsonrpc@8.2.0: {}
-
-  vscode-languageserver-protocol@3.17.5:
-    dependencies:
-      vscode-jsonrpc: 8.2.0
-      vscode-languageserver-types: 3.17.5
-
-  vscode-languageserver-types@3.17.5: {}
 
   zimmerframe@1.1.5: {}

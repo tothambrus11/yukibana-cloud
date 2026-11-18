@@ -16,8 +16,10 @@ import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { decodeProject } from '../src/lib/project-link.ts';
 import { choose, LANGUAGE_PICKER, menuItem } from './ui.mjs';
+import './modules-hook.mjs';
+
+const { decodeProject } = await import('../src/lib/project-link.ts');
 
 const here = dirname(fileURLToPath(import.meta.url));
 const build = process.env.BUILD_DIR ?? join(here, '..', 'build');

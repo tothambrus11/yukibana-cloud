@@ -46,6 +46,7 @@
 import { createWasi, ProcExit } from './wasi.js';
 import { createToolchain, compileArgs, withSourceNames, flagsFor, sanitizersOf } from './toolchain.js';
 import { targetOf, unsupportedMessage, DEFAULT_TARGET } from './targets.js';
+import { selectionFor, HOOK_SOURCE } from './test-selection.js';
 
 // A Linux target's files (targets/<arch>/*.tar) report a total of 0
 // (unknown): their sizes would cost the default target's runner.js bytes.
@@ -195,6 +196,12 @@ const toolchain = createToolchain({ base: new URL('./', import.meta.url), post, 
  * target GoogleTest and RapidCheck only: Catch2 and doctest are built for
  * wasm32 alone, and are refused there by name before anything is fetched.
  *
+ * A test run's `test` runs one test, and a debugged one's
+ * `breakOnFailure` compiles a hook that stops at each failed assertion
+ * (src/test-selection.js; README, "One test, and stopping at a failed
+ * assertion"); a selection the framework cannot take is refused before
+ * anything is downloaded.
+ *
  * The target is the project's (compile_flags.txt, src/targets.js); a target
  * flag that names no supported target is refused before anything is
  * downloaded. Resolves to the exit status.
@@ -209,7 +216,7 @@ async function run(request) {
     }
 }
 
-async function build({ type, files, entry, stdin, options, debug }) {
+async function build({ type, files, entry, stdin, options, debug, test, breakOnFailure }) {
     const which = targetOf(files);
     if (which.kind === 'unsupported') throw new UserError(unsupportedMessage(which.triple));
     const target = which.target;
@@ -245,6 +252,13 @@ async function build({ type, files, entry, stdin, options, debug }) {
     if (testing && !framework && !ownMain)
         throw new UserError('No test framework: the files in tests/ include none of <gtest/gtest.h>, <doctest/doctest.h> or <catch2/...>, and none defines main.\n');
     const fw = framework ? FRAMEWORKS[framework] : null;
+    const selection = selectionFor(framework, { test: testing ? test ?? null : null, breakOnFailure: testing && breakOnFailure === true, debug: Boolean(debug) });
+    if (selection.problem) throw new UserError(selection.problem);
+    if (selection.note) stderr(selection.note);
+    // The failure hook is compiled as one more source, from a path no
+    // project file has.
+    const compiled = selection.hook ? { ...files, [HOOK_SOURCE]: selection.hook } : files;
+    const built = selection.hook ? [...sources, HOOK_SOURCE] : sources;
     const properties = scanned.some((p) => RAPIDCHECK.include.test(withoutComments(files[p] ?? '')));
     const cxxProgram = sources.some((p) => CXX.test(p));
     // The sanitizers compile_flags.txt turns on, and the runtime they link
@@ -259,8 +273,9 @@ async function build({ type, files, entry, stdin, options, debug }) {
     await Promise.all([toolchain.load(target, { link: linux }), ...[...archives, ...(runtime ? [runtime] : [])].map(toolchain.archive)]);
 
     const objects = {};
-    for (const [i, source] of sources.entries()) {
-        phase(`Compiling ${source} (${i + 1}/${sources.length})${linux ? ` for ${target.triple}` : ''}`);
+    for (const [i, source] of built.entries()) {
+        const what = source === HOOK_SOURCE ? 'the failed assertion hook' : source;
+        phase(`Compiling ${what} (${i + 1}/${built.length})${linux ? ` for ${target.triple}` : ''}`);
         // Named after its source, so the linker's "defined in" names the
         // student's file (the prefix is taken out of its messages).
         const object = `${OBJ}${source}.o`;
@@ -276,7 +291,7 @@ async function build({ type, files, entry, stdin, options, debug }) {
             // so every variable has a home in memory LLDB can read
             // (packs/lldb/README.md).
             [...compileArgs(target, files, source), ...(debug ? DEBUG_FLAGS : []), '-fno-color-diagnostics', '-c', source, '-o', object],
-            files,
+            compiled,
             [object],
             { archives: linux ? [] : archives }
         );
@@ -290,8 +305,11 @@ async function build({ type, files, entry, stdin, options, debug }) {
     // the app's terminal renders ANSI colours, so they are told to
     // (FRAMEWORKS). The arguments go to a test program, or to the
     // framework's own main; nothing else is in the environment.
-    const args = fw && (testing || frameworkMain) ? fw.args : [];
-    const env = fw ? fw.env : {};
+    // The selection's arguments come after the framework's, and its
+    // environment beside it (GTEST_FILTER, which a main of the project's
+    // reads too).
+    const args = fw && (testing || frameworkMain) ? [...fw.args, ...selection.args] : [];
+    const env = fw ? { ...fw.env, ...selection.env } : {};
     if (linux) {
         // Linking and running for Linux are in runner-linux.js, fetched only
         // for a Linux target, so the default target's runner stays small.

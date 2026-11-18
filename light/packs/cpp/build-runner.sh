@@ -37,6 +37,7 @@ llvm_lld_sources
 
 step "clang + wasm-ld for WebAssembly"
 emsdk_use
+llvm_ccache
 # One binary, LLVM's multi-call driver (LLVM_TOOL_LLVM_DRIVER_BUILD): argv[0]
 # or the first argument picks "clang" or "wasm-ld". Only those two join it
 # (LLVM_DISTRIBUTION_COMPONENTS); llvm-lib.sh's llvm_wasm_common_args says

@@ -184,12 +184,17 @@ try {
             notify(method, params) {
                 worker.postMessage({ jsonrpc: '2.0', method, params });
             },
+            /** Posts the notifications in one task, as the app posts `initialized` and its didOpens. */
+            burst(notifications) {
+                for (const [method, params] of notifications) worker.postMessage({ jsonrpc: '2.0', method, params });
+            },
         };
     });
 
     const lsp = {
         request: (method, params) => page.evaluate(([m, p]) => window.lsp.request(m, p), [method, params]),
         notify: (method, params) => page.evaluate(([m, p]) => window.lsp.notify(m, p), [method, params]),
+        burst: (notifications) => page.evaluate((n) => window.lsp.burst(n), notifications),
         log: () => page.evaluate(() => window.lsp.log),
         elapsed: () => page.evaluate(() => Math.round(performance.now() - window.lsp.t0)),
     };
@@ -226,6 +231,7 @@ try {
         workspaceFolders: [{ uri: 'file:///workspace/', name: 'workspace' }],
         capabilities: {
             general: { positionEncodings: ['utf-16'] },
+            window: { workDoneProgress: true },
             workspace: { configuration: true, didChangeWatchedFiles: { dynamicRegistration: false } },
             textDocument: {
                 publishDiagnostics: {},
@@ -245,13 +251,20 @@ try {
     );
     if (init.error) console.log(init.error);
 
-    await lsp.notify('initialized', {});
-    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('geometry.php'), languageId: 'php', version: 1, text: GEOMETRY } });
-    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('main.php'), languageId: 'php', version: 1, text: MAIN_CIRCLE } });
-    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('tests/GeometryTest.php'), languageId: 'php', version: 1, text: TEST } });
-    await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('README.md'), languageId: 'markdown', version: 1, text: '# Not PHP <?php (\n' } });
+    // One burst, as the app sends it: Phpactor indexes /workspace when it
+    // reads `initialized`, and a didOpen still queued behind it was once left
+    // out of the index (server.js, HOLD_MS).
+    await lsp.burst([
+        ['initialized', {}],
+        ['textDocument/didOpen', { textDocument: { uri: uri('geometry.php'), languageId: 'php', version: 1, text: GEOMETRY } }],
+        ['textDocument/didOpen', { textDocument: { uri: uri('main.php'), languageId: 'php', version: 1, text: MAIN_CIRCLE } }],
+        ['textDocument/didOpen', { textDocument: { uri: uri('tests/GeometryTest.php'), languageId: 'php', version: 1, text: TEST } }],
+        ['textDocument/didOpen', { textDocument: { uri: uri('README.md'), languageId: 'markdown', version: 1, text: '# Not PHP <?php (\n' } }],
+    ]);
 
     let diags = await diagnostics('main.php', (d) => d.some((x) => /Circle/.test(x.message)));
+    const indexing = (await lsp.log()).find((m) => m.method === '$/progress' && m.params.value?.title === 'Indexing workspace')?.params.value.message;
+    check('the project is indexed with every PHP file opened with `initialized`', indexing === '3 PHP files', JSON.stringify(indexing));
     check('a class the project does not have is reported', !!diags?.some((x) => /Circle/.test(x.message)), `(${await lsp.elapsed()} ms) ${JSON.stringify(diags?.map((d) => d.message))}`);
 
     await lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('Shapes/Circle.php'), languageId: 'php', version: 1, text: CIRCLE } });

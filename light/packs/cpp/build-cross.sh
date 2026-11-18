@@ -71,6 +71,7 @@ fi
 
 step "clang + ld.lld for x86-64, AArch64 and RISC-V 64 Linux"
 emsdk_use
+llvm_ccache
 # As build-runner.sh's (llvm-lib.sh's llvm_wasm_common_args), with node in
 # ENVIRONMENT: test-targets.mjs drives the compiler in Node. The glue grows by
 # its Node branch (README, sizes).

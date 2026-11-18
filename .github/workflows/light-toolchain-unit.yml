@@ -26,7 +26,10 @@
 # of a same-repository pull request looks for an artifact of the same name
 # (the unit and its key) from its own earlier runs, and takes it when its
 # attestation names this pull request's ref (pack-store.sh
-# toolchain-artifact). Artifacts are kept 14 days. Promotion of a pull
+# toolchain-artifact). A run dispatched by hand on a branch other than main
+# does the same for that branch's ref, unless it was asked to rebuild the
+# unit (light-packs.yml's `rebuild`, which passes reuse false). Main never
+# looks: what it stores, it builds. Artifacts are kept 14 days. Promotion of a pull
 # request's build to main does not exist (experiment E3 decides whether it
 # should): main builds every unit itself, warm from its own cache.
 #
@@ -57,6 +60,10 @@ on:
         description: A download-artifact pattern naming the artifacts of the units it needs that this run built (empty when none was)
         type: string
         default: ''
+      reuse:
+        description: Take this ref's own earlier build of the unit and key when there is one (false for a unit a dispatch asked to rebuild)
+        type: boolean
+        default: true
 
 # What the caller grants (light-packs.yml's wave jobs), no more. id-token
 # and attestations sign this run's own archive for this run's own ref; they
@@ -116,22 +123,25 @@ jobs:
 
       # A same-repository pull request's own earlier build of this unit and
       # key, if one of its runs left it and attested it for this pull
-      # request's ref; everything up to the attestation is then skipped. A
-      # fork's runs cannot attest, so they never look.
-      - name: This pull request's earlier build
+      # request's ref, or a branch dispatch's for that branch's ref;
+      # everything up to the attestation is then skipped. A fork's runs
+      # cannot attest, so they never look; main never does (above).
+      - name: This pull request's or branch's earlier build
         id: earlier
         if: >-
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
+          inputs.reuse &&
+          ((github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository) ||
+          (github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'))
         env:
-          HEAD_BRANCH: ${{ github.head_ref }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           status=0
           path="$(light/scripts/pack-store.sh toolchain-artifact "$UNIT" "$RUNNER_TEMP/earlier" \
             --ref "$GITHUB_REF" --branch "$HEAD_BRANCH")" || status=$?
           case "$status" in
             0) echo "path=$path" >> "$GITHUB_OUTPUT"
-               echo "$UNIT: reused this pull request's earlier build" >> "$GITHUB_STEP_SUMMARY" ;;
+               echo "$UNIT: reused this ref's earlier build ($GITHUB_REF)" >> "$GITHUB_STEP_SUMMARY" ;;
             3) ;;
             *) exit "$status" ;;
           esac

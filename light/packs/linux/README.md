@@ -38,7 +38,7 @@ Linux needs the Linux pack's emulator (packs/linux/vm.js), which is not installe
 `runLinux` knows nothing of the language: the C/C++ runner's `runner-linux.js` and
 the Rust, Go and Zig runners' `linux-worker.js` are each a few lines around it. The
 app downloads this pack with each of those languages for offline use (`uses` in
-`app/src/lib/languages.ts`), and a pack whose tests run programs on it names it in
+`modules/lang-linux/body.ts`), and a pack whose tests run programs on it names it in
 its own `uses` file, so that light-packs.yml assembles it beside that pack.
 
 A program runs in one of two ways, the Run option `emulation`:

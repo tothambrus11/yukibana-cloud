@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Language servers in two editors</title>
+		<link rel="stylesheet" href="./src/page.css" />
+	</head>
+	<body>
+		<main>
+			<h1>Language servers in two editors</h1>
+			<p>
+				Each language's server is its pack's <code>server.js</code>, started in a worker as a <code>LanguageSession</code> of
+				<code>@yukibana/runtime</code>. The two pages differ only in the editor that is its client.
+			</p>
+			<ul class="pages">
+				<li>
+					<a href="./monaco.html">Monaco</a>: the sample project in Monaco, bound by <code>@yukibana/monaco</code>'s
+					<code>MonacoBinding</code>. Squiggles, hover, completion, signature help, go to definition across files, references,
+					rename, code actions, semantic highlighting, inlay hints and the outline, all in Monaco's own UI.
+				</li>
+				<li>
+					<a href="./textarea.html">Textarea</a>: the entry file in a plain <code>&lt;textarea&gt;</code>
+					(<code>@yukibana/editors/textarea</code>), the page being the session's client: the problems list, the hover at the
+					caret, completion and go to definition, drawn beside it.
+				</li>
+			</ul>
+			<p>
+				The languages are Python, C++, Rust, Go, TypeScript and JavaScript; a page opens with <code>?language=</code>
+				(<code>python</code>, <code>cpp</code>, <code>rust</code>, <code>go</code>, <code>typescript</code>,
+				<code>javascript</code>). Each needs its pack installed in <code>light/app/static/packs</code> (light/setup).
+			</p>
+		</main>
+	</body>
+</html>

@@ -1,0 +1,99 @@
+# The official registry, https://yukibana.run (light/registry): its tests on
+# every change to it, and its deploy.
+#
+# The tests need nothing but Node: the header rules and the pack format as
+# tables, the Worker over a bucket that is a Map, and builds in temporary
+# directories (light/registry/*.test.mjs).
+#
+# The deploy (light/registry/deploy.sh: site/ into the R2 bucket, then the
+# Worker) runs only for a light-registry-v* tag, or by hand from main, after
+# the tests of that same commit, one at a time. It uses the `light`
+# environment's Cloudflare secrets, the ones Light's own deploy uses; the
+# token must be allowed on the yukibana.run zone too (light/registry/README.md).
+# Without the secrets it says so and deploys nothing.
+name: Yukibana Light registry
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - light-registry-v*
+    paths:
+      - light/registry/**
+      - .github/workflows/light-registry.yml
+  pull_request:
+    paths:
+      - light/registry/**
+      - .github/workflows/light-registry.yml
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy to yukibana.run after the tests
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: The registry's rules, its Worker and its tool
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Test
+        working-directory: light/registry
+        run: node --test
+
+  deploy:
+    name: Deploy the registry
+    if: >-
+      ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/light-registry-v')) ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.deploy) }}
+    needs: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: light
+      url: https://yukibana.run
+    concurrency:
+      group: light-registry-deploy
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names: deploy.sh runs wrangler through pnpm dlx.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Deploy
+        working-directory: light/registry
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::no CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the light environment: not deployed"
+            exit 0
+          fi
+          bash deploy.sh

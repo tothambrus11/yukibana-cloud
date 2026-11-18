@@ -1,0 +1,36 @@
+{
+	"name": "yukibana-example-astro-docs",
+	"private": true,
+	"version": "0.0.0",
+	"description": "A static Astro documentation site whose code samples are Yukibana playgrounds, hydrated as islands when scrolled into view: one recipe in five languages, a live web preview, a Python data page and snippets that continue each other.",
+	"type": "module",
+	"scripts": {
+		"dev": "astro dev",
+		"build": "astro build",
+		"preview": "node packs.ts link && astro preview",
+		"check": "astro check && tsc -p . && tsc -p tsconfig.node.json",
+		"test:e2e": "node test.mjs"
+	},
+	"dependencies": {
+		"@astrojs/mdx": "4.3.14",
+		"@astrojs/preact": "4.1.3",
+		"@yukibana/core": "link:../../modules/core",
+		"@yukibana/editors": "link:../../modules/editors",
+		"@yukibana/lang-cpp": "link:../../modules/lang-cpp",
+		"@yukibana/lang-javascript": "link:../../modules/lang-javascript",
+		"@yukibana/lang-python": "link:../../modules/lang-python",
+		"@yukibana/lang-rust": "link:../../modules/lang-rust",
+		"@yukibana/lang-swift": "link:../../modules/lang-swift",
+		"@yukibana/protocol": "link:../../modules/protocol",
+		"@yukibana/runtime": "link:../../modules/runtime",
+		"@yukibana/std": "link:../../modules/std",
+		"astro": "5.18.2",
+		"preact": "10.27.2"
+	},
+	"devDependencies": {
+		"@astrojs/check": "0.9.12",
+		"@types/node": "24.19.2",
+		"playwright-core": "1.56.1",
+		"typescript": "6.0.3"
+	}
+}

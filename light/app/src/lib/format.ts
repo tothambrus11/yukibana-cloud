@@ -22,7 +22,7 @@ export function formatDuration(ms: number): string {
 
 /**
  * A language server's name and version (what `initialize` answered in
- * `serverInfo`, as lsp/client.ts joins them) cut to what fits a status bar:
+ * `serverInfo`, as runtime/language-session.ts joins them) cut to what fits a status bar:
  * the server's name and the major.minor of its version, such as
  * `clangd 21.1` for `clangd clangd version 21.1.8 (…)`, whose name is said
  * twice. Where the version in brackets is a better-known product's (the

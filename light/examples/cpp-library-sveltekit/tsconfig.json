@@ -1,0 +1,19 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"strict": true,
+		"noUncheckedIndexedAccess": true,
+		"exactOptionalPropertyTypes": true,
+		"skipLibCheck": true,
+		// The modules' sources through their `link:` links, as Vite reads
+		// them (vite.config.ts).
+		"customConditions": ["@yukibana/source"],
+		// monaco's sources `import type` from the bare name, whose package
+		// root ships no declarations in 0.57.0: the editor API's
+		// (modules/monaco/tsconfig.json).
+		"paths": {
+			"monaco-editor": ["./node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+		}
+	},
+	"include": ["src", "*.ts"]
+}

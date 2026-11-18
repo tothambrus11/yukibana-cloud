@@ -1,0 +1,35 @@
+---
+layout: ../layouts/Docs.astro
+title: Recipes that run where you read them
+kicker: Snowflower Cookbook
+description: A documentation site whose code samples are programs. Press Run and the compiler arrives in your browser; scroll past and nothing loads.
+---
+import Playground from '../components/Playground.astro';
+
+export const hello = `const greet = (name: string): string => \`Hello, \${name}!\`;
+
+for (const name of ['snow', 'flower']) console.log(greet(name));
+`;
+
+This site is plain, static HTML built by Astro. Every code sample is a
+*playground*: it is rendered as highlighted code when the site is built,
+and becomes interactive only when you scroll to it. Even then, the
+compiler is not fetched until you press **Run**.
+
+<Playground lang="typescript" code={hello} title="Try it: edit the names and press Run" />
+
+<ul class="cards">
+	<li><a href="/cookbook/word-frequency"><strong>One recipe, five languages</strong><span>Word frequency over standard input in JavaScript, C++, Swift, Rust and Python, side by side.</span></a></li>
+	<li><a href="/web/live-canvas"><strong>A live canvas</strong><span>A TypeScript page and a p5.js sketch that reload as you type.</span></a></li>
+	<li><a href="/python/csv-table"><strong>Tables from a CSV</strong><span>Python reads a file the page ships with and prints a table.</span></a></li>
+	<li><a href="/chaining"><strong>Step by step</strong><span>Snippets that build on the ones before them, and a test of all of it.</span></a></li>
+</ul>
+
+## How a page stays light
+
+The page loads no playground code at all. Each playground is an
+[Astro island](https://docs.astro.build/en/concepts/islands/) hydrated
+with `client:visible`: when it scrolls into view, a few kilobytes of
+Preact and Yukibana's core arrive, then its language's description.
+The compiler (Yukibana Light's *pack* for the language) is fetched on the
+first Run, once per page: two C++ samples share one compiler.

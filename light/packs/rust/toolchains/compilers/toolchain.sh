@@ -22,8 +22,11 @@
 # 65 of LLVM for wasm, then rustc twice, native and wasm). Downloads are
 # kept in $PACK_CACHE; the build tree (some 25 GB) in $TMPDIR, which is not
 # saved between CI runs, so a rebuild on the same machine redoes only what
-# changed. Needs curl, xz, python3, cmake, ninja (deps.apt), gcc/g++ and
-# git.
+# changed. Both LLVMs' objects are also kept in ccache under $PACK_CACHE,
+# which CI does save (the unit's Actions cache), so a rebuild that leaves
+# LLVM alone (a rustc patch, a rustc pin whose LLVM is the same) compiles
+# little of it. Needs curl, xz, python3, cmake, ninja, ccache (deps.apt),
+# gcc/g++ and git.
 #
 #   pins.sh             the release whose source tarball is built, and wasi-sdk
 #   patches/            applied in order: 00xx homescoop's patches for a
@@ -39,6 +42,16 @@ PACK="$(cd "$HERE/../.." && pwd)"
 CACHE="${PACK_CACHE:-$HOME/.cache/yukibana-packs}/rust/compilers"
 WORK="${TMPDIR:-/tmp}/yukibana-rust-compilers"
 mkdir -p "$CACHE" "$WORK"
+# ccache, for the LLVM bootstrap builds (build.ccache below): the build tree
+# in $TMPDIR is lost between CI runs, $CACHE is not. compiler_check=content,
+# because the compilers are found by path and a changed wasi-sdk or host gcc
+# under the same path must never hit. The base directory keeps the paths
+# ccache hashes relative to the tree, so a moved $TMPDIR still hits. No
+# sloppiness: a stale object would ship under a key that says otherwise.
+# The stats go to the log, so a run says whether the cache paid off.
+export CCACHE_DIR="$CACHE/ccache" CCACHE_MAXSIZE=4G CCACHE_BASEDIR="$WORK" CCACHE_COMPILERCHECK=content
+ccache --zero-stats >/dev/null
+trap 'ccache --show-stats >&2 || true' EXIT
 step() { printf '\n== %s\n' "$*" >&2; }
 fetch() { # url sha256 file
     [ -f "$3" ] || { curl -sSfL --retry 4 -o "$3.part" "$1" && mv "$3.part" "$3"; }
@@ -96,6 +109,10 @@ cargo-native-static = true
 # (rust-std) works with ours only if ours says the same. A source tarball
 # would add "(built from a source tarball)".
 description = ""
+# The first ccache on PATH as both LLVMs' compiler launcher. The key is
+# build.ccache in 1.98.1's bootstrap.example.toml; a pin bump checks it
+# there, as bootstrap refuses a key it does not know.
+ccache = true
 
 [rust]
 codegen-backends = ["llvm"]

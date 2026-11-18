@@ -6,3 +6,5 @@ clang
 cmake
 ninja-build
 lld
+# ccache: LLVM's objects between builds (llvm-lib.sh, llvm_ccache).
+ccache

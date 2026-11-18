@@ -23,6 +23,42 @@
 # - hylo-example: light/examples/hylo, a docs page of Hylo snippets on
 #   Hylo's own compiler through one runner pool: type-check, its unit tests,
 #   a Vite build and the page driven in Chromium with the real compiler.
+# - two-up-example: light/examples/two-up, two instances of the core on
+#   one page (C++ in Monaco, Python in a textarea): type-check, a Vite
+#   build and its bundle fixtures. Its end-to-end test needs the C++ and
+#   Python packs built and is run where they are (node test.mjs).
+# - lsp-editors-example: light/examples/lsp-editors, the packs' language
+#   servers in Monaco (MonacoBinding) and in a textarea whose page is the
+#   session's client: type-check, its unit tables and a Vite build. Its
+#   end-to-end test needs the language packs installed, which this workflow
+#   never does, and is run where they are (node test.mjs).
+# - cpp-library-example: light/examples/cpp-library, C++ in Monaco against
+#   a library of one's own through one createPlayground call
+#   (light/modules/playground): type-check and a Vite build. Its end-to-end
+#   test needs the C++ pack installed, which this workflow never does, and
+#   is run where it is (node test.mjs).
+# - cpp-library-sveltekit-example: light/examples/cpp-library-sveltekit,
+#   the same as a SvelteKit app: svelte-check and a prerendering build.
+#   Its end-to-end test needs the C++ pack and is run where it is.
+# - svelte-course-example: light/examples/svelte-course, a Svelte 5 lesson
+#   page of graded exercises over one instance and one pool: type-check,
+#   its unit tests, a Vite build with its bundle fixtures, and the page in
+#   Chromium with the JavaScript pack built here. The other exercises'
+#   packs take too long to build for this workflow, so test.mjs skips them
+#   and says so; it is run with them where they are installed.
+# - react-explorer-example: light/examples/react-explorer, a
+#   systems-programming article in React 19 over the core: type-check, its
+#   unit tables, a Vite build and its bundle fixtures (the first load's
+#   budget, Monaco and every compiler lazy). Its end-to-end test needs the
+#   cpp, rust, python, javascript and lldb packs built (swift optional), which
+#   this workflow never builds, and is run where they are (node test.mjs).
+# - astro-docs-example: light/examples/astro-docs, a static Astro docs site
+#   whose code samples are playground islands: type-check (astro check,
+#   tsc), `astro build`, and the built site driven in Chromium under
+#   `astro preview` (test.mjs) with the packs the pack store has (fetched
+#   with --any, so the newest build of each), JavaScript required and
+#   built here when the store has none; a playground whose pack could not
+#   be fetched is reported as skipped by name.
 # - exports: a smoke test of every build system Download offers. The sample
 #   project of a language it builds is downloaded with it, and the CI job
 #   that builds and tests it (tests/export-ci.mjs) runs in the image the
@@ -80,6 +116,20 @@ jobs:
       pack-units-key: ${{ steps.pack-units.outputs.key }}
       hylo-example-done: ${{ steps.hylo-example.outputs.done }}
       hylo-example-key: ${{ steps.hylo-example.outputs.key }}
+      two-up-example-done: ${{ steps.two-up-example.outputs.done }}
+      two-up-example-key: ${{ steps.two-up-example.outputs.key }}
+      lsp-editors-example-done: ${{ steps.lsp-editors-example.outputs.done }}
+      lsp-editors-example-key: ${{ steps.lsp-editors-example.outputs.key }}
+      cpp-library-example-done: ${{ steps.cpp-library-example.outputs.done }}
+      cpp-library-example-key: ${{ steps.cpp-library-example.outputs.key }}
+      cpp-library-sveltekit-example-done: ${{ steps.cpp-library-sveltekit-example.outputs.done }}
+      cpp-library-sveltekit-example-key: ${{ steps.cpp-library-sveltekit-example.outputs.key }}
+      svelte-course-example-done: ${{ steps.svelte-course-example.outputs.done }}
+      svelte-course-example-key: ${{ steps.svelte-course-example.outputs.key }}
+      react-explorer-example-done: ${{ steps.react-explorer-example.outputs.done }}
+      react-explorer-example-key: ${{ steps.react-explorer-example.outputs.key }}
+      astro-docs-example-done: ${{ steps.astro-docs-example.outputs.done }}
+      astro-docs-example-key: ${{ steps.astro-docs-example.outputs.key }}
       exports-done: ${{ steps.exports.outputs.done }}
       exports-key: ${{ steps.exports.outputs.key }}
     steps:
@@ -96,6 +146,8 @@ jobs:
             light/pnpm-workspace.yaml
             light/pnpm-lock.yaml
             light/modules
+            light/examples/*/src/**
+            light/examples/*/package.json
             light/packs/cpp/src
             light/packs/cpp/tests/fixtures
             .github/workflows/light-ci.yml
@@ -129,6 +181,8 @@ jobs:
             light/packs/cpp/test-emit.mjs
             light/packs/cpp/test-build-lib.mjs
             light/packs/cpp/test-units.mjs
+            light/packs/cpp/test-selection.mjs
+            light/modules/protocol/runner.ts
             light/packs/cpp/glue.paths
             light/packs/cpp/*.sh
             light/packs/cpp/build-test-libs-linux.mjs
@@ -146,6 +200,7 @@ jobs:
             light/packs/swift/tests
             light/packs/swift/test-emit.mjs
             light/packs/swift/test-target.mjs
+            light/packs/swift/test-xctest.mjs
             light/packs/rust/src
             light/packs/rust/tests
             light/packs/rust/test-mir.mjs
@@ -159,7 +214,7 @@ jobs:
             light/packs/*/requires.json
             light/packs/*/pins.sh
             light/packs/*/toolchain.*
-            light/packs/*/toolchains
+            light/packs/*/toolchains/**
             light/packs/*/glue.paths
             light/packs/*/test.sh
             light/packs/stub
@@ -180,8 +235,92 @@ jobs:
             light/pnpm-lock.yaml
             light/modules
             .github/workflows/light-ci.yml
-      # What a download is made of: the generators, the samples, and what
-      # they read of the C++ pack (export.ts's pins of its libraries).
+      - id: two-up-example
+        uses: ./.github/actions/once
+        with:
+          name: light-two-up-example
+          paths: |
+            light/examples/two-up
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: lsp-editors-example
+        uses: ./.github/actions/once
+        with:
+          name: light-lsp-editors-example
+          paths: |
+            light/examples/lsp-editors
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: cpp-library-example
+        uses: ./.github/actions/once
+        with:
+          name: light-cpp-library-example
+          paths: |
+            light/examples/cpp-library
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: cpp-library-sveltekit-example
+        uses: ./.github/actions/once
+        with:
+          name: light-cpp-library-sveltekit-example
+          paths: |
+            light/examples/cpp-library-sveltekit
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      # Its end-to-end test runs on the JavaScript pack, the one pack built
+      # here, so the pack's sources are inputs too.
+      - id: svelte-course-example
+        uses: ./.github/actions/once
+        with:
+          name: light-svelte-course-example
+          paths: |
+            light/examples/svelte-course
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            light/packs/javascript
+            .github/workflows/light-ci.yml
+      - id: react-explorer-example
+        uses: ./.github/actions/once
+        with:
+          name: light-react-explorer-example
+          paths: |
+            light/examples/react-explorer
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            .github/workflows/light-ci.yml
+      - id: astro-docs-example
+        uses: ./.github/actions/once
+        with:
+          name: light-astro-docs-example
+          paths: |
+            light/examples/astro-docs
+            light/package.json
+            light/pnpm-workspace.yaml
+            light/pnpm-lock.yaml
+            light/modules
+            light/packs/javascript
+            .github/workflows/light-ci.yml
+      # What a download is made of: the generators (the languages'
+      # packages' export.ts under light/modules, composed by the app's
+      # export.ts and export-tooling.ts), the samples, the instance that
+      # loads them, and what they read of the C++ pack (lang-cpp's
+      # export.ts's pins of its libraries).
       - id: exports
         uses: ./.github/actions/once
         with:
@@ -190,9 +329,12 @@ jobs:
             light/app/src/lib/export.ts
             light/app/src/lib/export-tooling.ts
             light/app/src/lib/languages.ts
-            light/app/src/lib/cpp-*.ts
-            light/app/src/lib/optimization.ts
+            light/app/src/lib/packs.ts
+            light/app/src/lib/yukibana.ts
+            light/modules
             light/app/tests/export-ci.mjs
+            light/app/tests/export-loaded.mjs
+            light/app/tests/modules-hook.mjs
             .github/workflows/light-ci.yml
 
   app:
@@ -336,9 +478,9 @@ jobs:
       # tree or step (git, tar, xz and patch, which the image has too).
       # test-build-lib.mjs and test-units.mjs cover the Linux pack's vm unit
       # too, which builds with this pack's emsdk and musl units.
-      - name: C++ pack (compiler output views, reuse of build trees, its units' keys and the Linux VM's)
+      - name: C++ pack (compiler output views, reuse of build trees, its units' keys and the Linux VM's, one test's selection)
         working-directory: light/packs/cpp
-        run: node --test test-emit.mjs test-build-lib.mjs test-units.mjs
+        run: node --test test-emit.mjs test-build-lib.mjs test-units.mjs test-selection.mjs
 
       - name: Linux pack (initramfs archives)
         working-directory: light/packs/linux
@@ -348,9 +490,9 @@ jobs:
         working-directory: light/packs/haskell
         run: node --test test-symbols.mjs test-dumps.mjs
 
-      - name: Swift pack (compiler output views, swift.env and the Linux argument vectors)
+      - name: Swift pack (compiler output views, swift.env, the Linux argument vectors and a test run's runs)
         working-directory: light/packs/swift
-        run: node --test test-emit.mjs test-target.mjs
+        run: node --test test-emit.mjs test-target.mjs test-xctest.mjs
 
       - name: Rust pack (the compiler output views and the demangler)
         working-directory: light/packs/rust
@@ -422,6 +564,338 @@ jobs:
         with:
           record: ${{ needs.plan.outputs.hylo-example-key }}
 
+  two-up-example:
+    name: Two-up example
+    needs: plan
+    if: needs.plan.outputs.two-up-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/two-up
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/two-up/pnpm-lock.yaml
+
+      - name: Install the example
+        run: pnpm install --frozen-lockfile --filter .
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Bundle fixtures (the initial scripts' budget, one copy of every module)
+        run: pnpm test
+        env:
+          BUNDLE_REQUIRED: '1'
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.two-up-example-key }}
+
+  lsp-editors-example:
+    name: LSP editors example
+    needs: plan
+    if: needs.plan.outputs.lsp-editors-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/lsp-editors
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/lsp-editors/pnpm-lock.yaml
+
+      - name: Install the example
+        run: pnpm install --frozen-lockfile --filter .
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Unit tables (LSP positions, hovers and completions as a textarea takes them)
+        run: pnpm test
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.lsp-editors-example-key }}
+
+  cpp-library-example:
+    name: C++ library example
+    needs: plan
+    if: needs.plan.outputs.cpp-library-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/cpp-library
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/cpp-library/pnpm-lock.yaml
+
+      - name: Install the example
+        run: pnpm install --frozen-lockfile --filter .
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.cpp-library-example-key }}
+
+  cpp-library-sveltekit-example:
+    name: C++ library in SvelteKit example
+    needs: plan
+    if: needs.plan.outputs.cpp-library-sveltekit-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/cpp-library-sveltekit
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/cpp-library-sveltekit/pnpm-lock.yaml
+
+      - name: Install the example
+        run: pnpm install --frozen-lockfile --filter .
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.cpp-library-sveltekit-example-key }}
+
+  react-explorer-example:
+    name: React explorer example
+    needs: plan
+    if: needs.plan.outputs.react-explorer-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: light/examples/react-explorer
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: light/examples/react-explorer/pnpm-lock.yaml
+
+      - name: Install the example
+        run: pnpm install --frozen-lockfile --filter .
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      # The unit tables (ANSI colours, source-line mapping) and the bundle
+      # fixtures; BUNDLE_REQUIRED fails a missing build instead of skipping.
+      - name: Unit tables and bundle fixtures
+        run: pnpm test
+        env:
+          BUNDLE_REQUIRED: '1'
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.react-explorer-example-key }}
+
+  astro-docs-example:
+    name: Astro docs example
+    needs: plan
+    if: needs.plan.outputs.astro-docs-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: light/examples/astro-docs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 24 as two-up; packs.ts runs under node's type stripping (22.18 and later).
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          # The example's packages, and the JavaScript pack's, which its build.sh installs.
+          cache: pnpm
+          cache-dependency-path: |
+            light/examples/astro-docs/pnpm-lock.yaml
+            light/packs/javascript/pnpm-lock.yaml
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          pnpm install --frozen-lockfile --filter .
+          pnpm exec playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      # The newest stored build of each pack the site uses (pack-store.sh
+      # reads without an account; the token only lifts the rate limit). A
+      # pack the store has none of is said as a warning and its playgrounds
+      # are skipped by name; JavaScript, which every page but the cookbook
+      # needs, is built here instead (a minute or two).
+      - name: The packs
+        working-directory: light
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for pack in python cpp rust swift; do
+            scripts/pack-store.sh fetch "$pack" --any || echo "::warning title=$pack::the pack store has no build of $pack; the astro-docs playgrounds in $pack are skipped"
+          done
+          scripts/pack-store.sh fetch javascript || (cd packs/javascript && ./build.sh)
+
+      - name: End-to-end (Chromium, astro preview, the packs above)
+        env:
+          REQUIRE_PACKS: javascript
+          SKIP_BUILD: '1'
+        run: pnpm run test:e2e
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.astro-docs-example-key }}
+
+  svelte-course-example:
+    name: Svelte course example
+    needs: plan
+    if: needs.plan.outputs.svelte-course-example-done != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: light/examples/svelte-course
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Node 22, as the JavaScript pack's build.sh is run with in the
+      # javascript job.
+      # pnpm, the version light/package.json names, before Node, whose cache asks it for its store.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: light/package.json
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          # The example's packages, and the JavaScript pack's, which its build.sh installs.
+          cache: pnpm
+          cache-dependency-path: |
+            light/examples/svelte-course/pnpm-lock.yaml
+            light/packs/javascript/pnpm-lock.yaml
+
+      # Its own playwright-core installs the Chromium the end-to-end test launches.
+      - name: Install the example and Chromium
+        run: |
+          pnpm install --frozen-lockfile --filter .
+          pnpm exec playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "import('playwright-core').then((m) => console.log(m.chromium.executablePath()))")" >> "$GITHUB_ENV"
+
+      - name: Type-check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Unit tests and bundle fixtures (the initial scripts' budget, Monaco and the languages lazy)
+        run: pnpm test
+        env:
+          BUNDLE_REQUIRED: '1'
+
+      - name: Build the JavaScript pack
+        working-directory: light/packs/javascript
+        run: ./build.sh
+
+      # Only the JavaScript exercise runs; test.mjs names each one it skips.
+      - name: End-to-end (Chromium, the JavaScript exercise)
+        run: pnpm run test:e2e
+
+      - uses: ./.github/actions/once
+        with:
+          record: ${{ needs.plan.outputs.svelte-course-example-key }}
+
   # One job per build system, each with a language whose sample it builds
   # (tests/unit/export-options.test.mjs checks that every build system is
   # here). Every job the download's CI has: build and test, and the format
@@ -465,7 +939,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Node 24 loads export.ts as it is, without the app's dependencies.
+      # Node 24 loads export.ts and the packages it composes as they are,
+      # without the app's dependencies.
       - uses: actions/setup-node@v7
         with:
           node-version: 24

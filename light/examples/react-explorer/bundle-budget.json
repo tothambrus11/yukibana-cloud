@@ -1,0 +1,5 @@
+{
+	"about": "What a first load of the react-explorer article runs, gzipped at level 9: the entry script dist/index.html loads and every chunk it imports statically (dist/.vite/chunks.json). tests/bundle.test.mjs fails when a build's initial scripts are more than 1% above initialGzipBytes. Record a new number here only for a change that means to move it, and say why in its commit.",
+	"initialGzipBytes": 91854,
+	"recordedAt": "the first build: React 19 and react-dom (about 60 KB of it), the core, std, the runtime's pool and transport, the specs and providers of lang-cpp, lang-rust, lang-swift, lang-python and lang-javascript, the level and sanitizer properties the widgets show, and the article's hooks and components. Monaco (about 696 KB gzip), the debugger's DAP client, the explorer workers' code and every language's body are lazy chunks."
+}

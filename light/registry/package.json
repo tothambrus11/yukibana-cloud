@@ -1,0 +1,17 @@
+{
+	"name": "yukibana-registry-site",
+	"private": true,
+	"version": "0.0.0",
+	"description": "What a Yukibana registry is: the rules its responses follow, the format of a pack build, the tool that fills one, and the Cloudflare Worker that serves the official one, https://yukibana.run.",
+	"bin": {
+		"yukibana-registry": "cli.mjs"
+	},
+	"type": "module",
+	"engines": {
+		"node": ">=22.18"
+	},
+	"scripts": {
+		"test": "node --test",
+		"deploy": "bash deploy.sh"
+	}
+}

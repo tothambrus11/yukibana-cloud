@@ -8,7 +8,7 @@
 //
 //   node test-run.mjs        (after ./build.sh; needs playwright-core)
 //
-// Cases: the app's sample project (languages.ts: Cargo.toml, src/main.rs
+// Cases: the app's sample project (the body.ts: Cargo.toml, src/main.rs
 // using the library in src/lib.rs + src/point.rs) cold and warm, its tests
 // (unit tests in src/point.rs, integration tests in tests/), a failing
 // test, a prompt without newline and two lines of stdin, end of input, a
@@ -100,8 +100,8 @@ self.addEventListener('fetch', (e) => {
 await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-const languages = await readFile(resolve(HERE, '../../app/src/lib/languages.ts'), 'utf8');
-const SAMPLE = sampleOf(languages, 'rust');
+const { BODIES } = await import('../../modules/lang-rust/body.ts');
+const SAMPLE = BODIES['rust'].sample;
 const MANIFEST = { 'Cargo.toml': '[package]\nname = "demo"\nversion = "0.1.0"\nedition = "2021"\n' };
 const QC_WASM = 'quickcheck-1.0.3-wasm32-wasip1.tar';
 const plain = (text) => text.replace(/\u001b\[[0-9;]*m/g, '');
@@ -475,23 +475,3 @@ fn main() {
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);
-
-/** The `sample` object literal of one language in languages.ts, evaluated:
- * template literals of plain text keyed by file name. */
-function sampleOf(source, id) {
-    const at = source.indexOf(`id: '${id}'`);
-    const start = source.indexOf('sample: {', at) + 'sample: '.length;
-    let depth = 0;
-    let i = start;
-    let inTemplate = false;
-    for (; i < source.length; i++) {
-        const c = source[i];
-        if (inTemplate) {
-            if (c === '\\') i++;
-            else if (c === '`') inTemplate = false;
-        } else if (c === '`') inTemplate = true;
-        else if (c === '{') depth++;
-        else if (c === '}' && --depth === 0) break;
-    }
-    return new Function(`return (${source.slice(start, i + 1)});`)();
-}

@@ -111,8 +111,11 @@ export type RunState =
 	| { kind: 'unavailable'; problem: RequirementProblem }
 	| { kind: 'failed'; failure: RunFailure; seconds: number };
 
+/** The states a run never leaves: how one ended. */
+export type FinalRunState = Extract<RunState, { kind: 'ended' | 'stopped' | 'unavailable' | 'failed' }>;
+
 /** Whether `state` is one a run never leaves. */
-export function isFinal(state: RunState): boolean {
+export function isFinal(state: RunState): state is FinalRunState {
 	return state.kind === 'ended' || state.kind === 'stopped' || state.kind === 'unavailable' || state.kind === 'failed';
 }
 

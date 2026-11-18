@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>A language server in a textarea</title>
+		<link rel="stylesheet" href="./src/page.css" />
+	</head>
+	<body class="editor-page">
+		<header>
+			<h1>A language server in a textarea</h1>
+			<label>Language <select id="language"></select></label>
+			<nav><a href="./index.html">Both editors</a> · <a id="other" href="./monaco.html">The same in Monaco</a></nav>
+		</header>
+		<p class="hint">
+			Move the caret onto a name to see its hover, Ctrl+Space to complete (arrows, Enter or Tab, Escape), F12 to go to a
+			definition. Break something to see the server's diagnostics in the problems list.
+		</p>
+		<div class="status" id="status" role="status">Loading…</div>
+		<div class="textarea-layout">
+			<div class="code-column">
+				<div class="file">File: <span id="file"></span></div>
+				<div class="code-box">
+					<textarea id="code" spellcheck="false" autocomplete="off" autocapitalize="off" disabled aria-label="Code"></textarea>
+					<ul class="completions" id="completions" role="listbox" aria-label="Completions" hidden></ul>
+				</div>
+				<div class="toolbar"><button type="button" id="complete">Complete (Ctrl+Space)</button> <button type="button" id="definition">Go to definition (F12)</button></div>
+			</div>
+			<div class="side-column">
+				<section>
+					<h2>Hover</h2>
+					<pre class="hover" id="hover" aria-live="polite">Move the caret onto a name.</pre>
+				</section>
+				<section>
+					<h2>Problems (<span id="problem-count">0</span>)</h2>
+					<ul class="problems" id="problems"></ul>
+				</section>
+			</div>
+		</div>
+		<details class="log-panel" open>
+			<summary>Log</summary>
+			<div class="log" id="log" aria-live="polite"></div>
+		</details>
+		<script type="module" src="./src/textarea-page.ts"></script>
+	</body>
+</html>

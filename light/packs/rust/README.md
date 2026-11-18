@@ -483,7 +483,7 @@ gcc, git, python3 and about 30 GB of disk; the server and sysroots units
 need rustup, which installs the pinned toolchains.
 
 `test.mjs` serves the static directory with cross-origin isolation and
-drives the server through the sample from `app/src/lib/languages.ts`: clean
+drives the server through the sample from `modules/lang-rust/body.ts`: clean
 diagnostics, errors and their clearing, completion (members, std,
 auto-import), hover (with std docs and layout), definition, references,
 symbols, signature help, highlights, rename, semantic tokens, inlay hints, a

@@ -11,12 +11,18 @@ importers:
       '@hylo-lang/hylo-wasm':
         specifier: 0.0.9
         version: 0.0.9
+      '@yukibana/core':
+        specifier: link:../../modules/core
+        version: link:../../modules/core
       '@yukibana/protocol':
         specifier: link:../../modules/protocol
         version: link:../../modules/protocol
       '@yukibana/runtime':
         specifier: link:../../modules/runtime
         version: link:../../modules/runtime
+      '@yukibana/std':
+        specifier: link:../../modules/std
+        version: link:../../modules/std
     devDependencies:
       '@types/node':
         specifier: 24.19.2

@@ -1,0 +1,39 @@
+---
+layout: ../../layouts/Docs.astro
+title: A live canvas
+kicker: Web
+description: A TypeScript page drawing on a canvas, and a p5.js sketch. Press Show page, then edit the code; the page rebuilds a moment after you stop typing.
+---
+import Playground from '../../components/Playground.astro';
+import flake from '../../../snippets/web/main.ts?raw';
+import flakeHtml from '../../../snippets/web/index.html?raw';
+import flakeCss from '../../../snippets/web/style.css?raw';
+import snow from '../../../snippets/web/snowfall.ts?raw';
+import snowHtml from '../../../snippets/web/snowfall.html?raw';
+
+## A snowflake in plain TypeScript
+
+The page is three files: `index.html`, its stylesheet and `main.ts`.
+You edit `main.ts`; the other two are under *Beside it*. TypeScript is
+compiled in your browser by the JavaScript pack's runner, the page is
+built into one document and shown in a sandboxed frame, and what it logs
+appears under it.
+
+Change `arms` to `8` while the page is shown.
+
+<Playground id="flake" lang="web" path="main.ts" code={flake} files={{ 'index.html': flakeHtml, 'style.css': flakeCss }} title="index.html, style.css and main.ts" />
+
+## Snowfall with p5.js
+
+p5.js comes with the JavaScript pack, fetched only by a page that
+imports it. Move the mouse over the snow.
+
+<Playground id="snowfall" lang="p5" path="main.ts" code={snow} files={{ 'index.html': snowHtml }} title="a sketch in instance mode" />
+
+## How it works
+
+`Show page` asks the language for Yukibana's `preview` (from
+`@yukibana/std`), whose session keeps one runner for the page, so the
+compiler loads once however often you type. A rebuild waits for 300 ms
+without an edit; a page that does not build leaves the last one shown,
+and the errors are printed.

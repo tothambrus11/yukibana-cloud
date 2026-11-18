@@ -1,4 +1,4 @@
-// Tests of pack-store.sh, which light/setup.sh and every light-packs.yml job
+// Tests of pack-store.sh, which light/setup and every light-packs.yml job
 // rely on, against a server of its own that answers like GitHub's releases
 // API: a throwaway git repository laid out like this one (light/scripts,
 // light/packs/demo, the split packs light/packs/tool and light/packs/other
@@ -1468,4 +1468,33 @@ test("a pull request reuses its own earlier build of a unit, and never another p
     const noToken = await store('toolchain-artifact', 'tool/cc', out, '--ref', 'refs/pull/7/merge');
     assert.equal(noToken.code, 1);
     assert.match(noToken.err, /needs GH_TOKEN/);
+});
+
+test("a branch's dispatched runs reuse their own builds of a unit, and neither main nor a pull request takes them", async () => {
+    // light-toolchain-unit.yml looks with the branch's ref and name when
+    // light-packs.yml was dispatched on it, as a pull request's run does
+    // with its merge ref.
+    const file = await archived();
+    const name = path.basename(file, '.tar.zst');
+    const bytes = fs.readFileSync(file);
+    attestations = new Map();
+    attest(bytes, 'refs/heads/feature');
+    artifactDownloads.length = 0;
+    artifacts = [{ id: 11, name, zip: zipOf(`${name}.tar.zst`, bytes), branch: 'feature', created: '2026-10-05T00:00:00Z' }];
+    const out = path.join(root, 'out-branch-artifact');
+    const token = { GH_TOKEN: 'token' };
+    try {
+        const r = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', 'refs/heads/feature', '--branch', 'feature');
+        assert.equal(r.code, 0, r.err);
+        assert.deepEqual(fs.readFileSync(r.out.trim()), bytes);
+        fs.rmSync(out, { recursive: true, force: true });
+        for (const ref of ['refs/heads/main', 'refs/pull/7/merge']) {
+            const other = await storeWith(token, 'toolchain-artifact', 'tool/cc', out, '--ref', ref);
+            assert.equal(other.code, 3, `${ref}: ${other.err}`);
+            assert.equal(fs.existsSync(out), false, ref);
+        }
+    } finally {
+        artifacts = [];
+        fs.rmSync(out, { recursive: true, force: true });
+    }
 });

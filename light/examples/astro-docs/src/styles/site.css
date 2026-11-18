@@ -1,0 +1,582 @@
+/*
+ * Snowflower Cookbook: warm paper and vermilion by day, ink and lantern
+ * light by night. Colours are tokens on :root, redefined for dark (the
+ * system's, unless the reader chose; [data-theme] on <html>).
+ */
+:root {
+	color-scheme: light;
+	--paper: #fbf7f0;
+	--paper-2: #f3ece0;
+	--card: #fffdf9;
+	--ink: #23201c;
+	--ink-2: #5e574d;
+	--ink-3: #8a8174;
+	--rule: #e4dacb;
+	--accent: #c93f26;
+	--accent-ink: #ffffff;
+	--accent-soft: #fbe3da;
+	--moss: #3f7a55;
+	--code-bg: #f6f1e8;
+	--out-bg: #1f1d1a;
+	--out-ink: #ece6dc;
+	--out-err: #ff9b85;
+	--out-info: #9fc4ff;
+	--shadow: 0 1px 0 #e9dfcf, 0 10px 30px -18px rgb(80 50 20 / 0.35);
+	--serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+	--sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+	--mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) {
+		color-scheme: dark;
+		--paper: #14171c;
+		--paper-2: #1b1f26;
+		--card: #1a1e24;
+		--ink: #ece6dc;
+		--ink-2: #b6ad9f;
+		--ink-3: #857d72;
+		--rule: #2c323b;
+		--accent: #ff7a59;
+		--accent-ink: #1a0f0b;
+		--accent-soft: #3a211b;
+		--moss: #7fc79a;
+		--code-bg: #22272e;
+		--out-bg: #0d0f12;
+		--shadow: 0 1px 0 #20252c, 0 12px 30px -18px rgb(0 0 0 / 0.8);
+	}
+}
+
+:root[data-theme='dark'] {
+	color-scheme: dark;
+	--paper: #14171c;
+	--paper-2: #1b1f26;
+	--card: #1a1e24;
+	--ink: #ece6dc;
+	--ink-2: #b6ad9f;
+	--ink-3: #857d72;
+	--rule: #2c323b;
+	--accent: #ff7a59;
+	--accent-ink: #1a0f0b;
+	--accent-soft: #3a211b;
+	--moss: #7fc79a;
+	--code-bg: #22272e;
+	--out-bg: #0d0f12;
+	--shadow: 0 1px 0 #20252c, 0 12px 30px -18px rgb(0 0 0 / 0.8);
+}
+
+/* Shiki's dual themes (astro.config.ts, defaultColor: false). */
+.astro-code,
+.astro-code span {
+	color: var(--shiki-light);
+	background-color: var(--shiki-light-bg);
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme='light']) .astro-code,
+	:root:not([data-theme='light']) .astro-code span {
+		color: var(--shiki-dark);
+		background-color: var(--shiki-dark-bg);
+	}
+}
+:root[data-theme='dark'] .astro-code,
+:root[data-theme='dark'] .astro-code span {
+	color: var(--shiki-dark);
+	background-color: var(--shiki-dark-bg);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	background: var(--paper);
+}
+
+body {
+	margin: 0;
+	background: var(--paper);
+	color: var(--ink);
+	font: 17px/1.65 var(--serif);
+	-webkit-font-smoothing: antialiased;
+}
+
+a {
+	color: var(--accent);
+	text-underline-offset: 0.18em;
+	text-decoration-thickness: 1px;
+}
+
+.skip {
+	position: absolute;
+	left: -999px;
+}
+.skip:focus {
+	left: 16px;
+	top: 8px;
+	background: var(--card);
+	padding: 4px 8px;
+	z-index: 10;
+}
+
+/* The masthead: a thin band with the flower, the sections and the theme switch. */
+.masthead {
+	position: sticky;
+	top: 0;
+	z-index: 5;
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	padding: 10px max(16px, calc((100vw - 1080px) / 2));
+	background: color-mix(in srgb, var(--paper) 88%, transparent);
+	backdrop-filter: blur(8px);
+	border-bottom: 1px solid var(--rule);
+	font-family: var(--sans);
+	font-size: 14px;
+}
+.brand {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--ink);
+	text-decoration: none;
+	font: 600 17px/1 var(--serif);
+	white-space: nowrap;
+}
+.brand em {
+	color: var(--accent);
+	font-style: italic;
+	font-weight: 400;
+}
+.brand-mark {
+	width: 24px;
+	height: 24px;
+}
+.masthead nav {
+	display: flex;
+	gap: 4px;
+	overflow-x: auto;
+	flex: 1;
+	scrollbar-width: none;
+}
+.masthead nav a {
+	color: var(--ink-2);
+	text-decoration: none;
+	padding: 5px 10px;
+	border-radius: 999px;
+	white-space: nowrap;
+}
+.masthead nav a:hover {
+	color: var(--ink);
+	background: var(--paper-2);
+}
+.masthead nav a[aria-current='page'] {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+.theme {
+	border: 1px solid var(--rule);
+	background: var(--card);
+	color: var(--ink);
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	cursor: pointer;
+	font-size: 16px;
+	flex: none;
+}
+
+main {
+	padding: 40px 16px 64px;
+}
+
+.prose {
+	max-width: 760px;
+	margin: 0 auto;
+}
+.prose h1 {
+	font-size: clamp(2rem, 5vw, 2.9rem);
+	line-height: 1.1;
+	letter-spacing: -0.01em;
+	margin: 0 0 12px;
+	font-weight: 600;
+}
+.prose h2 {
+	font-size: 1.55rem;
+	margin: 2.4em 0 0.4em;
+	font-weight: 600;
+}
+.prose h2::before {
+	content: '❋ ';
+	color: var(--accent);
+	font-size: 0.8em;
+}
+.prose h3 {
+	font-size: 1.15rem;
+	margin: 1.8em 0 0.3em;
+}
+.prose p,
+.prose li {
+	color: var(--ink);
+}
+.prose :not(pre) > code {
+	font: 0.86em var(--mono);
+	background: var(--paper-2);
+	border: 1px solid var(--rule);
+	padding: 0.05em 0.35em;
+	border-radius: 4px;
+}
+.kicker {
+	font: 600 12px/1 var(--sans);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--accent);
+	margin: 0 0 14px;
+}
+.lede {
+	font-size: 1.2rem;
+	color: var(--ink-2);
+	margin: 0 0 2em;
+	font-style: italic;
+}
+.prose table {
+	border-collapse: collapse;
+	font: 14px/1.4 var(--sans);
+	width: 100%;
+	margin: 1em 0;
+	display: block;
+	overflow-x: auto;
+}
+.prose th,
+.prose td {
+	border-bottom: 1px solid var(--rule);
+	padding: 6px 10px;
+	text-align: left;
+}
+.prose th {
+	color: var(--ink-2);
+	font-weight: 600;
+}
+
+.cards {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 14px;
+	margin: 1.5em 0;
+	padding: 0;
+	list-style: none;
+}
+.cards a {
+	display: block;
+	height: 100%;
+	padding: 16px 18px;
+	background: var(--card);
+	border: 1px solid var(--rule);
+	border-radius: 14px;
+	box-shadow: var(--shadow);
+	color: var(--ink);
+	text-decoration: none;
+}
+.cards a:hover {
+	border-color: var(--accent);
+}
+.cards strong {
+	display: block;
+	font-size: 1.1rem;
+	margin-bottom: 4px;
+}
+.cards span {
+	font: 14px/1.5 var(--sans);
+	color: var(--ink-2);
+}
+
+.footer {
+	border-top: 1px solid var(--rule);
+	padding: 24px 16px 40px;
+	text-align: center;
+	font: 13px/1.6 var(--sans);
+	color: var(--ink-3);
+}
+.footer p {
+	max-width: 600px;
+	margin: 0 auto;
+}
+
+/* A playground: a card holding the code, its controls, its output. */
+.playground {
+	margin: 1.6em 0;
+	background: var(--card);
+	border: 1px solid var(--rule);
+	border-radius: 14px;
+	box-shadow: var(--shadow);
+	overflow: hidden;
+	scroll-margin-top: 72px;
+}
+.pg-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	padding: 9px 14px;
+	border-bottom: 1px solid var(--rule);
+	background: var(--paper-2);
+	font: 13px/1.4 var(--sans);
+	color: var(--ink-2);
+}
+.pg-badge {
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	font-size: 11px;
+	color: var(--accent);
+}
+.pg-path {
+	font: 12px var(--mono);
+	color: var(--ink-3);
+}
+.pg-title {
+	color: var(--ink);
+}
+.pg-continues {
+	margin-left: auto;
+	font-style: italic;
+}
+.pg-code .astro-code,
+.pg-editor {
+	margin: 0;
+	padding: 14px 16px;
+	font: 13.5px/1.6 var(--mono);
+	tab-size: 2;
+	overflow-x: auto;
+}
+.pg-code .astro-code {
+	background-color: var(--code-bg) !important;
+}
+.pg-code .astro-code span {
+	background-color: transparent !important;
+}
+.pg-editor {
+	display: block;
+	width: 100%;
+	border: 0;
+	resize: vertical;
+	background: var(--code-bg);
+	color: var(--ink);
+	outline: 2px solid transparent;
+	outline-offset: -2px;
+	white-space: pre;
+}
+.pg-editor:focus {
+	outline-color: var(--accent);
+}
+.pg-editor[hidden],
+.pg-code[hidden],
+.pg-frame[hidden] {
+	display: none;
+}
+
+.pg-stdin {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	padding: 8px 14px;
+	border-top: 1px dashed var(--rule);
+	font: 12px/1.5 var(--sans);
+	color: var(--ink-3);
+}
+.pg-stdin > span {
+	padding-top: 4px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	font-weight: 600;
+}
+.pg-stdin-text {
+	flex: 1;
+	margin: 0;
+	padding: 4px 8px;
+	font: 13px/1.5 var(--mono);
+	color: var(--ink);
+	background: transparent;
+	border: 1px solid var(--rule);
+	border-radius: 6px;
+	resize: vertical;
+	white-space: pre-wrap;
+}
+
+.pg-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 14px;
+	border-top: 1px solid var(--rule);
+	font-family: var(--sans);
+}
+.pg-spacer {
+	flex: 1;
+}
+.pg-bar button {
+	font: 600 13px/1 var(--sans);
+	padding: 8px 14px;
+	border-radius: 8px;
+	border: 1px solid var(--rule);
+	background: var(--card);
+	color: var(--ink);
+	cursor: pointer;
+}
+.pg-bar button:hover:not(:disabled) {
+	border-color: var(--ink-3);
+}
+.pg-bar button.primary {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-ink);
+}
+.pg-bar button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.pg-bar button[aria-pressed='true'] {
+	background: var(--accent-soft);
+}
+.pg-status {
+	margin: 0;
+	padding: 0 14px 8px;
+	min-height: 1.5em;
+	font: 12.5px/1.5 var(--sans);
+	color: var(--ink-3);
+}
+.pg[data-state='ended'] .pg-status {
+	color: var(--moss);
+}
+.pg[data-state='failed'] .pg-status,
+.pg[data-state='unavailable'] .pg-status {
+	color: var(--accent);
+}
+.pg-output {
+	margin: 0;
+	padding: 12px 16px;
+	max-height: 360px;
+	overflow: auto;
+	background: var(--out-bg);
+	color: var(--out-ink);
+	font: 13px/1.55 var(--mono);
+	white-space: pre-wrap;
+}
+.pg-output .stderr,
+.pg-output .problem {
+	color: var(--out-err);
+}
+.pg-output .info,
+.pg-output .notice {
+	color: var(--out-info);
+}
+.pg-frame {
+	border-top: 1px solid var(--rule);
+	background: #fff;
+	height: 340px;
+}
+.live-frame {
+	display: block;
+	width: 100%;
+	height: 100%;
+	border: 0;
+}
+
+.pg-files {
+	border-top: 1px solid var(--rule);
+	font: 13px/1.5 var(--sans);
+	color: var(--ink-2);
+}
+.pg-files summary {
+	padding: 8px 14px;
+	cursor: pointer;
+}
+.pg-file .pg-path {
+	display: block;
+	padding: 4px 16px;
+}
+.pg-file .astro-code {
+	margin: 0;
+	padding: 10px 16px;
+	font: 12.5px/1.55 var(--mono);
+	overflow-x: auto;
+	background-color: var(--code-bg) !important;
+}
+.pg-file .astro-code span {
+	background-color: transparent !important;
+}
+
+/* Tabs (Tabs.astro): radio buttons and :has(), no script. */
+.tabs {
+	margin: 1.4em 0;
+}
+.tab-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	font: 600 13px/1 var(--sans);
+}
+.tab {
+	position: relative;
+	cursor: pointer;
+}
+.tab input {
+	position: absolute;
+	opacity: 0;
+	inset: 0;
+	margin: 0;
+	cursor: pointer;
+}
+.tab span {
+	display: block;
+	padding: 9px 14px;
+	border-radius: 999px;
+	border: 1px solid var(--rule);
+	background: var(--card);
+	color: var(--ink-2);
+}
+.tab input:checked + span {
+	background: var(--ink);
+	border-color: var(--ink);
+	color: var(--paper);
+}
+.tab input:focus-visible + span {
+	outline: 2px solid var(--accent);
+	outline-offset: 2px;
+}
+.tab-panel-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+}
+.tabs .tab-panel {
+	display: none;
+}
+.tabs:has([data-tab='1']:checked) .tab-panel:nth-child(1),
+.tabs:has([data-tab='2']:checked) .tab-panel:nth-child(2),
+.tabs:has([data-tab='3']:checked) .tab-panel:nth-child(3),
+.tabs:has([data-tab='4']:checked) .tab-panel:nth-child(4),
+.tabs:has([data-tab='5']:checked) .tab-panel:nth-child(5),
+.tabs:has([data-tab='6']:checked) .tab-panel:nth-child(6),
+.tabs:has([data-tab='7']:checked) .tab-panel:nth-child(7),
+.tabs:has([data-tab='8']:checked) .tab-panel:nth-child(8) {
+	display: block;
+}
+
+@media (max-width: 640px) {
+	body {
+		font-size: 16px;
+	}
+	.masthead {
+		gap: 10px;
+	}
+	.brand span {
+		display: none;
+	}
+	.pg-continues {
+		margin-left: 0;
+	}
+}

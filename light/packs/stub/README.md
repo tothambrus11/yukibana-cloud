@@ -6,7 +6,7 @@ toolchain-unit machinery runs on something real: the scripts' tests
 directory into their throwaway repositories, `light/packs/contract.test.mjs`
 checks it like any split pack, and `light-packs.yml` builds its units in
 waves and assembles it on every run that touches the packs. It is not a
-language: it has no `build.sh`, so `setup.sh`, the app and a release
+language: it has no `build.sh`, so `setup`, the app and a release
 (`light-release.yml` takes the packs with a `build.sh`) never see it.
 
 It has the shape cpp's toolchain will have, in three units:

@@ -51,6 +51,8 @@ export interface ServerEndpoint {
 
 /** JSON-RPC's "method not found", answered to server requests nobody handles. */
 export const METHOD_NOT_FOUND = -32601;
+/** JSON-RPC's "invalid params", answered to a server request whose params a handler cannot read. */
+export const INVALID_PARAMS = -32602;
 /** JSON-RPC's "internal error", answered when a request handler throws something that is not a {@link ResponseError}. */
 export const INTERNAL_ERROR = -32603;
 /** LSP's "request cancelled", which callers treat as an empty answer, not a failure. */

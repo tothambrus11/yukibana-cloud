@@ -4,7 +4,7 @@
 // '/packs/scala/runner.js', { type: 'module' })` in Chromium, the CONTRACT.md
 // messages, and stdin driven from the page through the SharedArrayBuffer.
 //
-// Runs: (1) the sample project of app/src/lib/languages.ts, as it is there;
+// Runs: (1) the sample project of modules/lang-scala/body.ts, as it is there;
 // (2) a prompt without a newline, two lines of stdin, their sum; (3) a type
 // error: on stderr, exit 1; (4) a program that loops forever: the page
 // terminates the worker; plus output that streams while the program never
@@ -27,7 +27,6 @@ import { chromium } from 'playwright-core';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const STATIC = resolve(HERE, '../../app/static');
-const LANGUAGES = resolve(HERE, '../../app/src/lib/languages.ts');
 const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
 const TYPES = { '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json' };
 const ISOLATION = { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' };
@@ -63,14 +62,12 @@ await stat(join(STATIC, 'packs/scala/runner.js')).catch(() => {
     process.exit(2);
 });
 
-/** The Scala sample project exactly as languages.ts has it (template literals unescaped). */
+/** The Scala sample project exactly as lang-scala gives it: its .scala files, and its entry. */
 async function sampleProject() {
-    const src = await readFile(LANGUAGES, 'utf8');
-    const block = src.slice(src.indexOf("id: 'scala'"));
-    const files = {};
-    for (const m of block.matchAll(/'([\w.]+\.scala)': `((?:[^`\\]|\\.)*)`/g)) files[m[1]] = m[2].replace(/\\(.)/g, '$1');
-    const entry = /entry: '([^']+)'/.exec(block)[1];
-    return { files, entry };
+    const { BODIES } = await import('../../modules/lang-scala/body.ts');
+    const { LANGUAGES } = await import('../../modules/lang-scala/index.ts');
+    const files = Object.fromEntries(Object.entries(BODIES['scala'].sample).filter(([name]) => name.endsWith('.scala')));
+    return { files, entry: LANGUAGES['scala'].spec.entry };
 }
 
 // A persistent profile, so that the warm run reads the HTTP disk cache (an

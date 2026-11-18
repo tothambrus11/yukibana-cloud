@@ -1,11 +1,11 @@
-// Unit tests of the language standard choice (src/lib/cpp-standards.ts):
+// Unit tests of the language standard choice (modules/lang-cpp/standards.ts):
 // which standard compile_flags.txt puts a C or C++ project on, and how the
 // Standard picker rewrites that file.
 //
 //   node --test tests/unit/cpp-standards.test.mjs     (Node 22.18 or later: loads the TypeScript source)
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { C_STANDARDS, CPP_STANDARDS, describeStandard, standardOf, withStandard } from '../../src/lib/cpp-standards.ts';
+import { C_STANDARDS, CPP_STANDARDS, describeStandard, standardOf, withStandard } from '../../../modules/lang-cpp/standards.ts';
 
 const said = (choice) => (choice.kind === 'other' ? { kind: 'other', value: choice.value } : { kind: choice.kind, iso: choice.standard.iso, gnu: choice.gnu });
 const std = (list, iso, gnu = false) => ({ standard: list.find((s) => s.iso === iso), gnu });

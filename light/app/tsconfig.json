@@ -6,6 +6,19 @@
 		"strict": true,
 		"noUncheckedIndexedAccess": true,
 		"exactOptionalPropertyTypes": true,
-		"skipLibCheck": true
+		"skipLibCheck": true,
+		// The modules' sources through their `link:` links, as Vite reads
+		// them (vite.config.ts).
+		"customConditions": ["@yukibana/source"],
+		// The modules' `import type … from 'monaco-editor'` names the
+		// declarations of `editor.api`, the very ones the app's
+		// `monaco-editor/editor/editor.api` imports have, so a value the app
+		// hands @yukibana/monaco is of the type the module names: the package
+		// root ships no declarations in 0.57.0 (modules/monaco/tsconfig.json
+		// says the same). Only the bare name is mapped; the app's own subpath
+		// imports resolve as before.
+		"paths": {
+			"monaco-editor": ["./node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+		}
 	}
 }

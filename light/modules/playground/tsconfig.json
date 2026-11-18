@@ -1,0 +1,14 @@
+{
+	// playground runs in the host's page beside its editor: the DOM, nothing
+	// of Node, and Monaco's types only (the host's Monaco is passed in, H1).
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["es2024", "DOM", "DOM.Iterable", "WebWorker"],
+		// As modules/monaco/tsconfig.json: the declarations of `editor.api`,
+		// from the app's installed copy.
+		"paths": {
+			"monaco-editor": ["../../app/node_modules/monaco-editor/esm/vs/editor/editor.api.d.ts"]
+		}
+	},
+	"include": ["."]
+}

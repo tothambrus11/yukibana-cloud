@@ -15,3 +15,14 @@ light/packs/*/tests/fixtures/**/*.sil-raw linguist-generated
 light/packs/*/tests/fixtures/**/*.dump-* linguist-generated
 light/packs/kotlin/kotlinc/config/traced-reachability-metadata.json linguist-generated
 light/app/static/schemas/*.json linguist-generated
+
+# What bash runs or reads keeps LF everywhere, Windows included: a script
+# checked out with CRLF does not run, and a pins, paths or needs file read
+# with one gives every value a trailing \r. light/setup runs these scripts
+# in Git for Windows' bash. Blob ids are of the LF text either way, so no
+# pack tree or toolchain key changes.
+*.sh text eol=lf
+light/scripts/** text=auto eol=lf
+light/packs/** text=auto eol=lf
+light/toolchains/** text=auto eol=lf
+light/setup/bin/* text eol=lf

@@ -1,5 +1,6 @@
 // What Download adds when its dialog asks for more than the build files
-// (src/lib/export.ts with src/lib/export-tooling.ts): another build system,
+// (src/lib/export.ts with src/lib/export-tooling.ts, over the languages'
+// packages' exports: ../export-loaded.mjs): another build system,
 // CI for one of several services, a dev container and a .gitattributes.
 // The jobs themselves run in their images in tests/export-ci.mjs, and the
 // services' files are parsed as YAML in tests/export.mjs.
@@ -8,9 +9,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { LANGUAGES } from '../../src/lib/languages.ts';
-import { buildSystems, cmakeLists, conanfile, exportProject, mesonBuild, mesonWraps } from '../../src/lib/export.ts';
-import { CI_SERVICES, jobsFor } from '../../src/lib/export-tooling.ts';
+import '../modules-hook.mjs';
+
+const { LANGUAGES } = await import('../../src/lib/languages.ts');
+const { buildSystems, CI_SERVICES, exportProject, jobsFor } = await import('../export-loaded.mjs');
+const { cmakeLists, conanfile, mesonBuild, mesonWraps } = await import('../../../modules/lang-cpp/export.ts');
 
 const sample = (id) => LANGUAGES.find((l) => l.id === id);
 const ALL = { ci: 'github', devcontainer: true, gitattributes: true };

@@ -34,6 +34,7 @@ NICE="nice -n 10"
 mkdir -p "$CACHE" "$OUT"
 cd "$CACHE"
 emsdk_use
+llvm_ccache
 
 step "sources"
 fetch "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LLVM_VERSION/llvm-project-$LLVM_VERSION.src.tar.xz" \

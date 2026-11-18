@@ -4,7 +4,7 @@
 // '/packs/java/runner.js', { type: 'module' })` in Chromium, the CONTRACT.md
 // messages, and stdin driven from the page through the SharedArrayBuffer.
 //
-// Runs the sample project of app/src/lib/languages.ts as it is there (cold,
+// Runs the sample project of modules/lang-java/body.ts as it is there (cold,
 // then warm), its tests (Test), a failing test, Scanner and BufferedReader
 // on stdin, end of file, compile errors, an uncaught exception,
 // System.exit, a compact source file (JEP 512), a program that loops
@@ -21,7 +21,6 @@ import { chromium } from 'playwright-core';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const STATIC = resolve(HERE, '../../app/static');
-const LANGUAGES = resolve(HERE, '../../app/src/lib/languages.ts');
 const CHROMIUM = process.env.CHROMIUM ?? '/opt/pw-browsers/chromium';
 const TYPES = { '.js': 'text/javascript', '.html': 'text/html', '.json': 'application/json', '.wasm': 'application/wasm' };
 const ISOLATION = { 'cross-origin-opener-policy': 'same-origin', 'cross-origin-embedder-policy': 'require-corp' };
@@ -57,14 +56,12 @@ await stat(join(STATIC, 'packs/java/runner.js')).catch(() => {
     process.exit(2);
 });
 
-/** The Java sample project exactly as languages.ts has it (template literals unescaped). */
+/** The Java sample project exactly as lang-java gives it: its .java files, and its entry. */
 async function sampleProject() {
-    const src = await readFile(LANGUAGES, 'utf8');
-    const block = src.slice(src.indexOf("id: 'java'"));
-    const files = {};
-    for (const m of block.slice(0, block.indexOf('\n\t},')).matchAll(/'([\w./]+\.java)': `((?:[^`\\]|\\.)*)`/g)) files[m[1]] = m[2].replace(/\\(.)/g, '$1');
-    const entry = /entry: '([^']+)'/.exec(block)[1];
-    return { files, entry };
+    const { BODIES } = await import('../../modules/lang-java/body.ts');
+    const { LANGUAGES } = await import('../../modules/lang-java/index.ts');
+    const files = Object.fromEntries(Object.entries(BODIES['java'].sample).filter(([name]) => name.endsWith('.java')));
+    return { files, entry: LANGUAGES['java'].spec.entry };
 }
 
 // A persistent profile, so that the warm run reads the HTTP disk cache.

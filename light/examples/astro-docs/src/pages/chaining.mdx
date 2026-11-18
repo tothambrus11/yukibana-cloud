@@ -1,0 +1,49 @@
+---
+layout: ../layouts/Docs.astro
+title: Step by step
+kicker: Snippets that continue each other
+description: A tutorial builds a program a piece at a time. Each snippet here names the earlier ones it continues, and runs after them, as the reader would have typed it.
+---
+import Playground from '../components/Playground.astro';
+import tokens from '../../snippets/chaining/tokens.js?raw';
+import counts from '../../snippets/chaining/counts.js?raw';
+import report from '../../snippets/chaining/report.js?raw';
+import tests from '../../snippets/chaining/words.test.js?raw';
+
+## 1. Words
+
+First, what counts as a word.
+
+<Playground id="tokens" lang="javascript" code={tokens} />
+
+## 2. Counting
+
+`counts` uses `tokens` from the first snippet: this one continues it, so
+when you run it, the first snippet runs first, in the same program, and
+its output comes first too.
+
+<Playground id="counts" lang="javascript" code={counts} continues={['tokens']} />
+
+## 3. A report
+
+Both earlier snippets, then a few lines of our own. If you edited either
+of them above, this runs your version.
+
+<Playground id="report" lang="javascript" code={report} continues={['tokens', 'counts']} />
+
+## 4. Tests
+
+The same functions, tested with `node:test`. Press **Test**: the
+JavaScript pack runs the test file and reports each test. Break
+`tokens` in snippet 1 (drop the `.toLowerCase()`) and test again.
+
+<Playground id="words-test" lang="javascript" path="words.test.js" code={tests} continues={['tokens', 'counts']} test />
+
+## How chaining works
+
+Yukibana runs a project: files and an entry. It has no notion of a
+notebook's cells, so the playground makes one file: each continued
+snippet's text, under a comment naming it, then its own. A snippet you
+have edited contributes your edit; one you have not even scrolled to
+contributes the text the page was built with. One consequence: an error
+on line 3 of this snippet is reported at its line in the joined file.

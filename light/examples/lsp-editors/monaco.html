@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>A language server in Monaco</title>
+		<link rel="stylesheet" href="./src/page.css" />
+	</head>
+	<body class="editor-page">
+		<header>
+			<h1>A language server in Monaco</h1>
+			<label>Language <select id="language"></select></label>
+			<nav><a href="./index.html">Both editors</a> · <a id="other" href="./textarea.html">The same in a textarea</a></nav>
+		</header>
+		<p class="hint">
+			Hover over a name, Ctrl+Space to complete, F12 to go to a definition (into another file too), Shift+F12 for references,
+			F2 to rename, Ctrl+. for fixes, Ctrl+Shift+O for the outline. Break something to see the server's diagnostics.
+		</p>
+		<div class="status" id="status" role="status">Loading the editor…</div>
+		<div class="files" id="files" role="toolbar" aria-label="Files"></div>
+		<div class="monaco" id="editor"></div>
+		<details class="log-panel" open>
+			<summary>Log</summary>
+			<div class="log" id="log" aria-live="polite"></div>
+		</details>
+		<script type="module" src="./src/monaco-page.ts"></script>
+	</body>
+</html>

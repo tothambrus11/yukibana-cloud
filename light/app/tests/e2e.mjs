@@ -532,7 +532,7 @@ async function cppOptimization(page, check) {
 }
 
 /**
- * The C++ sanitizers (cpp-sanitizers.ts, packs/cpp README "Sanitizers"):
+ * The C++ sanitizers (lang-cpp/sanitizers.ts, packs/cpp README "Sanitizers"):
  * nothing of them is fetched until one is on; ticking AddressSanitizer
  * appends its -fsanitize= line; a heap buffer overflow in main.cpp is then
  * reported in the terminal (sum inlined into main, so named as -gline-tables-only
@@ -610,7 +610,7 @@ async function savedOptimization(page, check, language) {
 }
 
 /**
- * C++ cross-compilation targets (cpp-targets.ts), Linux runs under QEMU and
+ * C++ cross-compilation targets (lang-cpp/targets.ts), Linux runs under QEMU and
  * the compiler output views. Runs after the default-target checks of the
  * same page, whose downloads must not include anything of this.
  */
@@ -879,7 +879,7 @@ async function typeLens(page, check) {
 }
 
 /**
- * Go to Symbol in Workspace (client.ts, lsp/workspace-symbols.ts), for a
+ * Go to Symbol in Workspace (monaco/bind.ts, monaco/workspace-symbols.ts), for a
  * server with workspace symbols: Ctrl+T opens the picker, the query lists
  * `name` in `file` first, and Enter opens that file with the caret on the
  * line that declares it, in an editor with focus.

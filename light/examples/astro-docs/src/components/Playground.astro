@@ -1,0 +1,107 @@
+---
+/**
+ * <Playground lang="python" code={code} run test preview stdin="…" />
+ *
+ * A code sample that can be run, usable from MDX. On the page it is the
+ * code, highlighted when the site is built (Shiki, light and dark), any
+ * files beside it, and the input the program reads: it reads fine with
+ * JavaScript off. Its interactive half (PlaygroundIsland.tsx) hydrates with
+ * `client:visible`, so nothing of it, its language or its compiler loads
+ * until the reader scrolls it into view.
+ *
+ * Props:
+ * - `lang`: a playground language (src/lib/langs.ts); a wrong one fails the build, naming it.
+ * - `code`: the program, the document the reader may edit.
+ * - `run`, `test`, `preview`: which actions to offer. None given is `run`;
+ *   a web language (`web`, `p5`) always previews.
+ * - `stdin`: what the program reads, line by line, then end of input.
+ * - `files`: files beside the code, by project path (a CSV it reads, a page's HTML).
+ * - `path`: the code's own project path, if not the language's entry (`main.test.js`).
+ * - `id`: a name later playgrounds on the page continue it by.
+ * - `continues`: ids of earlier playgrounds whose code runs before this one's (src/lib/prelude.ts).
+ * - `title`: a caption.
+ */
+import { Code } from 'astro:components';
+import PlaygroundIsland, { type PlaygroundIslandProps } from './PlaygroundIsland.tsx';
+import { LANGS, langOf } from '../lib/langs.ts';
+
+interface Props {
+	lang: string;
+	code: string;
+	run?: boolean;
+	test?: boolean;
+	preview?: boolean;
+	stdin?: string;
+	files?: Record<string, string>;
+	path?: string;
+	id?: string;
+	continues?: string[];
+	title?: string;
+}
+
+const { lang, code, stdin, files = {}, path, id, continues = [], title } = Astro.props;
+const language = langOf(lang);
+const info = LANGS[language];
+/** A short name made from the code, the same at every build. */
+const digest = (text: string): string => {
+	let hash = 5381;
+	for (let at = 0; at < text.length; at += 1) hash = (hash * 33) ^ text.charCodeAt(at);
+	return (hash >>> 0).toString(36);
+};
+/** Every playground's runs get a name of their own; one with an id is named by it. */
+const name = id ?? `${language}-${digest(code)}`;
+const island: Omit<PlaygroundIslandProps, 'children'> = {
+	lang: language,
+	code,
+	name,
+	continues,
+	run: Astro.props.run === true,
+	test: Astro.props.test === true,
+	preview: Astro.props.preview === true,
+	stdin: stdin ?? null,
+	files,
+	path: path ?? null,
+};
+const beside = Object.entries(files);
+const grammarOf = (file: string): string => (file.endsWith('.html') ? 'html' : file.endsWith('.css') ? 'css' : file.endsWith('.csv') ? 'csv' : info.grammar);
+---
+
+<figure class="playground" data-lang={language} id={id}>
+	<figcaption class="pg-head">
+		<span class="pg-badge">{info.label}</span>
+		{path && <code class="pg-path">{path}</code>}
+		{title && <span class="pg-title">{title}</span>}
+		{
+			continues.length > 0 && (
+				<span class="pg-continues">
+					continues{' '}
+					{continues.map((earlier, index) => (
+						<>
+							{index > 0 && ', '}
+							<a href={`#${earlier}`}>{earlier}</a>
+						</>
+					))}
+				</span>
+			)
+		}
+	</figcaption>
+	{id && <template data-snippet={id}>{code}</template>}
+	<PlaygroundIsland client:visible {...island}>
+		<Code code={code} lang={info.grammar} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} />
+	</PlaygroundIsland>
+	{
+		beside.length > 0 && (
+			<details class="pg-files">
+				<summary>
+					Beside it: {beside.map(([file]) => file).join(', ')}
+				</summary>
+				{beside.map(([file, text]) => (
+					<div class="pg-file">
+						<code class="pg-path">{file}</code>
+						<Code code={text} lang={grammarOf(file) as 'html'} themes={{ light: 'github-light', dark: 'github-dark-dimmed' }} defaultColor={false} />
+					</div>
+				))}
+			</details>
+		)
+	}
+</figure>

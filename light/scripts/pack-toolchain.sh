@@ -36,7 +36,7 @@
 #                  and a machine without a signed-in gh is told it is
 #                  unverified). --any then fetches the unit's newest
 #                  toolchain whatever its key, saying it is not this commit's
-#                  (setup.sh --latest), and verified the same way.
+#                  (light/setup --latest), and verified the same way.
 #         build    exit 3 instead with --fetch-only; exit 4 instead when the
 #                  build would be dirty and --build-dirty is not given.
 #                  Otherwise every unit it needs is ensured first, by this
@@ -74,7 +74,7 @@
 #       `outputs` declares, every time: the file is no input of the key, so
 #       an output declared after a toolchain of the same key was built or
 #       stored is checked here or nowhere. Refuses a toolchain of other
-#       inputs unless ALLOW_OTHER_TOOLCHAIN=1 (set by setup.sh --latest) and
+#       inputs unless ALLOW_OTHER_TOOLCHAIN=1 (set by light/setup --latest) and
 #       that toolchain has every output HEAD's `outputs` declares and the
 #       glue's versions check passes. Refuses, every time, a unit given
 #       with a unit it needs whose key is not the one its toolchain.json
@@ -85,7 +85,7 @@
 #       assembled with a new one (D44).
 #   pack-toolchain.sh record-state <pack>
 #       Prints "<tree of packs/<pack>> <blob of pack-toolchain.sh> <blob of
-#       toolchain-manifest.mjs> <unit>=<key>...", the state setup.sh records
+#       toolchain-manifest.mjs> <unit>=<key>...", the state light/setup records
 #       for a pack assembled at HEAD: the pack, assembly as the glossary
 #       defines it, and each unit's toolchain (whose key already covers the
 #       build environment and the units it needs), in ensure's order. Or
@@ -434,7 +434,7 @@ ensure_unit() {
     exit 3
   fi
   if [ -n "$reasons" ] && [ -z "$build_dirty" ]; then
-    say "$id: the toolchain's inputs are dirty, so it is not built without being asked:"$'\n'"  ${reasons//$'\n'/$'\n'  }"$'\n'"build it anyway with: setup.sh --build-toolchain $id"
+    say "$id: the toolchain's inputs are dirty, so it is not built without being asked:"$'\n'"  ${reasons//$'\n'/$'\n'  }"$'\n'"build it anyway with: node setup/cli.mjs --build ${id%%/*}"
     exit 4
   fi
 

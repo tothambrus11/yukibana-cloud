@@ -1,0 +1,5 @@
+{
+	"about": "What a first load of the course page runs, gzipped at level 9: the entry script dist/index.html loads and every chunk it imports statically (dist/.vite/chunks.json). tests/bundle.test.mjs fails when a build's initial scripts are more than 1% above initialGzipBytes. Record a new number here only for a change that means to move it, and say why in its commit.",
+	"initialGzipBytes": 48771,
+	"recordedAt": "the svelte-course example's first build: Svelte 5's client runtime and the page's components, core, std, the runtime's pool and transport, the textarea editor, and the specs and providers of lang-python, lang-javascript, lang-rust, lang-cpp and lang-swift; Monaco (with @yukibana/monaco and the five grammars), every language's body, the explorer workers and every compiler (the packs') are loaded later."
+}

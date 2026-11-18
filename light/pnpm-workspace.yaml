@@ -1,15 +1,19 @@
-# Light's pnpm workspace: the app, the examples and the language packs, each
-# with its own pnpm-lock.yaml. `pnpm install` here installs them all; inside
+# Light's pnpm workspace: the app, the examples, the language packs, the
+# setup tool and the benchmarks, each with its own pnpm-lock.yaml. `pnpm install` here installs them all; inside
 # one of them, `pnpm install --frozen-lockfile --filter .` installs only that
 # one, which is what a pack's scripts and the CI jobs run.
 #
 # light/modules is not a package of the workspace: the modules have no
 # dependencies to install (the app's TypeScript checks and builds them,
-# modules/build.mjs), and the Hylo example takes them as `link:`s.
+# modules/build.mjs). The app, the examples and the benchmarks take them as
+# `link:`s, and pnpm installs nothing for a link, so each lists every module
+# it reaches, the ones those modules import included.
 packages:
   - app
+  - bench/*
   - examples/*
   - packs/*
+  - setup
 
 # One lockfile per package, as each had a package-lock.json before: a pack's
 # toolchain and glue are keyed on the files its glue.paths names, its own
@@ -32,3 +36,7 @@ allowBuilds:
   # macOS only, and its package ships the binary prebuilt; its install script
   # would only rebuild it with node-gyp.
   fsevents: false
+  # Astro's image service (examples/astro-docs): its binary comes prebuilt in
+  # an @img/sharp-<platform> package; its install script only checks for it,
+  # or builds libvips from source when it is missing.
+  sharp: false

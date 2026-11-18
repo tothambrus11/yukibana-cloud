@@ -4,3 +4,5 @@
 # cmake and builds them with ninja.
 cmake
 ninja-build
+# LLVM's objects between builds (toolchain.sh): the build tree is not kept.
+ccache

@@ -1,0 +1,28 @@
+{
+	"name": "@yukibana/editors",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Editors other than Monaco for Yukibana Light's core: a plain textarea as a core EditorPort over a one-document Project, each editor its own entry point.",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/tothambrus11/yukibana-cloud.git",
+		"directory": "light/modules/editors"
+	},
+	"type": "module",
+	"sideEffects": false,
+	"exports": {
+		"./textarea": {
+			"@yukibana/source": "./textarea.ts",
+			"types": "./dist/textarea.d.ts",
+			"default": "./dist/textarea.js"
+		}
+	},
+	"files": [
+		"dist",
+		"*.ts",
+		"README.md"
+	],
+	"peerDependencies": {
+		"@yukibana/core": "^0.1.0"
+	}
+}

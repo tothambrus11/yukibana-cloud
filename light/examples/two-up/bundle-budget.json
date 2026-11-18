@@ -1,0 +1,5 @@
+{
+	"about": "What a first load of the two-up page runs, gzipped at level 9: the entry script dist/index.html loads and every chunk it imports statically (dist/.vite/chunks.json). tests/bundle.test.mjs fails when a build's initial scripts are more than 1% above initialGzipBytes. Record a new number here only for a change that means to move it, and say why in its commit.",
+	"initialGzipBytes": 19369,
+	"recordedAt": "step 8 of light/modules/DESIGN.md: the core, std, the runtime's pool and transport, the textarea editor and the specs and providers of lang-cpp and lang-python; Monaco and both bodies are lazy chunks."
+}
