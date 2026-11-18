@@ -34,44 +34,49 @@
 	</header>
 
 	{#if !offline.manifest}
-		<p>This build has no list of its files (offline.json), so nothing can be downloaded ahead of time. Languages used once still work offline.</p>
+		<div class="content">
+			<p>This build has no list of its files (offline.json), so nothing can be downloaded ahead of time. Languages used once still work offline.</p>
+		</div>
 	{:else}
-		<p>
-			{#if shell && shell.missing.files === 0}
-				The app is cached: it starts without a network.
-			{:else}
-				The app is not fully cached yet; it will be once its service worker has installed.
-			{/if}
-			A language works offline once its files are cached: when it is first used, or from here.
-		</p>
+		<!-- Only this part scrolls: the title and close button above and the footer below stay put. -->
+		<div class="content">
+			<p>
+				{#if shell && shell.missing.files === 0}
+					The app is cached: it starts without a network.
+				{:else}
+					The app is not fully cached yet; it will be once its service worker has installed.
+				{/if}
+				A language works offline once its files are cached: when it is first used, or from here.
+			</p>
 
-		<table>
-			<thead>
-				<tr><th>Language</th><th class="size">Download</th><th></th></tr>
-			</thead>
-			<tbody>
-				{#each LANGUAGES as l (l.id)}
-					{@const pack = packOf(l)}
-					{@const packs = packsOf(l)}
-					{@const files = offline.packFiles(pack)}
-					{@const sizes = offline.sizes(offline.filesFor(packs))}
-					<tr data-language={l.id}>
-						<td>{l.label}</td>
-						<td class="size">{files.length ? `${mb(sizes.all.transfer)} MB` : ''}</td>
-						<td class="action">
-							{#if !files.length}
-								<span class="muted">not installed</span>
-							{:else if offline.arePacksCached(packs) && sizes.missing.files === 0}
-								<span class="ok"><span aria-hidden="true">✓</span> available offline</span>
-							{:else}
-								<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
-								<button class="button yk-btn yk-btn--secondary" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
-							{/if}
-						</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
+			<table>
+				<thead>
+					<tr><th>Language</th><th class="size">Download</th><th></th></tr>
+				</thead>
+				<tbody>
+					{#each LANGUAGES as l (l.id)}
+						{@const pack = packOf(l)}
+						{@const packs = packsOf(l)}
+						{@const files = offline.packFiles(pack)}
+						{@const sizes = offline.sizes(offline.filesFor(packs))}
+						<tr data-language={l.id}>
+							<td>{l.label}</td>
+							<td class="size">{files.length ? `${mb(sizes.all.transfer)} MB` : ''}</td>
+							<td class="action">
+								{#if !files.length}
+									<span class="muted">not installed</span>
+								{:else if offline.arePacksCached(packs) && sizes.missing.files === 0}
+									<span class="ok"><span aria-hidden="true">✓</span> available offline</span>
+								{:else}
+									<!-- A short label that fits a phone; what it does and how much it downloads are its title and name. -->
+									<button class="button yk-btn yk-btn--secondary" disabled={offline.progress !== null} title="Make {l.label} available offline: {mb(sizes.missing.transfer)} MB to download" aria-label="Save offline: {l.label}, {mb(sizes.missing.transfer)} MB" onclick={() => void makeAvailable(l.label, packs)}>Save offline</button>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
 
 		<footer>
 			{#if offline.progress}
@@ -104,6 +109,22 @@
 		background: var(--yk-rail);
 		color: var(--yk-ink);
 		font-size: 0.9rem;
+	}
+	/* Open (`display` unset when closed, so it stays hidden): a column whose middle scrolls. */
+	.offline[open] {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	.content {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+	header,
+	footer {
+		flex: none;
 	}
 	.offline::backdrop {
 		background: rgb(0 0 0 / 0.45);
