@@ -27,7 +27,7 @@ export { ConsoleStdout, Directory, Fd, File, OpenFile, PreopenDirectory, WASI, W
 
 export const SWIFT_VERSION = '6.3.3';
 
-import { MACRO_MODULES, MACRO_PLUGIN_PATH, MACRO_PLUGINS_WASM, MODULE_CACHE, RESOURCES, SYSROOT, WASI_SYSROOT, commonFrontendArgs, linuxSysroot, macroPluginArgs } from './frontend-args.js';
+import { MACRO_MODULES, MACRO_PLUGIN_PATH, MACRO_PLUGINS_WASM, MODULE_CACHE_ARGS, RESOURCES, SYSROOT, WASI_SYSROOT, commonFrontendArgs, linuxSysroot, macroPluginArgs } from './frontend-args.js';
 
 export * from './frontend-args.js';
 
@@ -105,7 +105,7 @@ export function sourceKitArgs() {
         '-target', 'wasm32-unknown-wasip1',
         '-sdk', WASI_SYSROOT,
         '-resource-dir', RESOURCES,
-        '-module-cache-path', MODULE_CACHE,
+        ...MODULE_CACHE_ARGS,
         ...macroPluginArgs(),
     ];
 }
@@ -576,6 +576,7 @@ export const LINKER_WASM = 'wasm-ld.wasm';
 export const SYSROOT_TAR = 'swift-sysroot.tar';
 export const XCTEST_TAR = 'swift-xctest.tar';
 export const TESTING_TAR = 'swift-testing.tar';
+export const FOUNDATION_TAR = 'swift-foundation-essentials.tar';
 
 /**
  * Adds the browser's XCTest (xctest/, built by tools/build-xctest.mjs) to a
@@ -593,13 +594,30 @@ export async function loadXCTest(root, onLoading) {
  * Adds swift-testing to a sysroot from loadSysroot, for projects that
  * import Testing (build.sh, "swift-testing.tar"): its module (the SDK's
  * .swiftinterface, which the compiler builds into the module cache on
- * first use), libTesting.a and the libraries it links, among them
- * FoundationEssentials and _FoundationCollections, but not Foundation or
- * ICU (see linkLibraries). Not part of the sysroot so that projects
- * without swift-testing do not download it.
+ * first use), libTesting.a and its own libraries. It links
+ * FoundationEssentials too, which is loadFoundationEssentials's: a caller
+ * that loads this loads that as well (needsFoundationEssentials). Not
+ * Foundation or ICU, which it autolinks but never reaches (see
+ * linkLibraries). Not part of the sysroot so that projects without
+ * swift-testing do not download it.
  */
 export async function loadSwiftTesting(root, onLoading) {
     const response = await fetchArtifact(TESTING_TAR, onLoading);
+    untar(root, new Uint8Array(await response.arrayBuffer()), SYSROOT);
+}
+
+/**
+ * Adds FoundationEssentials to a sysroot from loadSysroot, for projects
+ * that import it, and for swift-testing, which links it (build.sh,
+ * "swift-foundation-essentials.tar"): the Swift 6.3.3 Wasm SDK's binary
+ * FoundationEssentials and _FoundationCollections modules, the
+ * _FoundationCShims C module, and their three archives. About 4.4 MB
+ * brotli; not part of the sysroot so that the projects that do not use it
+ * (most) do not download it. Not Foundation: no FoundationInternationalization,
+ * no ICU, no CoreFoundation (README, "FoundationEssentials").
+ */
+export async function loadFoundationEssentials(root, onLoading) {
+    const response = await fetchArtifact(FOUNDATION_TAR, onLoading);
     untar(root, new Uint8Array(await response.arrayBuffer()), SYSROOT);
 }
 

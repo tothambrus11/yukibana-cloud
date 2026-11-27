@@ -381,6 +381,20 @@ try {
     lsp.notify('textDocument/didClose', { textDocument: { uri: uri('Tests/PointTests.swift') } });
     lsp.notify('textDocument/didClose', { textDocument: { uri: uri('Macros.swift') } });
 
+    // FoundationEssentials: `import FoundationEssentials` finds the module
+    // (swift-foundation-essentials.tar), its types check, and a misuse of one
+    // is reported.
+    const ESSENTIALS = 'import FoundationEssentials\n\nstruct P: Codable { var x: Int }\nlet data = try! JSONEncoder().encode(P(x: 1))\nlet n: Int = data\n';
+    since = (await lsp.log()).length;
+    t = Date.now();
+    lsp.notify('textDocument/didOpen', { textDocument: { uri: uri('Essentials.swift'), languageId: 'swift', version: 1, text: ESSENTIALS } });
+    const essentialsDiags = await diagnostics('Essentials.swift', (d) => errors(d).length > 0, since, 120000);
+    check('a FoundationEssentials file: the module is found, JSONEncoder checks, the type error in it is reported',
+        errors(essentialsDiags).length === 1 && /cannot convert value of type 'Data' to specified type 'Int'/.test(errors(essentialsDiags)[0].message) &&
+            (await lsp.log()).some((m) => m.method === 'yukibana/loading' && m.params.label === 'swift-foundation-essentials.tar'),
+        `${show(essentialsDiags)} after ${Date.now() - t} ms`);
+    lsp.notify('textDocument/didClose', { textDocument: { uri: uri('Essentials.swift') } });
+
     since = (await lsp.log()).length;
     lsp.notify('textDocument/didChange', { textDocument: { uri: uri('main.swift'), version: 2 }, contentChanges: [{ text: BROKEN }] });
     const broken = await diagnostics('main.swift', () => true, since, 60000, 2);

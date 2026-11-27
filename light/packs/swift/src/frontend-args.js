@@ -9,6 +9,20 @@ export const RESOURCES = `${SYSROOT}/swift/lib/swift_static`;
 export const MODULE_CACHE = '/tmp/module-cache';
 
 /**
+ * Where Clang caches the C modules it builds implicitly (SwiftShims,
+ * WASILibc, _FoundationCShims), for every compile and sourcekitd. The cache
+ * lives as long as the worker, so only the first compile builds them, but
+ * only with pruning off: Clang prunes the cache when its `modules.timestamp`
+ * is older than the prune interval, and deletes every module whose access
+ * time is older than a month. The in-memory file system reports both times
+ * as 0 (1970), so from the second compile on every compile pruned the whole
+ * cache and built every module again: 0.1 s for SwiftShims, unnoticed until
+ * FoundationEssentials, whose _FoundationCShims (a 2.8 MB Unicode table
+ * header) costs 3 s under Node and 6 s in Chromium, every Run.
+ */
+export const MODULE_CACHE_ARGS = ['-module-cache-path', MODULE_CACHE, '-Xcc', '-fmodules-prune-interval=0'];
+
+/**
  * What the driver would pass to `swift-frontend -frontend` for
  * wasm32-unknown-wasip1. `moduleName` is `main` unless a test file imports
  * the project under another name (see xctest.js, projectModuleName).
@@ -23,9 +37,7 @@ export function commonFrontendArgs(moduleName = 'main') {
         '-use-static-resource-dir',
         '-no-color-diagnostics',
         '-Xcc', '-fno-color-diagnostics',
-        // Clang builds the SwiftShims module implicitly and caches it here; the
-        // cache lives as long as the worker, so only the first compile pays.
-        '-module-cache-path', MODULE_CACHE,
+        ...MODULE_CACHE_ARGS,
         ...macroPluginArgs(),
         '-module-name', moduleName,
     ];
@@ -92,7 +104,7 @@ export function linuxCompileArgs(target, sources, output, moduleName = 'main', o
         '-use-static-resource-dir',
         '-no-color-diagnostics',
         '-Xcc', '-fno-color-diagnostics',
-        '-module-cache-path', MODULE_CACHE,
+        ...MODULE_CACHE_ARGS,
         ...macroPluginArgs(),
         '-g', '-debug-info-format=dwarf', '-dwarf-version=4',
         '-module-name', moduleName,

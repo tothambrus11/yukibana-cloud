@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { demangleSwift, emitArgs, filterSil, moduleNameFor, shownFlags, sourcesFor, swiftNames } from './src/views.js';
+import { demangleSwift, emitArgs, extrasFor, filterSil, moduleNameFor, shownFlags, sourcesFor, swiftNames } from './src/views.js';
 import { filterAsm, filterIr } from '../kit/emit-filter.js';
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'tests/fixtures');
@@ -131,4 +131,15 @@ test("a view compiles the file as the primary file of what Run compiles, at the 
     assert.throws(() => emitArgs({ emit: 'bytecode', files, path: 'main.swift' }));
     assert.equal(moduleNameFor({ ...files, 'T.swift': '@testable import App\n' }, 'T.swift'), 'App');
     assert.deepEqual(shownFlags(args), ['-emit-ir', '-O']);
+});
+
+test('a view of a file importing FoundationEssentials, or Testing, which links it, loads swift-foundation-essentials.tar; others do not', () => {
+    const files = {
+        'main.swift': 'import FoundationEssentials\nprint(UUID())\n',
+        'Plain.swift': '// import FoundationEssentials\nlet s = "import FoundationEssentials"\n',
+        'Tests/T.swift': 'import Testing\n@Test func t() {}\n',
+    };
+    assert.deepEqual(extrasFor(files, ['main.swift']), { xctest: false, testing: false, foundation: true });
+    assert.deepEqual(extrasFor(files, ['Plain.swift']), { xctest: false, testing: false, foundation: false });
+    assert.deepEqual(extrasFor(files, ['Tests/T.swift']), { xctest: false, testing: true, foundation: true });
 });

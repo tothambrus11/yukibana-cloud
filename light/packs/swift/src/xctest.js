@@ -321,6 +321,20 @@ export function importsTesting(text) {
     return importsModule(text, 'Testing');
 }
 
+/** True if the file imports FoundationEssentials, which is a separate download (toolchain.js loadFoundationEssentials). */
+export function importsFoundationEssentials(text) {
+    return importsModule(text, 'FoundationEssentials');
+}
+
+/**
+ * True if `texts` (the sources compiled, or the file sourcekitd opens) need
+ * swift-foundation-essentials.tar: one imports FoundationEssentials, or
+ * imports Testing, whose library links it.
+ */
+export function needsFoundationEssentials(texts) {
+    return texts.some((t) => importsFoundationEssentials(t) || importsTesting(t));
+}
+
 /** `import M`, also `@testable import M` and `import struct M.Name`, outside comments and strings. */
 function importsModule(text, module) {
     const t = tokenize(text);
